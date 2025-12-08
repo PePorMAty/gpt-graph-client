@@ -97,14 +97,30 @@ const gptSlice = createSlice({
     ) => {
       state.data = action.payload;
     },
-    resetGraph: (state) => {
-      state.data = { nodes: [], edges: [] };
-      state.isLoading = false;
-      state.isError = false;
-      state.error = null;
-      state.hasMore = false;
-      state.leafNodes = [];
-      state.originalPrompt = null;
+    addNode: (
+      state,
+      action: PayloadAction<{
+        type: "product" | "transformation";
+        label?: string;
+        position: { x: number; y: number }; // ← добавили позицию (обязательна)
+      }>
+    ) => {
+      const id = crypto.randomUUID();
+      const { type, position, label } = action.payload;
+
+      const newNode: CustomNode = {
+        id,
+        type,
+        position: position, // ← используем переданную позицию
+        data: {
+          label:
+            label ||
+            (type === "product" ? "Новый продукт" : "Новое преобразование"),
+          description: "",
+        },
+      };
+
+      state.data.nodes.push(newNode);
     },
   },
   extraReducers: (builder) => {
@@ -192,6 +208,6 @@ export const {
   removeEdge,
   removeNode,
   setGraphData,
-  resetGraph,
+  addNode,
 } = gptSlice.actions;
 export default gptSlice.reducer;

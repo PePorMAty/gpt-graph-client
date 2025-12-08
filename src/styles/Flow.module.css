@@ -136,6 +136,89 @@
   color: #333;
 }
 
+.addNodeButton {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 30;
+  padding: 10px 14px;
+  background: #3a86ff;
+  color: #fff;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+/* ===== ЛОАДЕР НА ВЕСЬ ЭКРАН ГРАФА ===== */
+
+.loadingOverlay,
+.layoutOverlay,
+.errorOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(15, 15, 20, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: all;
+  animation: fadeIn 0.2s ease;
+}
+
+/* СООБЩЕНИЕ */
+.loadingOverlay p,
+.layoutOverlay p {
+  margin-top: 18px;
+  font-size: 18px;
+  color: #fff;
+  opacity: 0.9;
+}
+
+/* СПИННЕР */
+.loadingSpinner,
+.layoutSpinner {
+  width: 60px;
+  height: 60px;
+  border: 6px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #4e8cff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ОШИБКА */
+.errorOverlay {
+  background: rgba(120, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.errorText {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  padding: 20px 30px;
+  background: rgba(255, 50, 50, 0.3);
+  border: 1px solid rgba(255, 100, 100, 0.6);
+  border-radius: 12px;
+}
+
+/* Анимации */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes blink {
   0%,
   100% {

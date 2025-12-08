@@ -1,0 +1,30 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 30;
+}
+
+.window {
+  padding: 20px;
+  background: #fff;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  flex-direction: column;
+  width: 260px;
+}
+
+button {
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.close {
+  background: #ddd;
+}

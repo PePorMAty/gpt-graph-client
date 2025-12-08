@@ -42,17 +42,18 @@ export const RequestPanel = () => {
         >
           Создать граф
         </button>
-        <button
-          className={activeTab === "combine" ? styles.activeTab : styles.tab}
-          onClick={() => setActiveTab("combine")}
-        >
-          Объединить графы
-        </button>
+
         <button
           className={activeTab === "continue" ? styles.activeTab : styles.tab}
           onClick={() => setActiveTab("continue")}
         >
           Продолжить граф
+        </button>
+        <button
+          className={activeTab === "combine" ? styles.activeTab : styles.tab}
+          onClick={() => setActiveTab("combine")}
+        >
+          Объединить графы
         </button>
       </div>
 

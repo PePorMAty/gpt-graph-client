@@ -25,6 +25,7 @@ import {
   removeEdge,
   removeNode,
   setGraphData,
+  addNode,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -32,6 +33,7 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 import { getLayoutedElements } from "./utils/get-layouted-elements";
 
 import styles from "./styles/Flow.module.css";
+import { AddNodeModal } from "./components/add-node-modal";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -41,7 +43,7 @@ const nodeTypes: NodeTypes = {
 export const Flow = () => {
   const dispatch = useAppDispatch();
   const { data, isLoading, error } = useAppSelector((store) => store.graph);
-  const { fitView } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
@@ -88,6 +90,7 @@ export const Flow = () => {
   const [tempNodeDescription, setTempNodeDescription] = useState<string>("");
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
+  const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
@@ -228,8 +231,39 @@ export const Flow = () => {
     [dispatch]
   );
 
+  const handleAddNode = (selectedType: "product" | "transformation") => {
+    // центр окна
+    const screenCenter = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    };
+
+    // координаты графа
+    const flowPosition = screenToFlowPosition(screenCenter);
+
+    dispatch(
+      addNode({
+        type: selectedType,
+        position: flowPosition,
+      })
+    );
+
+    setIsTypeSelectorOpen(false);
+  };
+
   return (
     <div className={styles.container}>
+      <button
+        className={styles.addNodeButton}
+        onClick={() => setIsTypeSelectorOpen(true)}
+      >
+        + Узел
+      </button>
+      <AddNodeModal
+        isOpen={isTypeSelectorOpen}
+        onClose={() => setIsTypeSelectorOpen(false)}
+        onSelect={handleAddNode}
+      />
       {/* Индикатор загрузки */}
       {isLoading && (
         <div className={styles.loadingOverlay}>
