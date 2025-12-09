@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>CORS Test</h2>
+<button id="btn">Send Test Request</button>
+
+<pre id="out"></pre>
+
+<script>
+const out = document.getElementById("out");
+
+document.getElementById("btn").onclick = async () => {
+    out.textContent = "Sending request...";
+
+    try {
+        const response = await fetch("http://64.188.112.139/api/test", {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+
+        const text = await response.text();
+
+        out.textContent = "STATUS: " + response.status + "\n\n" + text;
+    } catch (err) {
+        out.textContent = "ERROR:\n" + err.toString();
+    }
+};
+</script>
+
+</body>
+</html>
