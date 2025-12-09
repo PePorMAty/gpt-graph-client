@@ -1,0 +1,67 @@
+{
+  "hash": "570fba62",
+  "configHash": "44b888bb",
+  "lockfileHash": "f7d4f7ac",
+  "browserHash": "02fd2bc9",
+  "optimized": {
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "98ac6779",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "c3c6291b",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "08194cd2",
+      "needsInterop": true
+    },
+    "react-redux": {
+      "src": "../../node_modules/react-redux/dist/react-redux.mjs",
+      "file": "react-redux.js",
+      "fileHash": "e5a144f1",
+      "needsInterop": false
+    },
+    "@xyflow/react": {
+      "src": "../../node_modules/@xyflow/react/dist/esm/index.js",
+      "file": "@xyflow_react.js",
+      "fileHash": "ad0f8497",
+      "needsInterop": false
+    },
+    "@reduxjs/toolkit": {
+      "src": "../../node_modules/@reduxjs/toolkit/dist/redux-toolkit.modern.mjs",
+      "file": "@reduxjs_toolkit.js",
+      "fileHash": "488b06c2",
+      "needsInterop": false
+    },
+    "dagre": {
+      "src": "../../node_modules/dagre/index.js",
+      "file": "dagre.js",
+      "fileHash": "e940809f",
+      "needsInterop": true
+    },
+    "axios": {
+      "src": "../../node_modules/axios/index.js",
+      "file": "axios.js",
+      "fileHash": "a8c0771a",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-4OSZ5YPA": {
+      "file": "chunk-4OSZ5YPA.js"
+    },
+    "chunk-VUNGVS7X": {
+      "file": "chunk-VUNGVS7X.js"
+    },
+    "chunk-PR4QN5HX": {
+      "file": "chunk-PR4QN5HX.js"
+    }
+  }
+}
