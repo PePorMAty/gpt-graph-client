@@ -25,7 +25,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build
+      - name: Build with secrets
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: npm run build
 
       - name: Upload build artifact
