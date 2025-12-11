@@ -155,7 +155,7 @@ export const Flow = () => {
     initialDescription,
     dispatch,
   ]);
-
+  console.log("API URL =", import.meta.env.VITE_API_URL);
   // Обработчик удаления узла
   const handleDeleteNode = useCallback(() => {
     if (selectedNodeId) {
