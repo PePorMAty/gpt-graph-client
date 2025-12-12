@@ -155,7 +155,7 @@ const gptSlice = createSlice({
         state.isLoading = false;
         state.hasMore = data.has_more || false;
         state.leafNodes = data.leaf_nodes || [];
-        state.originalPrompt = action.meta.arg;
+        state.originalPrompt = action.meta.arg.promptValue;
       })
       .addCase(getGraphData.rejected, (state, action) => {
         state.isLoading = false;

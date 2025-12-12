@@ -24,15 +24,6 @@ export type TransformationNodeProps = NodeProps<CustomNode>;
 
 /* ====== SERVER API TYPES ====== */
 
-export interface GraphApiResponse {
-  success: boolean;
-  nodes: CustomNode[];
-  edges: CustomEdge[];
-  has_more?: boolean;
-  leaf_nodes?: string[];
-  message?: string;
-}
-
 export interface GPTNode {
   id: string;
   type?: string;
