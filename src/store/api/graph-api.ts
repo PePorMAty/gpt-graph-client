@@ -3,16 +3,25 @@ import axios from "axios";
 
 import type { RootState } from "../store";
 
-import type { GPTGraphResponse, GraphApiResponse } from "../../types";
+import type { GPTGraphResponse } from "../../types";
+import type {
+  CreateGraphArgs,
+  CreateGraphResult,
+  GraphApiResponse,
+} from "../types";
 
-export const getGraphData = createAsyncThunk(
+export const getGraphData = createAsyncThunk<
+  CreateGraphResult,
+  CreateGraphArgs
+>(
   "graph/getGraphData",
-  async (promptValue: string, { rejectWithValue }) => {
+  async ({ promptValue, promptLayout }, { rejectWithValue }) => {
     try {
       const response = await axios.post<GraphApiResponse>(
         `${import.meta.env.VITE_API_URL}/graphs/gpt`,
         {
           userPrompt: promptValue,
+          promptLayout,
         }
       );
       return {
@@ -29,6 +38,13 @@ export const getGraphData = createAsyncThunk(
     }
   }
 );
+
+export const getPromptLayoutFromServer = async (): Promise<string> => {
+  const response = await axios.get<{ promptLayout: string }>(
+    `${import.meta.env.VITE_API_URL}/graphs/prompt-layout`
+  );
+  return response.data.promptLayout;
+};
 
 export const continueGraph = createAsyncThunk<
   GPTGraphResponse, // <— тип ответа
