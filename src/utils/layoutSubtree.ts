@@ -3,35 +3,26 @@ import type { CustomNode } from "../types";
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 80;
-
 const LEVEL_GAP = 160;
 const NODE_GAP = 80;
 
-export async function layoutTree(
+export function layoutSubtree(
   nodes: CustomNode[],
   edges: Edge[],
-  rootId?: string
+  rootId: string,
+  rootPosition: { x: number; y: number }
 ) {
-  if (!nodes.length) {
-    return { nodes, edges };
-  }
-
   const childrenMap = new Map<string, string[]>();
-  const parentMap = new Map<string, string>();
 
   edges.forEach((e) => {
     if (!childrenMap.has(e.source)) {
       childrenMap.set(e.source, []);
     }
     childrenMap.get(e.source)!.push(e.target);
-    parentMap.set(e.target, e.source);
   });
 
-  const root =
-    rootId ?? nodes.find((n) => !parentMap.has(n.id))?.id ?? nodes[0].id;
-
   const levels: string[][] = [];
-  const queue: { id: string; level: number }[] = [{ id: root, level: 0 }];
+  const queue = [{ id: rootId, level: 0 }];
 
   while (queue.length) {
     const { id, level } = queue.shift()!;
@@ -49,9 +40,10 @@ export async function layoutTree(
     const totalWidth =
       levelNodes.length * NODE_WIDTH + (levelNodes.length - 1) * NODE_GAP;
 
-    let x = -totalWidth / 2 + NODE_WIDTH / 2;
+    let x = rootPosition.x - totalWidth / 2 + NODE_WIDTH / 2;
 
-    const y = levelIndex * (NODE_HEIGHT + LEVEL_GAP);
+    const y =
+      rootPosition.y + LEVEL_GAP + levelIndex * (NODE_HEIGHT + LEVEL_GAP);
 
     levelNodes.forEach((id) => {
       positions.set(id, { x, y });
@@ -59,15 +51,14 @@ export async function layoutTree(
     });
   });
 
-  const layoutedNodes: CustomNode[] = nodes.map((n) => ({
-    ...n,
-    position: positions.get(n.id) ?? n.position,
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-  }));
-
-  return {
-    nodes: layoutedNodes,
-    edges,
-  };
+  return nodes.map((n) =>
+    positions.has(n.id)
+      ? {
+          ...n,
+          position: positions.get(n.id)!,
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
+        }
+      : n
+  );
 }

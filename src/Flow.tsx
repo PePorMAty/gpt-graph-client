@@ -33,7 +33,6 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 
 import styles from "./styles/Flow.module.css";
 import { AddNodeModal } from "./components/add-node-modal";
-import { layoutWithELK } from "./utils/layoutWithElk";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 
@@ -47,6 +46,7 @@ export const Flow = () => {
   const { data, isLoading, error } = useAppSelector((store) => store.graph);
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
+  const isInitialLayout = useRef(true);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
   const applyLayout = useCallback(async () => {
@@ -67,12 +67,12 @@ export const Flow = () => {
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
-  // Применяем layout при получении новых данных
   useEffect(() => {
-    if (data.nodes.length > 0 && !hasFittedView.current) {
+    if (data.nodes.length > 0 && isInitialLayout.current) {
       applyLayout();
+      isInitialLayout.current = false; // 🔑 ВАЖНО
     }
-  }, [data.nodes.length]); // Только при изменении количества узлов
+  }, [data.nodes.length, applyLayout]);
 
   const edgeReconnectSuccessful = useRef<boolean>(true);
 
