@@ -24,16 +24,18 @@ import {
   onReconnect,
   removeEdge,
   removeNode,
-  setGraphData,
   addNode,
+  setGraphData,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { ProductNode, TransformationNode } from "./components/nodes";
-import { getLayoutedElements } from "./utils/get-layouted-elements";
 
 import styles from "./styles/Flow.module.css";
 import { AddNodeModal } from "./components/add-node-modal";
+import { layoutWithELK } from "./utils/layoutWithElk";
+import { layoutTree } from "./utils/layoutTree";
+import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -47,39 +49,30 @@ export const Flow = () => {
   const hasFittedView = useRef(false);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
+  const applyLayout = useCallback(async () => {
+    if (!data.nodes.length) return;
+
+    setIsApplyingLayout(true);
+
+    const { nodes, edges, rootId } = await layoutTree(data.nodes, data.edges);
+
+    const centeredNodes = centerTreeOnRoot(nodes, rootId);
+
+    dispatch(setGraphData({ nodes: centeredNodes, edges }));
+
+    requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 500 });
+      hasFittedView.current = true;
+      setIsApplyingLayout(false);
+    });
+  }, [data.nodes, data.edges, dispatch, fitView]);
+
   // Применяем layout при получении новых данных
   useEffect(() => {
     if (data.nodes.length > 0 && !hasFittedView.current) {
       applyLayout();
     }
   }, [data.nodes.length]); // Только при изменении количества узлов
-
-  // Функция для применения layout
-  const applyLayout = useCallback(() => {
-    if (data.nodes.length === 0) return;
-
-    setIsApplyingLayout(true);
-    try {
-      const { nodes: layoutedNodes, edges: layoutedEdges } =
-        getLayoutedElements(data.nodes, data.edges, "TB");
-
-      dispatch(
-        setGraphData({
-          nodes: layoutedNodes,
-          edges: layoutedEdges,
-        })
-      );
-
-      // Подгоняем вид после обновления DOM
-      setTimeout(() => {
-        fitView({ duration: 500, padding: 0.2 });
-        hasFittedView.current = true;
-        setIsApplyingLayout(false);
-      }, 100);
-    } catch {
-      setIsApplyingLayout(false);
-    }
-  }, [data.nodes, data.edges, dispatch, fitView]);
 
   const edgeReconnectSuccessful = useRef<boolean>(true);
 
@@ -305,6 +298,9 @@ export const Flow = () => {
         nodesFocusable={false}
         minZoom={0.1}
         maxZoom={2}
+        defaultEdgeOptions={{
+          type: "smoothstep",
+        }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} />
         <Background />
