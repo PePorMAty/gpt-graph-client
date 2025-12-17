@@ -16,12 +16,14 @@ import { continueGraph, getGraphData } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
 import type { InitialGraphStateI } from "../types";
+import { layoutSubtree } from "../../utils/layoutSubtree";
 
 const initialState: InitialGraphStateI = {
   data: {
     nodes: [],
     edges: [],
   },
+  rootId: null,
   isLoading: false,
   isError: false,
   error: null,
@@ -152,10 +154,14 @@ const gptSlice = createSlice({
           edges: normalizeEdges(data.edges) || [],
         };
 
+        if (!state.rootId && action.payload.data.nodes.length > 0) {
+          state.rootId = action.payload.data.nodes[0].id;
+        }
+
         state.isLoading = false;
         state.hasMore = data.has_more || false;
         state.leafNodes = data.leaf_nodes || [];
-        state.originalPrompt = action.meta.arg;
+        state.originalPrompt = action.meta.arg.promptValue;
       })
       .addCase(getGraphData.rejected, (state, action) => {
         state.isLoading = false;
@@ -167,29 +173,38 @@ const gptSlice = createSlice({
         state.isLoading = true;
       })
       .addCase(continueGraph.fulfilled, (state, action) => {
-        const { nodes, edges, leaf_nodes, has_more } = action.payload;
+        const { nodes, edges, leaf_nodes } = action.payload;
 
-        // 1. Приводим типы от сервера → внутренние типы
-        const normalizedNewNodes = normalizeNodes(nodes);
-        const normalizedNewEdges = normalizeEdges(edges);
+        const newNodes = normalizeNodes(nodes);
+        const newEdges = normalizeEdges(edges);
 
-        // 2. Убираем дубли (как раньше)
-        const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
-        const filteredNodes = normalizedNewNodes.filter(
-          (n) => !existingNodeIds.has(n.id)
-        );
+        const allNodes = [...state.data.nodes, ...newNodes];
+        const allEdges = [...state.data.edges, ...newEdges];
 
-        const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
-        const filteredEdges = normalizedNewEdges.filter(
-          (e) => !existingEdgeIds.has(e.id)
-        );
+        leaf_nodes.forEach((leafId) => {
+          const leafNode = state.data.nodes.find((n) => n.id === leafId);
+          if (!leafNode) return;
 
-        // 3. Обновляем стор
-        state.data.nodes = [...state.data.nodes, ...filteredNodes];
-        state.data.edges = [...state.data.edges, ...filteredEdges];
+          const subtreeNodes = newNodes.filter((n) =>
+            allEdges.some((e) => e.source === leafId && e.target === n.id)
+          );
 
+          const layouted = layoutSubtree(
+            subtreeNodes,
+            allEdges,
+            leafId,
+            leafNode.position
+          );
+
+          layouted.forEach((ln) => {
+            const idx = allNodes.findIndex((n) => n.id === ln.id);
+            if (idx !== -1) allNodes[idx] = ln;
+          });
+        });
+
+        state.data.nodes = allNodes;
+        state.data.edges = allEdges;
         state.leafNodes = leaf_nodes;
-        state.hasMore = has_more;
         state.isLoading = false;
       })
       .addCase(continueGraph.rejected, (state) => {

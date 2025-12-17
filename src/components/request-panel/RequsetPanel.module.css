@@ -1,4 +1,3 @@
-/* components/RequsetPanel.module.css */
 .panel {
   background: white;
   padding: 20px;
@@ -44,8 +43,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  align-items: stretch; /* важно — растягивать детей по ширине */
 }
-
 .input {
   padding: 12px;
   border: 1px solid #ddd;
@@ -83,45 +82,7 @@
   opacity: 0.6;
 }
 
-.continueSection {
-  text-align: center;
-  padding: 20px;
-}
-
-.continueSection h3 {
-  margin: 0 0 12px 0;
-  color: #333;
-}
-
-.description {
-  color: #666;
-  font-size: 14px;
-  margin-bottom: 24px;
-  line-height: 1.5;
-}
-
-.continueInfo,
-.noContinue {
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-.continueInfo {
-  background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
-  color: #2d5016;
-}
-
-.noContinue {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  color: #666;
-}
-
-.hint {
-  font-size: 12px;
-  margin-top: 8px;
-  opacity: 0.8;
-}
+/* Continue Section */
 .continueSection {
   margin-top: 1rem;
   padding: 1rem;
@@ -154,4 +115,99 @@
   font-size: 0.875rem;
   color: #6c757d;
   margin-top: 0.5rem;
+}
+
+/* ---------------------- */
+/* ACCORDION + TEXTAREA   */
+/* ---------------------- */
+
+.accordionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 10px 6px;
+  margin-top: 10px;
+  font-weight: 600;
+  color: #333;
+  user-select: none;
+}
+
+.accordionArrow {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.25s ease;
+  fill: none;
+  stroke: #667eea;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.accordionArrow.open {
+  transform: rotate(90deg);
+}
+
+.accordionContent {
+  display: block; /* явно блочный */
+  width: 100%;
+  box-sizing: border-box;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding: 0 0; /* убрать паддинги в закрытом состоянии */
+  transition: max-height 300ms ease, opacity 250ms ease, padding 200ms ease;
+}
+
+.accordionContent.open {
+  max-height: 800px; /* достаточно большое значение для плавного раскрытия */
+  opacity: 1;
+  padding: 10px 0; /* внутренние отступы когда открыт */
+}
+
+.resetButton {
+  margin: 0 0 8px 0;
+  padding: 6px 8px;
+  background: transparent;
+  color: #667eea;
+  border: 1px solid rgba(102, 126, 234, 0.12);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.resetButton:hover {
+  opacity: 0.7;
+}
+
+.promptTextarea {
+  width: 100%;
+  box-sizing: border-box; /* важно для ширины + padding */
+  min-height: 120px;
+  max-height: 60vh;
+  padding: 12px 14px;
+  resize: vertical;
+  border-radius: 8px;
+  border: 1px solid #d0d0d0;
+  background: #fafafa;
+  font-size: 14px;
+  line-height: 1.45;
+  font-family: "Inter", sans-serif;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.promptTextarea:hover {
+  border-color: #bcbcbc;
+  background: #f5f5f5;
+}
+
+.promptTextarea:focus {
+  outline: none;
+  border-color: #4b82f7;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(75, 130, 247, 0.15);
+}
+
+.promptTextarea:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
