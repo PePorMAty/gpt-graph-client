@@ -64,7 +64,7 @@ const gptSlice = createSlice({
     },
     onConnect: (state, action: PayloadAction<Connection>) => {
       state.data.edges = normalizeEdges(
-        addEdge({ ...action.payload, type: "smoothstep" }, state.data.edges)
+        addEdge({ ...action.payload, type: "straight" }, state.data.edges)
       );
     },
     onReconnect: (
@@ -82,7 +82,7 @@ const gptSlice = createSlice({
       // Добавляем smoothstep всем новым рёбрам
       updatedEdges = updatedEdges.map((e) => ({
         ...e,
-        type: "smoothstep",
+        type: "straight",
       }));
 
       state.data.edges = normalizeEdges(updatedEdges);

@@ -58,7 +58,7 @@ export function getLayoutedElements(
 
   const layoutedEdges: CustomEdge[] = edges.map((edge) => ({
     ...edge,
-    type: "smoothstep",
+    type: "straight",
   }));
 
   return { nodes: layoutedNodes, edges: layoutedEdges };
