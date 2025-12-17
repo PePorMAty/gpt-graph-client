@@ -23,6 +23,7 @@ const initialState: InitialGraphStateI = {
     nodes: [],
     edges: [],
   },
+  rootId: null,
   isLoading: false,
   isError: false,
   error: null,
@@ -152,6 +153,10 @@ const gptSlice = createSlice({
           nodes: normalizeNodes(data.nodes),
           edges: normalizeEdges(data.edges) || [],
         };
+
+        if (!state.rootId && action.payload.data.nodes.length > 0) {
+          state.rootId = action.payload.data.nodes[0].id;
+        }
 
         state.isLoading = false;
         state.hasMore = data.has_more || false;

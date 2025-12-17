@@ -43,18 +43,20 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error } = useAppSelector((store) => store.graph);
+  const { data, isLoading, error, rootId } = useAppSelector(
+    (store) => store.graph
+  );
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const isInitialLayout = useRef(true);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
   const applyLayout = useCallback(async () => {
-    if (!data.nodes.length) return;
+    if (!data.nodes.length || !rootId) return;
 
     setIsApplyingLayout(true);
 
-    const { nodes, edges, rootId } = await layoutTree(data.nodes, data.edges);
+    const { nodes, edges } = await layoutTree(data.nodes, data.edges);
 
     const centeredNodes = centerTreeOnRoot(nodes, rootId);
 
