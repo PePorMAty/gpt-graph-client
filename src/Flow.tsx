@@ -24,16 +24,17 @@ import {
   onReconnect,
   removeEdge,
   removeNode,
-  setGraphData,
   addNode,
+  setGraphData,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { ProductNode, TransformationNode } from "./components/nodes";
-import { getLayoutedElements } from "./utils/get-layouted-elements";
 
 import styles from "./styles/Flow.module.css";
 import { AddNodeModal } from "./components/add-node-modal";
+import { layoutTree } from "./utils/layoutTree";
+import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -42,44 +43,38 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error } = useAppSelector((store) => store.graph);
+  const { data, isLoading, error, rootId } = useAppSelector(
+    (store) => store.graph
+  );
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
+  const isInitialLayout = useRef(true);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
-  // Применяем layout при получении новых данных
-  useEffect(() => {
-    if (data.nodes.length > 0 && !hasFittedView.current) {
-      applyLayout();
-    }
-  }, [data.nodes.length]); // Только при изменении количества узлов
-
-  // Функция для применения layout
-  const applyLayout = useCallback(() => {
-    if (data.nodes.length === 0) return;
+  const applyLayout = useCallback(async () => {
+    if (!data.nodes.length || !rootId) return;
 
     setIsApplyingLayout(true);
-    try {
-      const { nodes: layoutedNodes, edges: layoutedEdges } =
-        getLayoutedElements(data.nodes, data.edges, "TB");
 
-      dispatch(
-        setGraphData({
-          nodes: layoutedNodes,
-          edges: layoutedEdges,
-        })
-      );
+    const { nodes, edges } = await layoutTree(data.nodes, data.edges);
 
-      // Подгоняем вид после обновления DOM
-      setTimeout(() => {
-        fitView({ duration: 500, padding: 0.2 });
-        hasFittedView.current = true;
-        setIsApplyingLayout(false);
-      }, 100);
-    } catch {
+    const centeredNodes = centerTreeOnRoot(nodes, rootId);
+
+    dispatch(setGraphData({ nodes: centeredNodes, edges }));
+
+    requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 500 });
+      hasFittedView.current = true;
       setIsApplyingLayout(false);
-    }
+    });
   }, [data.nodes, data.edges, dispatch, fitView]);
+
+  useEffect(() => {
+    if (data.nodes.length > 0 && isInitialLayout.current) {
+      applyLayout();
+      isInitialLayout.current = false; // 🔑 ВАЖНО
+    }
+  }, [data.nodes.length, applyLayout]);
 
   const edgeReconnectSuccessful = useRef<boolean>(true);
 
@@ -305,6 +300,9 @@ export const Flow = () => {
         nodesFocusable={false}
         minZoom={0.1}
         maxZoom={2}
+        defaultEdgeOptions={{
+          type: "smoothstep",
+        }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} />
         <Background />
