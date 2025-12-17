@@ -7,6 +7,7 @@ export interface DataI {
 
 export interface InitialGraphStateI {
   data: DataI;
+  rootId: string | null;
   isLoading: boolean;
   isError: boolean;
   error: string | null;

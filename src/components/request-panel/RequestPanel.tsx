@@ -10,7 +10,7 @@ import styles from "./RequsetPanel.module.css";
 
 export const RequestPanel = () => {
   const dispatch = useAppDispatch();
-  const { hasMore, leafNodes, originalPrompt, isLoading } = useAppSelector(
+  const { leafNodes, originalPrompt, isLoading } = useAppSelector(
     (state) => state.graph
   );
 
@@ -169,7 +169,7 @@ export const RequestPanel = () => {
                 </p>
               </div>
 
-              {hasMore && leafNodes.length > 0 ? (
+              {leafNodes.length > 0 ? (
                 <div className={styles.continueInfo}>
                   <ContinueGraphButton />
                 </div>
