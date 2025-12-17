@@ -289,7 +289,7 @@ export const Flow = () => {
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         onNodeClick={onNodeClick}
-        connectionLineType={ConnectionLineType.SmoothStep}
+        connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         onReconnect={handleReconnect}
         onReconnectStart={onReconnectStart}
@@ -301,7 +301,7 @@ export const Flow = () => {
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: "smoothstep",
+          type: "straight",
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} />

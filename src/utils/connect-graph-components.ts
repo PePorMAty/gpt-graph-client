@@ -91,7 +91,7 @@ export function connectGraphComponents(
         id: `connect_${rootNodes[i - 1].id}_to_${rootNodes[i].id}`,
         source: rootNodes[i - 1].id,
         target: rootNodes[i].id,
-        type: "smoothstep",
+        type: "straight",
       });
     }
 

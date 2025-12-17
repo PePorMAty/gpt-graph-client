@@ -68,7 +68,7 @@ export async function layoutWithELK(
 
   const layoutedEdges: CustomEdge[] = edges.map((e) => ({
     ...e,
-    type: "smoothstep",
+    type: "straight",
   }));
 
   return { nodes: layoutedNodes, edges: layoutedEdges };
