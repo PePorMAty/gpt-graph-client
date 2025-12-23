@@ -46,6 +46,9 @@ export const Flow = () => {
   const { data, isLoading, error, rootId } = useAppSelector(
     (store) => store.graph
   );
+  const savedLeafNodes = useAppSelector(
+    (state) => state.savedGraphs.selectedGraph?.state.leaf_nodes
+  );
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const isInitialLayout = useRef(true);
@@ -150,7 +153,7 @@ export const Flow = () => {
     initialDescription,
     dispatch,
   ]);
-  console.log("API URL =", import.meta.env.VITE_API_URL);
+
   // Обработчик удаления узла
   const handleDeleteNode = useCallback(() => {
     if (selectedNodeId) {

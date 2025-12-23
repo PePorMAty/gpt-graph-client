@@ -7,8 +7,12 @@ import styles from "./ContinueGraphButton.module.css";
 export const ContinueGraphButton: React.FC = () => {
   const dispatch = useAppDispatch();
   const { leafNodes, isLoading, data } = useAppSelector((state) => state.graph);
-
+  const saveLeafNodes = useAppSelector(
+    (state) => state.savedGraphs.selectedGraph
+  );
   const [selectedLeafNodes, setSelectedLeafNodes] = useState<string[]>([]);
+
+  console.log(saveLeafNodes);
 
   // по умолчанию выбираем все leaf_nodes
   useEffect(() => {

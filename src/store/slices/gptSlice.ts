@@ -16,7 +16,8 @@ import { continueGraph, getGraphData } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
 import type { InitialGraphStateI } from "../types";
-import { layoutSubtree } from "../../utils/layoutSubtree";
+
+import { getLeafNodes } from "../../utils/getLeafNodes";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -124,6 +125,33 @@ const gptSlice = createSlice({
 
       state.data.nodes.push(newNode);
     },
+    loadGraphFromFile: (
+      state,
+      action: PayloadAction<{
+        nodes: CustomNode[];
+        edges: Edge[];
+        leafNodes: string[];
+        hasMore: boolean;
+        originalPrompt: string | null;
+      }>
+    ) => {
+      state.data = {
+        nodes: normalizeNodes(action.payload.nodes),
+        edges: normalizeEdges(action.payload.edges),
+      };
+
+      state.leafNodes = action.payload.leafNodes;
+      state.hasMore = action.payload.hasMore;
+      state.originalPrompt = action.payload.originalPrompt;
+
+      // ⚠️ rootId аккуратно
+      if (!state.rootId && action.payload.nodes.length > 0) {
+        state.rootId = action.payload.nodes[0].id;
+      }
+
+      state.isError = false;
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -173,38 +201,27 @@ const gptSlice = createSlice({
         state.isLoading = true;
       })
       .addCase(continueGraph.fulfilled, (state, action) => {
-        const { nodes, edges, leaf_nodes } = action.payload;
+        const { nodes, edges } = action.payload;
 
         const newNodes = normalizeNodes(nodes);
         const newEdges = normalizeEdges(edges);
 
-        const allNodes = [...state.data.nodes, ...newNodes];
-        const allEdges = [...state.data.edges, ...newEdges];
+        const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
+        const filteredNodes = newNodes.filter(
+          (n) => !existingNodeIds.has(n.id)
+        );
 
-        leaf_nodes.forEach((leafId) => {
-          const leafNode = state.data.nodes.find((n) => n.id === leafId);
-          if (!leafNode) return;
+        const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
+        const filteredEdges = newEdges.filter(
+          (e) => !existingEdgeIds.has(e.id)
+        );
 
-          const subtreeNodes = newNodes.filter((n) =>
-            allEdges.some((e) => e.source === leafId && e.target === n.id)
-          );
+        state.data.nodes.push(...filteredNodes);
+        state.data.edges.push(...filteredEdges);
 
-          const layouted = layoutSubtree(
-            subtreeNodes,
-            allEdges,
-            leafId,
-            leafNode.position
-          );
+        // 🔥 ВАЖНО: пересчитываем ВСЕ leaf-ноды
+        state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
 
-          layouted.forEach((ln) => {
-            const idx = allNodes.findIndex((n) => n.id === ln.id);
-            if (idx !== -1) allNodes[idx] = ln;
-          });
-        });
-
-        state.data.nodes = allNodes;
-        state.data.edges = allEdges;
-        state.leafNodes = leaf_nodes;
         state.isLoading = false;
       })
       .addCase(continueGraph.rejected, (state) => {
@@ -224,5 +241,6 @@ export const {
   removeNode,
   setGraphData,
   addNode,
+  loadGraphFromFile,
 } = gptSlice.actions;
 export default gptSlice.reducer;

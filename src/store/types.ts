@@ -1,3 +1,4 @@
+import type { Edge } from "@xyflow/react";
 import type { CustomEdge, CustomNode } from "../types";
 
 export interface DataI {
@@ -31,4 +32,36 @@ export interface CreateGraphResult {
 export interface CreateGraphArgs {
   promptValue: string;
   promptLayout: string;
+}
+
+export interface SavedGraphMeta {
+  id: string;
+  name: string;
+  createdAt: string;
+  leafCount: number;
+}
+
+export interface SaveGraphPayload {
+  name?: string;
+  prompt: string;
+  nodes: CustomNode[];
+  edges: Edge[];
+  leaf_nodes: string[];
+  has_more: boolean;
+}
+
+export interface SavedGraphFile {
+  meta: {
+    name: string;
+    prompt: string;
+    createdAt: string;
+  };
+  graph: {
+    nodes: CustomNode[];
+    edges: Edge[];
+  };
+  state: {
+    leaf_nodes: string[];
+    has_more: boolean;
+  };
 }
