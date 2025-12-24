@@ -29,6 +29,14 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: npm run build
+      - name: Debug dist contents
+        run: |
+          echo "PWD:"
+          pwd
+          echo "LS ROOT:"
+          ls -la
+          echo "LS DIST:"
+          ls -la dist || echo "❌ dist not found"
 
       - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
