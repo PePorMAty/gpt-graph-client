@@ -43,12 +43,11 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId } = useAppSelector(
+  const { data, isLoading, error, rootId, source } = useAppSelector(
     (store) => store.graph
   );
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
-  const isInitialLayout = useRef(true);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
   const applyLayout = useCallback(async () => {
@@ -70,11 +69,13 @@ export const Flow = () => {
   }, [data.nodes, data.edges, dispatch, fitView]);
 
   useEffect(() => {
-    if (data.nodes.length > 0 && isInitialLayout.current) {
+    if (!data.nodes.length) return;
+    if (!rootId) return;
+
+    if (source === "new" || source === "loaded") {
       applyLayout();
-      isInitialLayout.current = false; // 🔑 ВАЖНО
     }
-  }, [data.nodes.length, applyLayout]);
+  }, [source, rootId]);
 
   const edgeReconnectSuccessful = useRef<boolean>(true);
 
@@ -150,7 +151,7 @@ export const Flow = () => {
     initialDescription,
     dispatch,
   ]);
-  console.log("API URL =", import.meta.env.VITE_API_URL);
+
   // Обработчик удаления узла
   const handleDeleteNode = useCallback(() => {
     if (selectedNodeId) {

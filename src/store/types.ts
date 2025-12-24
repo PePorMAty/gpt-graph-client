@@ -15,6 +15,7 @@ export interface InitialGraphStateI {
   hasMore: boolean;
   leafNodes: string[];
   originalPrompt: string | null;
+  source: "new" | "loaded" | "continued" | null;
 }
 export interface GraphApiResponse {
   success: boolean;
