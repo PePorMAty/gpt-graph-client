@@ -67,8 +67,6 @@ export function connectGraphComponents(
     }
   }
 
-  console.log(`Found ${components.length} strongly connected components`);
-
   // Если есть только одна компонента, возвращаем исходные ребра
   if (components.length <= 1) {
     return edges;
@@ -95,9 +93,6 @@ export function connectGraphComponents(
       });
     }
 
-    console.log(
-      `Added ${rootNodes.length - 1} connecting edges between root nodes`
-    );
     return newEdges;
   }
 
