@@ -124,6 +124,33 @@ const gptSlice = createSlice({
 
       state.data.nodes.push(newNode);
     },
+    loadGraphFromFile: (
+      state,
+      action: PayloadAction<{
+        nodes: CustomNode[];
+        edges: Edge[];
+        leafNodes: string[];
+        hasMore: boolean;
+        originalPrompt: string | null;
+      }>
+    ) => {
+      state.data = {
+        nodes: normalizeNodes(action.payload.nodes),
+        edges: normalizeEdges(action.payload.edges),
+      };
+
+      state.leafNodes = action.payload.leafNodes;
+      state.hasMore = action.payload.hasMore;
+      state.originalPrompt = action.payload.originalPrompt;
+
+      // ⚠️ rootId аккуратно
+      if (!state.rootId && action.payload.nodes.length > 0) {
+        state.rootId = action.payload.nodes[0].id;
+      }
+
+      state.isError = false;
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -224,5 +251,6 @@ export const {
   removeNode,
   setGraphData,
   addNode,
+  loadGraphFromFile,
 } = gptSlice.actions;
 export default gptSlice.reducer;

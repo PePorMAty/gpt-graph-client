@@ -1,9 +1,11 @@
 import { configureStore } from "@reduxjs/toolkit";
 import gptSlice from "./slices/gptSlice";
+import savedGraphsSlice from "./slices/savedGraphSlice";
 
 const store = configureStore({
   reducer: {
     graph: gptSlice,
+    savedGraphs: savedGraphsSlice,
   },
 });
 
