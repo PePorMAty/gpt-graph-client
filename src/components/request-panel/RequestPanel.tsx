@@ -7,6 +7,7 @@ import {
 } from "../../store/api/graph-api";
 
 import styles from "./RequsetPanel.module.css";
+import { SavedGraph } from "../saved-graph";
 
 export const RequestPanel = () => {
   const dispatch = useAppDispatch();
@@ -15,9 +16,9 @@ export const RequestPanel = () => {
   );
 
   const [value, setValue] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"create" | "combine" | "continue">(
-    "create"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "create" | "combine" | "continue" | "save"
+  >("create");
 
   // TEMPLATE PROMPT TEXTAREA
   const [showPromptEditor, setShowPromptEditor] = useState(false);
@@ -74,7 +75,12 @@ export const RequestPanel = () => {
         >
           Создать граф
         </button>
-
+        <button
+          className={activeTab === "save" ? styles.activeTab : styles.tab}
+          onClick={() => setActiveTab("save")}
+        >
+          Сохранённые
+        </button>
         <button
           className={activeTab === "continue" ? styles.activeTab : styles.tab}
           onClick={() => setActiveTab("continue")}
@@ -152,7 +158,9 @@ export const RequestPanel = () => {
           </button>
         </div>
       )}
+      {/* SAVE TAB */}
 
+      {activeTab === "save" && <SavedGraph />}
       {/* CONTINUE TAB */}
       {activeTab === "continue" && (
         <div className={styles.continueSection}>
