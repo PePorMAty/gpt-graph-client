@@ -203,6 +203,12 @@
   border-radius: 12px;
 }
 
+.node--highlight {
+  outline: 3px solid #ff9800;
+  outline-offset: 4px;
+  box-shadow: 0 0 20px rgba(255, 152, 0, 0.6);
+}
+
 /* Анимации */
 @keyframes spin {
   to {
