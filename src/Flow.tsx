@@ -1,5 +1,5 @@
 // components/Flow.tsx
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import {
   Background,
   ReactFlow,
@@ -31,10 +31,11 @@ import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
-import styles from "./styles/Flow.module.css";
 import { AddNodeModal } from "./components/add-node-modal";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
+import styles from "./styles/Flow.module.css";
+import { SearchToggle } from "./components/search-graph/SearchToggle";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -87,6 +88,28 @@ export const Flow = () => {
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  const flowNodes = useMemo(
+    () =>
+      data.nodes.map((n) => ({
+        ...n,
+        className: n.id === highlightedId ? "node--highlight" : "",
+      })),
+    [data.nodes, highlightedId]
+  );
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      setHighlightedId(id);
+
+      setTimeout(() => setHighlightedId(null), 3000);
+    };
+
+    window.addEventListener("highlight-node", handler);
+    return () => window.removeEventListener("highlight-node", handler);
+  }, []);
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
@@ -249,6 +272,7 @@ export const Flow = () => {
 
   return (
     <div className={styles.container}>
+      <SearchToggle />
       <button
         className={styles.addNodeButton}
         onClick={() => setIsTypeSelectorOpen(true)}
@@ -284,7 +308,7 @@ export const Flow = () => {
       )}
 
       <ReactFlow
-        nodes={data.nodes}
+        nodes={flowNodes}
         edges={data.edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
