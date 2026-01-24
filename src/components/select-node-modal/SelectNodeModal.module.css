@@ -1,0 +1,56 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #1e1e1e;
+  border-radius: 10px;
+  padding: 20px;
+  width: 360px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+}
+
+.search {
+  margin: 12px 0;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  outline: none;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: #2d2d2d;
+}
+
+.close {
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  background: #2d2d2d;
+  color: #fff;
+}
