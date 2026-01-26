@@ -15,6 +15,8 @@ import { extractSubgraph } from "../../utils/extractSubgraph";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { OpenGraphModal } from "../open-graph-modal/OpenGraphModal";
 import { SelectNodeModal } from "../select-node-modal/SelectNodeModal";
+import { SelectDepthModal } from "../select-depth-modal/SelectDepthModal";
+import { getMaxDepth } from "../../utils/getMaxDepth";
 
 export const SavedGraph = () => {
   const dispatch = useAppDispatch();
@@ -32,6 +34,8 @@ export const SavedGraph = () => {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showSelectNode, setShowSelectNode] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showSelectDepth, setShowSelectDepth] = useState(false);
 
   const openFull = () => {
     if (!selectedGraph) return;
@@ -57,14 +61,20 @@ export const SavedGraph = () => {
   };
 
   const openNode = (nodeId: string) => {
-    if (!selectedGraph) return;
+    setSelectedNodeId(nodeId);
+    setShowSelectNode(false);
+    setShowSelectDepth(true);
+  };
+
+  const confirmDepth = (up: number, down: number) => {
+    if (!selectedGraph || !selectedNodeId) return;
 
     const sub = extractSubgraph(
       selectedGraph.graph.nodes,
       selectedGraph.graph.edges,
-      nodeId,
-      2,
-      2,
+      selectedNodeId,
+      up,
+      down,
     );
 
     dispatch(
@@ -77,7 +87,8 @@ export const SavedGraph = () => {
       }),
     );
 
-    setShowSelectNode(false);
+    setShowSelectDepth(false);
+    setSelectedNodeId(null);
   };
 
   /* =======================
@@ -140,6 +151,23 @@ export const SavedGraph = () => {
         />
       )}
 
+      {showSelectDepth && selectedGraph && selectedNodeId && (
+        <SelectDepthModal
+          nodeLabel={
+            selectedGraph.graph.nodes.find((n) => n.id === selectedNodeId)?.data
+              ?.label ?? selectedNodeId
+          }
+          maxUp={getMaxDepth(selectedGraph.graph.edges, selectedNodeId, "up")}
+          maxDown={getMaxDepth(
+            selectedGraph.graph.edges,
+            selectedNodeId,
+            "down",
+          )}
+          onConfirm={confirmDepth}
+          onClose={() => setShowSelectDepth(false)}
+        />
+      )}
+
       <h3>📁 Сохранённые графы</h3>
 
       {isLoading && <p>Загрузка...</p>}
@@ -184,3 +212,4 @@ export const SavedGraph = () => {
     </div>
   );
 };
+//Сейчас работает не так как надо,
