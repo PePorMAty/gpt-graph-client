@@ -157,8 +157,14 @@ export const SavedGraph = () => {
             selectedGraph.graph.nodes.find((n) => n.id === selectedNodeId)?.data
               ?.label ?? selectedNodeId
           }
-          maxUp={getMaxDepth(selectedGraph.graph.edges, selectedNodeId, "up")}
+          maxUp={getMaxDepth(
+            selectedGraph.graph.nodes,
+            selectedGraph.graph.edges,
+            selectedNodeId,
+            "up",
+          )}
           maxDown={getMaxDepth(
+            selectedGraph.graph.nodes,
             selectedGraph.graph.edges,
             selectedNodeId,
             "down",
@@ -212,4 +218,4 @@ export const SavedGraph = () => {
     </div>
   );
 };
-//Сейчас работает не так как надо,
+//работает не так как надо все равно, я скину код, там работает как надо, но только отображение при выборе вверх и вниз не так показывается. сейчас учитываются и продукты и преобразовния, а надо чтобы учитывались только продукты в отображении доступных уровней вверх и вниз.
