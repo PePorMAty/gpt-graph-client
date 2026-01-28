@@ -10,6 +10,13 @@ import {
 
 import { saveGraph } from "../../store/api/saved-graph-api";
 import { SaveGraphModal } from "../save-graph-modal";
+import { loadGraphFromFile } from "../../store/slices/gptSlice";
+import { extractSubgraph } from "../../utils/extractSubgraph";
+import { getLeafNodes } from "../../utils/getLeafNodes";
+import { OpenGraphModal } from "../open-graph-modal/OpenGraphModal";
+import { SelectNodeModal } from "../select-node-modal/SelectNodeModal";
+import { SelectDepthModal } from "../select-depth-modal/SelectDepthModal";
+import { getMaxDepth } from "../../utils/getMaxDepth";
 
 export const SavedGraph = () => {
   const dispatch = useAppDispatch();
@@ -17,10 +24,72 @@ export const SavedGraph = () => {
   const { list, isLoading } = useAppSelector((state) => state.savedGraphs);
 
   const { data, leafNodes, hasMore, originalPrompt } = useAppSelector(
-    (state) => state.graph
+    (state) => state.graph,
+  );
+
+  const selectedGraph = useAppSelector(
+    (state) => state.savedGraphs.selectedGraph,
   );
 
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showOpenModal, setShowOpenModal] = useState(false);
+  const [showSelectNode, setShowSelectNode] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showSelectDepth, setShowSelectDepth] = useState(false);
+
+  const openFull = () => {
+    if (!selectedGraph) return;
+
+    dispatch(
+      loadGraphFromFile({
+        nodes: selectedGraph.graph.nodes,
+        edges: selectedGraph.graph.edges,
+        leafNodes: selectedGraph.state.leaf_nodes,
+        hasMore: selectedGraph.state.has_more,
+        originalPrompt: selectedGraph.meta.prompt ?? null,
+      }),
+    );
+
+    setShowOpenModal(false);
+  };
+
+  const openPartial = () => {
+    setShowOpenModal(false);
+    setTimeout(() => {
+      setShowSelectNode(true);
+    }, 0);
+  };
+
+  const openNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    setShowSelectNode(false);
+    setShowSelectDepth(true);
+  };
+
+  const confirmDepth = (up: number, down: number) => {
+    if (!selectedGraph || !selectedNodeId) return;
+
+    const sub = extractSubgraph(
+      selectedGraph.graph.nodes,
+      selectedGraph.graph.edges,
+      selectedNodeId,
+      up,
+      down,
+    );
+
+    dispatch(
+      loadGraphFromFile({
+        nodes: sub.nodes,
+        edges: sub.edges,
+        leafNodes: getLeafNodes(sub.nodes, sub.edges),
+        hasMore: false,
+        originalPrompt: selectedGraph.meta.prompt ?? null,
+      }),
+    );
+
+    setShowSelectDepth(false);
+    setSelectedNodeId(null);
+  };
 
   /* =======================
      Загрузка списка файлов
@@ -59,8 +128,52 @@ export const SavedGraph = () => {
     }
   };
 
+  const handleLoadGraph = (g: any) => {
+    dispatch(loadSavedGraphThunk(g.id));
+
+    setShowOpenModal(true);
+  };
+
   return (
     <div className={styles.container}>
+      <OpenGraphModal
+        isOpen={showOpenModal}
+        onFull={openFull}
+        onPartial={openPartial}
+        onClose={() => setShowOpenModal(false)}
+      />
+
+      {showSelectNode && selectedGraph && (
+        <SelectNodeModal
+          nodes={selectedGraph.graph.nodes.filter((n) => n.type === "product")}
+          onSelect={openNode}
+          onClose={() => setShowSelectNode(false)}
+        />
+      )}
+
+      {showSelectDepth && selectedGraph && selectedNodeId && (
+        <SelectDepthModal
+          nodeLabel={
+            selectedGraph.graph.nodes.find((n) => n.id === selectedNodeId)?.data
+              ?.label ?? selectedNodeId
+          }
+          maxUp={getMaxDepth(
+            selectedGraph.graph.nodes,
+            selectedGraph.graph.edges,
+            selectedNodeId,
+            "up",
+          )}
+          maxDown={getMaxDepth(
+            selectedGraph.graph.nodes,
+            selectedGraph.graph.edges,
+            selectedNodeId,
+            "down",
+          )}
+          onConfirm={confirmDepth}
+          onClose={() => setShowSelectDepth(false)}
+        />
+      )}
+
       <h3>📁 Сохранённые графы</h3>
 
       {isLoading && <p>Загрузка...</p>}
@@ -95,7 +208,7 @@ export const SavedGraph = () => {
 
             <button
               className={styles.loadButton}
-              onClick={() => dispatch(loadSavedGraphThunk(g.id))}
+              onClick={() => handleLoadGraph(g)}
             >
               Загрузить
             </button>

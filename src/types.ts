@@ -29,6 +29,7 @@ export interface GPTNode {
   type?: string;
   data: {
     label: string;
+    name?: string;
   };
   position?: { x: number; y: number };
 }
