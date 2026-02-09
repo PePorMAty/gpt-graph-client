@@ -6,4 +6,7 @@ export interface FlowPanelProps {
   onDelete?: () => void;
   descriptionValue: string; // Добавляем значение описания
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onFindSources?: () => void;
+  nodeType?: "product" | "transformation";
+  sources?: string[];
 }

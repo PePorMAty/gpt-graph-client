@@ -153,6 +153,32 @@
   background-color: #990000;
 }
 
+.findSourcesButton {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sourcesBox,
+.previewBox {
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  max-height: 180px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sourcesBox a,
+.previewBox a {
+  word-break: break-all;
+}
+
 @media (max-width: 768px) {
   .panel {
     width: 100%;

@@ -26,6 +26,8 @@ import {
   removeNode,
   addNode,
   setGraphData,
+  applyTechVariant,
+  clearNodeTech,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -36,6 +38,8 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
+import { fetchNodeTech } from "./store/api/node-tech-api";
+import { BuildVariantModal } from "./components/build-variant-modal";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -45,8 +49,10 @@ const nodeTypes: NodeTypes = {
 export const Flow = () => {
   const dispatch = useAppDispatch();
   const { data, isLoading, error, rootId, source } = useAppSelector(
-    (store) => store.graph
+    (store) => store.graph,
   );
+  const nodeTech = useAppSelector((store) => store.graph.nodeTech);
+
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
@@ -90,13 +96,19 @@ export const Flow = () => {
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
+  const selectedNodeLabel = useMemo(() => {
+    if (!nodeTech) return "";
+    const n = data.nodes.find((x) => x.id === nodeTech.nodeId);
+    return (n?.data?.label as string) || nodeTech.response?.product || "";
+  }, [nodeTech, data.nodes]);
+
   const flowNodes = useMemo(
     () =>
       data.nodes.map((n) => ({
         ...n,
         className: n.id === highlightedId ? "node--highlight" : "",
       })),
-    [data.nodes, highlightedId]
+    [data.nodes, highlightedId],
   );
 
   useEffect(() => {
@@ -113,8 +125,14 @@ export const Flow = () => {
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
-    (node: Node) => node.id === selectedNodeId
+    (node: Node) => node.id === selectedNodeId,
   );
+
+  const selectedNodeSources =
+    (selectedNode?.data as any)?.sources &&
+    Array.isArray((selectedNode?.data as any)?.sources)
+      ? ((selectedNode?.data as any)?.sources as string[])
+      : [];
 
   // При открытии панели устанавливаем текущее значение
   useEffect(() => {
@@ -153,7 +171,7 @@ export const Flow = () => {
           updateNodeData({
             nodeId: selectedNodeId,
             data: updatedData,
-          })
+          }),
         );
       }
     }
@@ -195,7 +213,7 @@ export const Flow = () => {
     (event: React.ChangeEvent<HTMLInputElement>) => {
       setTempNodeLabel(event.target.value);
     },
-    []
+    [],
   );
 
   // Обработчик изменения описания узла
@@ -203,7 +221,7 @@ export const Flow = () => {
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       setTempNodeDescription(event.target.value);
     },
-    []
+    [],
   );
 
   // Обработчики изменений узлов и ребер
@@ -211,21 +229,21 @@ export const Flow = () => {
     (changes: NodeChange[]) => {
       dispatch(onNodesChange(changes));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       dispatch(onEdgesChange(changes));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleConnect: OnConnect = useCallback(
     (params) => {
       dispatch(onConnect(params));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const onReconnectStart = useCallback(() => {
@@ -237,7 +255,7 @@ export const Flow = () => {
       edgeReconnectSuccessful.current = true;
       dispatch(onReconnect({ oldEdge, newConnection }));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const onReconnectEnd = useCallback(
@@ -247,7 +265,7 @@ export const Flow = () => {
       }
       edgeReconnectSuccessful.current = true;
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleAddNode = (selectedType: "product" | "transformation") => {
@@ -264,11 +282,19 @@ export const Flow = () => {
       addNode({
         type: selectedType,
         position: flowPosition,
-      })
+      }),
     );
 
     setIsTypeSelectorOpen(false);
   };
+
+  const handleFindSources = useCallback(() => {
+    if (!selectedNode) return;
+    const label = selectedNode.data?.label || "";
+    if (!label.trim()) return;
+
+    dispatch(fetchNodeTech({ nodeId: selectedNode.id, label }));
+  }, [dispatch, selectedNode]);
 
   return (
     <div className={styles.container}>
@@ -340,6 +366,19 @@ export const Flow = () => {
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
         onDelete={handleDeleteNode}
+        onFindSources={handleFindSources}
+        nodeType={selectedNode?.type as any}
+        sources={selectedNodeSources}
+      />
+      <BuildVariantModal
+        isOpen={!!nodeTech}
+        productLabel={selectedNodeLabel}
+        alternatives={
+          nodeTech?.response?.aggregated_technology?.Альтернативы ?? []
+        }
+        onMain={() => dispatch(applyTechVariant({ variant: "main" }))}
+        onAlt={(name) => dispatch(applyTechVariant({ variant: name }))}
+        onClose={() => dispatch(clearNodeTech())}
       />
     </div>
   );

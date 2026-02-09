@@ -16,7 +16,14 @@ export interface InitialGraphStateI {
   leafNodes: string[];
   originalPrompt: string | null;
   source: "new" | "loaded" | "continued" | null;
+  nodeTech: null | NodeTechType;
 }
+
+type NodeTechType = {
+  nodeId: string;
+  response: NodeTechResponse;
+};
+
 export interface GraphApiResponse {
   success: boolean;
   nodes: CustomNode[];
@@ -65,4 +72,46 @@ export interface SavedGraphFile {
     leaf_nodes: string[];
     has_more: boolean;
   };
+}
+
+//step-graph
+export interface TechSource {
+  title: string;
+  url: string;
+  access_hint: string;
+  technology_description: string;
+  inputs_outputs_hint?: string[];
+  evidence_snippets?: string[];
+}
+
+export interface AggregatedTechnology {
+  Исходный_продукт: string;
+  Входные_продукты: string[];
+  Сводная_технология: { Шаги: string[] };
+  Альтернативы?: Array<{
+    Название: string;
+    Шаги: string[];
+    Варианты?: Array<{ Отличие: string; Детали: string[] }>;
+  }>;
+  Примечания?: string[];
+}
+
+export interface TechGraphPatch {
+  graph: {
+    nodes: CustomNode[];
+    edges: CustomEdge[];
+  };
+  state: {
+    leaf_nodes: string[];
+    has_more: boolean;
+  };
+}
+
+export interface NodeTechResponse {
+  success: boolean;
+  product: string;
+  blocks_preview: string[];
+  sources: TechSource[];
+  aggregated_technology: AggregatedTechnology;
+  graph_patch: TechGraphPatch;
 }

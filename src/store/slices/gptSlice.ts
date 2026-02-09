@@ -19,6 +19,10 @@ import type { InitialGraphStateI } from "../types";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
+import { fetchNodeTech } from "../api/node-tech-api";
+import { formatTechDescription } from "../../utils/nodeTech/formatTechDescription";
+import { buildVariantGraphFromResponse } from "../../utils/nodeTech/pickVariantFromPatch";
+import { applyPatchAtNode } from "../../utils/nodeTech/applyPatchAtNode";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -33,6 +37,7 @@ const initialState: InitialGraphStateI = {
   leafNodes: [],
   originalPrompt: null,
   source: null,
+  nodeTech: null,
 };
 
 const gptSlice = createSlice({
@@ -41,7 +46,7 @@ const gptSlice = createSlice({
   reducers: {
     updateNodeData: (
       state,
-      action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>
+      action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>,
     ) => {
       const { nodeId, data } = action.payload;
       const node = state.data.nodes.find((node) => node.id === nodeId);
@@ -53,13 +58,13 @@ const gptSlice = createSlice({
       const nodeId = action.payload;
       state.data.nodes = state.data.nodes.filter((node) => node.id !== nodeId);
       state.data.edges = state.data.edges.filter(
-        (edge) => edge.source !== nodeId && edge.target !== nodeId
+        (edge) => edge.source !== nodeId && edge.target !== nodeId,
       );
     },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
         action.payload,
-        state.data.nodes
+        state.data.nodes,
       ) as CustomNode[];
     },
     onEdgesChange: (state, action: PayloadAction<EdgeChange[]>) => {
@@ -67,19 +72,19 @@ const gptSlice = createSlice({
     },
     onConnect: (state, action: PayloadAction<Connection>) => {
       state.data.edges = normalizeEdges(
-        addEdge({ ...action.payload, type: "straight" }, state.data.edges)
+        addEdge({ ...action.payload, type: "straight" }, state.data.edges),
       );
     },
     onReconnect: (
       state,
-      action: PayloadAction<{ oldEdge: Edge; newConnection: Connection }>
+      action: PayloadAction<{ oldEdge: Edge; newConnection: Connection }>,
     ) => {
       const { oldEdge, newConnection } = action.payload;
 
       let updatedEdges = reconnectEdge(
         oldEdge,
         newConnection,
-        state.data.edges
+        state.data.edges,
       );
 
       // Добавляем smoothstep всем новым рёбрам
@@ -92,13 +97,13 @@ const gptSlice = createSlice({
     },
     removeEdge: (state, action: PayloadAction<string>) => {
       state.data.edges = state.data.edges.filter(
-        (edge) => edge.id !== action.payload
+        (edge) => edge.id !== action.payload,
       );
     },
     // Экшен для обновления всего графа (например, после применения layout)
     setGraphData: (
       state,
-      action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>
+      action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>,
     ) => {
       state.data = action.payload;
     },
@@ -108,7 +113,7 @@ const gptSlice = createSlice({
         type: "product" | "transformation";
         label?: string;
         position: { x: number; y: number }; // ← добавили позицию (обязательна)
-      }>
+      }>,
     ) => {
       const id = crypto.randomUUID();
       const { type, position, label } = action.payload;
@@ -135,7 +140,7 @@ const gptSlice = createSlice({
         leafNodes: string[];
         hasMore: boolean;
         originalPrompt: string | null;
-      }>
+      }>,
     ) => {
       state.data = {
         nodes: normalizeNodes(action.payload.nodes),
@@ -155,6 +160,44 @@ const gptSlice = createSlice({
 
       state.isError = false;
       state.error = null;
+    },
+    setNodeTech(
+      state,
+      action: PayloadAction<{ nodeId: string; response: any }>,
+    ) {
+      state.nodeTech = action.payload;
+    },
+    clearNodeTech(state) {
+      state.nodeTech = null;
+    },
+    applyTechVariant(
+      state,
+      action: PayloadAction<{ variant: "main" | string }>,
+    ) {
+      if (!state.nodeTech) return;
+
+      const { nodeId, response } = state.nodeTech;
+
+      const variantGraph = buildVariantGraphFromResponse(
+        response,
+        action.payload.variant,
+      );
+
+      const merged = applyPatchAtNode(
+        { nodes: state.data.nodes, edges: state.data.edges },
+        nodeId,
+        { nodes: variantGraph.nodes as any, edges: variantGraph.edges },
+      );
+
+      state.data.nodes = merged.nodes;
+      state.data.edges = merged.edges;
+
+      state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
+      state.hasMore = false;
+      state.source = "new"; // чтобы сработал layout
+      state.rootId = nodeId; // центруем на выбранной ноде
+
+      state.nodeTech = null; // закрываем модалку
     },
   },
   extraReducers: (builder) => {
@@ -213,12 +256,12 @@ const gptSlice = createSlice({
 
         const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
         const filteredNodes = newNodes.filter(
-          (n) => !existingNodeIds.has(n.id)
+          (n) => !existingNodeIds.has(n.id),
         );
 
         const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
         const filteredEdges = newEdges.filter(
-          (e) => !existingEdgeIds.has(e.id)
+          (e) => !existingEdgeIds.has(e.id),
         );
 
         state.data.nodes.push(...filteredNodes);
@@ -232,6 +275,35 @@ const gptSlice = createSlice({
       .addCase(continueGraph.rejected, (state) => {
         state.isLoading = false;
         state.isError = true;
+      });
+    builder
+      .addCase(fetchNodeTech.pending, (state) => {
+        state.isLoading = true;
+        state.isError = false;
+        state.error = null;
+      })
+      .addCase(fetchNodeTech.fulfilled, (state, action) => {
+        state.isLoading = false;
+
+        const { nodeId, data } = action.payload;
+
+        // 1) сразу кладём описание в выбранную ноду
+        const node = state.data.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          node.data = {
+            ...node.data,
+            description: formatTechDescription(data.blocks_preview),
+            sources: data.sources.map((s) => s.url), // доп. поле
+          };
+        }
+
+        // 2) сохраним ответ, чтобы UI показал выбор вариантов
+        state.nodeTech = { nodeId, response: data };
+      })
+      .addCase(fetchNodeTech.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isError = true;
+        state.error = (action.payload as string) || "Ошибка node-tech";
       });
   },
 });
@@ -247,5 +319,8 @@ export const {
   setGraphData,
   addNode,
   loadGraphFromFile,
+  setNodeTech,
+  clearNodeTech,
+  applyTechVariant,
 } = gptSlice.actions;
 export default gptSlice.reducer;

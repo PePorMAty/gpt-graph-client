@@ -1,7 +1,8 @@
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 
 import type { FlowPanelProps } from "./types";
 import styles from "./FlowPanel.module.css";
+import { LinkifiedText } from "../linkified-text";
 
 export const FlowPanel: FC<FlowPanelProps> = ({
   onClose,
@@ -11,8 +12,13 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onDelete,
   descriptionValue,
   onChangeDescription,
+  onFindSources,
+  nodeType,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
+  const descRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
 
   // Закрытие при клике вне панели
   useEffect(() => {
@@ -20,7 +26,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
       if (
         panelRef.current &&
         event.target instanceof Node &&
-        !panelRef?.current?.contains(event.target)
+        !panelRef.current.contains(event.target)
       ) {
         onClose();
       }
@@ -35,19 +41,38 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     };
   }, [isOpen, onClose]);
 
+  // если панель закрыли — выходим из режима редактирования описания
+  useEffect(() => {
+    if (!isOpen) setIsEditingDescription(false);
+  }, [isOpen]);
+
+  // автофокус в textarea при входе в режим редактирования
+  useEffect(() => {
+    if (isEditingDescription) {
+      // next tick, чтобы DOM точно был
+      setTimeout(() => {
+        descRef.current?.focus();
+        // курсор в конец
+        const len = descRef.current?.value?.length ?? 0;
+        descRef.current?.setSelectionRange(len, len);
+      }, 0);
+    }
+  }, [isEditingDescription]);
+
   const handleDelete = () => {
     if (onDelete) {
       onDelete();
-      onClose(); // Закрываем панель после удаления
+      onClose();
     }
   };
 
+  const openDescEditor = () => setIsEditingDescription(true);
+  const closeDescEditor = () => setIsEditingDescription(false);
+
   return (
     <>
-      {/* Overlay для блокировки графа */}
       {isOpen && <div className={styles.overlay} onClick={onClose} />}
 
-      {/* Панель редактирования */}
       <div
         ref={panelRef}
         className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
@@ -70,17 +95,51 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             />
           </div>
 
-          {/* Место для будущего textarea */}
+          {/* ✅ ОДНО поле описания: либо превью, либо textarea */}
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>Описание:</label>
-            <textarea
-              value={descriptionValue}
-              onChange={onChangeDescription}
-              className={styles.formTextarea}
-              placeholder="Введите описание узла"
-              rows={4}
-            />
+
+            {!isEditingDescription ? (
+              <div
+                className={styles.previewBox}
+                onDoubleClick={openDescEditor}
+                title="Двойной клик — редактировать"
+              >
+                {descriptionValue?.trim() ? (
+                  // кликабельные ссылки прямо внутри текста
+                  <LinkifiedText text={descriptionValue} />
+                ) : (
+                  <span className={styles.previewPlaceholder}>
+                    (двойной клик, чтобы добавить описание)
+                  </span>
+                )}
+              </div>
+            ) : (
+              <textarea
+                ref={descRef}
+                value={descriptionValue}
+                onChange={onChangeDescription}
+                onBlur={closeDescEditor}
+                className={styles.formTextarea}
+                placeholder="Введите описание узла"
+                rows={6}
+              />
+            )}
           </div>
+
+          {/* ✅ Кнопка только для product */}
+          {onFindSources && nodeType === "product" && (
+            <div className={styles.formGroup}>
+              <button
+                type="button"
+                onClick={onFindSources}
+                className={styles.findSourcesButton}
+              >
+                🔎 Найти источники / построить
+              </button>
+            </div>
+          )}
+
           <div className={styles.formGroup}>
             <button
               type="button"
