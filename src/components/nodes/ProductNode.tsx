@@ -27,11 +27,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
           height: 8,
         }}
       />
-      <div
-        style={{ fontWeight: "bold", marginBottom: "8px", fontSize: "14px" }}
-      >
-        🛒 Продукт
-      </div>
+
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
       <Handle
         type="source"
