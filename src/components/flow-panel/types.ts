@@ -1,3 +1,5 @@
+import type { NodeTechStored, SelectedTechPath } from "../../store/types";
+
 export interface FlowPanelProps {
   onClose: () => void;
   isOpen: boolean;
@@ -9,4 +11,6 @@ export interface FlowPanelProps {
   onFindSources?: () => void;
   nodeType?: "product" | "transformation";
   sources?: string[];
+  tech?: NodeTechStored;
+  onSelectTechPath?: (p: SelectedTechPath) => void;
 }

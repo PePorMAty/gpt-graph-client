@@ -28,6 +28,7 @@ import {
   setGraphData,
   applyTechVariant,
   clearNodeTech,
+  setNodeTechSelectedPath,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -40,6 +41,7 @@ import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
 import { fetchNodeTech } from "./store/api/node-tech-api";
 import { BuildVariantModal } from "./components/build-variant-modal";
+import type { SelectedTechPath } from "./store/types";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -126,6 +128,18 @@ export const Flow = () => {
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
     (node: Node) => node.id === selectedNodeId,
+  );
+
+  const tech = (selectedNode?.data as any)?.tech;
+
+  const handleSelectTechPath = useCallback(
+    (selectedPath: SelectedTechPath) => {
+      if (!selectedNode) return;
+      dispatch(
+        setNodeTechSelectedPath({ nodeId: selectedNode.id, selectedPath }),
+      );
+    },
+    [dispatch, selectedNode],
   );
 
   const selectedNodeSources =
@@ -369,6 +383,8 @@ export const Flow = () => {
         onFindSources={handleFindSources}
         nodeType={selectedNode?.type as any}
         sources={selectedNodeSources}
+        tech={tech}
+        onSelectTechPath={handleSelectTechPath}
       />
       <BuildVariantModal
         isOpen={!!nodeTech}

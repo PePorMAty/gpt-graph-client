@@ -1,6 +1,6 @@
 /* Overlay для блокировки графа */
 .overlay {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -12,11 +12,13 @@
 
 /* Панель редактирования */
 .panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: -400px;
-  width: 400px;
+  width: 450px;
   height: 100%;
+  min-height: 0; /* ✅ важно для flex+overflow */
+  min-width: 0;
   background: white;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
   z-index: 20;
@@ -24,6 +26,15 @@
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+  overflow: hidden;
+}
+
+.panelContent {
+  padding: 20px;
+  flex: 1;
+  min-height: 0; /* ✅ ключевая строка */
+  overflow-y: auto;
+  padding-bottom: 28px;
 }
 
 .panelOpen {
@@ -64,12 +75,6 @@
 .closeButton:hover {
   background: #e9ecef;
   color: #333;
-}
-
-.panelContent {
-  padding: 20px;
-  flex: 1;
-  overflow-y: auto;
 }
 
 .formGroup {
@@ -122,7 +127,7 @@
   border-radius: 4px;
   font-size: 14px;
   resize: vertical;
-  min-height: 120px;
+  min-height: 220px;
   font-family: inherit;
   resize: none;
 }
@@ -160,6 +165,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   cursor: pointer;
   font-weight: 600;
+  margin-top: 20px;
 }
 
 .sourcesBox,
@@ -167,16 +173,179 @@
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  max-height: 180px;
-  overflow: auto;
   background: rgba(0, 0, 0, 0.08);
   font-size: 12px;
   line-height: 1.35;
+  max-height: none; /* ✅ убрали ограничение */
+  overflow: visible; /* ✅ убрали внутренний скролл */
 }
 
 .sourcesBox a,
 .previewBox a {
   word-break: break-all;
+}
+
+.techBox {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.techTitle {
+  font-weight: 600;
+  margin: 8px 0 6px;
+}
+
+.techList {
+  margin: 0 0 10px 18px;
+  padding: 0;
+}
+
+.altList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.altItem {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.altSummary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.variantsBox {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
+.variantItem {
+  margin-top: 8px;
+}
+
+.variantTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.variantList {
+  margin: 0 0 0 18px;
+  padding: 0;
+}
+
+.altFutureBtn {
+  margin-top: 10px;
+  width: 100%;
+  opacity: 0.6;
+}
+
+.techBox {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.techHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.techTitle {
+  font-weight: 600;
+}
+
+.techSelected {
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.pathBlock {
+  margin-bottom: 10px;
+}
+
+.pathRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.pathName {
+  font-weight: 600;
+}
+
+.selectPathBtn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+
+.selectPathBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.techList {
+  margin: 0 0 10px 18px;
+  padding: 0;
+}
+
+.altTitle {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.altList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.altItem {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.altSummary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.variantsBox {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
+.variantItem {
+  margin-top: 8px;
+}
+
+.variantTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.variantList {
+  margin: 0 0 0 18px;
+  padding: 0;
 }
 
 @media (max-width: 768px) {

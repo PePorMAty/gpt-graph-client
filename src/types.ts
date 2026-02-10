@@ -1,4 +1,5 @@
 import { type Node, type Edge, type NodeProps } from "@xyflow/react";
+import type { NodeTechStored } from "./store/types";
 
 /* ====== DATA STRUCTURE FROM SERVER ====== */
 
@@ -7,6 +8,7 @@ export interface CustomNodeData {
   label: string;
   description?: string;
   [key: string]: unknown; // если GPT добавит что-то — не сломается
+  tech?: NodeTechStored;
 }
 
 // Основной тип узла react-flow

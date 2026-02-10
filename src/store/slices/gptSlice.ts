@@ -15,7 +15,7 @@ import { normalizeNodes } from "../../utils/normalize-nodes";
 import { continueGraph, getGraphData } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
-import type { InitialGraphStateI } from "../types";
+import type { InitialGraphStateI, SelectedTechPath } from "../types";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
@@ -199,6 +199,17 @@ const gptSlice = createSlice({
 
       state.nodeTech = null; // закрываем модалку
     },
+    setNodeTechSelectedPath: (
+      state,
+      action: PayloadAction<{ nodeId: string; selectedPath: SelectedTechPath }>,
+    ) => {
+      const { nodeId, selectedPath } = action.payload;
+      const node = state.data.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+
+      if (!node.data.tech) return; // если tech ещё нет — нечего выбирать
+      node.data.tech.selectedPath = selectedPath;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -285,7 +296,7 @@ const gptSlice = createSlice({
       .addCase(fetchNodeTech.fulfilled, (state, action) => {
         state.isLoading = false;
 
-        const { nodeId, data } = action.payload;
+        /* const { nodeId, data } = action.payload;
 
         // 1) сразу кладём описание в выбранную ноду
         const node = state.data.nodes.find((n) => n.id === nodeId);
@@ -295,7 +306,57 @@ const gptSlice = createSlice({
             description: formatTechDescription(data.blocks_preview),
             sources: data.sources.map((s) => s.url), // доп. поле
           };
+          node.data.sources = Array.isArray(data.sources)
+            ? data.sources.map((s) => s.url).filter(Boolean)
+            : [];
+
+          // ✅ сохраняем ВСЮ агрегированную структуру (сводный путь + альтернативы)
+          node.data.tech = {
+            fetchedAt: new Date().toISOString(),
+            product: data.product,
+            sources: data.sources,
+            aggregated: data.aggregated_technology,
+          };
+        } */
+        ///
+        const { nodeId, data } = action.payload;
+
+        const node = state.data.nodes.find((n) => n.id === nodeId);
+        if (!node) return;
+
+        // urls источников как раньше
+        node.data.sources = Array.isArray(data.sources)
+          ? data.sources.map((s) => s.url).filter(Boolean)
+          : [];
+
+        const prevSelected = node.data.tech?.selectedPath;
+
+        // дефолт — основной путь
+        let selectedPath: SelectedTechPath = { kind: "summary" };
+
+        // если ранее была выбрана альтернатива — попробуем сохранить выбор по названию
+        if (prevSelected?.kind === "alternative") {
+          const alts = data.aggregated_technology?.Альтернативы ?? [];
+          const idx = alts.findIndex(
+            (a: any) => a?.Название === prevSelected.name,
+          );
+          if (idx >= 0) {
+            selectedPath = {
+              kind: "alternative",
+              index: idx,
+              name: prevSelected.name,
+            };
+          }
         }
+
+        node.data.tech = {
+          fetchedAt: new Date().toISOString(),
+          product: data.product,
+          sources: data.sources,
+          aggregated: data.aggregated_technology,
+          selectedPath,
+        };
+        ///
 
         // 2) сохраним ответ, чтобы UI показал выбор вариантов
         state.nodeTech = { nodeId, response: data };
@@ -322,5 +383,6 @@ export const {
   setNodeTech,
   clearNodeTech,
   applyTechVariant,
+  setNodeTechSelectedPath,
 } = gptSlice.actions;
 export default gptSlice.reducer;

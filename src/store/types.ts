@@ -88,11 +88,7 @@ export interface AggregatedTechnology {
   Исходный_продукт: string;
   Входные_продукты: string[];
   Сводная_технология: { Шаги: string[] };
-  Альтернативы?: Array<{
-    Название: string;
-    Шаги: string[];
-    Варианты?: Array<{ Отличие: string; Детали: string[] }>;
-  }>;
+  Альтернативы: TechAlternative[];
   Примечания?: string[];
 }
 
@@ -114,4 +110,83 @@ export interface NodeTechResponse {
   sources: TechSource[];
   aggregated_technology: AggregatedTechnology;
   graph_patch: TechGraphPatch;
+}
+
+export interface TechSource {
+  title: string;
+  url: string;
+  access_hint: string;
+  technology_description: string;
+  inputs_outputs_hint?: string[];
+  evidence_snippets?: string[];
+}
+
+export interface TechVariant {
+  Отличие: string;
+  Детали: string[];
+}
+
+export interface TechAlternative {
+  Название: string;
+  Шаги: string[];
+  Варианты: TechVariant[];
+}
+
+export interface AggregatedTechnology {
+  Исходный_продукт: string;
+  Входные_продукты: string[];
+  Сводная_технология: { Шаги: string[] };
+  Альтернативы: TechAlternative[];
+  Примечания?: string[];
+}
+
+export interface GraphPatch {
+  graph: {
+    nodes: CustomNode[]; // можно ужесточить до GPTNode[]
+    edges: CustomEdge[]; // можно ужесточить до GPTEdge[]
+  };
+  state: {
+    leaf_nodes: string[];
+    has_more: boolean;
+  };
+}
+
+export interface NodeTechResponse {
+  success: boolean;
+  product: string;
+  blocks_preview: string[];
+  sources: TechSource[];
+  aggregated_technology: AggregatedTechnology;
+  graph_patch: GraphPatch;
+}
+
+export interface NodeTechStored {
+  fetchedAt: string; // чтобы понимать свежесть
+  product: string;
+  sources: TechSource[];
+  aggregated: AggregatedTechnology;
+}
+
+export interface CustomNodeData {
+  label: string;
+  description?: string;
+
+  // urls (как у тебя уже было)
+  sources?: string[];
+
+  // ✅ сюда будем сохранять основной + альтернативные пути
+  tech?: NodeTechStored;
+
+  [key: string]: unknown;
+}
+export type SelectedTechPath =
+  | { kind: "summary" }
+  | { kind: "alternative"; index: number; name: string };
+
+export interface NodeTechStored {
+  fetchedAt: string;
+  product: string;
+  sources: TechSource[];
+  aggregated: AggregatedTechnology;
+  selectedPath: SelectedTechPath;
 }
