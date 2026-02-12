@@ -1,5 +1,5 @@
 import { useEffect, useRef, type FC } from "react";
-
+import { useAppSelector } from "../../store/hooks"; // путь поправь под себя
 import type { FlowPanelProps } from "./types";
 import styles from "./FlowPanel.module.css";
 
@@ -11,47 +11,66 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onDelete,
   descriptionValue,
   onChangeDescription,
+
+  nodeId,
+  nodeType,
+  buildDirection,
+  onSetBuildDirection,
+  onFindSources,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Закрытие при клике вне панели
+  // ✅ Берём данные из sourcesSlice
+  const nodeSourcesState = useAppSelector((s) =>
+    nodeId ? s.sources.byNodeId[nodeId] : undefined,
+  );
+
+  const sourcesLoading = nodeSourcesState?.status === "loading";
+  const sourcesError = nodeSourcesState?.error ?? null;
+  const sources = nodeSourcesState?.sources ?? [];
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
         panelRef.current &&
         event.target instanceof Node &&
-        !panelRef?.current?.contains(event.target)
+        !panelRef.current.contains(event.target)
       ) {
         onClose();
       }
     };
 
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    if (isOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, onClose]);
 
   const handleDelete = () => {
     if (onDelete) {
       onDelete();
-      onClose(); // Закрываем панель после удаления
+      onClose();
     }
   };
 
+  if (!isOpen) return null;
+
+  const isProduct = nodeType === "product";
+
   return (
     <>
-      {/* Overlay для блокировки графа */}
       {isOpen && <div className={styles.overlay} onClick={onClose} />}
 
-      {/* Панель редактирования */}
       <div
         ref={panelRef}
         className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
       >
+        {/* ✅ ЛОАДЕР ВНУТРИ ПАНЕЛИ (а не поверх всего Flow) */}
+        {sourcesLoading && (
+          <div className={styles.loadingOverlay}>
+            <div className={styles.loadingSpinner}></div>
+            <p>Поиск источников...</p>
+          </div>
+        )}
+
         <div className={styles.panelHeader}>
           <h3 className={styles.panelTitle}>Редактирование узла</h3>
           <button className={styles.closeButton} onClick={onClose}>
@@ -70,7 +89,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             />
           </div>
 
-          {/* Место для будущего textarea */}
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>Описание:</label>
             <textarea
@@ -81,6 +99,89 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               rows={4}
             />
           </div>
+
+          {isProduct && (
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Куда строить граф:</label>
+
+              <div className={styles.inlineRow}>
+                <button
+                  type="button"
+                  className={`${styles.smallBtn} ${
+                    buildDirection === "down" ? styles.smallBtnActive : ""
+                  }`}
+                  onClick={() => onSetBuildDirection?.("down")}
+                  disabled={sourcesLoading}
+                >
+                  {buildDirection === "down"
+                    ? "✅ Строим вниз"
+                    : "⬇ Строить вниз"}
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.smallBtn} ${
+                    buildDirection === "up" ? styles.smallBtnActive : ""
+                  }`}
+                  onClick={() => onSetBuildDirection?.("up")}
+                  disabled={sourcesLoading}
+                >
+                  {buildDirection === "up"
+                    ? "✅ Строим вверх"
+                    : "⬆ Строить вверх"}
+                </button>
+              </div>
+
+              {buildDirection && (
+                <button
+                  type="button"
+                  onClick={onFindSources}
+                  disabled={sourcesLoading}
+                  className={styles.findSourcesButton}
+                >
+                  {sourcesLoading
+                    ? "🔎 Ищу источники..."
+                    : "🔎 Найти источники"}
+                </button>
+              )}
+
+              {sourcesError && (
+                <div className={styles.errorText}>Ошибка: {sourcesError}</div>
+              )}
+            </div>
+          )}
+
+          {isProduct && sources.length > 0 && (
+            <div className={styles.sourcesBox}>
+              <div className={styles.sourcesTitle}>
+                Источники ({sources.length})
+              </div>
+
+              {sources.map((s) => (
+                <details key={s.url} className={styles.sourceItem}>
+                  <summary className={styles.sourceSummary}>
+                    <span className={styles.sourceTitle}>{s.title}</span>
+                  </summary>
+
+                  <div className={styles.sourceBody}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={styles.sourceLink}
+                    >
+                      {s.url}
+                    </a>
+
+                    <div className={styles.sourceDesc}>
+                      {s.technology_description}
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+
           <div className={styles.formGroup}>
             <button
               type="button"

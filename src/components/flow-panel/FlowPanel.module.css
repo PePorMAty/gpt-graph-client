@@ -1,6 +1,7 @@
 /* Overlay для блокировки графа */
 .overlay {
-  position: absolute;
+  position: fixed;
+  inset: 0;
   top: 0;
   left: 0;
   right: 0;
@@ -12,11 +13,15 @@
 
 /* Панель редактирования */
 .panel {
-  position: absolute;
+  position: fixed;
   top: 0;
+  bottom: 0;
   left: -400px;
   width: 400px;
-  height: 100%;
+  height: 100dvh; /* важно */
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: white;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
   z-index: 20;
@@ -37,6 +42,7 @@
   padding: 20px;
   border-bottom: 1px solid #e0e0e0;
   background: #f8f9fa;
+  flex: 0 0 auto;
 }
 
 .panelTitle {
@@ -68,8 +74,10 @@
 
 .panelContent {
   padding: 20px;
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 auto; /* ✅ лучше, чем просто flex:1 */
+  min-height: 0; /* ✅ уже есть — оставь */
+  overflow-y: auto; /* ✅ уже есть — оставь */
+  padding-bottom: 40px;
 }
 
 .formGroup {
@@ -151,6 +159,111 @@
 
 .deleteButton:active {
   background-color: #990000;
+}
+
+.inlineRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.smallBtn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.smallBtnActive {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.findSourcesButton {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.sourcesBox {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sourcesTitle {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.sourceItem {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.sourceSummary {
+  cursor: pointer;
+}
+
+.sourceTitle {
+  font-weight: 600;
+}
+
+.sourceBody {
+  margin-top: 6px;
+  display: grid;
+  gap: 6px;
+}
+
+.sourceLink {
+  word-break: break-all;
+}
+
+.sourceMeta {
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.sourceDesc {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.sourceList {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.errorText {
+  margin-top: 8px;
+  color: #ff6b6b;
+}
+
+.btnRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* мини-спиннер в кнопке */
+.inlineSpinner {
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(0, 0, 0, 0.15);
+  border-top-color: #007bff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 768px) {

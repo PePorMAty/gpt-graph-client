@@ -66,3 +66,24 @@ export interface SavedGraphFile {
     has_more: boolean;
   };
 }
+
+// ===== SOURCES (GPT /gpt/sources) =====
+
+export type BuildDirection = "up" | "down";
+
+export type TechnologySource = {
+  title: string;
+  url: string;
+  access_hint: string;
+  technology_description: string;
+  inputs_outputs_hint: string[];
+  evidence_snippets: string[];
+};
+
+export type SourcesSearchResponse = {
+  success: boolean;
+  product: string;
+  maxItems: number;
+  blocks_preview: string[];
+  sources: TechnologySource[];
+};

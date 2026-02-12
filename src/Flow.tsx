@@ -36,6 +36,9 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
+import type { BuildDirection, TechnologySource } from "./store/types";
+import { fetchSources } from "./store/api/sources-api";
+import { setBuildDirection } from "./store/slices/sourcesSlice";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -45,8 +48,10 @@ const nodeTypes: NodeTypes = {
 export const Flow = () => {
   const dispatch = useAppDispatch();
   const { data, isLoading, error, rootId, source } = useAppSelector(
-    (store) => store.graph
+    (store) => store.graph,
   );
+  const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
+
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
@@ -96,7 +101,7 @@ export const Flow = () => {
         ...n,
         className: n.id === highlightedId ? "node--highlight" : "",
       })),
-    [data.nodes, highlightedId]
+    [data.nodes, highlightedId],
   );
 
   useEffect(() => {
@@ -113,7 +118,7 @@ export const Flow = () => {
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
-    (node: Node) => node.id === selectedNodeId
+    (node: Node) => node.id === selectedNodeId,
   );
 
   // При открытии панели устанавливаем текущее значение
@@ -153,7 +158,7 @@ export const Flow = () => {
           updateNodeData({
             nodeId: selectedNodeId,
             data: updatedData,
-          })
+          }),
         );
       }
     }
@@ -195,7 +200,7 @@ export const Flow = () => {
     (event: React.ChangeEvent<HTMLInputElement>) => {
       setTempNodeLabel(event.target.value);
     },
-    []
+    [],
   );
 
   // Обработчик изменения описания узла
@@ -203,7 +208,7 @@ export const Flow = () => {
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       setTempNodeDescription(event.target.value);
     },
-    []
+    [],
   );
 
   // Обработчики изменений узлов и ребер
@@ -211,21 +216,21 @@ export const Flow = () => {
     (changes: NodeChange[]) => {
       dispatch(onNodesChange(changes));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       dispatch(onEdgesChange(changes));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleConnect: OnConnect = useCallback(
     (params) => {
       dispatch(onConnect(params));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const onReconnectStart = useCallback(() => {
@@ -237,7 +242,7 @@ export const Flow = () => {
       edgeReconnectSuccessful.current = true;
       dispatch(onReconnect({ oldEdge, newConnection }));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const onReconnectEnd = useCallback(
@@ -247,7 +252,7 @@ export const Flow = () => {
       }
       edgeReconnectSuccessful.current = true;
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleAddNode = (selectedType: "product" | "transformation") => {
@@ -264,11 +269,55 @@ export const Flow = () => {
       addNode({
         type: selectedType,
         position: flowPosition,
-      })
+      }),
     );
 
     setIsTypeSelectorOpen(false);
   };
+
+  const currentSourcesState = selectedNodeId
+    ? sourcesByNodeId[selectedNodeId]
+    : undefined;
+
+  const buildDirection: BuildDirection | null =
+    (selectedNode?.data as any)?.buildDirection ??
+    currentSourcesState?.direction ??
+    null;
+
+  const sourcesLoading = currentSourcesState?.status === "loading";
+  const sourcesError = currentSourcesState?.error ?? null;
+
+  // Источники берём из node.data (чтобы переживало сохранение/загрузку графа)
+  const nodeSources: TechnologySource[] =
+    ((selectedNode?.data as any)?.sources as TechnologySource[]) ?? [];
+
+  const handleSetDirection = useCallback(
+    (dir: BuildDirection) => {
+      if (!selectedNodeId) return;
+      dispatch(setBuildDirection({ nodeId: selectedNodeId, direction: dir }));
+
+      // ✅ сохраняем выбор прямо в карточку
+      dispatch(
+        updateNodeData({
+          nodeId: selectedNodeId,
+          data: { buildDirection: dir },
+        }),
+      );
+    },
+    [dispatch, selectedNodeId],
+  );
+
+  const handleFindSources = useCallback(() => {
+    if (!selectedNodeId) return;
+    if (!buildDirection) return; // сначала выбрать вверх/вниз
+
+    const productName = tempNodeLabel.trim();
+    if (!productName) return;
+
+    dispatch(
+      fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
+    );
+  }, [dispatch, selectedNodeId, tempNodeLabel, buildDirection]);
 
   return (
     <div className={styles.container}>
@@ -340,6 +389,14 @@ export const Flow = () => {
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
         onDelete={handleDeleteNode}
+        nodeId={selectedNodeId}
+        nodeType={selectedNode?.type}
+        buildDirection={buildDirection}
+        onSetBuildDirection={handleSetDirection}
+        onFindSources={handleFindSources}
+        sourcesLoading={sourcesLoading}
+        sourcesError={sourcesError}
+        sources={nodeSources}
       />
     </div>
   );
