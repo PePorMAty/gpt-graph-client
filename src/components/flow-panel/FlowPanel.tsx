@@ -1,5 +1,4 @@
 import { useEffect, useRef, type FC } from "react";
-import { useAppSelector } from "../../store/hooks"; // путь поправь под себя
 import type { FlowPanelProps } from "./types";
 import styles from "./FlowPanel.module.css";
 
@@ -12,22 +11,20 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   descriptionValue,
   onChangeDescription,
 
-  nodeId,
   nodeType,
   buildDirection,
   onSetBuildDirection,
   onFindSources,
+  sourcesLoading,
+  sourcesError,
+  sources,
+
+  onAggregateSources,
+  aggregateLoading,
+  aggregateError,
+  hasAggregated,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
-
-  // ✅ Берём данные из sourcesSlice
-  const nodeSourcesState = useAppSelector((s) =>
-    nodeId ? s.sources.byNodeId[nodeId] : undefined,
-  );
-
-  const sourcesLoading = nodeSourcesState?.status === "loading";
-  const sourcesError = nodeSourcesState?.error ?? null;
-  const sources = nodeSourcesState?.sources ?? [];
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -55,19 +52,24 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   const isProduct = nodeType === "product";
 
+  const hasSources = Array.isArray(sources) && sources.length > 0;
+
   return (
     <>
       {isOpen && <div className={styles.overlay} onClick={onClose} />}
-
       <div
         ref={panelRef}
         className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
       >
-        {/* ✅ ЛОАДЕР ВНУТРИ ПАНЕЛИ (а не поверх всего Flow) */}
-        {sourcesLoading && (
+        {/* ✅ ЛОАДЕР ТОЛЬКО ВНУТРИ КАРТОЧКИ */}
+        {(sourcesLoading || aggregateLoading) && (
           <div className={styles.loadingOverlay}>
             <div className={styles.loadingSpinner}></div>
-            <p>Поиск источников...</p>
+            <p>
+              {sourcesLoading
+                ? "Поиск источников..."
+                : "Обобщение источников..."}
+            </p>
           </div>
         )}
 
@@ -102,51 +104,85 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
           {isProduct && (
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Куда строить граф:</label>
+              {/* ✅ 1) НЕТ ИСТОЧНИКОВ -> выбор направления + поиск */}
+              {!hasSources && (
+                <>
+                  <label className={styles.formLabel}>Куда строить граф:</label>
+                  <div className={styles.inlineRow}>
+                    <button
+                      type="button"
+                      className={`${styles.smallBtn} ${
+                        buildDirection === "down" ? styles.smallBtnActive : ""
+                      }`}
+                      onClick={() => onSetBuildDirection?.("down")}
+                      disabled={sourcesLoading || aggregateLoading}
+                    >
+                      {buildDirection === "down"
+                        ? "✅ Строим вниз"
+                        : "⬇ Строить вниз"}
+                    </button>
 
-              <div className={styles.inlineRow}>
-                <button
-                  type="button"
-                  className={`${styles.smallBtn} ${
-                    buildDirection === "down" ? styles.smallBtnActive : ""
-                  }`}
-                  onClick={() => onSetBuildDirection?.("down")}
-                  disabled={sourcesLoading}
-                >
-                  {buildDirection === "down"
-                    ? "✅ Строим вниз"
-                    : "⬇ Строить вниз"}
-                </button>
+                    <button
+                      type="button"
+                      className={`${styles.smallBtn} ${
+                        buildDirection === "up" ? styles.smallBtnActive : ""
+                      }`}
+                      onClick={() => onSetBuildDirection?.("up")}
+                      disabled={sourcesLoading || aggregateLoading}
+                    >
+                      {buildDirection === "up"
+                        ? "✅ Строим вверх"
+                        : "⬆ Строить вверх"}
+                    </button>
+                  </div>
 
-                <button
-                  type="button"
-                  className={`${styles.smallBtn} ${
-                    buildDirection === "up" ? styles.smallBtnActive : ""
-                  }`}
-                  onClick={() => onSetBuildDirection?.("up")}
-                  disabled={sourcesLoading}
-                >
-                  {buildDirection === "up"
-                    ? "✅ Строим вверх"
-                    : "⬆ Строить вверх"}
-                </button>
-              </div>
+                  {buildDirection && (
+                    <button
+                      type="button"
+                      onClick={onFindSources}
+                      disabled={sourcesLoading || aggregateLoading}
+                      className={styles.findSourcesButton}
+                    >
+                      🔎 Найти источники
+                    </button>
+                  )}
 
-              {buildDirection && (
-                <button
-                  type="button"
-                  onClick={onFindSources}
-                  disabled={sourcesLoading}
-                  className={styles.findSourcesButton}
-                >
-                  {sourcesLoading
-                    ? "🔎 Ищу источники..."
-                    : "🔎 Найти источники"}
-                </button>
+                  {sourcesError && (
+                    <div className={styles.errorText}>
+                      Ошибка: {sourcesError}
+                    </div>
+                  )}
+                </>
               )}
 
-              {sourcesError && (
-                <div className={styles.errorText}>Ошибка: {sourcesError}</div>
+              {/* ✅ 2) ИСТОЧНИКИ ЕСТЬ -> заменить кнопки на "Обобщить" */}
+              {hasSources && !hasAggregated && (
+                <>
+                  <div className={styles.sourcesTitle}>
+                    Источники найдены: {sources.length}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onAggregateSources}
+                    disabled={sourcesLoading || aggregateLoading}
+                    className={styles.findSourcesButton}
+                  >
+                    🧩 Обобщить источники
+                  </button>
+                  {aggregateError && (
+                    <div className={styles.errorText}>
+                      Ошибка: {aggregateError}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ✅ 3) ОБОБЩЕНО */}
+              {hasSources && hasAggregated && (
+                <>
+                  <div className={styles.sourcesTitle}>✅ Обобщение готово</div>
+                  {/* при желании можно дать кнопку "Переобобщить" */}
+                </>
               )}
             </div>
           )}

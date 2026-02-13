@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-import { fetchSources } from "../api/sources-api";
+import { aggregateSources, fetchSources } from "../api/sources-api";
 import type { BuildDirection, TechnologySource } from "../types";
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
@@ -15,6 +15,11 @@ type NodeSourcesState = {
   sources: TechnologySource[];
   maxItems: number | null;
   product: string | null;
+
+  aggregateStatus: Status;
+  aggregateError: string | null;
+  aggregatedDescription: string | null;
+  aggregatedMarkdown: string | null;
 };
 
 type SourcesState = {
@@ -28,6 +33,10 @@ const makeNodeState = (): NodeSourcesState => ({
   sources: [],
   maxItems: null,
   product: null,
+  aggregateStatus: "idle",
+  aggregateError: null,
+  aggregatedDescription: null,
+  aggregatedMarkdown: null,
 });
 
 const initialState: SourcesState = {
@@ -66,6 +75,10 @@ const sourcesSlice = createSlice({
         state.byNodeId[nodeId].sources = data.sources ?? [];
         state.byNodeId[nodeId].maxItems = data.maxItems ?? null;
         state.byNodeId[nodeId].product = data.product ?? null;
+        // если повторно ищем источники — сбрасываем предыдущее обобщение
+        state.byNodeId[nodeId].aggregateStatus = "idle";
+        state.byNodeId[nodeId].aggregateError = null;
+        state.byNodeId[nodeId].aggregatedDescription = null;
       })
       .addCase(fetchSources.rejected, (state, action) => {
         const nodeId = action.meta.arg.nodeId;
@@ -73,6 +86,33 @@ const sourcesSlice = createSlice({
         state.byNodeId[nodeId].status = "failed";
         state.byNodeId[nodeId].error =
           (action.payload as string) || "Ошибка поиска источников";
+      })
+      // --------- AGGREGATE ----------
+      .addCase(aggregateSources.pending, (state, action) => {
+        const nodeId = action.meta.arg.nodeId;
+        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
+        state.byNodeId[nodeId].aggregateStatus = "loading";
+        state.byNodeId[nodeId].aggregateError = null;
+      })
+      .addCase(aggregateSources.fulfilled, (state, action) => {
+        const { nodeId, data } = action.payload;
+        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
+
+        state.byNodeId[nodeId].aggregateStatus = "succeeded";
+        state.byNodeId[nodeId].aggregateError = null;
+
+        // ✅ общий текст
+        state.byNodeId[nodeId].aggregatedDescription =
+          data.aggregated_description ?? null;
+        state.byNodeId[nodeId].aggregatedMarkdown =
+          data.aggregated_markdown ?? null;
+      })
+      .addCase(aggregateSources.rejected, (state, action) => {
+        const nodeId = action.meta.arg.nodeId;
+        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
+        state.byNodeId[nodeId].aggregateStatus = "failed";
+        state.byNodeId[nodeId].aggregateError =
+          (action.payload as string) || "Ошибка обобщения источников";
       });
   },
 });

@@ -16,8 +16,8 @@
   position: fixed;
   top: 0;
   bottom: 0;
-  left: -400px;
-  width: 400px;
+  left: -600px;
+  width: 600px;
   height: 100dvh; /* важно */
   max-height: 100dvh;
   min-height: 0;
@@ -123,14 +123,14 @@
 }
 
 .formTextarea {
-  max-width: 342px;
+  max-width: 542px;
   width: 100%;
   padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 14px;
   resize: vertical;
-  min-height: 120px;
+  min-height: 320px;
   font-family: inherit;
   resize: none;
 }

@@ -18,5 +18,10 @@ export interface FlowPanelProps {
   onFindSources?: () => void;
   sourcesLoading?: boolean;
   sourcesError?: string | null;
-  sources?: TechnologySource[];
+  sources: TechnologySource[];
+
+  onAggregateSources?: () => void;
+  aggregateLoading?: boolean;
+  aggregateError?: string | null;
+  hasAggregated?: boolean;
 }

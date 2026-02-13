@@ -37,7 +37,7 @@ import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
-import { fetchSources } from "./store/api/sources-api";
+import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { setBuildDirection } from "./store/slices/sourcesSlice";
 
 const nodeTypes: NodeTypes = {
@@ -284,8 +284,16 @@ export const Flow = () => {
     currentSourcesState?.direction ??
     null;
 
-  const sourcesLoading = currentSourcesState?.status === "loading";
+  const sourcesStatus = currentSourcesState?.status ?? "idle";
+  const sourcesLoading = sourcesStatus === "loading";
   const sourcesError = currentSourcesState?.error ?? null;
+  const sources = currentSourcesState?.sources ?? [];
+
+  const aggStatus = currentSourcesState?.aggregateStatus ?? "idle";
+  const aggregateLoading = aggStatus === "loading";
+  const aggregateError = currentSourcesState?.aggregateError ?? null;
+  const aggregatedDescription =
+    currentSourcesState?.aggregatedDescription ?? null;
 
   // Источники берём из node.data (чтобы переживало сохранение/загрузку графа)
   const nodeSources: TechnologySource[] =
@@ -306,7 +314,7 @@ export const Flow = () => {
     },
     [dispatch, selectedNodeId],
   );
-
+  /* 
   const handleFindSources = useCallback(() => {
     if (!selectedNodeId) return;
     if (!buildDirection) return; // сначала выбрать вверх/вниз
@@ -317,7 +325,83 @@ export const Flow = () => {
     dispatch(
       fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
     );
-  }, [dispatch, selectedNodeId, tempNodeLabel, buildDirection]);
+  }, [dispatch, selectedNodeId, tempNodeLabel, buildDirection]); */
+
+  const handleSetBuildDirection = useCallback(
+    (dir: BuildDirection) => {
+      if (!selectedNodeId) return;
+      dispatch(setBuildDirection({ nodeId: selectedNodeId, direction: dir }));
+    },
+    [dispatch, selectedNodeId],
+  );
+
+  const handleFindSources = useCallback(async () => {
+    if (!selectedNodeId || !selectedNode) return;
+
+    const productName = String(selectedNode.data?.label || "").trim();
+    if (!productName) return;
+
+    const result = await dispatch(
+      fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
+    ).unwrap();
+
+    // ✅ сохраняем источники прямо в node.data (переживёт save/load)
+    dispatch(
+      updateNodeData({
+        nodeId: selectedNodeId,
+        data: { sources: result.data.sources },
+      }),
+    );
+  }, [dispatch, selectedNodeId, selectedNode]);
+
+  const handleAggregateSources = useCallback(async () => {
+    if (!selectedNodeId || !selectedNode) return;
+
+    const productName = String(selectedNode.data?.label || "").trim();
+    if (!productName) return;
+
+    // ✅ Источник правды — node.data.sources (переживает save/load)
+    const payloadSources: TechnologySource[] =
+      ((selectedNode.data as any)?.sources as TechnologySource[]) ??
+      currentSourcesState?.sources ??
+      [];
+
+    if (!payloadSources.length) return;
+
+    const result = await dispatch(
+      aggregateSources({
+        nodeId: selectedNodeId,
+        productName,
+        sources: payloadSources,
+      }),
+    ).unwrap();
+
+    // ✅ Берём ТОЛЬКО aggregated_description
+    const desc = String(result?.data?.aggregated_description ?? "").trim();
+
+    // (опционально) защита от случайного JSON
+    // если вдруг бек вернул что-то не то
+    const safeDesc = desc.startsWith("{") ? "" : desc;
+
+    dispatch(
+      updateNodeData({
+        nodeId: selectedNodeId,
+        data: { description: safeDesc },
+      }),
+    );
+
+    // ✅ ВАЖНО: синхронизируем локальный текст в панели,
+    // иначе textarea продолжит показывать старый JSON
+    setTempNodeDescription(safeDesc);
+    setInitialDescription(safeDesc);
+  }, [
+    dispatch,
+    selectedNodeId,
+    selectedNode,
+    currentSourcesState?.sources,
+    setTempNodeDescription,
+    setInitialDescription,
+  ]);
 
   return (
     <div className={styles.container}>
@@ -389,14 +473,17 @@ export const Flow = () => {
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
         onDelete={handleDeleteNode}
-        nodeId={selectedNodeId}
         nodeType={selectedNode?.type}
         buildDirection={buildDirection}
-        onSetBuildDirection={handleSetDirection}
+        onSetBuildDirection={handleSetBuildDirection}
         onFindSources={handleFindSources}
+        onAggregateSources={handleAggregateSources}
         sourcesLoading={sourcesLoading}
         sourcesError={sourcesError}
-        sources={nodeSources}
+        sources={sources}
+        aggregateLoading={aggregateLoading}
+        aggregateError={aggregateError}
+        hasAggregated={aggStatus === "succeeded"}
       />
     </div>
   );
