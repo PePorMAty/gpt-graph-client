@@ -23,6 +23,10 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   aggregateLoading,
   aggregateError,
   hasAggregated,
+
+  onBuildChain,
+  chainLoading,
+  chainError,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -181,7 +185,21 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               {hasSources && hasAggregated && (
                 <>
                   <div className={styles.sourcesTitle}>✅ Обобщение готово</div>
-                  {/* при желании можно дать кнопку "Переобобщить" */}
+
+                  <button
+                    type="button"
+                    onClick={onBuildChain}
+                    disabled={
+                      sourcesLoading || aggregateLoading || chainLoading
+                    }
+                    className={styles.findSourcesButton}
+                  >
+                    🧬 Построить граф (1 шаг)
+                  </button>
+
+                  {chainError && (
+                    <div className={styles.errorText}>Ошибка: {chainError}</div>
+                  )}
                 </>
               )}
             </div>

@@ -39,6 +39,7 @@ import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { setBuildDirection } from "./store/slices/sourcesSlice";
+import { buildChainLevel1 } from "./store/api/graph-api";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -47,7 +48,7 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId, source } = useAppSelector(
+  const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
     (store) => store.graph,
   );
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
@@ -403,6 +404,37 @@ export const Flow = () => {
     setInitialDescription,
   ]);
 
+  const chainLoading =
+    chainBuild?.status === "loading" && chainBuild?.nodeId === selectedNodeId;
+
+  const chainError =
+    chainBuild?.status === "failed" && chainBuild?.nodeId === selectedNodeId
+      ? chainBuild?.error
+      : null;
+
+  const handleBuildChain = useCallback(async () => {
+    if (!selectedNodeId || !selectedNode) return;
+
+    const productName = String(selectedNode.data?.label || "").trim();
+    if (!productName) return;
+
+    // источник текста: сначала aggregatedDescription из sourcesSlice,
+    // потом fallback на node.data.description (ты его уже заполняешь)
+    const techText = String(
+      aggregatedDescription || (selectedNode.data as any)?.description || "",
+    ).trim();
+
+    if (!techText) return;
+
+    await dispatch(
+      buildChainLevel1({
+        nodeId: selectedNodeId,
+        productName,
+        techText,
+      }),
+    ).unwrap();
+  }, [dispatch, selectedNodeId, selectedNode, aggregatedDescription]);
+
   return (
     <div className={styles.container}>
       <SearchToggle />
@@ -484,6 +516,9 @@ export const Flow = () => {
         aggregateLoading={aggregateLoading}
         aggregateError={aggregateError}
         hasAggregated={aggStatus === "succeeded"}
+        onBuildChain={handleBuildChain}
+        chainLoading={chainLoading}
+        chainError={chainError}
       />
     </div>
   );

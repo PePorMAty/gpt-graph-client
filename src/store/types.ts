@@ -16,6 +16,11 @@ export interface InitialGraphStateI {
   leafNodes: string[];
   originalPrompt: string | null;
   source: "new" | "loaded" | "continued" | null;
+  chainBuild: {
+    status: "idle" | "loading" | "succeeded" | "failed";
+    error: string | null;
+    nodeId: string | null;
+  };
 }
 export interface GraphApiResponse {
   success: boolean;

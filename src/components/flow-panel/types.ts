@@ -24,4 +24,8 @@ export interface FlowPanelProps {
   aggregateLoading?: boolean;
   aggregateError?: string | null;
   hasAggregated?: boolean;
+
+  onBuildChain?: () => void;
+  chainLoading?: boolean;
+  chainError?: string | null;
 }
