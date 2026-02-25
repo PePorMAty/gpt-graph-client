@@ -12,7 +12,11 @@ import {
 
 import { normalizeEdges } from "../../utils/normalize-edges";
 import { normalizeNodes } from "../../utils/normalize-nodes";
-import { continueGraph, getGraphData } from "../api/graph-api";
+import {
+  buildChainLevel1,
+  continueGraph,
+  getGraphData,
+} from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
 import type { InitialGraphStateI } from "../types";
@@ -33,6 +37,7 @@ const initialState: InitialGraphStateI = {
   leafNodes: [],
   originalPrompt: null,
   source: null,
+  chainBuild: { status: "idle", error: null, nodeId: null },
 };
 
 const gptSlice = createSlice({
@@ -41,7 +46,7 @@ const gptSlice = createSlice({
   reducers: {
     updateNodeData: (
       state,
-      action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>
+      action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>,
     ) => {
       const { nodeId, data } = action.payload;
       const node = state.data.nodes.find((node) => node.id === nodeId);
@@ -53,13 +58,13 @@ const gptSlice = createSlice({
       const nodeId = action.payload;
       state.data.nodes = state.data.nodes.filter((node) => node.id !== nodeId);
       state.data.edges = state.data.edges.filter(
-        (edge) => edge.source !== nodeId && edge.target !== nodeId
+        (edge) => edge.source !== nodeId && edge.target !== nodeId,
       );
     },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
         action.payload,
-        state.data.nodes
+        state.data.nodes,
       ) as CustomNode[];
     },
     onEdgesChange: (state, action: PayloadAction<EdgeChange[]>) => {
@@ -67,19 +72,19 @@ const gptSlice = createSlice({
     },
     onConnect: (state, action: PayloadAction<Connection>) => {
       state.data.edges = normalizeEdges(
-        addEdge({ ...action.payload, type: "straight" }, state.data.edges)
+        addEdge({ ...action.payload, type: "straight" }, state.data.edges),
       );
     },
     onReconnect: (
       state,
-      action: PayloadAction<{ oldEdge: Edge; newConnection: Connection }>
+      action: PayloadAction<{ oldEdge: Edge; newConnection: Connection }>,
     ) => {
       const { oldEdge, newConnection } = action.payload;
 
       let updatedEdges = reconnectEdge(
         oldEdge,
         newConnection,
-        state.data.edges
+        state.data.edges,
       );
 
       // Добавляем smoothstep всем новым рёбрам
@@ -92,13 +97,13 @@ const gptSlice = createSlice({
     },
     removeEdge: (state, action: PayloadAction<string>) => {
       state.data.edges = state.data.edges.filter(
-        (edge) => edge.id !== action.payload
+        (edge) => edge.id !== action.payload,
       );
     },
     // Экшен для обновления всего графа (например, после применения layout)
     setGraphData: (
       state,
-      action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>
+      action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>,
     ) => {
       state.data = action.payload;
     },
@@ -108,7 +113,7 @@ const gptSlice = createSlice({
         type: "product" | "transformation";
         label?: string;
         position: { x: number; y: number }; // ← добавили позицию (обязательна)
-      }>
+      }>,
     ) => {
       const id = crypto.randomUUID();
       const { type, position, label } = action.payload;
@@ -135,7 +140,7 @@ const gptSlice = createSlice({
         leafNodes: string[];
         hasMore: boolean;
         originalPrompt: string | null;
-      }>
+      }>,
     ) => {
       state.data = {
         nodes: normalizeNodes(action.payload.nodes),
@@ -213,12 +218,12 @@ const gptSlice = createSlice({
 
         const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
         const filteredNodes = newNodes.filter(
-          (n) => !existingNodeIds.has(n.id)
+          (n) => !existingNodeIds.has(n.id),
         );
 
         const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
         const filteredEdges = newEdges.filter(
-          (e) => !existingEdgeIds.has(e.id)
+          (e) => !existingEdgeIds.has(e.id),
         );
 
         state.data.nodes.push(...filteredNodes);
@@ -232,6 +237,49 @@ const gptSlice = createSlice({
       .addCase(continueGraph.rejected, (state) => {
         state.isLoading = false;
         state.isError = true;
+      })
+      .addCase(buildChainLevel1.pending, (state, action) => {
+        state.chainBuild.status = "loading";
+        state.chainBuild.error = null;
+        state.chainBuild.nodeId = action.meta.arg.nodeId;
+      })
+      .addCase(buildChainLevel1.fulfilled, (state, action) => {
+        const { nodeId, nodes, edges } = action.payload;
+        const namespace = `${nodeId}::chain`;
+
+        // убираем старое “расширение” chain для этой ноды
+        state.data.nodes = state.data.nodes.filter(
+          (n) => !n.id.startsWith(namespace),
+        );
+        state.data.edges = state.data.edges.filter(
+          (e) => !e.id.startsWith(namespace),
+        );
+
+        // добавляем новое
+        const newNodes = normalizeNodes(nodes);
+        const newEdges = normalizeEdges(edges);
+
+        const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
+        state.data.nodes.push(
+          ...newNodes.filter((n) => !existingNodeIds.has(n.id)),
+        );
+
+        const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
+        state.data.edges.push(
+          ...newEdges.filter((e) => !existingEdgeIds.has(e.id)),
+        );
+
+        state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
+
+        state.chainBuild.status = "succeeded";
+        state.chainBuild.error = null;
+        state.chainBuild.nodeId = null;
+      })
+      .addCase(buildChainLevel1.rejected, (state, action) => {
+        state.chainBuild.status = "failed";
+        state.chainBuild.error =
+          (action.payload as string) || "Ошибка построения chain-графа";
+        // nodeId оставим — чтобы показать ошибку именно в этой карточке
       });
   },
 });

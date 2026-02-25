@@ -36,6 +36,10 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
+import type { BuildDirection, TechnologySource } from "./store/types";
+import { aggregateSources, fetchSources } from "./store/api/sources-api";
+import { setBuildDirection } from "./store/slices/sourcesSlice";
+import { buildChainLevel1 } from "./store/api/graph-api";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -44,9 +48,11 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId, source } = useAppSelector(
-    (store) => store.graph
+  const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
+    (store) => store.graph,
   );
+  const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
+
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
@@ -96,7 +102,7 @@ export const Flow = () => {
         ...n,
         className: n.id === highlightedId ? "node--highlight" : "",
       })),
-    [data.nodes, highlightedId]
+    [data.nodes, highlightedId],
   );
 
   useEffect(() => {
@@ -113,7 +119,7 @@ export const Flow = () => {
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
-    (node: Node) => node.id === selectedNodeId
+    (node: Node) => node.id === selectedNodeId,
   );
 
   // При открытии панели устанавливаем текущее значение
@@ -153,7 +159,7 @@ export const Flow = () => {
           updateNodeData({
             nodeId: selectedNodeId,
             data: updatedData,
-          })
+          }),
         );
       }
     }
@@ -195,7 +201,7 @@ export const Flow = () => {
     (event: React.ChangeEvent<HTMLInputElement>) => {
       setTempNodeLabel(event.target.value);
     },
-    []
+    [],
   );
 
   // Обработчик изменения описания узла
@@ -203,7 +209,7 @@ export const Flow = () => {
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       setTempNodeDescription(event.target.value);
     },
-    []
+    [],
   );
 
   // Обработчики изменений узлов и ребер
@@ -211,21 +217,21 @@ export const Flow = () => {
     (changes: NodeChange[]) => {
       dispatch(onNodesChange(changes));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       dispatch(onEdgesChange(changes));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleConnect: OnConnect = useCallback(
     (params) => {
       dispatch(onConnect(params));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const onReconnectStart = useCallback(() => {
@@ -237,7 +243,7 @@ export const Flow = () => {
       edgeReconnectSuccessful.current = true;
       dispatch(onReconnect({ oldEdge, newConnection }));
     },
-    [dispatch]
+    [dispatch],
   );
 
   const onReconnectEnd = useCallback(
@@ -247,7 +253,7 @@ export const Flow = () => {
       }
       edgeReconnectSuccessful.current = true;
     },
-    [dispatch]
+    [dispatch],
   );
 
   const handleAddNode = (selectedType: "product" | "transformation") => {
@@ -264,11 +270,170 @@ export const Flow = () => {
       addNode({
         type: selectedType,
         position: flowPosition,
-      })
+      }),
     );
 
     setIsTypeSelectorOpen(false);
   };
+
+  const currentSourcesState = selectedNodeId
+    ? sourcesByNodeId[selectedNodeId]
+    : undefined;
+
+  const buildDirection: BuildDirection | null =
+    (selectedNode?.data as any)?.buildDirection ??
+    currentSourcesState?.direction ??
+    null;
+
+  const sourcesStatus = currentSourcesState?.status ?? "idle";
+  const sourcesLoading = sourcesStatus === "loading";
+  const sourcesError = currentSourcesState?.error ?? null;
+  const sources = currentSourcesState?.sources ?? [];
+
+  const aggStatus = currentSourcesState?.aggregateStatus ?? "idle";
+  const aggregateLoading = aggStatus === "loading";
+  const aggregateError = currentSourcesState?.aggregateError ?? null;
+  const aggregatedDescription =
+    currentSourcesState?.aggregatedDescription ?? null;
+
+  // Источники берём из node.data (чтобы переживало сохранение/загрузку графа)
+  const nodeSources: TechnologySource[] =
+    ((selectedNode?.data as any)?.sources as TechnologySource[]) ?? [];
+
+  const handleSetDirection = useCallback(
+    (dir: BuildDirection) => {
+      if (!selectedNodeId) return;
+      dispatch(setBuildDirection({ nodeId: selectedNodeId, direction: dir }));
+
+      // ✅ сохраняем выбор прямо в карточку
+      dispatch(
+        updateNodeData({
+          nodeId: selectedNodeId,
+          data: { buildDirection: dir },
+        }),
+      );
+    },
+    [dispatch, selectedNodeId],
+  );
+  /* 
+  const handleFindSources = useCallback(() => {
+    if (!selectedNodeId) return;
+    if (!buildDirection) return; // сначала выбрать вверх/вниз
+
+    const productName = tempNodeLabel.trim();
+    if (!productName) return;
+
+    dispatch(
+      fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
+    );
+  }, [dispatch, selectedNodeId, tempNodeLabel, buildDirection]); */
+
+  const handleSetBuildDirection = useCallback(
+    (dir: BuildDirection) => {
+      if (!selectedNodeId) return;
+      dispatch(setBuildDirection({ nodeId: selectedNodeId, direction: dir }));
+    },
+    [dispatch, selectedNodeId],
+  );
+
+  const handleFindSources = useCallback(async () => {
+    if (!selectedNodeId || !selectedNode) return;
+
+    const productName = String(selectedNode.data?.label || "").trim();
+    if (!productName) return;
+
+    const result = await dispatch(
+      fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
+    ).unwrap();
+
+    // ✅ сохраняем источники прямо в node.data (переживёт save/load)
+    dispatch(
+      updateNodeData({
+        nodeId: selectedNodeId,
+        data: { sources: result.data.sources },
+      }),
+    );
+  }, [dispatch, selectedNodeId, selectedNode]);
+
+  const handleAggregateSources = useCallback(async () => {
+    if (!selectedNodeId || !selectedNode) return;
+
+    const productName = String(selectedNode.data?.label || "").trim();
+    if (!productName) return;
+
+    // ✅ Источник правды — node.data.sources (переживает save/load)
+    const payloadSources: TechnologySource[] =
+      ((selectedNode.data as any)?.sources as TechnologySource[]) ??
+      currentSourcesState?.sources ??
+      [];
+
+    if (!payloadSources.length) return;
+
+    const result = await dispatch(
+      aggregateSources({
+        nodeId: selectedNodeId,
+        productName,
+        sources: payloadSources,
+      }),
+    ).unwrap();
+
+    // ✅ Берём ТОЛЬКО aggregated_description
+    const desc = String(result?.data?.aggregated_description ?? "").trim();
+
+    // (опционально) защита от случайного JSON
+    // если вдруг бек вернул что-то не то
+    const safeDesc = desc.startsWith("{") ? "" : desc;
+
+    dispatch(
+      updateNodeData({
+        nodeId: selectedNodeId,
+        data: { description: safeDesc },
+      }),
+    );
+
+    // ✅ ВАЖНО: синхронизируем локальный текст в панели,
+    // иначе textarea продолжит показывать старый JSON
+    setTempNodeDescription(safeDesc);
+    setInitialDescription(safeDesc);
+  }, [
+    dispatch,
+    selectedNodeId,
+    selectedNode,
+    currentSourcesState?.sources,
+    setTempNodeDescription,
+    setInitialDescription,
+  ]);
+
+  const chainLoading =
+    chainBuild?.status === "loading" && chainBuild?.nodeId === selectedNodeId;
+
+  const chainError =
+    chainBuild?.status === "failed" && chainBuild?.nodeId === selectedNodeId
+      ? chainBuild?.error
+      : null;
+
+  const handleBuildChain = useCallback(async () => {
+    if (!selectedNodeId || !selectedNode) return;
+
+    const productName = String(selectedNode.data?.label || "").trim();
+    if (!productName) return;
+
+    // источник текста: сначала aggregatedDescription из sourcesSlice,
+    // потом fallback на node.data.description (ты его уже заполняешь)
+    const techText = String(
+      aggregatedDescription || (selectedNode.data as any)?.description || "",
+    ).trim();
+
+    if (!techText) return;
+
+    await dispatch(
+      buildChainLevel1({
+        nodeId: selectedNodeId,
+        productName,
+        techText,
+      }),
+    ).unwrap();
+  }, [dispatch, selectedNodeId, selectedNode, aggregatedDescription]);
 
   return (
     <div className={styles.container}>
@@ -340,6 +505,20 @@ export const Flow = () => {
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
         onDelete={handleDeleteNode}
+        nodeType={selectedNode?.type}
+        buildDirection={buildDirection}
+        onSetBuildDirection={handleSetBuildDirection}
+        onFindSources={handleFindSources}
+        onAggregateSources={handleAggregateSources}
+        sourcesLoading={sourcesLoading}
+        sourcesError={sourcesError}
+        sources={sources}
+        aggregateLoading={aggregateLoading}
+        aggregateError={aggregateError}
+        hasAggregated={aggStatus === "succeeded"}
+        onBuildChain={handleBuildChain}
+        chainLoading={chainLoading}
+        chainError={chainError}
       />
     </div>
   );
