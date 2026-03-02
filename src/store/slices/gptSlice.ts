@@ -38,6 +38,13 @@ const initialState: InitialGraphStateI = {
   originalPrompt: null,
   source: null,
   chainBuild: { status: "idle", error: null, nodeId: null },
+  chainSession: {
+    rootNodeId: null,
+    rawChain: null,
+    expandedPids: [],
+    mode: "summary",
+    altIndex: null,
+  },
 };
 
 const gptSlice = createSlice({
@@ -244,7 +251,21 @@ const gptSlice = createSlice({
         state.chainBuild.nodeId = action.meta.arg.nodeId;
       })
       .addCase(buildChainLevel1.fulfilled, (state, action) => {
-        const { nodeId, nodes, edges } = action.payload;
+        const { nodeId, nodes, edges, raw } = action.payload;
+
+        const isNewSession = state.chainSession.rootNodeId !== nodeId;
+
+        if (isNewSession) {
+          // оставляем только исходную ноду
+          const root = state.data.nodes.find((n) => n.id === nodeId);
+          state.data.nodes = root ? [root] : [];
+          state.data.edges = [];
+
+          state.chainSession.rootNodeId = nodeId;
+          state.chainSession.rawChain = raw.chain; // полный chain
+          state.chainSession.expandedPids = ["Продукт1"]; // раскрыли уровень для product1
+        }
+        //
         const namespace = `${nodeId}::chain`;
 
         // убираем старое “расширение” chain для этой ноды
@@ -254,7 +275,7 @@ const gptSlice = createSlice({
         state.data.edges = state.data.edges.filter(
           (e) => !e.id.startsWith(namespace),
         );
-
+        //
         // добавляем новое
         const newNodes = normalizeNodes(nodes);
         const newEdges = normalizeEdges(edges);

@@ -21,6 +21,13 @@ export interface InitialGraphStateI {
     error: string | null;
     nodeId: string | null;
   };
+  chainSession: {
+    rootNodeId: string | null;
+    rawChain: any | null; // полный JSON chain от бэка (chain.Цепочка)
+    expandedPids: string[]; // какие ПродуктN уже раскрывали
+    mode: "summary" | "alternative"; // опционально
+    altIndex: number | null; // опционально
+  };
 }
 export interface GraphApiResponse {
   success: boolean;
