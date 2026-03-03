@@ -28,4 +28,18 @@ export interface FlowPanelProps {
   onBuildChain?: () => void;
   chainLoading?: boolean;
   chainError?: string | null;
+
+  chainReady?: boolean;
+  chainPid?: string | null;
+
+  producerOptions?: Array<{ trId: string; title: string }>;
+  selectedProducerId?: string;
+  expandedProducerId?: string;
+  builtProducerIds: string[];
+  selectedAlreadyBuilt: boolean;
+
+  onInitChain?: () => void; // получить rawChain
+  onSelectProducer?: (trId: string) => void;
+  onExpandLevel?: () => void; // раскрыть 1 уровень от текущей ноды
+  onExpandNext?: () => void; // (опционально) по очереди
 }

@@ -26,6 +26,7 @@ import {
   removeNode,
   addNode,
   setGraphData,
+  setProducerForPid,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -39,7 +40,12 @@ import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { setBuildDirection } from "./store/slices/sourcesSlice";
-import { buildChainLevel1 } from "./store/api/graph-api";
+import {
+  buildChainLevel1,
+  expandChainOneLevel,
+  expandNextInQueue,
+} from "./store/api/graph-api";
+import { listProducersForPid } from "./utils/listProducersForPid";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -435,6 +441,85 @@ export const Flow = () => {
     ).unwrap();
   }, [dispatch, selectedNodeId, selectedNode, aggregatedDescription]);
 
+  const chainSession = useAppSelector((s) => s.graph.chainSession);
+
+  const chainPid: string | null = (() => {
+    if (!selectedNodeId || !selectedNode) return null;
+    const pid = (selectedNode.data as any)?.chainPid;
+    if (pid) return pid;
+    // root всегда Продукт1
+    if (selectedNodeId === chainSession.rootNodeId) return "Продукт1";
+    return null;
+  })();
+
+  const producerOptions =
+    chainPid && chainSession.rawChain
+      ? listProducersForPid(chainSession.rawChain, chainPid)
+      : [];
+
+  const mainProducerId = producerOptions[0]?.trId || ""; // ✅ основной = первый
+
+  const lockedProducerId =
+    (chainPid && chainSession.expandedProducerByPid?.[chainPid]) || "";
+
+  ///
+  const builtProducerIds =
+    (chainPid && chainSession.expandedProducerByPid?.[chainPid]) || [];
+
+  const builtSet = new Set(builtProducerIds);
+
+  const selectedProducerId =
+    (chainPid && chainSession.producerByPid?.[chainPid]) ||
+    producerOptions.find((p) => !builtSet.has(p.trId))?.trId || // первый НЕпостроенный
+    mainProducerId;
+
+  const selectedAlreadyBuilt =
+    !!selectedProducerId && builtSet.has(selectedProducerId);
+
+  const handleSelectProducer = (trId: string) => {
+    if (!chainPid) return;
+    if (builtSet.has(trId)) return; // ✅ нельзя выбрать уже построенный вариант
+    dispatch(
+      setProducerForPid({ pid: chainPid, transformationId: trId || null }),
+    );
+  };
+  ///
+
+  const selectedTrId =
+    (chainPid && chainSession.producerByPid?.[chainPid]) || ""; // выбранная альтернатива
+
+  const expandedTrId =
+    (chainPid && chainSession.expandedProducerByPid?.[chainPid]) || ""; // уже раскрытый producer
+
+  const handleInitChain = async () => {
+    // это твой старый onBuildChain (который ходит в /gpt/chain и сохраняет rawChain)
+    await dispatch(
+      buildChainLevel1({
+        nodeId: selectedNodeId!,
+        productName: String(selectedNode?.data?.label || "").trim(),
+        techText: String(
+          aggregatedDescription ||
+            (selectedNode?.data as any)?.description ||
+            "",
+        ).trim(),
+      }),
+    ).unwrap();
+  };
+
+  const handleExpandThis = async () => {
+    if (!selectedNodeId) return;
+    await dispatch(
+      expandChainOneLevel({ targetNodeId: selectedNodeId }),
+    ).unwrap();
+  };
+
+  // опционально: “раскрыть следующий из очереди”
+  const handleExpandNext = async () => {
+    await dispatch(expandNextInQueue()).unwrap();
+  };
+
+  const chainReady = !!chainSession.rootNodeId && !!chainSession.rawChain;
+
   return (
     <div className={styles.container}>
       <SearchToggle />
@@ -507,7 +592,7 @@ export const Flow = () => {
         onDelete={handleDeleteNode}
         nodeType={selectedNode?.type}
         buildDirection={buildDirection}
-        onSetBuildDirection={handleSetBuildDirection}
+        onSetBuildDirection={handleSetDirection}
         onFindSources={handleFindSources}
         onAggregateSources={handleAggregateSources}
         sourcesLoading={sourcesLoading}
@@ -519,6 +604,17 @@ export const Flow = () => {
         onBuildChain={handleBuildChain}
         chainLoading={chainLoading}
         chainError={chainError}
+        // ✅ новые props для chain UI
+        chainReady={chainReady}
+        onInitChain={handleInitChain}
+        chainPid={chainPid}
+        producerOptions={producerOptions}
+        selectedProducerId={selectedProducerId}
+        onSelectProducer={handleSelectProducer}
+        onExpandLevel={handleExpandThis}
+        onExpandNext={handleExpandNext}
+        builtProducerIds={builtProducerIds}
+        selectedAlreadyBuilt={selectedAlreadyBuilt}
       />
     </div>
   );
