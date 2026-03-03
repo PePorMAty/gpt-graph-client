@@ -15,6 +15,7 @@ import { normalizeNodes } from "../../utils/normalize-nodes";
 import {
   buildChainLevel1,
   continueGraph,
+  expandChainOneLevel,
   getGraphData,
 } from "../api/graph-api";
 
@@ -38,6 +39,18 @@ const initialState: InitialGraphStateI = {
   originalPrompt: null,
   source: null,
   chainBuild: { status: "idle", error: null, nodeId: null },
+  chainSession: {
+    rootNodeId: null,
+    rawChain: null,
+
+    pidToNodeId: {},
+    expandedPids: [],
+
+    producerByPid: {},
+    expandedProducerByPid: {}, // ✅ ДОБАВЬ
+
+    queue: [],
+  },
 };
 
 const gptSlice = createSlice({
@@ -161,6 +174,21 @@ const gptSlice = createSlice({
       state.isError = false;
       state.error = null;
     },
+    setProducerForPid: (
+      state,
+      action: PayloadAction<{ pid: string; transformationId: string | null }>,
+    ) => {
+      const { pid, transformationId } = action.payload;
+
+      // ✅ если этот pid уже построен — больше не даем менять выбор
+      if (state.chainSession.expandedPids.includes(pid)) return;
+
+      if (!transformationId) {
+        delete state.chainSession.producerByPid[pid];
+      } else {
+        state.chainSession.producerByPid[pid] = transformationId;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -244,18 +272,76 @@ const gptSlice = createSlice({
         state.chainBuild.nodeId = action.meta.arg.nodeId;
       })
       .addCase(buildChainLevel1.fulfilled, (state, action) => {
-        const { nodeId, nodes, edges } = action.payload;
-        const namespace = `${nodeId}::chain`;
+        const { nodeId, raw } = action.payload;
 
-        // убираем старое “расширение” chain для этой ноды
+        const isNewSession = state.chainSession.rootNodeId !== nodeId;
+
+        if (isNewSession) {
+          // оставляем только исходную ноду
+          const root = state.data.nodes.find((n) => n.id === nodeId);
+          state.data.nodes = root ? [root] : [];
+          state.data.edges = [];
+
+          // помечаем root как Продукт1 (важно для expand)
+          if (root) {
+            (root.data as any).chainPid = "Продукт1";
+          }
+
+          state.chainSession.rootNodeId = nodeId;
+          state.chainSession.rawChain = raw.chain;
+
+          // pid -> nodeId для стабильных ссылок
+          state.chainSession.pidToNodeId = { Продукт1: nodeId };
+
+          // пока ничего не раскрывали
+          state.chainSession.expandedPids = [];
+
+          // выбранные “альтернативы producer” (pid->trId)
+          state.chainSession.producerByPid = {};
+          state.chainSession.expandedProducerByPid = {};
+
+          // очередь: сначала раскрываем Продукт1
+          state.chainSession.queue = [{ pid: "Продукт1" }];
+        }
+
+        state.chainBuild.status = "succeeded";
+        state.chainBuild.error = null;
+        state.chainBuild.nodeId = null;
+      })
+      .addCase(buildChainLevel1.rejected, (state, action) => {
+        state.chainBuild.status = "failed";
+        state.chainBuild.error =
+          (action.payload as string) || "Ошибка построения chain-графа";
+        // nodeId оставим — чтобы показать ошибку именно в этой карточке
+      })
+      .addCase(expandChainOneLevel.fulfilled, (state, action) => {
+        const {
+          rootNodeId,
+          targetNodeId,
+          nodes,
+          edges,
+          pidToNodeIdNext,
+          nextPids,
+          usedTrId,
+        } = action.payload;
+
+        const targetNode = state.data.nodes.find((n) => n.id === targetNodeId);
+        const targetPid =
+          (targetNode?.data as any)?.chainPid ||
+          (targetNodeId === rootNodeId ? "Продукт1" : null);
+
+        if (!targetPid) return;
+
+        // --- 1) удаляем только уровень этого pid ---
+        const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
         state.data.nodes = state.data.nodes.filter(
-          (n) => !n.id.startsWith(namespace),
+          (n) => !n.id.startsWith(lvlPrefix),
         );
         state.data.edges = state.data.edges.filter(
-          (e) => !e.id.startsWith(namespace),
+          (e) => !e.id.startsWith(lvlPrefix),
         );
 
-        // добавляем новое
+        // --- 2) добавляем новое (dedupe) ---
         const newNodes = normalizeNodes(nodes);
         const newEdges = normalizeEdges(edges);
 
@@ -269,17 +355,44 @@ const gptSlice = createSlice({
           ...newEdges.filter((e) => !existingEdgeIds.has(e.id)),
         );
 
-        state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
+        // --- 3) обновляем pidToNodeId ---
+        state.chainSession.pidToNodeId = pidToNodeIdNext;
 
+        // --- 4) помечаем pid раскрытым ---
+        if (!state.chainSession.expandedPids.includes(targetPid)) {
+          state.chainSession.expandedPids.push(targetPid);
+        }
+
+        // --- 5) очередь: убираем текущий pid + добавляем nextPids ---
+        state.chainSession.queue = state.chainSession.queue.filter(
+          (x) => x.pid !== targetPid,
+        );
+
+        for (const pid of nextPids) {
+          const alreadyExpanded = state.chainSession.expandedPids.includes(pid);
+          const alreadyQueued = state.chainSession.queue.some(
+            (x) => x.pid === pid,
+          );
+          if (!alreadyExpanded && !alreadyQueued) {
+            state.chainSession.queue.push({ pid });
+          }
+        }
+
+        state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
+        const arr = state.chainSession.expandedProducerByPid[targetPid] || [];
+        if (!arr.includes(usedTrId)) arr.push(usedTrId);
+        state.chainSession.expandedProducerByPid[targetPid] = arr;
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;
         state.chainBuild.nodeId = null;
       })
-      .addCase(buildChainLevel1.rejected, (state, action) => {
+      .addCase(expandChainOneLevel.rejected, (state, action) => {
+        // "already expanded" можно не считать ошибкой
+        const msg = (action.payload as string) || "expandChainOneLevel failed";
+        if (msg === "already expanded") return;
+
         state.chainBuild.status = "failed";
-        state.chainBuild.error =
-          (action.payload as string) || "Ошибка построения chain-графа";
-        // nodeId оставим — чтобы показать ошибку именно в этой карточке
+        state.chainBuild.error = msg;
       });
   },
 });
@@ -295,5 +408,6 @@ export const {
   setGraphData,
   addNode,
   loadGraphFromFile,
+  setProducerForPid,
 } = gptSlice.actions;
 export default gptSlice.reducer;

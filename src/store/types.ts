@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomEdge, CustomNode } from "../types";
+import type { TechChain } from "../utils/chainToFlow";
 
 export interface DataI {
   nodes: CustomNode[];
@@ -21,7 +22,24 @@ export interface InitialGraphStateI {
     error: string | null;
     nodeId: string | null;
   };
+  chainSession: {
+    rootNodeId: string | null;
+    rawChain: TechChain | null;
+
+    // pid -> XYFlow nodeId (чтобы Продукт6 всегда был одним и тем же nodeId)
+    pidToNodeId: Record<string, string>;
+
+    // какие pid уже раскрыли (чтобы не строить заново тот же уровень)
+    expandedPids: string[];
+
+    // выбор producer для pid (альтернатива)
+    producerByPid: Record<string, string>; // pid -> transformationId
+    expandedProducerByPid: Record<string, string[]>; // pid -> transformationId
+    // очередь “что раскрывать дальше”
+    queue: Array<{ pid: string }>;
+  };
 }
+
 export interface GraphApiResponse {
   success: boolean;
   nodes: CustomNode[];
