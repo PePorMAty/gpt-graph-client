@@ -508,8 +508,17 @@ export const Flow = () => {
 
   const handleExpandThis = async () => {
     if (!selectedNodeId) return;
+
+    const dir =
+      ((selectedNode?.data as any)?.buildDirection as
+        | "up"
+        | "down"
+        | undefined) ||
+      buildDirection ||
+      "down";
+
     await dispatch(
-      expandChainOneLevel({ targetNodeId: selectedNodeId }),
+      expandChainOneLevel({ targetNodeId: selectedNodeId, direction: dir }),
     ).unwrap();
   };
 

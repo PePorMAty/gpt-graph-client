@@ -112,27 +112,12 @@ export const buildChainLevel1 = createAsyncThunk<
           "gpt/chain: success=false",
       );
     }
-    if (!data.level1?.chain?.Цепочка) {
-      return thunkApi.rejectWithValue("gpt/chain: missing level1.chain");
+    if (!data.chain?.Цепочка?.length) {
+      return thunkApi.rejectWithValue("gpt/chain: missing chain.Цепочка");
     }
 
-    // позиционируем новые узлы рядом с выбранной нодой
-    const state = thunkApi.getState().graph;
-    const anchor = state.data.nodes.find((n) => n.id === nodeId);
-    const ax = anchor?.position?.x ?? 0;
-    const ay = anchor?.position?.y ?? 0;
-
-    const namespace = `${nodeId}::chain`;
-
-    const { nodes, edges } = chainToFlow(data.level1.chain, {
-      namespace,
-      targetNodeId: nodeId, // 👈 используем существующую ноду продукта
-      targetPid: "Продукт1",
-      baseX: ax + 360,
-      baseY: ay,
-    });
-
-    return { nodeId, nodes, edges, raw: data };
+    // ✅ НИЧЕГО НЕ РИСУЕМ, просто сохраняем rawChain в session (в reducer)
+    return { nodeId, raw: data };
   } catch (e: any) {
     return thunkApi.rejectWithValue(
       e?.response?.data?.error?.error?.message ||
@@ -142,6 +127,40 @@ export const buildChainLevel1 = createAsyncThunk<
     );
   }
 });
+
+// store/api/graph-api.ts (кусок внутри expandChainOneLevel)
+
+function findFreeBaseY(
+  nodes: any[],
+  ax: number,
+  ay: number,
+  direction: "up" | "down",
+  gap: number,
+) {
+  // смотрим узлы в “полосе” по X рядом с anchor, чтобы не пересекаться с уже нарисованными уровнями
+  const xMin = ax - 900;
+  const xMax = ax + 500;
+
+  const band = nodes.filter((n) => {
+    const x = n?.position?.x;
+    const y = n?.position?.y;
+    return (
+      typeof x === "number" && typeof y === "number" && x >= xMin && x <= xMax
+    );
+  });
+
+  if (!band.length) {
+    return direction === "down" ? ay + gap : ay - gap;
+  }
+
+  const ys = band.map((n) => n.position.y);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  return direction === "down"
+    ? Math.max(ay + gap, maxY + gap)
+    : Math.min(ay - gap, minY - gap);
+}
 
 // раскрыть 1 уровень для выбранной product-ноды (без запросов)
 export const expandChainOneLevel = createAsyncThunk<
@@ -165,21 +184,19 @@ export const expandChainOneLevel = createAsyncThunk<
     return thunkApi.rejectWithValue("chain session is not started");
   }
 
-  const targetNode = state.data.nodes.find((n) => n.id === targetNodeId);
+  const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
+  const ax = anchor?.position?.x ?? 0;
+  const ay = anchor?.position?.y ?? 0;
+
   const targetPid =
-    (targetNode?.data as any)?.chainPid ||
+    (anchor?.data as any)?.chainPid ||
     (targetNodeId === rootNodeId ? "Продукт1" : null);
 
   if (!targetPid) {
     return thunkApi.rejectWithValue("missing chainPid on target node");
   }
 
-  // ❌ УБРАТЬ (иначе альтернативы не построятся)
-  // if (state.chainSession.expandedPids.includes(targetPid)) {
-  //   return thunkApi.rejectWithValue("already expanded");
-  // }
-
-  const chosenTr = state.chainSession.producerByPid[targetPid]; // выбранный producer (может быть undefined)
+  const chosenTr = state.chainSession.producerByPid[targetPid]; // может быть undefined
   const lvl = buildLevelFromRawChain(rawChain, targetPid, chosenTr);
 
   if (!lvl.ok) {
@@ -188,25 +205,25 @@ export const expandChainOneLevel = createAsyncThunk<
 
   const usedTrId = lvl.transformationId;
 
-  // ✅ блокируем только конкретный producer
+  // ✅ блокируем только (pid + конкретный producer)
   const built = state.chainSession.expandedProducerByPid?.[targetPid] || [];
   if (built.includes(usedTrId)) {
     return thunkApi.rejectWithValue("already expanded");
   }
 
-  const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
-  const ax = anchor?.position?.x ?? 0;
-  const ay = anchor?.position?.y ?? 0;
+  // ✅ направление — ТОЛЬКО из session (иначе будет up/down прыгать)
+  const dir = state.chainSession.direction ?? "down";
 
   const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
 
   const { nodes, edges, pidToNodeIdNext } = levelToFlow(lvl.chain, {
-    namespace: lvlPrefix, // ✅ важно
+    namespace: lvlPrefix,
     rootNodeId,
     targetNodeId,
     targetPid,
-    baseX: ax + 360,
-    baseY: ay,
+    targetX: ax,
+    targetY: ay,
+    direction: dir,
     pidToNodeId: state.chainSession.pidToNodeId,
   });
 

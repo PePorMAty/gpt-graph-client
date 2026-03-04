@@ -286,7 +286,8 @@ const gptSlice = createSlice({
           if (root) {
             (root.data as any).chainPid = "Продукт1";
           }
-
+          state.chainSession.direction =
+            (root?.data as any)?.buildDirection ?? "down";
           state.chainSession.rootNodeId = nodeId;
           state.chainSession.rawChain = raw.chain;
 
