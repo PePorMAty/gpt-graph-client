@@ -180,14 +180,17 @@ const gptSlice = createSlice({
     ) => {
       const { pid, transformationId } = action.payload;
 
-      // ✅ если этот pid уже построен — больше не даем менять выбор
-      if (state.chainSession.expandedPids.includes(pid)) return;
+      const built = state.chainSession.expandedProducerByPid?.[pid] || [];
+      if (transformationId && built.includes(transformationId)) return;
 
       if (!transformationId) {
         delete state.chainSession.producerByPid[pid];
       } else {
         state.chainSession.producerByPid[pid] = transformationId;
       }
+    },
+    popQueueHead: (state) => {
+      state.chainSession.queue = state.chainSession.queue.slice(1);
     },
   },
   extraReducers: (builder) => {
@@ -274,46 +277,38 @@ const gptSlice = createSlice({
       .addCase(buildChainLevel1.fulfilled, (state, action) => {
         const { nodeId, raw } = action.payload;
 
-        const isNewSession = state.chainSession.rootNodeId !== nodeId;
+        const isFirstEverChain = !state.chainSession.rootNodeId; // ✅ первый запуск chain в жизни
 
-        if (isNewSession) {
-          // оставляем только исходную ноду
-          const root = state.data.nodes.find((n) => n.id === nodeId);
+        const root = state.data.nodes.find((n) => n.id === nodeId);
+
+        // ✅ ТОЛЬКО при самом первом запуске chain — очищаем граф
+        if (isFirstEverChain) {
           state.data.nodes = root ? [root] : [];
           state.data.edges = [];
-
-          // помечаем root как Продукт1 (важно для expand)
-          if (root) {
-            (root.data as any).chainPid = "Продукт1";
-          }
-          state.chainSession.direction =
-            (root?.data as any)?.buildDirection ?? "down";
-          state.chainSession.rootNodeId = nodeId;
-          state.chainSession.rawChain = raw.chain;
-
-          // pid -> nodeId для стабильных ссылок
-          state.chainSession.pidToNodeId = { Продукт1: nodeId };
-
-          // пока ничего не раскрывали
-          state.chainSession.expandedPids = [];
-
-          // выбранные “альтернативы producer” (pid->trId)
-          state.chainSession.producerByPid = {};
-          state.chainSession.expandedProducerByPid = {};
-
-          // очередь: сначала раскрываем Продукт1
-          state.chainSession.queue = [{ pid: "Продукт1" }];
         }
+
+        // помечаем выбранный узел как root новой цепочки
+        if (root) {
+          (root.data as any).chainPid = "Продукт1";
+          (root.data as any).chainRootNodeId = nodeId; // ✅ критично
+        }
+
+        // стартуем новую chain-сессию (поверх старых узлов, если это не первый запуск)
+        state.chainSession.rootNodeId = nodeId;
+        state.chainSession.rawChain = raw.chain;
+
+        state.chainSession.pidToNodeId = { Продукт1: nodeId };
+        state.chainSession.producerByPid = {};
+        state.chainSession.expandedProducerByPid = {};
+        state.chainSession.queue = [{ pid: "Продукт1" }];
+
+        // ✅ фиксируем направление цепочки на момент старта
+        state.chainSession.direction =
+          ((root?.data as any)?.buildDirection as "up" | "down") ?? "down";
 
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;
         state.chainBuild.nodeId = null;
-      })
-      .addCase(buildChainLevel1.rejected, (state, action) => {
-        state.chainBuild.status = "failed";
-        state.chainBuild.error =
-          (action.payload as string) || "Ошибка построения chain-графа";
-        // nodeId оставим — чтобы показать ошибку именно в этой карточке
       })
       .addCase(expandChainOneLevel.fulfilled, (state, action) => {
         const {
@@ -410,5 +405,6 @@ export const {
   addNode,
   loadGraphFromFile,
   setProducerForPid,
+  popQueueHead,
 } = gptSlice.actions;
 export default gptSlice.reducer;

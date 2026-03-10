@@ -303,8 +303,6 @@ export const Flow = () => {
     currentSourcesState?.aggregatedDescription ?? null;
 
   // Источники берём из node.data (чтобы переживало сохранение/загрузку графа)
-  const nodeSources: TechnologySource[] =
-    ((selectedNode?.data as any)?.sources as TechnologySource[]) ?? [];
 
   const handleSetDirection = useCallback(
     (dir: BuildDirection) => {
@@ -318,26 +316,6 @@ export const Flow = () => {
           data: { buildDirection: dir },
         }),
       );
-    },
-    [dispatch, selectedNodeId],
-  );
-  /* 
-  const handleFindSources = useCallback(() => {
-    if (!selectedNodeId) return;
-    if (!buildDirection) return; // сначала выбрать вверх/вниз
-
-    const productName = tempNodeLabel.trim();
-    if (!productName) return;
-
-    dispatch(
-      fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
-    );
-  }, [dispatch, selectedNodeId, tempNodeLabel, buildDirection]); */
-
-  const handleSetBuildDirection = useCallback(
-    (dir: BuildDirection) => {
-      if (!selectedNodeId) return;
-      dispatch(setBuildDirection({ nodeId: selectedNodeId, direction: dir }));
     },
     [dispatch, selectedNodeId],
   );
@@ -356,7 +334,7 @@ export const Flow = () => {
     dispatch(
       updateNodeData({
         nodeId: selectedNodeId,
-        data: { sources: result.data.sources },
+        data: { sources: result.data.sources, sourcesAggregated: false },
       }),
     );
   }, [dispatch, selectedNodeId, selectedNode]);
@@ -393,7 +371,7 @@ export const Flow = () => {
     dispatch(
       updateNodeData({
         nodeId: selectedNodeId,
-        data: { description: safeDesc },
+        data: { description: safeDesc, sourcesAggregated: true },
       }),
     );
 
@@ -410,86 +388,67 @@ export const Flow = () => {
     setInitialDescription,
   ]);
 
-  const chainLoading =
-    chainBuild?.status === "loading" && chainBuild?.nodeId === selectedNodeId;
-
   const chainError =
     chainBuild?.status === "failed" && chainBuild?.nodeId === selectedNodeId
       ? chainBuild?.error
       : null;
 
-  const handleBuildChain = useCallback(async () => {
-    if (!selectedNodeId || !selectedNode) return;
-
-    const productName = String(selectedNode.data?.label || "").trim();
-    if (!productName) return;
-
-    // источник текста: сначала aggregatedDescription из sourcesSlice,
-    // потом fallback на node.data.description (ты его уже заполняешь)
-    const techText = String(
-      aggregatedDescription || (selectedNode.data as any)?.description || "",
-    ).trim();
-
-    if (!techText) return;
-
-    await dispatch(
-      buildChainLevel1({
-        nodeId: selectedNodeId,
-        productName,
-        techText,
-      }),
-    ).unwrap();
-  }, [dispatch, selectedNodeId, selectedNode, aggregatedDescription]);
-
+  // --- CHAIN SESSION ---
   const chainSession = useAppSelector((s) => s.graph.chainSession);
+  const chainReady = !!chainSession.rootNodeId && !!chainSession.rawChain;
 
-  const chainPid: string | null = (() => {
-    if (!selectedNodeId || !selectedNode) return null;
-    const pid = (selectedNode.data as any)?.chainPid;
-    if (pid) return pid;
-    // root всегда Продукт1
-    if (selectedNodeId === chainSession.rootNodeId) return "Продукт1";
-    return null;
-  })();
+  // root id цепочки, к которой принадлежит выбранный узел
+  const nodeChainRootId =
+    (selectedNode?.data as any)?.chainRootNodeId ??
+    (selectedNodeId === chainSession.rootNodeId
+      ? chainSession.rootNodeId
+      : null);
 
+  // UI “раскрывать уровни” включаем только если узел принадлежит активной chain-сессии
+  const chainUiEnabled =
+    !!chainReady &&
+    !!nodeChainRootId &&
+    nodeChainRootId === chainSession.rootNodeId;
+
+  // “queue UI” (кнопка + выбор альтернатив) показываем только на root активной цепочки
+  const isActiveChainRoot =
+    chainUiEnabled && selectedNodeId === chainSession.rootNodeId;
+
+  const queueLen = chainReady ? (chainSession.queue?.length ?? 0) : 0;
+
+  // ✅ КЛЮЧЕВОЕ: следующий pid берём из очереди, а не из selectedNode
+  const queuePid: string | null = chainReady
+    ? (chainSession.queue?.[0]?.pid ?? null)
+    : null;
+
+  // producers / built / selected — тоже считаем для queuePid
   const producerOptions =
-    chainPid && chainSession.rawChain
-      ? listProducersForPid(chainSession.rawChain, chainPid)
+    queuePid && chainSession.rawChain
+      ? listProducersForPid(chainSession.rawChain, queuePid)
       : [];
 
-  const mainProducerId = producerOptions[0]?.trId || ""; // ✅ основной = первый
-
-  const lockedProducerId =
-    (chainPid && chainSession.expandedProducerByPid?.[chainPid]) || "";
-
-  ///
   const builtProducerIds =
-    (chainPid && chainSession.expandedProducerByPid?.[chainPid]) || [];
+    (queuePid && chainSession.expandedProducerByPid?.[queuePid]) || [];
 
   const builtSet = new Set(builtProducerIds);
 
+  const mainProducerId = producerOptions[0]?.trId || "";
+
+  // ✅ если юзер не выбирал — выбираем первый НЕпостроенный
   const selectedProducerId =
-    (chainPid && chainSession.producerByPid?.[chainPid]) ||
-    producerOptions.find((p) => !builtSet.has(p.trId))?.trId || // первый НЕпостроенный
+    (queuePid && chainSession.producerByPid?.[queuePid]) ||
+    producerOptions.find((p) => !builtSet.has(p.trId))?.trId ||
     mainProducerId;
 
-  const selectedAlreadyBuilt =
-    !!selectedProducerId && builtSet.has(selectedProducerId);
-
+  // ✅ нельзя выбрать уже построенный вариант
   const handleSelectProducer = (trId: string) => {
-    if (!chainPid) return;
-    if (builtSet.has(trId)) return; // ✅ нельзя выбрать уже построенный вариант
+    if (!queuePid) return;
+    if (builtSet.has(trId)) return;
     dispatch(
-      setProducerForPid({ pid: chainPid, transformationId: trId || null }),
+      setProducerForPid({ pid: queuePid, transformationId: trId || null }),
     );
   };
-  ///
-
-  const selectedTrId =
-    (chainPid && chainSession.producerByPid?.[chainPid]) || ""; // выбранная альтернатива
-
-  const expandedTrId =
-    (chainPid && chainSession.expandedProducerByPid?.[chainPid]) || ""; // уже раскрытый producer
+  //
 
   const handleInitChain = async () => {
     // это твой старый onBuildChain (который ходит в /gpt/chain и сохраняет rawChain)
@@ -506,28 +465,31 @@ export const Flow = () => {
     ).unwrap();
   };
 
-  const handleExpandThis = async () => {
-    if (!selectedNodeId) return;
-
-    const dir =
-      ((selectedNode?.data as any)?.buildDirection as
-        | "up"
-        | "down"
-        | undefined) ||
-      buildDirection ||
-      "down";
-
-    await dispatch(
-      expandChainOneLevel({ targetNodeId: selectedNodeId, direction: dir }),
-    ).unwrap();
-  };
-
   // опционально: “раскрыть следующий из очереди”
   const handleExpandNext = async () => {
     await dispatch(expandNextInQueue()).unwrap();
   };
 
-  const chainReady = !!chainSession.rootNodeId && !!chainSession.rawChain;
+  const effectiveSources: TechnologySource[] =
+    (((selectedNode?.data as any)?.sources as TechnologySource[]) ?? sources) ||
+    [];
+
+  const hasSources =
+    Array.isArray(effectiveSources) && effectiveSources.length > 0;
+
+  // aggregated у тебя сохраняется в node.data.description
+  const hasAggregated =
+    Boolean((selectedNode?.data as any)?.sourcesAggregated) ||
+    aggStatus === "succeeded";
+
+  // можно ли “получить цепочку” от этого продукта сейчас?
+  const canInitChainHere =
+    hasSources && hasAggregated && (!chainReady || !isActiveChainRoot);
+
+  const initChainLabel =
+    chainReady && !isActiveChainRoot
+      ? "🧬 Продолжить граф: цепочка от этого продукта"
+      : "🧬 Получить цепочку (chain)";
 
   return (
     <div className={styles.container}>
@@ -606,24 +568,27 @@ export const Flow = () => {
         onAggregateSources={handleAggregateSources}
         sourcesLoading={sourcesLoading}
         sourcesError={sourcesError}
-        sources={sources}
+        // ⚠️ лучше передавать effectiveSources, чтобы переживало save/load
+        sources={effectiveSources}
         aggregateLoading={aggregateLoading}
         aggregateError={aggregateError}
-        hasAggregated={aggStatus === "succeeded"}
-        onBuildChain={handleBuildChain}
-        chainLoading={chainLoading}
+        // ⚠️ НЕ aggStatus, а реальный hasAggregated (см. ниже)
+        hasAggregated={hasAggregated}
+        chainLoading={chainBuild?.status === "loading"} // ✅ проще, без nodeId
         chainError={chainError}
-        // ✅ новые props для chain UI
         chainReady={chainReady}
+        chainUiEnabled={chainUiEnabled}
+        isActiveChainRoot={isActiveChainRoot}
+        canInitChainHere={canInitChainHere}
+        initChainLabel={initChainLabel}
         onInitChain={handleInitChain}
-        chainPid={chainPid}
-        producerOptions={producerOptions}
+        queueLen={queueLen}
+        chainPid={queuePid} // ✅ вот это важно
+        producerOptions={producerOptions} // ✅ для queuePid
         selectedProducerId={selectedProducerId}
         onSelectProducer={handleSelectProducer}
-        onExpandLevel={handleExpandThis}
-        onExpandNext={handleExpandNext}
-        builtProducerIds={builtProducerIds}
-        selectedAlreadyBuilt={selectedAlreadyBuilt}
+        builtProducerIds={builtProducerIds} // ✅ для queuePid
+        onExpandNext={isActiveChainRoot ? handleExpandNext : undefined}
       />
     </div>
   );

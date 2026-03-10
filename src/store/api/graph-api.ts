@@ -14,6 +14,7 @@ import type {
 } from "../types";
 import { chainToFlow, type TechChain } from "../../utils/chainToFlow";
 import type { Edge } from "@xyflow/react";
+import { popQueueHead } from "../slices/gptSlice";
 
 export const getGraphData = createAsyncThunk<
   CreateGraphResult,
@@ -247,19 +248,35 @@ export const expandNextInQueue = createAsyncThunk<
   void,
   { state: RootState; rejectValue: string }
 >("graph/expandNextInQueue", async (_, thunkApi) => {
-  const st = thunkApi.getState().graph;
-  const rootNodeId = st.chainSession.rootNodeId;
-  if (!rootNodeId) return thunkApi.rejectWithValue("no chain session");
+  for (let i = 0; i < 50; i++) {
+    const st = thunkApi.getState().graph;
+    const rootNodeId = st.chainSession.rootNodeId;
+    if (!rootNodeId) return thunkApi.rejectWithValue("no chain session");
 
-  const next = st.chainSession.queue?.[0];
-  if (!next) return; // очередь пустая
+    const next = st.chainSession.queue?.[0];
+    if (!next) return; // done
 
-  const pid = next.pid;
-  const targetNodeId =
-    st.chainSession.pidToNodeId?.[pid] ||
-    (pid === "Продукт1" ? rootNodeId : null);
+    const pid = next.pid;
+    const targetNodeId =
+      st.chainSession.pidToNodeId?.[pid] ||
+      (pid === "Продукт1" ? rootNodeId : null);
 
-  if (!targetNodeId) return thunkApi.rejectWithValue("missing node for pid");
+    if (!targetNodeId) {
+      thunkApi.dispatch(popQueueHead());
+      continue;
+    }
 
-  await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
+    try {
+      await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
+      return; // успех
+    } catch (e: any) {
+      const msg = String(e || "");
+      // пропускаем “невозможные” элементы очереди
+      if (msg.includes("no producer") || msg.includes("already expanded")) {
+        thunkApi.dispatch(popQueueHead());
+        continue;
+      }
+      throw e;
+    }
+  }
 });

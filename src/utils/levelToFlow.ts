@@ -15,16 +15,16 @@ function pickPid(
 type Opts = {
   namespace: string; // chain::root::lvl::pid::trId
   rootNodeId: string;
-  targetNodeId: string; // XYFlow id продукта, который раскрываем
-  targetPid: string; // "Продукт1", "Продукт6", ...
-  targetX: number; // X продукта
-  targetY: number; // Y продукта
+  targetNodeId: string;
+  targetPid: string;
+  targetX: number;
+  targetY: number;
   direction: "up" | "down";
   pidToNodeId: Record<string, string>;
 
-  spacingX?: number; // шаг по X между входными продуктами
-  stepY1?: number; // шаг target -> transformation
-  stepY2?: number; // шаг transformation -> inputs row
+  spacingX?: number;
+  stepY1?: number;
+  stepY2?: number;
 };
 
 export function levelToFlow(levelChain: TechChain, opts: Opts) {
@@ -60,10 +60,6 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
   const sign = direction === "down" ? 1 : -1;
 
-  // ✅ ВЕРТИКАЛЬНАЯ СТРУКТУРА:
-  // product (targetY)
-  //   -> transformation (targetY + sign*stepY1)
-  //        -> inputs row (trY + sign*stepY2)
   const trY = targetY + sign * stepY1;
   const inputsY = trY + sign * stepY2;
 
@@ -87,10 +83,11 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       description: "",
       chainTrId: t["Id узла"],
       chainLevelOfPid: targetPid,
+      chainRootNodeId: rootNodeId, // ✅ ДОБАВИЛИ
     } as any,
   });
 
-  // edge: target product -> transformation (направление “раскрытия”)
+  // edge: target product -> transformation
   edges.push({
     id: `${namespace}::e_from_target::${targetNodeId}::${trFlowId}`,
     source: targetNodeId,
@@ -98,7 +95,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     type: "straight",
   });
 
-  // inputs row (одна линия), растягиваем по X и центрируем относительно targetX
+  // inputs row
   const n = uniqueInputs.length;
   const rowWidth = n > 1 ? (n - 1) * spacingX : 0;
   const startX = targetX - rowWidth / 2;
@@ -119,10 +116,10 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
         description: "",
         chainPid: pid,
+        chainRootNodeId: rootNodeId, // ✅ ДОБАВИЛИ
       } as any,
     });
 
-    // edge: transformation -> input
     edges.push({
       id: `${namespace}::e_to_input_${idx}::${trFlowId}::${pFlowId}`,
       source: trFlowId,
