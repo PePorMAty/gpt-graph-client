@@ -25,7 +25,7 @@ export interface InitialGraphStateI {
   chainSession: {
     rootNodeId: string | null;
     rawChain: TechChain | null;
-
+    direction?: "up" | "down";
     // pid -> XYFlow nodeId (чтобы Продукт6 всегда был одним и тем же nodeId)
     pidToNodeId: Record<string, string>;
 

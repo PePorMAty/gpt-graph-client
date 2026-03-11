@@ -1,3 +1,4 @@
+// src/components/flow-panel/types.ts
 import type { BuildDirection, TechnologySource } from "../../store/types";
 
 export interface FlowPanelProps {
@@ -6,7 +7,7 @@ export interface FlowPanelProps {
   value: string;
   onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onDelete?: () => void;
-  descriptionValue: string; // Добавляем значение описания
+  descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
 
   nodeId?: string | null;
@@ -25,21 +26,33 @@ export interface FlowPanelProps {
   aggregateError?: string | null;
   hasAggregated?: boolean;
 
-  onBuildChain?: () => void;
   chainLoading?: boolean;
   chainError?: string | null;
 
   chainReady?: boolean;
   chainPid?: string | null;
+  isActiveChainRoot?: boolean; // ✅ новый
+  // ✅ новое: показывать chain-ui только для узлов активной chain-сессии
+  chainUiEnabled?: boolean;
+
+  // ✅ новое: можно ли стартовать/переключить chain на этот узел
+  canInitChainHere?: boolean;
+
+  // ✅ новое: текст на кнопке init chain
+  initChainLabel?: string;
 
   producerOptions?: Array<{ trId: string; title: string }>;
   selectedProducerId?: string;
   expandedProducerId?: string;
-  builtProducerIds: string[];
-  selectedAlreadyBuilt: boolean;
 
-  onInitChain?: () => void; // получить rawChain
+  builtProducerIds: string[];
+  selectedAlreadyBuilt?: boolean;
+
+  queueLen?: number;
+  isChainRootUi?: boolean;
+
+  onInitChain?: () => void;
   onSelectProducer?: (trId: string) => void;
-  onExpandLevel?: () => void; // раскрыть 1 уровень от текущей ноды
-  onExpandNext?: () => void; // (опционально) по очереди
+  onExpandLevel?: () => void;
+  onExpandNext?: () => void;
 }

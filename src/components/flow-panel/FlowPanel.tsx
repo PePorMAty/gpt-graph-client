@@ -28,16 +28,22 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   chainError,
 
   chainReady,
+  chainUiEnabled,
+  isActiveChainRoot,
+
+  canInitChainHere,
+  initChainLabel,
   onInitChain,
-  chainPid,
+
+  // ⬇️ дальше параметры ДЛЯ queue[0].pid (следующий продукт)
+  queueLen,
+  chainPid, // это queuePid (следующий pid из очереди)
   producerOptions,
   selectedProducerId,
   onSelectProducer,
-  onExpandLevel,
-  onExpandNext,
-
   builtProducerIds,
-  selectedAlreadyBuilt,
+
+  onExpandNext, // ✅ единственная кнопка построения
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -63,41 +69,37 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     }
   };
 
+  const isProduct = nodeType === "product";
+  const hasSources = Array.isArray(sources) && sources.length > 0;
+
+  const producers = Array.isArray(producerOptions) ? producerOptions : [];
   const builtSet = useMemo(
     () => new Set((builtProducerIds || []).filter(Boolean)),
     [builtProducerIds],
   );
-  const producers = Array.isArray(producerOptions) ? producerOptions : [];
-  const availableProducerIds = useMemo(
-    () => producers.map((p) => p.trId).filter((id) => !builtSet.has(id)),
-    [producers, builtSet],
-  );
 
-  if (!isOpen) return null;
-
-  const isProduct = nodeType === "product";
-  const hasSources = Array.isArray(sources) && sources.length > 0;
-
-  const hasProducerChoices = producers.length > 0;
-
-  const hasAnyAvailable = availableProducerIds.length > 0;
-
-  // “Строить” можно только если:
-  // - chain готов
-  // - есть producer'ы
-  // - выбранный producer ещё не построен
-  // - есть хоть один доступный producer вообще
-  const canBuildSelected =
+  // ✅ queue-кнопка НЕ зависит от “построено ли у текущего продукта”
+  // она зависит только от очереди и от того, что мы в UI корня активной chain-сессии
+  const queueHasWork = !!queueLen && queueLen > 0;
+  const canQueue =
     !!chainReady &&
-    hasProducerChoices &&
-    !!selectedProducerId &&
-    !builtSet.has(selectedProducerId) &&
-    hasAnyAvailable &&
+    !!chainUiEnabled &&
+    !!isActiveChainRoot &&
+    !!onExpandNext &&
+    queueHasWork &&
     !chainLoading;
 
-  // на всякий случай — если выбрали уже построенный (например из-за старого producerByPid)
+  // выбранный producer для queuePid
   const selectedIsBuilt =
     !!selectedProducerId && builtSet.has(selectedProducerId);
+
+  // доступные producers для queuePid
+  const hasAnyAvailableProducer = producers.some((p) => !builtSet.has(p.trId));
+
+  // queuePid валиден?
+  const hasQueuePid = !!chainPid;
+
+  if (!isOpen) return null;
 
   return (
     <>
@@ -151,7 +153,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
           {isProduct && (
             <div className={styles.formGroup}>
-              {/* 1) НЕТ ИСТОЧНИКОВ -> выбор направления + поиск */}
+              {/* 1) нет источников -> выбрать направление + поиск */}
               {!hasSources && (
                 <>
                   <label className={styles.formLabel}>Куда строить граф:</label>
@@ -203,7 +205,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 </>
               )}
 
-              {/* 2) ИСТОЧНИКИ ЕСТЬ -> "Обобщить" */}
+              {/* 2) источники есть, но не обобщено -> ТОЛЬКО обобщить */}
               {hasSources && !hasAggregated && (
                 <>
                   <div className={styles.sourcesTitle}>
@@ -227,208 +229,197 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 </>
               )}
 
-              {/* 3) CHAIN */}
-              {isProduct && (
+              {/* 3) обобщение готово -> можно получить chain / продолжить */}
+              {hasSources && hasAggregated && (
                 <>
-                  {/* init chain */}
-                  {!chainReady && hasSources && hasAggregated && (
-                    <>
-                      <div className={styles.sourcesTitle}>
-                        ✅ Обобщение готово
-                      </div>
-                      <button
-                        type="button"
-                        onClick={onInitChain}
-                        disabled={
-                          sourcesLoading || aggregateLoading || chainLoading
-                        }
-                        className={styles.findSourcesButton}
-                      >
-                        🧬 Получить цепочку (chain)
-                      </button>
-                      {chainError && (
-                        <div className={styles.errorText}>
-                          Ошибка: {chainError}
-                        </div>
-                      )}
-                    </>
+                  {canInitChainHere && (
+                    <button
+                      type="button"
+                      onClick={onInitChain}
+                      disabled={
+                        sourcesLoading || aggregateLoading || chainLoading
+                      }
+                      className={styles.findSourcesButton}
+                    >
+                      {initChainLabel || "🧬 Получить цепочку (chain)"}
+                    </button>
                   )}
 
-                  {/* chain ready -> choose producer + build level */}
-                  {chainReady && (
+                  {/* chain UI показываем только если узел принадлежит активной chain-сессии */}
+                  {chainReady && chainUiEnabled && (
                     <>
-                      <div className={styles.sourcesTitle}>
-                        🧭 Построение уровня для: <b>{chainPid || "—"}</b>
-                      </div>
-
-                      {/* выбор маршрута */}
-                      {hasProducerChoices ? (
-                        <div className={styles.formGroup}>
-                          <label className={styles.formLabel}>
-                            Маршрут (основной/альтернативы):
-                          </label>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 8,
-                            }}
-                          >
-                            {producers.map((p, idx) => {
-                              const isMain = idx === 0;
-                              const isSelected = selectedProducerId === p.trId;
-                              const isBuilt = builtSet.has(p.trId);
-
-                              const title = p.title?.trim()
-                                ? p.title.trim()
-                                : isMain
-                                  ? "Основной путь"
-                                  : `Альтернатива ${idx}`;
-
-                              return (
-                                <button
-                                  key={p.trId}
-                                  type="button"
-                                  className={`${styles.smallBtn} ${
-                                    isSelected ? styles.smallBtnActive : ""
-                                  }`}
-                                  onClick={() => onSelectProducer?.(p.trId)}
-                                  disabled={isBuilt} // выбрать уже построенный нельзя (чтобы не путаться)
-                                  title={
-                                    isBuilt
-                                      ? "Этот маршрут уже построен для данного продукта"
-                                      : ""
-                                  }
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: 10,
-                                  }}
-                                >
-                                  <span>
-                                    {isBuilt ? "🔒 " : isSelected ? "✅ " : ""}
-                                    {title}
-                                  </span>
-                                  <span style={{ opacity: 0.65, fontSize: 12 }}>
-                                    {p.trId}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          <div
-                            className={styles.sourcesTitle}
-                            style={{
-                              fontSize: 12,
-                              opacity: 0.8,
-                              marginTop: 10,
-                            }}
-                          >
-                            Доступно: <b>{availableProducerIds.length}</b> /
-                            Всего: <b>{producers.length}</b>
-                          </div>
-
-                          {!hasAnyAvailable && (
-                            <div
-                              className={styles.sourcesTitle}
-                              style={{
-                                fontSize: 12,
-                                opacity: 0.8,
-                                marginTop: 6,
-                              }}
-                            >
-                              ✅ Все варианты для этого продукта уже построены.
-                            </div>
-                          )}
-
-                          {selectedIsBuilt && (
-                            <div
-                              className={styles.sourcesTitle}
-                              style={{
-                                fontSize: 12,
-                                opacity: 0.8,
-                                marginTop: 6,
-                              }}
-                            >
-                              Выбран уже построенный маршрут — выбери другой,
-                              чтобы продолжить.
-                            </div>
-                          )}
-                        </div>
-                      ) : (
+                      {/* ВАЖНО: продолжение (queue) — только на root активной цепочки */}
+                      {!isActiveChainRoot && (
                         <div
                           className={styles.sourcesTitle}
-                          style={{ fontSize: 12, opacity: 0.8 }}
+                          style={{ fontSize: 12, opacity: 0.75 }}
                         >
-                          Для этого продукта нет доступных producer-узлов
-                          (скорее всего это сырьё/исток, уровень не
-                          раскрывается).
+                          Продолжение цепочки доступно только в корневом
+                          продукте активной цепочки.
                         </div>
                       )}
 
-                      {/* build */}
-                      <button
-                        type="button"
-                        onClick={onExpandLevel}
-                        disabled={!canBuildSelected}
-                        className={styles.findSourcesButton}
-                        title={
-                          !chainReady
-                            ? "Сначала получите chain"
-                            : !hasProducerChoices
-                              ? "Нет producer-узлов для построения"
-                              : !hasAnyAvailable
-                                ? "Все варианты уже построены"
-                                : selectedAlreadyBuilt
-                                  ? "Выбранный вариант уже построен"
+                      {isActiveChainRoot && (
+                        <>
+                          <div className={styles.sourcesTitle}>
+                            📌 Очередь: <b>{queueLen ?? 0}</b>
+                          </div>
+
+                          <div className={styles.sourcesTitle}>
+                            Следующий продукт:{" "}
+                            <b>{hasQueuePid ? chainPid : "—"}</b>
+                          </div>
+
+                          {/* выбор альтернатив для NEXT pid */}
+                          {hasQueuePid && producers.length > 0 && (
+                            <div className={styles.formGroup}>
+                              <label className={styles.formLabel}>
+                                Маршрут для следующего шага:
+                              </label>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 8,
+                                }}
+                              >
+                                {producers.map((p, idx) => {
+                                  const isSelected =
+                                    selectedProducerId === p.trId;
+                                  const isBuilt = builtSet.has(p.trId);
+
+                                  const title = p.title?.trim()
+                                    ? p.title.trim()
+                                    : idx === 0
+                                      ? "Основной путь"
+                                      : `Альтернатива ${idx}`;
+
+                                  return (
+                                    <button
+                                      key={p.trId}
+                                      type="button"
+                                      className={`${styles.smallBtn} ${
+                                        isSelected ? styles.smallBtnActive : ""
+                                      }`}
+                                      onClick={() => onSelectProducer?.(p.trId)}
+                                      disabled={isBuilt}
+                                      title={
+                                        isBuilt
+                                          ? "Этот вариант уже построен"
+                                          : ""
+                                      }
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        gap: 10,
+                                      }}
+                                    >
+                                      <span>
+                                        {isBuilt
+                                          ? "🔒 "
+                                          : isSelected
+                                            ? "✅ "
+                                            : ""}
+                                        {title}
+                                      </span>
+                                      <span
+                                        style={{ opacity: 0.65, fontSize: 12 }}
+                                      >
+                                        {p.trId}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div
+                                className={styles.sourcesTitle}
+                                style={{
+                                  fontSize: 12,
+                                  opacity: 0.8,
+                                  marginTop: 10,
+                                }}
+                              >
+                                Доступно вариантов:{" "}
+                                <b>
+                                  {
+                                    producers.filter(
+                                      (p) => !builtSet.has(p.trId),
+                                    ).length
+                                  }
+                                </b>{" "}
+                                / Всего: <b>{producers.length}</b>
+                              </div>
+
+                              {!hasAnyAvailableProducer && (
+                                <div
+                                  className={styles.sourcesTitle}
+                                  style={{
+                                    fontSize: 12,
+                                    opacity: 0.8,
+                                    marginTop: 6,
+                                  }}
+                                >
+                                  ✅ Для следующего продукта все варианты уже
+                                  построены — queue сам пропустит его и пойдёт
+                                  дальше.
+                                </div>
+                              )}
+
+                              {selectedIsBuilt && (
+                                <div
+                                  className={styles.sourcesTitle}
+                                  style={{
+                                    fontSize: 12,
+                                    opacity: 0.8,
+                                    marginTop: 6,
+                                  }}
+                                >
+                                  Выбран уже построенный вариант — выбери
+                                  другой.
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* ✅ единственная кнопка построения */}
+                          <button
+                            type="button"
+                            onClick={onExpandNext}
+                            disabled={!canQueue}
+                            className={styles.findSourcesButton}
+                            title={
+                              !queueHasWork
+                                ? "Очередь пустая"
+                                : !isActiveChainRoot
+                                  ? "Доступно только в корне цепочки"
                                   : ""
-                        }
-                      >
-                        {!chainReady
-                          ? "➕ Построить 1 уровень"
-                          : !hasProducerChoices
-                            ? "⛔ Нечего строить"
-                            : !hasAnyAvailable
-                              ? "✅ Всё построено"
-                              : selectedAlreadyBuilt
-                                ? "✅ Уже построено"
-                                : "➕ Построить 1 уровень"}
-                      </button>
+                            }
+                          >
+                            {!queueHasWork
+                              ? "✅ Цепочка завершена"
+                              : "▶️ Раскрыть следующий (queue)"}
+                          </button>
 
-                      {/* queue */}
-                      {onExpandNext && (
-                        <button
-                          type="button"
-                          onClick={onExpandNext}
-                          disabled={chainLoading || !hasAnyAvailable}
-                          className={styles.findSourcesButton}
-                          title={
-                            !hasAnyAvailable ? "Все варианты уже построены" : ""
-                          }
-                        >
-                          ▶️ Раскрыть следующий (queue)
-                        </button>
-                      )}
-
-                      {chainError && (
-                        <div className={styles.errorText}>
-                          Ошибка: {chainError}
-                        </div>
+                          {!queueHasWork && (
+                            <div
+                              className={styles.sourcesTitle}
+                              style={{ fontSize: 12, opacity: 0.75 }}
+                            >
+                              Цепочка закончилась. Можно выбрать другой продукт,
+                              найти источники → обобщить → получить новую
+                              цепочку.
+                            </div>
+                          )}
+                        </>
                       )}
                     </>
                   )}
 
-                  {!chainReady && !(hasSources && hasAggregated) && (
-                    <div
-                      className={styles.sourcesTitle}
-                      style={{ fontSize: 12, opacity: 0.7 }}
-                    >
-                      Чтобы построить chain: Найти источники → Обобщить
-                      источники → Получить chain.
-                    </div>
+                  {chainError && (
+                    <div className={styles.errorText}>Ошибка: {chainError}</div>
                   )}
                 </>
               )}
