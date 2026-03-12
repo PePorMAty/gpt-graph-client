@@ -80,10 +80,10 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     position: { x: targetX, y: trY },
     data: {
       label: t["Название технологии"] || t["Id узла"],
-      description: "",
+      description: t["Описание технологии"] || "", // ✅ NEW
       chainTrId: t["Id узла"],
       chainLevelOfPid: targetPid,
-      chainRootNodeId: rootNodeId, // ✅ ДОБАВИЛИ
+      chainRootNodeId: rootNodeId, // ✅ already had
     } as any,
   });
 
@@ -114,9 +114,9 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       position: { x, y: inputsY },
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
-        description: "",
+        description: p?.["Описание продукта"] || "", // ✅ NEW
         chainPid: pid,
-        chainRootNodeId: rootNodeId, // ✅ ДОБАВИЛИ
+        chainRootNodeId: rootNodeId, // ✅ already had
       } as any,
     });
 

@@ -277,20 +277,14 @@ const gptSlice = createSlice({
       .addCase(buildChainLevel1.fulfilled, (state, action) => {
         const { nodeId, raw } = action.payload;
 
-        const isFirstEverChain = !state.chainSession.rootNodeId; // ✅ первый запуск chain в жизни
-
         const root = state.data.nodes.find((n) => n.id === nodeId);
-
-        // ✅ ТОЛЬКО при самом первом запуске chain — очищаем граф
-        if (isFirstEverChain) {
-          state.data.nodes = root ? [root] : [];
-          state.data.edges = [];
-        }
 
         // помечаем выбранный узел как root новой цепочки
         if (root) {
           (root.data as any).chainPid = "Продукт1";
           (root.data as any).chainRootNodeId = nodeId; // ✅ критично
+
+          (root.data as any).chainBuiltRoot = true;
         }
 
         // стартуем новую chain-сессию (поверх старых узлов, если это не первый запуск)

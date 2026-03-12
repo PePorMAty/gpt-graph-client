@@ -102,12 +102,22 @@ export const Flow = () => {
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
+  // Flow.tsx
   const flowNodes = useMemo(
     () =>
-      data.nodes.map((n) => ({
-        ...n,
-        className: n.id === highlightedId ? "node--highlight" : "",
-      })),
+      data.nodes.map((n) => {
+        const isChainRoot =
+          n.type === "product" && !!(n.data as any)?.chainBuiltRoot;
+
+        const cls = [
+          n.id === highlightedId ? "node--highlight" : "",
+          isChainRoot ? "node--chainroot" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        return { ...n, className: cls };
+      }),
     [data.nodes, highlightedId],
   );
 
