@@ -44,6 +44,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   builtProducerIds,
 
   onExpandNext, // ✅ единственная кнопка построения
+
+  onBuildProductCard,
+  productCardStatus,
+  productCardError,
+  productCard,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -150,7 +155,74 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               rows={4}
             />
           </div>
+          {/* ✅ PRODUCT CARD */}
+          <div className={styles.formGroup}>
+            <button
+              type="button"
+              onClick={onBuildProductCard}
+              disabled={!onBuildProductCard || productCardStatus === "loading"}
+              className={styles.findSourcesButton}
+            >
+              {productCardStatus === "loading"
+                ? "🧾 Заполняю карточку..."
+                : "🧾 Заполнить карточку"}
+            </button>
 
+            {productCardStatus === "failed" && productCardError && (
+              <div className={styles.errorText}>Ошибка: {productCardError}</div>
+            )}
+
+            {productCardStatus === "succeeded" && productCard && (
+              <div className={styles.sourcesBox}>
+                <div className={styles.sourcesTitle}>Карточка</div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>{productCard.technology_name}</b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.technology_short_description}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>Оборудование</b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.equipment}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>Условия</b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.conditions}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>Ограничения или ключевое свойство технологии</b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.constraints_or_key_property}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>
+                    Дополнительные вещества, материалы, расходники или
+                    катализаторы
+                  </b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.additional_materials_or_catalysts}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>Энергетика</b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.energy}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <b>Предприятие и завод</b>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {productCard.enterprise_and_plant}
+                </div>
+              </div>
+            )}
+          </div>
           {isProduct && (
             <div className={styles.formGroup}>
               {/* 1) нет источников -> выбрать направление + поиск */}

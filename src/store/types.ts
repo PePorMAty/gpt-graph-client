@@ -110,3 +110,21 @@ export type SourcesSearchResponse = {
   blocks_preview: string[];
   sources: TechnologySource[];
 };
+
+export type ProductCard = {
+  technology_name: string;
+  technology_short_description: string;
+  equipment: string;
+  conditions: string;
+  constraints_or_key_property: string;
+  additional_materials_or_catalysts: string;
+  energy: string;
+  enterprise_and_plant: string;
+};
+
+export type ProductCardResponse = {
+  success: boolean;
+  product: string;
+  productCard: ProductCard;
+  took_ms?: number;
+};

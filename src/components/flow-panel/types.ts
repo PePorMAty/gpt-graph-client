@@ -1,5 +1,9 @@
 // src/components/flow-panel/types.ts
-import type { BuildDirection, TechnologySource } from "../../store/types";
+import type {
+  BuildDirection,
+  ProductCard,
+  TechnologySource,
+} from "../../store/types";
 
 export interface FlowPanelProps {
   onClose: () => void;
@@ -55,4 +59,9 @@ export interface FlowPanelProps {
   onSelectProducer?: (trId: string) => void;
   onExpandLevel?: () => void;
   onExpandNext?: () => void;
+
+  onBuildProductCard?: () => void;
+  productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
+  productCardError?: string | null;
+  productCard?: ProductCard;
 }

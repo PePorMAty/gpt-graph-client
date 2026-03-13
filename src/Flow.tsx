@@ -46,6 +46,7 @@ import {
   expandNextInQueue,
 } from "./store/api/graph-api";
 import { listProducersForPid } from "./utils/listProducersForPid";
+import { fetchProductCard } from "./store/api/product-card-api";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -501,6 +502,11 @@ export const Flow = () => {
       ? "🧬 Продолжить граф: цепочка от этого продукта"
       : "🧬 Получить цепочку (chain)";
 
+  const handleBuildProductCard = useCallback(async () => {
+    if (!selectedNodeId) return;
+    await dispatch(fetchProductCard({ nodeId: selectedNodeId })).unwrap();
+  }, [dispatch, selectedNodeId]);
+
   return (
     <div className={styles.container}>
       <SearchToggle />
@@ -599,6 +605,10 @@ export const Flow = () => {
         onSelectProducer={handleSelectProducer}
         builtProducerIds={builtProducerIds} // ✅ для queuePid
         onExpandNext={isActiveChainRoot ? handleExpandNext : undefined}
+        onBuildProductCard={handleBuildProductCard}
+        productCardStatus={(selectedNode?.data as any)?.productCardStatus}
+        productCardError={(selectedNode?.data as any)?.productCardError}
+        productCard={(selectedNode?.data as any)?.productCard}
       />
     </div>
   );

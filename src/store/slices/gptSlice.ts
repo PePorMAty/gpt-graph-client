@@ -24,6 +24,7 @@ import type { InitialGraphStateI } from "../types";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
+import { fetchProductCard } from "../api/product-card-api";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -383,6 +384,34 @@ const gptSlice = createSlice({
 
         state.chainBuild.status = "failed";
         state.chainBuild.error = msg;
+      });
+    builder
+      .addCase(fetchProductCard.pending, (state, action) => {
+        const nodeId = action.meta.arg.nodeId;
+        const node = state.data.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          (node.data as any).productCardStatus = "loading";
+          (node.data as any).productCardError = null;
+        }
+      })
+      .addCase(fetchProductCard.fulfilled, (state, action) => {
+        const { nodeId, data } = action.payload;
+        const node = state.data.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          // ✅ сохраняем карточку в node.data.productCard
+          (node.data as any).productCard = data.productCard;
+          (node.data as any).productCardStatus = "succeeded";
+          (node.data as any).productCardError = null;
+        }
+      })
+      .addCase(fetchProductCard.rejected, (state, action) => {
+        const nodeId = action.meta.arg.nodeId;
+        const node = state.data.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          (node.data as any).productCardStatus = "failed";
+          (node.data as any).productCardError =
+            (action.payload as string) || "product-card failed";
+        }
       });
   },
 });
