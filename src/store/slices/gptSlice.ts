@@ -413,8 +413,9 @@ const gptSlice = createSlice({
           (node.data as any).productCardError =
             (action.payload as string) || "product-card failed";
         }
-      })
-      .addCase(expandNextInQueue.fulfilled, (state, action) => {
+      });
+    //!ALT
+    /* .addCase(expandNextInQueue.fulfilled, (state, action) => {
         const {
           rootNodeId,
           targetPid,
@@ -497,7 +498,7 @@ const gptSlice = createSlice({
         }
         state.chainBuild.status = "failed";
         state.chainBuild.error = msg;
-      });
+      }); */
   },
 });
 
