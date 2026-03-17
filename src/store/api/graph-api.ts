@@ -3,6 +3,7 @@ import axios from "axios";
 
 import { buildLevelFromRawChain } from "../../utils/rawChainLevel";
 import { levelToFlow } from "../../utils/levelToFlow";
+import { listProducersForPid } from "../../utils/listProducersForPid";
 
 import type { RootState } from "../store";
 
@@ -12,7 +13,7 @@ import type {
   CreateGraphResult,
   GraphApiResponse,
 } from "../types";
-import { chainToFlow, type TechChain } from "../../utils/chainToFlow";
+import { type TechChain } from "../../utils/chainToFlow";
 import type { Edge } from "@xyflow/react";
 import { popQueueHead } from "../slices/gptSlice";
 
@@ -244,39 +245,152 @@ export const expandChainOneLevel = createAsyncThunk<
 });
 
 export const expandNextInQueue = createAsyncThunk<
-  void,
+  {
+    rootNodeId: string;
+    targetPid: string;
+    targetNodeId: string;
+    nodes: CustomNode[];
+    edges: Edge[];
+    pidToNodeIdNext: Record<string, string>;
+    nextPids: string[];
+    usedTrIds: string[];
+    consumeCount: number; // сколько элементов очереди “съесть” (обычно 1)
+  },
   void,
   { state: RootState; rejectValue: string }
 >("graph/expandNextInQueue", async (_, thunkApi) => {
-  for (let i = 0; i < 50; i++) {
-    const st = thunkApi.getState().graph;
-    const rootNodeId = st.chainSession.rootNodeId;
-    if (!rootNodeId) return thunkApi.rejectWithValue("no chain session");
+  const st = thunkApi.getState().graph;
 
-    const next = st.chainSession.queue?.[0];
-    if (!next) return; // done
-
-    const pid = next.pid;
-    const targetNodeId =
-      st.chainSession.pidToNodeId?.[pid] ||
-      (pid === "Продукт1" ? rootNodeId : null);
-
-    if (!targetNodeId) {
-      thunkApi.dispatch(popQueueHead());
-      continue;
-    }
-
-    try {
-      await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
-      return; // успех
-    } catch (e: any) {
-      const msg = String(e || "");
-      // пропускаем “невозможные” элементы очереди
-      if (msg.includes("no producer") || msg.includes("already expanded")) {
-        thunkApi.dispatch(popQueueHead());
-        continue;
-      }
-      throw e;
-    }
+  const rootNodeId = st.chainSession.rootNodeId;
+  const rawChain = st.chainSession.rawChain;
+  if (!rootNodeId || !rawChain) {
+    return thunkApi.rejectWithValue("no chain session");
   }
+
+  const queue = st.chainSession.queue || [];
+  if (!queue.length) {
+    return thunkApi.rejectWithValue("queue empty");
+  }
+
+  // Сейчас расширяем ровно head очереди
+  const targetPid = queue[0].pid;
+
+  const targetNodeId =
+    st.chainSession.pidToNodeId?.[targetPid] ||
+    (targetPid === "Продукт1" ? rootNodeId : null);
+
+  if (!targetNodeId) {
+    return thunkApi.rejectWithValue("missing node for pid");
+  }
+
+  const anchor = st.data.nodes.find((n) => n.id === targetNodeId);
+  const ax = anchor?.position?.x ?? 0;
+  const ay = anchor?.position?.y ?? 0;
+
+  const direction = st.chainSession.direction ?? "down";
+
+  // 1) MAIN producer = как раньше выбирался по умолчанию
+  const mainLvl = buildLevelFromRawChain(rawChain, targetPid, undefined);
+  if (!mainLvl.ok) {
+    // нет producer’а -> считаем “нечего строить”
+    return thunkApi.rejectWithValue("no producer for pid");
+  }
+  const mainTrId = mainLvl.transformationId;
+
+  // 2) Все producer’ы
+  const all = listProducersForPid(rawChain, targetPid).map((p) => p.trId);
+
+  // упорядочим: main первым, дальше уникальные
+  const ordered: string[] = [mainTrId, ...all.filter((x) => x !== mainTrId)];
+  const uniqueOrdered = Array.from(new Set(ordered)).filter(Boolean);
+
+  // 3) не строим то, что уже построено
+  const built = st.chainSession.expandedProducerByPid?.[targetPid] || [];
+  const toBuild = uniqueOrdered.filter((trId) => !built.includes(trId));
+
+  if (!toBuild.length) {
+    return thunkApi.rejectWithValue("already expanded");
+  }
+
+  // 4) Строим все variants за один раз
+  let pidToNodeIdNext = { ...st.chainSession.pidToNodeId };
+  const nodesAcc: CustomNode[] = [];
+  const edgesAcc: Edge[] = [];
+  const nextPidsSet = new Set<string>();
+  const usedTrIds: string[] = [];
+
+  // Чтобы transformation’ы не налезали: раскидаем их по X вокруг target
+  const K = toBuild.length;
+  const offsetStep = 340; // можно подстроить под твою ширину узлов
+  const startOffset = -((K - 1) * offsetStep) / 2;
+
+  for (let i = 0; i < toBuild.length; i++) {
+    const trId = toBuild[i];
+
+    const lvl = buildLevelFromRawChain(rawChain, targetPid, trId);
+    if (!lvl.ok) continue;
+
+    usedTrIds.push(lvl.transformationId);
+
+    // union входов в очередь
+    for (const p of lvl.inputPids || []) {
+      if (p && p !== targetPid) nextPidsSet.add(p);
+    }
+
+    const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${lvl.transformationId}`;
+
+    const cx = ax + (startOffset + i * offsetStep);
+
+    const {
+      nodes,
+      edges,
+      pidToNodeIdNext: nextMap,
+    } = levelToFlow(lvl.chain, {
+      namespace: lvlPrefix,
+      rootNodeId,
+      targetNodeId,
+      targetPid,
+      targetX: cx,
+      targetY: ay,
+      direction,
+      pidToNodeId: pidToNodeIdNext,
+    });
+
+    pidToNodeIdNext = nextMap;
+
+    const isAlt = lvl.transformationId !== mainTrId;
+
+    // ✅ помечаем альтернативы флагом (для окраски)
+    const taggedNodes = nodes.map((n) => {
+      if (n.type === "transformation") {
+        return {
+          ...n,
+          data: { ...(n.data as any), chainVariant: isAlt ? "alt" : "main" },
+        };
+      }
+      return n;
+    });
+
+    const taggedEdges = edges.map((e) => ({
+      ...e,
+      data: { ...(e.data as any), chainVariant: isAlt ? "alt" : "main" },
+    }));
+
+    nodesAcc.push(...taggedNodes);
+    edgesAcc.push(...taggedEdges);
+  }
+
+  const nextPids = Array.from(nextPidsSet);
+
+  return {
+    rootNodeId,
+    targetPid,
+    targetNodeId,
+    nodes: nodesAcc,
+    edges: edgesAcc,
+    pidToNodeIdNext,
+    nextPids,
+    usedTrIds,
+    consumeCount: 1, // мы обработали head очереди
+  };
 });

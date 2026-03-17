@@ -7,12 +7,14 @@ type ChainProductNode = {
   "Тип узла": "Продукт";
   Продукты: string[];
   "Название узла": string;
+  "Описание продукта"?: string; // ✅ NEW
 };
 
 type ChainTransformNode = {
   "Id узла": string;
   "Тип узла": "Преобразование";
   "Название технологии": string;
+  "Описание технологии"?: string; // ✅ NEW
   Входы: Array<Record<string, string>>;
   Выходы: Array<Record<string, string>>;
 };
@@ -61,10 +63,12 @@ export function chainToFlow(
   const transforms: ChainTransformNode[] = [];
 
   for (const n of items) {
-    if (n?.["Тип узла"] === "Продукт")
-      products.set(n["Id узла"], n as ChainProductNode);
-    if (n?.["Тип узла"] === "Преобразование")
+    if (n?.["Тип узла"] === "Продукт") {
+      products.set((n as ChainProductNode)["Id узла"], n as ChainProductNode);
+    }
+    if (n?.["Тип узла"] === "Преобразование") {
       transforms.push(n as ChainTransformNode);
+    }
   }
 
   // обычно в level1.chain ровно одно преобразование, но на всякий случай возьмем первое
@@ -86,9 +90,10 @@ export function chainToFlow(
     position: { x: baseX - spacingX, y: baseY },
     data: {
       label: t["Название технологии"] || "Преобразование",
-      description: "",
-      // можно сохранить raw внутрь data, если хочешь
-      // raw_chain: t,
+      description: t["Описание технологии"] || "", // ✅ NEW
+      chainTrId: t["Id узла"], // ✅ useful
+      chainLevelOfPid: targetPid, // ✅ useful
+      chainRootNodeId: targetNodeId, // ✅ root = nodeId that started chain
     } as any,
   });
 
@@ -108,8 +113,9 @@ export function chainToFlow(
       position: { x: baseX - spacingX * 2, y: startY + idx * spacingY },
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
-        description: "",
-        // raw_chain: p,
+        description: p?.["Описание продукта"] || "", // ✅ NEW
+        chainPid: pid, // ✅ useful
+        chainRootNodeId: targetNodeId, // ✅ belongs to this chain root
       } as any,
     });
   });

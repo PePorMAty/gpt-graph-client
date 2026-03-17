@@ -110,3 +110,97 @@ export type SourcesSearchResponse = {
   blocks_preview: string[];
   sources: TechnologySource[];
 };
+/* 
+export type ProductCard = {
+  technology_name: string;
+  technology_short_description: string;
+  equipment: string;
+  conditions: string;
+  constraints_or_key_property: string;
+  additional_materials_or_catalysts: string;
+  energy: string;
+  enterprise_and_plant: string;
+};
+
+export type ProductCardResponse = {
+  success: boolean;
+  product: string;
+  productCard: ProductCard;
+  took_ms?: number;
+};
+ */
+// store/types.ts (или где у тебя ProductCardResponse)
+
+export type FillCardKind = "product" | "transformation";
+
+// transformation card (как у тебя раньше)
+export type TransformationCard = {
+  technology_name: string;
+  technology_short_description: string;
+  equipment: string;
+  conditions: string;
+  constraints_or_key_property: string;
+  additional_materials_or_catalysts: string;
+  energy: string;
+  enterprise_and_plant: string;
+};
+
+// product card (пример — подстрой под свою схему на сервере)
+/* export type ProductCard = {
+  product_name: string;
+  product_type: string;
+  purity: string;
+  main_impurities: string;
+  allowed_impurities: string;
+  conversion_yield: string;
+  typical_scale: string;
+  storage: string;
+  carbon_footprint: string;
+  producers: string;
+  applications: string;
+  price: string;
+};
+
+export type ProductCardResponse = {
+  success: boolean;
+  product?: string | null;
+  card_kind: FillCardKind;
+  productCard: TransformationCard | ProductCard;
+  took_ms?: number;
+}; */
+// store/types.ts
+
+export type ProductCardProduct = {
+  product_name: string;
+  product_type: string;
+  purity: string;
+  main_impurities: string;
+  allowed_impurities: string;
+  conversion_yield: string;
+  typical_scale: string;
+  storage: string;
+  carbon_footprint: string;
+  producers: string;
+  applications: string;
+  price: string;
+};
+
+export type ProductCardTechnology = {
+  technology_name: string;
+  technology_short_description: string;
+  equipment: string;
+  conditions: string;
+  constraints_or_key_property: string;
+  additional_materials_or_catalysts: string;
+  energy: string;
+  enterprise_and_plant: string;
+};
+
+export type ProductCard = ProductCardProduct | ProductCardTechnology;
+
+export type ProductCardResponse = {
+  success: boolean;
+  product: string | null;
+  productCard: ProductCard;
+  took_ms?: number;
+};

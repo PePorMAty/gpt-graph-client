@@ -13,7 +13,7 @@ function pickPid(
 }
 
 type Opts = {
-  namespace: string; // chain::root::lvl::pid::trId
+  namespace: string; // оставляем, но больше НЕ используем для id узлов
   rootNodeId: string;
   targetNodeId: string;
   targetPid: string;
@@ -29,7 +29,6 @@ type Opts = {
 
 export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const {
-    namespace,
     rootNodeId,
     targetNodeId,
     targetPid,
@@ -63,7 +62,9 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const trY = targetY + sign * stepY1;
   const inputsY = trY + sign * stepY2;
 
-  const trFlowId = `${namespace}::tr::${t["Id узла"]}`;
+  // ✅ СТАБИЛЬНЫЙ id ДЛЯ ПРЕОБРАЗОВАНИЯ (не зависит от targetPid)
+  const chainTrId = String(t["Id узла"] || "").trim();
+  const trFlowId = `chain::${rootNodeId}::tr::${chainTrId}`;
 
   const inPids = (t["Входы"] || []).map(pickPid).filter(Boolean) as string[];
   const uniqueInputs = Array.from(new Set(inPids)).filter(
@@ -73,23 +74,25 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const nodes: CustomNode[] = [];
   const edges: Edge[] = [];
 
-  // transformation node
+  // transformation node (добавится только один раз благодаря stable id + dedupe по id в редьюсере)
   nodes.push({
     id: trFlowId,
     type: "transformation",
     position: { x: targetX, y: trY },
     data: {
-      label: t["Название технологии"] || t["Id узла"],
-      description: "",
-      chainTrId: t["Id узла"],
-      chainLevelOfPid: targetPid,
-      chainRootNodeId: rootNodeId, // ✅ ДОБАВИЛИ
+      label: t["Название технологии"] || chainTrId,
+      description: t["Описание технологии"] || "", // ✅ ВОТ ЭТО ВЕРНУТЬ
+      chainTrId,
+      chainRootNodeId: rootNodeId,
+      // chainLevelOfPid лучше убрать (оно как раз "разное" для одного и того же преобразования)
+      // chainLevelOfPid: targetPid,
     } as any,
   });
 
-  // edge: target product -> transformation
+  // ✅ СТАБИЛЬНЫЙ id РЕБРА: source->target
+  // (иначе у тебя будут дубли рёбер между теми же нодами, но с разными lvlPrefix)
   edges.push({
-    id: `${namespace}::e_from_target::${targetNodeId}::${trFlowId}`,
+    id: `chain::${rootNodeId}::e::${targetNodeId}::${trFlowId}`,
     source: targetNodeId,
     target: trFlowId,
     type: "straight",
@@ -114,14 +117,14 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       position: { x, y: inputsY },
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
-        description: "",
+        description: p?.["Описание продукта"] || "", // ✅ ВОТ ЭТО ВЕРНУТЬ
         chainPid: pid,
-        chainRootNodeId: rootNodeId, // ✅ ДОБАВИЛИ
+        chainRootNodeId: rootNodeId,
       } as any,
     });
 
     edges.push({
-      id: `${namespace}::e_to_input_${idx}::${trFlowId}::${pFlowId}`,
+      id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
       source: trFlowId,
       target: pFlowId,
       type: "straight",
