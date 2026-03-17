@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, type FC } from "react";
 import type { FlowPanelProps } from "./types";
+import type {
+  ProductCardProduct,
+  ProductCardTechnology,
+} from "../../store/types"; // путь подстрой
+
 import styles from "./FlowPanel.module.css";
 
 export const FlowPanel: FC<FlowPanelProps> = ({
@@ -76,6 +81,14 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   const isProduct = nodeType === "product";
   const hasSources = Array.isArray(sources) && sources.length > 0;
+
+  function isProductCard(c: unknown): c is ProductCardProduct {
+    return !!c && typeof c === "object" && "product_name" in c;
+  }
+
+  function isTechCard(c: unknown): c is ProductCardTechnology {
+    return !!c && typeof c === "object" && "technology_name" in c;
+  }
 
   const producers = Array.isArray(producerOptions) ? producerOptions : [];
   const builtSet = useMemo(
@@ -175,51 +188,146 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             {productCardStatus === "succeeded" && productCard && (
               <div className={styles.sourcesBox}>
                 <div className={styles.sourcesTitle}>Карточка</div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>{productCard.technology_name}</b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.technology_short_description}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>Оборудование</b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.equipment}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>Условия</b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.conditions}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>Ограничения или ключевое свойство технологии</b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.constraints_or_key_property}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>
-                    Дополнительные вещества, материалы, расходники или
-                    катализаторы
-                  </b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.additional_materials_or_catalysts}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>Энергетика</b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.energy}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>
-                  <b>Предприятие и завод</b>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  {productCard.enterprise_and_plant}
-                </div>
+
+                {isProductCard(productCard) && (
+                  <>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>
+                      <b>{productCard.product_name}</b> —{" "}
+                      {productCard.product_type}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Степень чистоты</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.purity}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Основные примеси</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.main_impurities}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Допустимые примеси</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.allowed_impurities}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Коэффициент конверсии</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.conversion_yield}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Типичный масштаб</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.typical_scale}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Хранение</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.storage}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Углеродный след</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.carbon_footprint}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Производители</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.producers}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Применения</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.applications}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Цена</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.price}
+                    </div>
+                  </>
+                )}
+
+                {isTechCard(productCard) && (
+                  <>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>
+                      <b>{productCard.technology_name}</b>
+                    </div>
+
+                    <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                      {productCard.technology_short_description}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Оборудование</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.equipment}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Условия</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.conditions}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Ограничения / ключевое свойство</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.constraints_or_key_property}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Материалы / катализаторы</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.additional_materials_or_catalysts}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Энергетика</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.energy}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
+                      <b>Предприятие и завод</b>
+                    </div>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                      {productCard.enterprise_and_plant}
+                    </div>
+                  </>
+                )}
+
+                {!isProductCard(productCard) && !isTechCard(productCard) && (
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>
+                    Неизвестный формат карточки (нет ключей product_name /
+                    technology_name)
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -543,3 +651,5 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     </>
   );
 };
+
+// ...

@@ -109,10 +109,12 @@ export const Flow = () => {
       data.nodes.map((n) => {
         const isChainRoot =
           n.type === "product" && !!(n.data as any)?.chainBuiltRoot;
+        const isAlt = (n.data as any)?.chainVariant === "alt";
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isChainRoot ? "node--chainroot" : "",
+          isAlt ? "node--alt" : "",
         ]
           .filter(Boolean)
           .join(" ");

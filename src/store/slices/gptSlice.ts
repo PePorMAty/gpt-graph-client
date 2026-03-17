@@ -16,6 +16,7 @@ import {
   buildChainLevel1,
   continueGraph,
   expandChainOneLevel,
+  expandNextInQueue,
   getGraphData,
 } from "../api/graph-api";
 
@@ -398,8 +399,8 @@ const gptSlice = createSlice({
         const { nodeId, data } = action.payload;
         const node = state.data.nodes.find((n) => n.id === nodeId);
         if (node) {
-          // ✅ сохраняем карточку в node.data.productCard
           (node.data as any).productCard = data.productCard;
+          (node.data as any).productCardKind = data.card_kind; // ✅
           (node.data as any).productCardStatus = "succeeded";
           (node.data as any).productCardError = null;
         }
@@ -412,6 +413,90 @@ const gptSlice = createSlice({
           (node.data as any).productCardError =
             (action.payload as string) || "product-card failed";
         }
+      })
+      .addCase(expandNextInQueue.fulfilled, (state, action) => {
+        const {
+          rootNodeId,
+          targetPid,
+          nodes,
+          edges,
+          pidToNodeIdNext,
+          nextPids,
+          usedTrIds,
+          consumeCount,
+        } = action.payload;
+
+        // 1) перед добавлением подчистим уровни, которые мы сейчас строили (на всякий случай)
+        for (const trId of usedTrIds) {
+          const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${trId}`;
+          state.data.nodes = state.data.nodes.filter(
+            (n) => !n.id.startsWith(lvlPrefix),
+          );
+          state.data.edges = state.data.edges.filter(
+            (e) => !e.id.startsWith(lvlPrefix),
+          );
+        }
+
+        // 2) add (dedupe)
+        const newNodes = normalizeNodes(nodes);
+        const newEdges = normalizeEdges(edges);
+
+        const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
+        state.data.nodes.push(
+          ...newNodes.filter((n) => !existingNodeIds.has(n.id)),
+        );
+
+        const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
+        state.data.edges.push(
+          ...newEdges.filter((e) => !existingEdgeIds.has(e.id)),
+        );
+
+        // 3) pid map
+        state.chainSession.pidToNodeId = pidToNodeIdNext;
+
+        // 4) отметим pid как “раскрытый” (если ты это где-то используешь)
+        if (!state.chainSession.expandedPids.includes(targetPid)) {
+          state.chainSession.expandedPids.push(targetPid);
+        }
+
+        // 5) очередь: “съедаем” head и добавляем nextPids
+        state.chainSession.queue = state.chainSession.queue.slice(consumeCount);
+
+        for (const pid of nextPids) {
+          const alreadyExpanded = state.chainSession.expandedPids.includes(pid);
+          const alreadyQueued = state.chainSession.queue.some(
+            (x) => x.pid === pid,
+          );
+          if (!alreadyExpanded && !alreadyQueued) {
+            state.chainSession.queue.push({ pid });
+          }
+        }
+
+        // 6) фиксируем “построенные producer’ы” для этого pid
+        const arr = state.chainSession.expandedProducerByPid[targetPid] || [];
+        for (const trId of usedTrIds) {
+          if (!arr.includes(trId)) arr.push(trId);
+        }
+        state.chainSession.expandedProducerByPid[targetPid] = arr;
+
+        state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
+
+        state.chainBuild.status = "succeeded";
+        state.chainBuild.error = null;
+        state.chainBuild.nodeId = null;
+      })
+      .addCase(expandNextInQueue.rejected, (state, action) => {
+        const msg = (action.payload as string) || "expandNextInQueue failed";
+        // эти случаи НЕ считаем ошибкой
+        if (
+          msg === "queue empty" ||
+          msg === "already expanded" ||
+          msg === "no producer for pid"
+        ) {
+          return;
+        }
+        state.chainBuild.status = "failed";
+        state.chainBuild.error = msg;
       });
   },
 });

@@ -220,6 +220,16 @@
   background: rgba(34, 197, 94, 0.12);
 }
 
+:global(.react-flow__node.node--alt) {
+  border: 2px solid #a855f7 !important;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+}
+
+:global(.react-flow__edge.edge--alt path) {
+  stroke: #a855f7 !important;
+  stroke-width: 2px;
+}
+
 /* Анимации */
 @keyframes spin {
   to {

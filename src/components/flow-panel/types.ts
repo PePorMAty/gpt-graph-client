@@ -63,5 +63,5 @@ export interface FlowPanelProps {
   onBuildProductCard?: () => void;
   productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
   productCardError?: string | null;
-  productCard?: ProductCard;
+  productCard?: ProductCard | null;
 }
