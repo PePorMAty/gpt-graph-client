@@ -198,8 +198,9 @@ export const expandChainOneLevel = createAsyncThunk<
     return thunkApi.rejectWithValue("missing chainPid on target node");
   }
 
-  const chosenTr = state.chainSession.producerByPid[targetPid]; // может быть undefined
-  const lvl = buildLevelFromRawChain(rawChain, targetPid, chosenTr);
+  /* const chosenTr = state.chainSession.producerByPid[targetPid]; // может быть undefined */
+  const lvl = buildLevelFromRawChain(rawChain, targetPid, undefined);
+  /* const lvl = buildLevelFromRawChain(rawChain, targetPid, chosenTr); */ //!ALT
 
   if (!lvl.ok) {
     return thunkApi.rejectWithValue("no producer for this pid (raw material?)");
@@ -243,8 +244,8 @@ export const expandChainOneLevel = createAsyncThunk<
     usedTrId,
   };
 });
-
-export const expandNextInQueue = createAsyncThunk<
+//!ALT
+/* export const expandNextInQueue = createAsyncThunk<
   {
     rootNodeId: string;
     targetPid: string;
@@ -393,4 +394,26 @@ export const expandNextInQueue = createAsyncThunk<
     usedTrIds,
     consumeCount: 1, // мы обработали head очереди
   };
+}); */
+export const expandNextInQueue = createAsyncThunk<
+  void,
+  void,
+  { state: RootState; rejectValue: string }
+>("graph/expandNextInQueue", async (_, thunkApi) => {
+  const st = thunkApi.getState().graph;
+  const rootNodeId = st.chainSession.rootNodeId;
+  if (!rootNodeId) return thunkApi.rejectWithValue("no chain session");
+
+  const next = st.chainSession.queue?.[0];
+  if (!next) return thunkApi.rejectWithValue("queue empty");
+
+  const pid = next.pid;
+  const targetNodeId =
+    st.chainSession.pidToNodeId?.[pid] ||
+    (pid === "Продукт1" ? rootNodeId : null);
+
+  if (!targetNodeId) return thunkApi.rejectWithValue("missing node for pid");
+
+  // ✅ строим только основной уровень (expandChainOneLevel теперь всегда main)
+  await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
 });
