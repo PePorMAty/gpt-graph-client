@@ -16,10 +16,18 @@ type ChainTransformNode = {
   Выходы: Array<Record<string, string>>;
 };
 
-function pickPid(
+/* function pickPid(
   obj: Record<string, string> | undefined | null,
 ): string | null {
   if (!obj) return null;
+  const v = Object.values(obj)[0];
+  return typeof v === "string" ? v : null;
+} */
+
+function pickPid(
+  obj: Record<string, string> | null | undefined,
+): string | null {
+  if (!obj || typeof obj !== "object") return null;
   const v = Object.values(obj)[0];
   return typeof v === "string" ? v : null;
 }
@@ -46,57 +54,50 @@ export function getProducersForPid(raw: TechChain, targetPid: string) {
   return producers;
 }
 
-export function buildLevelFromRawChain(
-  raw: TechChain,
-  targetPid: string,
-  chosenTransformationId?: string,
-) {
-  const items = Array.isArray(raw?.Цепочка) ? raw.Цепочка : [];
+// buildLevelFromRawChain.ts (пример логики)
 
-  const products = new Map<string, ChainProductNode>();
-  const transforms: ChainTransformNode[] = [];
+export function buildLevelFromRawChain(
+  rawChain: TechChain,
+  targetPid: string,
+  trId?: string,
+) {
+  const items = Array.isArray(rawChain?.Цепочка) ? rawChain.Цепочка : [];
+
+  const productsById = new Map<string, any>();
+  const transforms: any[] = [];
 
   for (const n of items) {
-    if (!n) continue;
-    if ((n as any)["Тип узла"] === "Продукт") {
-      const p = n as ChainProductNode;
-      products.set(p["Id узла"], p);
-    } else if ((n as any)["Тип узла"] === "Преобразование") {
-      transforms.push(n as ChainTransformNode);
-    }
+    if (n?.["Тип узла"] === "Продукт") productsById.set(n["Id узла"], n);
+    if (n?.["Тип узла"] === "Преобразование") transforms.push(n);
   }
 
-  const producers = getProducersForPid(raw, targetPid);
-  if (!producers.length) {
-    return {
-      ok: false as const,
-      reason: "no_producer",
-      producers: [],
-    };
-  }
+  // producer
+  const t = trId
+    ? transforms.find((x) => x["Id узла"] === trId)
+    : transforms.find((x) =>
+        (x["Выходы"] || []).map(pickPid).filter(Boolean).includes(targetPid),
+      );
 
-  const t =
-    (chosenTransformationId
-      ? producers.find((x) => x["Id узла"] === chosenTransformationId)
-      : null) || producers[0];
+  if (!t) return { ok: false as const };
 
-  const inPids = (t.Входы || []).map(pickPid).filter(Boolean) as string[];
+  const inPids = (t["Входы"] || []).map(pickPid).filter(Boolean) as string[];
+  const outPids = (t["Выходы"] || []).map(pickPid).filter(Boolean) as string[];
 
-  const sub: Array<ChainProductNode | ChainTransformNode> = [];
-  const targetP = products.get(targetPid);
-  if (targetP) sub.push(targetP);
-  sub.push(t);
-  for (const pid of inPids) {
-    const p = products.get(pid);
-    if (p) sub.push(p);
-  }
+  const uniq = (arr: string[]) => Array.from(new Set(arr)).filter(Boolean);
 
+  const needPids = uniq([targetPid, ...inPids, ...outPids]);
+
+  const цепочка = [
+    ...needPids.map((pid) => productsById.get(pid)).filter(Boolean),
+    t,
+  ];
+
+  // можно оставить порядок “product(s) + transform”, либо привести к нужному
   return {
     ok: true as const,
-    targetPid,
     transformationId: t["Id узла"],
-    inputPids: inPids,
-    producers, // для UI “альтернатив”
-    chain: { Цепочка: sub } as TechChain,
+    inputPids: uniq(inPids),
+    outputPids: uniq(outPids),
+    chain: { Цепочка: цепочка },
   };
 }

@@ -395,7 +395,7 @@ export const expandChainOneLevel = createAsyncThunk<
     consumeCount: 1, // мы обработали head очереди
   };
 }); */
-export const expandNextInQueue = createAsyncThunk<
+/* export const expandNextInQueue = createAsyncThunk<
   void,
   void,
   { state: RootState; rejectValue: string }
@@ -416,4 +416,52 @@ export const expandNextInQueue = createAsyncThunk<
 
   // ✅ строим только основной уровень (expandChainOneLevel теперь всегда main)
   await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
+});
+ */
+// ✅ теперь queue НЕ будет застревать на сырье
+export const expandNextInQueue = createAsyncThunk<
+  void,
+  void,
+  { state: RootState; rejectValue: string }
+>("graph/expandNextInQueue", async (_, thunkApi) => {
+  const getSt = () => thunkApi.getState().graph;
+
+  let st = getSt();
+  const rootNodeId = st.chainSession.rootNodeId;
+  const rawChain = st.chainSession.rawChain;
+  if (!rootNodeId || !rawChain) {
+    return thunkApi.rejectWithValue("no chain session");
+  }
+
+  // защитный лимит, чтобы не зациклиться
+  for (let guard = 0; guard < 50; guard++) {
+    st = getSt();
+    const queue = st.chainSession.queue || [];
+    if (!queue.length) return; // ✅ всё построено
+
+    const pid = queue[0].pid;
+
+    // ✅ проверяем, можно ли вообще строить этот pid
+    const probe = buildLevelFromRawChain(rawChain, pid, undefined); // main only
+    if (!probe.ok) {
+      // сырьё / нет producer — выкидываем из очереди и идём дальше
+      thunkApi.dispatch(popQueueHead());
+      continue;
+    }
+
+    const targetNodeId =
+      st.chainSession.pidToNodeId?.[pid] ||
+      (pid === "Продукт1" ? rootNodeId : null);
+
+    if (!targetNodeId) {
+      // на всякий — если nodeId не найден, тоже пропускаем
+      thunkApi.dispatch(popQueueHead());
+      continue;
+    }
+
+    await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
+    return;
+  }
+
+  return thunkApi.rejectWithValue("queue guard exceeded");
 });

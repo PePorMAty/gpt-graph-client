@@ -202,5 +202,6 @@ export type ProductCardResponse = {
   success: boolean;
   product: string | null;
   productCard: ProductCard;
+  card_kind?: string;
   took_ms?: number;
 };
