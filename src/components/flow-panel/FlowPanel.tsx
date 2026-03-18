@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { FlowPanelProps } from "./types";
 import type {
   ProductCardProduct,
   ProductCardTechnology,
 } from "../../store/types"; // путь подстрой
+import { getDefaultFillCardSystemPrompt } from "../../utils/defaultFillCardPrompts";
 
 import styles from "./FlowPanel.module.css";
 
@@ -56,6 +57,25 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   productCard,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // --- prompt editor state ---
+  const defaultPrompt = getDefaultFillCardSystemPrompt(nodeType || "product");
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState(defaultPrompt);
+
+  // reset prompt when node or nodeType changes
+  useEffect(() => {
+    const def = getDefaultFillCardSystemPrompt(nodeType || "product");
+    setCustomPrompt(def);
+    setPromptOpen(false);
+  }, [nodeType]);
+
+  const isPromptModified = customPrompt !== defaultPrompt;
+
+  const handleFillCard = () => {
+    onBuildProductCard?.(isPromptModified ? customPrompt : undefined);
+  };
+  // --- end prompt editor state ---
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -172,13 +192,43 @@ export const FlowPanel: FC<FlowPanelProps> = ({
           <div className={styles.formGroup}>
             <button
               type="button"
-              onClick={onBuildProductCard}
+              onClick={() => setPromptOpen((v) => !v)}
+              className={styles.promptToggle}
+            >
+              {promptOpen ? "Скрыть промпт" : "Настроить промпт"}
+            </button>
+
+            {promptOpen && (
+              <div className={styles.promptEditor}>
+                <textarea
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  className={styles.promptTextarea}
+                  rows={12}
+                />
+                {isPromptModified && (
+                  <button
+                    type="button"
+                    className={styles.promptResetBtn}
+                    onClick={() => setCustomPrompt(defaultPrompt)}
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleFillCard}
               disabled={!onBuildProductCard || productCardStatus === "loading"}
               className={styles.findSourcesButton}
             >
               {productCardStatus === "loading"
                 ? "🧾 Заполняю карточку..."
-                : "🧾 Заполнить карточку"}
+                : isPromptModified
+                  ? "🧾 Заполнить (свой промпт)"
+                  : "🧾 Заполнить карточку"}
             </button>
 
             {productCardStatus === "failed" && productCardError && (
@@ -426,9 +476,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   )}
 
                   {/* chain UI показываем только если узел принадлежит активной chain-сессии */}
+
                   {chainReady && chainUiEnabled && (
                     <>
-                      {/* ВАЖНО: продолжение (queue) — только на root активной цепочки */}
                       {!isActiveChainRoot && (
                         <div
                           className={styles.sourcesTitle}
@@ -446,125 +496,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           </div>
 
                           <div className={styles.sourcesTitle}>
-                            Следующий продукт:{" "}
-                            <b>{hasQueuePid ? chainPid : "—"}</b>
+                            Следующий продукт: <b>{chainPid || "—"}</b>
                           </div>
 
-                          {/* выбор альтернатив для NEXT pid */}
-                          {hasQueuePid && producers.length > 0 && (
-                            <div className={styles.formGroup}>
-                              <label className={styles.formLabel}>
-                                Маршрут для следующего шага:
-                              </label>
-
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 8,
-                                }}
-                              >
-                                {producers.map((p, idx) => {
-                                  const isSelected =
-                                    selectedProducerId === p.trId;
-                                  const isBuilt = builtSet.has(p.trId);
-
-                                  const title = p.title?.trim()
-                                    ? p.title.trim()
-                                    : idx === 0
-                                      ? "Основной путь"
-                                      : `Альтернатива ${idx}`;
-
-                                  return (
-                                    <button
-                                      key={p.trId}
-                                      type="button"
-                                      className={`${styles.smallBtn} ${
-                                        isSelected ? styles.smallBtnActive : ""
-                                      }`}
-                                      onClick={() => onSelectProducer?.(p.trId)}
-                                      disabled={isBuilt}
-                                      title={
-                                        isBuilt
-                                          ? "Этот вариант уже построен"
-                                          : ""
-                                      }
-                                      style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center",
-                                        gap: 10,
-                                      }}
-                                    >
-                                      <span>
-                                        {isBuilt
-                                          ? "🔒 "
-                                          : isSelected
-                                            ? "✅ "
-                                            : ""}
-                                        {title}
-                                      </span>
-                                      <span
-                                        style={{ opacity: 0.65, fontSize: 12 }}
-                                      >
-                                        {p.trId}
-                                      </span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              <div
-                                className={styles.sourcesTitle}
-                                style={{
-                                  fontSize: 12,
-                                  opacity: 0.8,
-                                  marginTop: 10,
-                                }}
-                              >
-                                Доступно вариантов:{" "}
-                                <b>
-                                  {
-                                    producers.filter(
-                                      (p) => !builtSet.has(p.trId),
-                                    ).length
-                                  }
-                                </b>{" "}
-                                / Всего: <b>{producers.length}</b>
-                              </div>
-
-                              {!hasAnyAvailableProducer && (
-                                <div
-                                  className={styles.sourcesTitle}
-                                  style={{
-                                    fontSize: 12,
-                                    opacity: 0.8,
-                                    marginTop: 6,
-                                  }}
-                                >
-                                  ✅ Для следующего продукта все варианты уже
-                                  построены — queue сам пропустит его и пойдёт
-                                  дальше.
-                                </div>
-                              )}
-
-                              {selectedIsBuilt && (
-                                <div
-                                  className={styles.sourcesTitle}
-                                  style={{
-                                    fontSize: 12,
-                                    opacity: 0.8,
-                                    marginTop: 6,
-                                  }}
-                                >
-                                  Выбран уже построенный вариант — выбери
-                                  другой.
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* ✅ единственная кнопка построения */}
                           <button
                             type="button"
                             onClick={onExpandNext}
@@ -580,7 +514,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           >
                             {!queueHasWork
                               ? "✅ Цепочка завершена"
-                              : "▶️ Раскрыть следующий (queue)"}
+                              : "▶️ Раскрыть следующий (основная цепочка)"}
                           </button>
 
                           {!queueHasWork && (

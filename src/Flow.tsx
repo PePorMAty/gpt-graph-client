@@ -504,10 +504,15 @@ export const Flow = () => {
       ? "🧬 Продолжить граф: цепочка от этого продукта"
       : "🧬 Получить цепочку (chain)";
 
-  const handleBuildProductCard = useCallback(async () => {
-    if (!selectedNodeId) return;
-    await dispatch(fetchProductCard({ nodeId: selectedNodeId })).unwrap();
-  }, [dispatch, selectedNodeId]);
+  const handleBuildProductCard = useCallback(
+    async (customSystemPrompt?: string) => {
+      if (!selectedNodeId) return;
+      await dispatch(
+        fetchProductCard({ nodeId: selectedNodeId, customSystemPrompt }),
+      ).unwrap();
+    },
+    [dispatch, selectedNodeId],
+  );
 
   return (
     <div className={styles.container}>

@@ -60,7 +60,7 @@ export interface FlowPanelProps {
   onExpandLevel?: () => void;
   onExpandNext?: () => void;
 
-  onBuildProductCard?: () => void;
+  onBuildProductCard?: (customSystemPrompt?: string) => void;
   productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
   productCardError?: string | null;
   productCard?: ProductCard | null;

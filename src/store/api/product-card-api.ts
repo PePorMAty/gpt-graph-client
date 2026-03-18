@@ -5,9 +5,9 @@ import type { ProductCardResponse } from "../types";
 
 export const fetchProductCard = createAsyncThunk<
   { nodeId: string; data: ProductCardResponse },
-  { nodeId: string },
+  { nodeId: string; customSystemPrompt?: string },
   { state: RootState; rejectValue: string }
->("graph/fetchProductCard", async ({ nodeId }, thunkApi) => {
+>("graph/fetchProductCard", async ({ nodeId, customSystemPrompt }, thunkApi) => {
   try {
     const st = thunkApi.getState();
 
@@ -48,9 +48,10 @@ export const fetchProductCard = createAsyncThunk<
       `${import.meta.env.VITE_API_URL}/graphs/gpt/fill-card`,
       {
         nodeType,
-        productName, // можно оставить даже пустым, но лучше слать
+        productName,
         node: nodePayload,
         chain,
+        ...(customSystemPrompt ? { customSystemPrompt } : {}),
       },
       { headers: { "Content-Type": "application/json" } },
     );
