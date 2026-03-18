@@ -1,22 +1,43 @@
 import { type Node, type Edge, type NodeProps } from "@xyflow/react";
-import type { ProductCard } from "./store/types";
+import type {
+  BuildDirection,
+  ProductCard,
+  TechnologySource,
+} from "./store/types";
 
 /* ====== DATA STRUCTURE FROM SERVER ====== */
 
-// Структура node.data — ПО ФАКТУ (не выдуманная)
+// Структура node.data
 export interface CustomNodeData {
   label: string;
   description?: string;
 
-  // ✅ карточка (не трогаем при агрегации источников)
+  // --- product card ---
   productCard?: ProductCard;
-
-  // ✅ статусы для UI
   productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
   productCardError?: string | null;
+  productCardKind?: string;
 
+  // --- chain ---
+  chainPid?: string;
+  chainRootNodeId?: string;
+  chainBuiltRoot?: boolean;
+  chainVariant?: "main" | "alt";
+  chainTrId?: string;
+  chainLevelOfPid?: string;
+
+  // --- sources ---
+  sources?: TechnologySource[];
+  sourcesAggregated?: boolean;
+  sources_meta?: { product: string; maxItems: number; fetchedAt: string };
+
+  // --- direction ---
+  buildDirection?: BuildDirection;
+
+  // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }
+
 // Основной тип узла react-flow
 // type определяется как (product | transformation)
 export type CustomNode = Node<CustomNodeData>;

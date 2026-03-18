@@ -2,7 +2,7 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 
-type ChainProductNode = {
+export type ChainProductNode = {
   "Id узла": string;
   "Тип узла": "Продукт";
   Продукты: string[];
@@ -10,7 +10,7 @@ type ChainProductNode = {
   "Описание продукта"?: string; // ✅ NEW
 };
 
-type ChainTransformNode = {
+export type ChainTransformNode = {
   "Id узла": string;
   "Тип узла": "Преобразование";
   "Название технологии": string;
@@ -94,7 +94,7 @@ export function chainToFlow(
       chainTrId: t["Id узла"], // ✅ useful
       chainLevelOfPid: targetPid, // ✅ useful
       chainRootNodeId: targetNodeId, // ✅ root = nodeId that started chain
-    } as any,
+    },
   });
 
   // input products nodes (не target)
@@ -116,7 +116,7 @@ export function chainToFlow(
         description: p?.["Описание продукта"] || "", // ✅ NEW
         chainPid: pid, // ✅ useful
         chainRootNodeId: targetNodeId, // ✅ belongs to this chain root
-      } as any,
+      },
     });
   });
 

@@ -16,7 +16,6 @@ import {
   buildChainLevel1,
   continueGraph,
   expandChainOneLevel,
-  expandNextInQueue,
   getGraphData,
 } from "../api/graph-api";
 
@@ -49,7 +48,7 @@ const initialState: InitialGraphStateI = {
     expandedPids: [],
 
     producerByPid: {},
-    expandedProducerByPid: {}, // ✅ ДОБАВЬ
+    expandedProducerByPid: {},
 
     queue: [],
   },
@@ -283,10 +282,9 @@ const gptSlice = createSlice({
 
         // помечаем выбранный узел как root новой цепочки
         if (root) {
-          (root.data as any).chainPid = "Продукт1";
-          (root.data as any).chainRootNodeId = nodeId; // ✅ критично
-
-          (root.data as any).chainBuiltRoot = true;
+          root.data.chainPid = "Продукт1";
+          root.data.chainRootNodeId = nodeId;
+          root.data.chainBuiltRoot = true;
         }
 
         // стартуем новую chain-сессию (поверх старых узлов, если это не первый запуск)
@@ -300,7 +298,7 @@ const gptSlice = createSlice({
 
         // ✅ фиксируем направление цепочки на момент старта
         state.chainSession.direction =
-          ((root?.data as any)?.buildDirection as "up" | "down") ?? "down";
+          (root?.data?.buildDirection as "up" | "down") ?? "down";
 
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;
@@ -319,7 +317,7 @@ const gptSlice = createSlice({
 
         const targetNode = state.data.nodes.find((n) => n.id === targetNodeId);
         const targetPid =
-          (targetNode?.data as any)?.chainPid ||
+          targetNode?.data?.chainPid ||
           (targetNodeId === rootNodeId ? "Продукт1" : null);
 
         if (!targetPid) return;
@@ -391,114 +389,29 @@ const gptSlice = createSlice({
         const nodeId = action.meta.arg.nodeId;
         const node = state.data.nodes.find((n) => n.id === nodeId);
         if (node) {
-          (node.data as any).productCardStatus = "loading";
-          (node.data as any).productCardError = null;
+          node.data.productCardStatus = "loading";
+          node.data.productCardError = null;
         }
       })
       .addCase(fetchProductCard.fulfilled, (state, action) => {
         const { nodeId, data } = action.payload;
         const node = state.data.nodes.find((n) => n.id === nodeId);
         if (node) {
-          (node.data as any).productCard = data.productCard;
-          (node.data as any).productCardKind = data.card_kind; // ✅
-          (node.data as any).productCardStatus = "succeeded";
-          (node.data as any).productCardError = null;
+          node.data.productCard = data.productCard;
+          node.data.productCardKind = data.card_kind;
+          node.data.productCardStatus = "succeeded";
+          node.data.productCardError = null;
         }
       })
       .addCase(fetchProductCard.rejected, (state, action) => {
         const nodeId = action.meta.arg.nodeId;
         const node = state.data.nodes.find((n) => n.id === nodeId);
         if (node) {
-          (node.data as any).productCardStatus = "failed";
-          (node.data as any).productCardError =
+          node.data.productCardStatus = "failed";
+          node.data.productCardError =
             (action.payload as string) || "product-card failed";
         }
       });
-    //!ALT
-    /* .addCase(expandNextInQueue.fulfilled, (state, action) => {
-        const {
-          rootNodeId,
-          targetPid,
-          nodes,
-          edges,
-          pidToNodeIdNext,
-          nextPids,
-          usedTrIds,
-          consumeCount,
-        } = action.payload;
-
-        // 1) перед добавлением подчистим уровни, которые мы сейчас строили (на всякий случай)
-        for (const trId of usedTrIds) {
-          const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${trId}`;
-          state.data.nodes = state.data.nodes.filter(
-            (n) => !n.id.startsWith(lvlPrefix),
-          );
-          state.data.edges = state.data.edges.filter(
-            (e) => !e.id.startsWith(lvlPrefix),
-          );
-        }
-
-        // 2) add (dedupe)
-        const newNodes = normalizeNodes(nodes);
-        const newEdges = normalizeEdges(edges);
-
-        const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
-        state.data.nodes.push(
-          ...newNodes.filter((n) => !existingNodeIds.has(n.id)),
-        );
-
-        const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
-        state.data.edges.push(
-          ...newEdges.filter((e) => !existingEdgeIds.has(e.id)),
-        );
-
-        // 3) pid map
-        state.chainSession.pidToNodeId = pidToNodeIdNext;
-
-        // 4) отметим pid как “раскрытый” (если ты это где-то используешь)
-        if (!state.chainSession.expandedPids.includes(targetPid)) {
-          state.chainSession.expandedPids.push(targetPid);
-        }
-
-        // 5) очередь: “съедаем” head и добавляем nextPids
-        state.chainSession.queue = state.chainSession.queue.slice(consumeCount);
-
-        for (const pid of nextPids) {
-          const alreadyExpanded = state.chainSession.expandedPids.includes(pid);
-          const alreadyQueued = state.chainSession.queue.some(
-            (x) => x.pid === pid,
-          );
-          if (!alreadyExpanded && !alreadyQueued) {
-            state.chainSession.queue.push({ pid });
-          }
-        }
-
-        // 6) фиксируем “построенные producer’ы” для этого pid
-        const arr = state.chainSession.expandedProducerByPid[targetPid] || [];
-        for (const trId of usedTrIds) {
-          if (!arr.includes(trId)) arr.push(trId);
-        }
-        state.chainSession.expandedProducerByPid[targetPid] = arr;
-
-        state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
-
-        state.chainBuild.status = "succeeded";
-        state.chainBuild.error = null;
-        state.chainBuild.nodeId = null;
-      })
-      .addCase(expandNextInQueue.rejected, (state, action) => {
-        const msg = (action.payload as string) || "expandNextInQueue failed";
-        // эти случаи НЕ считаем ошибкой
-        if (
-          msg === "queue empty" ||
-          msg === "already expanded" ||
-          msg === "no producer for pid"
-        ) {
-          return;
-        }
-        state.chainBuild.status = "failed";
-        state.chainBuild.error = msg;
-      }); */
   },
 });
 
