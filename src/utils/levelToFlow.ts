@@ -13,7 +13,7 @@ function pickPid(
 }
 
 type Opts = {
-  namespace: string; // оставляем, но больше НЕ используем для id узлов
+  namespace: string; // оставляем, но больше НЕ используем для id
   rootNodeId: string;
   targetNodeId: string;
   targetPid: string;
@@ -29,6 +29,7 @@ type Opts = {
 
 export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const {
+    namespace: _namespace, // ✅ чтобы TS не ругался на неиспользуемый opts.namespace
     rootNodeId,
     targetNodeId,
     targetPid,
@@ -71,36 +72,38 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     (pid) => pid !== targetPid,
   );
 
+  const outPids = (t["Выходы"] || []).map(pickPid).filter(Boolean) as string[];
+  const uniqueOutputs = Array.from(new Set(outPids)).filter(
+    (pid) => pid !== targetPid,
+  );
+
   const nodes: CustomNode[] = [];
   const edges: Edge[] = [];
 
-  // transformation node (добавится только один раз благодаря stable id + dedupe по id в редьюсере)
+  // transformation node
   nodes.push({
     id: trFlowId,
     type: "transformation",
     position: { x: targetX, y: trY },
     data: {
       label: t["Название технологии"] || chainTrId,
-      description: t["Описание технологии"] || "", // ✅ ВОТ ЭТО ВЕРНУТЬ
+      description: t["Описание технологии"] || "", // ✅ вернули описания
       chainTrId,
       chainRootNodeId: rootNodeId,
-      // chainLevelOfPid лучше убрать (оно как раз "разное" для одного и того же преобразования)
-      // chainLevelOfPid: targetPid,
     } as any,
   });
 
-  // ✅ СТАБИЛЬНЫЙ id РЕБРА: source->target
-  // (иначе у тебя будут дубли рёбер между теми же нодами, но с разными lvlPrefix)
+  // edge: target product -> transformation (стабильный id)
   edges.push({
-    id: `chain::${rootNodeId}::e::${targetNodeId}::${trFlowId}`,
+    id: `chain::${rootNodeId}::e::prod_to_tr::${targetNodeId}::${trFlowId}`,
     source: targetNodeId,
     target: trFlowId,
     type: "straight",
   });
 
-  // inputs row
-  const n = uniqueInputs.length;
-  const rowWidth = n > 1 ? (n - 1) * spacingX : 0;
+  // -------- INPUTS row (одной строкой) --------
+  const nIn = uniqueInputs.length;
+  const rowWidth = nIn > 1 ? (nIn - 1) * spacingX : 0;
   const startX = targetX - rowWidth / 2;
 
   uniqueInputs.forEach((pid, idx) => {
@@ -117,14 +120,46 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       position: { x, y: inputsY },
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
-        description: p?.["Описание продукта"] || "", // ✅ ВОТ ЭТО ВЕРНУТЬ
+        description: p?.["Описание продукта"] || "", // ✅ вернули описания
         chainPid: pid,
         chainRootNodeId: rootNodeId,
       } as any,
     });
 
     edges.push({
-      id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
+      id: `chain::${rootNodeId}::e::in::${trFlowId}::${pFlowId}`,
+      source: trFlowId,
+      target: pFlowId,
+      type: "straight",
+    });
+  });
+
+  // -------- OUTPUTS (побочки) на линии target --------
+  const outputsY = targetY;
+  const outStartX = targetX + spacingX;
+
+  uniqueOutputs.forEach((pid, idx) => {
+    const existingId = pidToNodeIdNext[pid];
+    const pFlowId = existingId || `chain::${rootNodeId}::pid::${pid}`;
+    pidToNodeIdNext[pid] = pFlowId;
+
+    const p = products.get(pid);
+    const x = outStartX + idx * spacingX;
+
+    nodes.push({
+      id: pFlowId,
+      type: "product",
+      position: { x, y: outputsY },
+      data: {
+        label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
+        description: p?.["Описание продукта"] || "",
+        chainPid: pid,
+        chainRootNodeId: rootNodeId,
+      } as any,
+    });
+
+    edges.push({
+      id: `chain::${rootNodeId}::e::out::${trFlowId}::${pFlowId}`,
       source: trFlowId,
       target: pFlowId,
       type: "straight",
