@@ -13,6 +13,7 @@ import {
   type EdgeChange,
   type NodeTypes,
   useReactFlow,
+  useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -57,7 +58,30 @@ export const Flow = () => {
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
   const { fitView, screenToFlowPosition } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
+
+  // --- keep a live ref so timeouts always see the latest nodes ---
+  const nodesRef = useRef(data.nodes);
+  nodesRef.current = data.nodes;
+
+  // stable key that changes only when the SET of node IDs changes
+  const nodeIdsKey = useMemo(
+    () => data.nodes.map((n) => n.id).sort().join("|"),
+    [data.nodes],
+  );
+
+  // When new nodes appear, wait for React Flow to measure them in the DOM,
+  // then force-update all handle positions so edges connect correctly.
+  useEffect(() => {
+    if (!nodesRef.current.length) return;
+
+    const timer = setTimeout(() => {
+      updateNodeInternals(nodesRef.current.map((n) => n.id));
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [nodeIdsKey, updateNodeInternals]);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
   const applyLayout = useCallback(async () => {
@@ -459,7 +483,6 @@ export const Flow = () => {
   //
 
   const handleInitChain = async () => {
-    // это твой старый onBuildChain (который ходит в /gpt/chain и сохраняет rawChain)
     await dispatch(
       buildChainLevel1({
         nodeId: selectedNodeId!,
@@ -469,11 +492,13 @@ export const Flow = () => {
         ).trim(),
       }),
     ).unwrap();
+    // updateNodeInternals handled by the nodeIdsKey useEffect
   };
 
   // опционально: “раскрыть следующий из очереди”
   const handleExpandNext = async () => {
     await dispatch(expandNextInQueue()).unwrap();
+    // updateNodeInternals handled by the nodeIdsKey useEffect
   };
 
   const effectiveSources: TechnologySource[] =
@@ -566,6 +591,8 @@ export const Flow = () => {
         maxZoom={2}
         defaultEdgeOptions={{
           type: "straight",
+          sourceHandle: "bottom",
+          targetHandle: "top",
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} />

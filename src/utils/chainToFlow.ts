@@ -130,6 +130,8 @@ export function chainToFlow(
       id: `${namespace}::e_in_${idx}_${pFlowId}_${tFlowId}`,
       source: pFlowId,
       target: tFlowId,
+      sourceHandle: "bottom",
+      targetHandle: "top",
       type: "straight",
     });
   });
@@ -140,6 +142,8 @@ export function chainToFlow(
       id: `${namespace}::e_out_target_${tFlowId}_${targetNodeId}`,
       source: tFlowId,
       target: targetNodeId,
+      sourceHandle: "bottom",
+      targetHandle: "top",
       type: "straight",
     });
   }

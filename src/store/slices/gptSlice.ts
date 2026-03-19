@@ -25,6 +25,7 @@ import type { InitialGraphStateI } from "../types";
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
+import { parseAlternatives } from "../../utils/parseAlternatives";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -276,7 +277,7 @@ const gptSlice = createSlice({
         state.chainBuild.nodeId = action.meta.arg.nodeId;
       })
       .addCase(buildChainLevel1.fulfilled, (state, action) => {
-        const { nodeId, raw } = action.payload;
+        const { nodeId, raw, techText } = action.payload;
 
         const root = state.data.nodes.find((n) => n.id === nodeId);
 
@@ -299,6 +300,60 @@ const gptSlice = createSlice({
         // ✅ фиксируем направление цепочки на момент старта
         state.chainSession.direction =
           (root?.data?.buildDirection as "up" | "down") ?? "down";
+
+        // --- Альтернативы: парсим из techText и создаём ноды ---
+        // Удаляем старые альтернативы для этого root (на случай повторного вызова)
+        const altPrefix = `chain::${nodeId}::alt::`;
+        state.data.nodes = state.data.nodes.filter(
+          (n) => !n.id.startsWith(altPrefix),
+        );
+        state.data.edges = state.data.edges.filter(
+          (e) => !e.id.startsWith(`chain::${nodeId}::alt-edge::`),
+        );
+
+        const alternatives = parseAlternatives(techText);
+        if (root && alternatives.length > 0) {
+          const rx = root.position?.x ?? 0;
+          const ry = root.position?.y ?? 0;
+          const dir = state.chainSession.direction ?? "down";
+          const sign = dir === "down" ? 1 : -1;
+          const stepY = 180;
+          const spacingX = 300;
+
+          alternatives.forEach((alt, idx) => {
+            const altNodeId = `chain::${nodeId}::alt::${idx}`;
+
+            // Чередуем лево/право: 0→лево, 1→право, 2→дальше лево, ...
+            const side =
+              idx % 2 === 0
+                ? -(Math.floor(idx / 2) + 1)
+                : Math.floor(idx / 2) + 1;
+            const x = rx + side * spacingX;
+            const y = ry + sign * stepY;
+
+            state.data.nodes.push({
+              id: altNodeId,
+              type: "transformation",
+              position: { x, y },
+              data: {
+                label: alt.firstStepName,
+                description: alt.fullDescription,
+                chainVariant: "alt",
+                chainRootNodeId: nodeId,
+              },
+            });
+
+            state.data.edges.push({
+              id: `chain::${nodeId}::alt-edge::${idx}`,
+              source: nodeId,
+              target: altNodeId,
+              sourceHandle: "bottom",
+              targetHandle: "top",
+              type: "straight",
+              className: "edge--alt",
+            });
+          });
+        }
 
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;

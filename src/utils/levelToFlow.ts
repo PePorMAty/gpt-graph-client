@@ -103,6 +103,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     id: `chain::${rootNodeId}::e::${targetNodeId}::${trFlowId}`,
     source: targetNodeId,
     target: trFlowId,
+    sourceHandle: "bottom",
+    targetHandle: "top",
     type: "straight",
   });
 
@@ -136,6 +138,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
       source: trFlowId,
       target: pFlowId,
+      sourceHandle: "bottom",
+      targetHandle: "top",
       type: "straight",
     });
   });
@@ -172,6 +176,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
       source: trFlowId,
       target: pFlowId,
+      sourceHandle: "bottom",
+      targetHandle: "top",
       type: "straight",
     });
   });

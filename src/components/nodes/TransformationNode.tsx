@@ -5,36 +5,44 @@ import type { TransformationNodeProps } from "../../types";
 export const TransformationNode: React.FC<TransformationNodeProps> = ({
   data,
 }) => {
+  const isAlt = data.chainVariant === "alt";
+
+  const accentColor = isAlt ? "#a855f7" : "#ff9800";
+
   return (
     <div
       style={{
-        background: "#fff3e0",
+        background: isAlt ? "#f3e8ff" : "#fff3e0",
         padding: "15px",
         borderRadius: "8px",
-        border: "2px solid #ff9800",
+        border: `2px solid ${accentColor}`,
         minWidth: "180px",
         maxWidth: "250px",
         textAlign: "center",
-        boxShadow: "0 2px 8px rgba(255, 152, 0, 0.2)",
-        position: "relative", // Важно для правильного позиционирования
+        boxShadow: isAlt
+          ? "0 2px 8px rgba(168, 85, 247, 0.2)"
+          : "0 2px 8px rgba(255, 152, 0, 0.2)",
+        position: "relative",
         zIndex: 10,
       }}
     >
       <Handle
+        id="top"
         type="target"
         position={Position.Top}
         style={{
-          background: "#ff9800",
+          background: accentColor,
           width: 8,
           height: 8,
         }}
       />
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
       <Handle
+        id="bottom"
         type="source"
         position={Position.Bottom}
         style={{
-          background: "#ff9800",
+          background: accentColor,
           width: 8,
           height: 8,
         }}

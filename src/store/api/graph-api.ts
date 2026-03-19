@@ -95,7 +95,7 @@ type ChainApiResponse = {
 };
 
 export const buildChainLevel1 = createAsyncThunk<
-  { nodeId: string; raw: ChainApiResponse },
+  { nodeId: string; raw: ChainApiResponse; techText: string },
   { nodeId: string; productName: string; techText: string },
   { state: RootState; rejectValue: string }
 >("graph/buildChainLevel1", async (args, thunkApi) => {
@@ -124,7 +124,8 @@ export const buildChainLevel1 = createAsyncThunk<
     }
 
     // ✅ НИЧЕГО НЕ РИСУЕМ, просто сохраняем rawChain в session (в reducer)
-    return { nodeId, raw: data };
+    // techText передаём дальше для парсинга альтернатив в reducer
+    return { nodeId, raw: data, techText };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
       const errObj = e.response?.data?.error;
