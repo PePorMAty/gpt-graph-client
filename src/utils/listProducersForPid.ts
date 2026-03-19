@@ -18,11 +18,13 @@ export function listProducersForPid(
   const items = Array.isArray(rawChain?.Цепочка) ? rawChain!.Цепочка : [];
   const out: ProducerOption[] = [];
 
-  for (const n of items as any[]) {
+  for (const n of items) {
     if (n?.["Тип узла"] !== "Преобразование") continue;
 
     const outs = Array.isArray(n?.["Выходы"]) ? n["Выходы"] : [];
-    const produces = outs.some((o: any) => pickFirstValue(o) === targetPid);
+    const produces = outs.some(
+      (o: Record<string, string>) => pickFirstValue(o) === targetPid,
+    );
     if (!produces) continue;
 
     out.push({

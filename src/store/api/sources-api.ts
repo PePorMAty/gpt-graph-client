@@ -39,10 +39,13 @@ export const fetchSources = createAsyncThunk<
     );
 
     return { nodeId: payload.nodeId, data: res.data };
-  } catch (e: any) {
-    return thunkApi.rejectWithValue(
-      e?.response?.data?.error || e?.message || "sources: request error",
-    );
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e)) {
+      return thunkApi.rejectWithValue(
+        e.response?.data?.error || e.message || "sources: request error",
+      );
+    }
+    return thunkApi.rejectWithValue("sources: request error");
   }
 });
 
@@ -74,11 +77,14 @@ export const aggregateSources = createAsyncThunk<
     );
 
     return { nodeId, data };
-  } catch (e: any) {
-    const msg =
-      e?.response?.data?.error ||
-      e?.message ||
-      "Ошибка запроса обобщения источников";
-    return thunkApi.rejectWithValue(msg);
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e)) {
+      return thunkApi.rejectWithValue(
+        e.response?.data?.error ||
+          e.message ||
+          "Ошибка запроса обобщения источников",
+      );
+    }
+    return thunkApi.rejectWithValue("Ошибка запроса обобщения источников");
   }
 });

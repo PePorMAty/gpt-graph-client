@@ -40,11 +40,7 @@ import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { setBuildDirection } from "./store/slices/sourcesSlice";
-import {
-  buildChainLevel1,
-  expandChainOneLevel,
-  expandNextInQueue,
-} from "./store/api/graph-api";
+import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { listProducersForPid } from "./utils/listProducersForPid";
 import { fetchProductCard } from "./store/api/product-card-api";
 
@@ -107,9 +103,8 @@ export const Flow = () => {
   const flowNodes = useMemo(
     () =>
       data.nodes.map((n) => {
-        const isChainRoot =
-          n.type === "product" && !!(n.data as any)?.chainBuiltRoot;
-        const isAlt = (n.data as any)?.chainVariant === "alt";
+        const isChainRoot = n.type === "product" && !!n.data?.chainBuiltRoot;
+        const isAlt = n.data?.chainVariant === "alt";
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
@@ -300,7 +295,7 @@ export const Flow = () => {
     : undefined;
 
   const buildDirection: BuildDirection | null =
-    (selectedNode?.data as any)?.buildDirection ??
+    selectedNode?.data?.buildDirection ??
     currentSourcesState?.direction ??
     null;
 
@@ -360,7 +355,7 @@ export const Flow = () => {
 
     // ✅ Источник правды — node.data.sources (переживает save/load)
     const payloadSources: TechnologySource[] =
-      ((selectedNode.data as any)?.sources as TechnologySource[]) ??
+      (selectedNode.data?.sources as TechnologySource[]) ??
       currentSourcesState?.sources ??
       [];
 
@@ -412,7 +407,7 @@ export const Flow = () => {
 
   // root id цепочки, к которой принадлежит выбранный узел
   const nodeChainRootId =
-    (selectedNode?.data as any)?.chainRootNodeId ??
+    selectedNode?.data?.chainRootNodeId ??
     (selectedNodeId === chainSession.rootNodeId
       ? chainSession.rootNodeId
       : null);
@@ -470,9 +465,7 @@ export const Flow = () => {
         nodeId: selectedNodeId!,
         productName: String(selectedNode?.data?.label || "").trim(),
         techText: String(
-          aggregatedDescription ||
-            (selectedNode?.data as any)?.description ||
-            "",
+          aggregatedDescription || selectedNode?.data?.description || "",
         ).trim(),
       }),
     ).unwrap();
@@ -484,16 +477,14 @@ export const Flow = () => {
   };
 
   const effectiveSources: TechnologySource[] =
-    (((selectedNode?.data as any)?.sources as TechnologySource[]) ?? sources) ||
-    [];
+    ((selectedNode?.data?.sources as TechnologySource[]) ?? sources) || [];
 
   const hasSources =
     Array.isArray(effectiveSources) && effectiveSources.length > 0;
 
   // aggregated у тебя сохраняется в node.data.description
   const hasAggregated =
-    Boolean((selectedNode?.data as any)?.sourcesAggregated) ||
-    aggStatus === "succeeded";
+    Boolean(selectedNode?.data?.sourcesAggregated) || aggStatus === "succeeded";
 
   // можно ли “получить цепочку” от этого продукта сейчас?
   const canInitChainHere =
@@ -613,9 +604,9 @@ export const Flow = () => {
         builtProducerIds={builtProducerIds} // ✅ для queuePid
         onExpandNext={isActiveChainRoot ? handleExpandNext : undefined}
         onBuildProductCard={handleBuildProductCard}
-        productCardStatus={(selectedNode?.data as any)?.productCardStatus}
-        productCardError={(selectedNode?.data as any)?.productCardError}
-        productCard={(selectedNode?.data as any)?.productCard}
+        productCardStatus={selectedNode?.data?.productCardStatus}
+        productCardError={selectedNode?.data?.productCardError}
+        productCard={selectedNode?.data?.productCard}
       />
     </div>
   );

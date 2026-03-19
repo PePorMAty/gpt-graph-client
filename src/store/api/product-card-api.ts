@@ -19,9 +19,7 @@ export const fetchProductCard = createAsyncThunk<
       node.type === "transformation" ? "transformation" : "product";
 
     // ✅ productName как контекст (можно root цепочки, можно сам node)
-    const chainRootId = (node.data as any)?.chainRootNodeId as
-      | string
-      | undefined;
+    const chainRootId = node.data?.chainRootNodeId;
     const rootNode = chainRootId
       ? st.graph.data.nodes.find((n) => n.id === chainRootId)
       : null;
@@ -63,9 +61,12 @@ export const fetchProductCard = createAsyncThunk<
     }
 
     return { nodeId, data: res.data };
-  } catch (e: any) {
-    return thunkApi.rejectWithValue(
-      e?.response?.data?.error || e?.message || "fill-card request error",
-    );
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err)) {
+      return thunkApi.rejectWithValue(
+        err.response?.data?.error || err.message || "fill-card request error",
+      );
+    }
+    return thunkApi.rejectWithValue("fill-card request error");
   }
 });

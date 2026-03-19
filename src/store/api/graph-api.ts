@@ -3,7 +3,6 @@ import axios from "axios";
 
 import { buildLevelFromRawChain } from "../../utils/rawChainLevel";
 import { levelToFlow } from "../../utils/levelToFlow";
-import { listProducersForPid } from "../../utils/listProducersForPid";
 
 import type { RootState } from "../store";
 
@@ -73,8 +72,11 @@ export const continueGraph = createAsyncThunk<
       );
 
       return response.data;
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data || "Continue graph error");
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        return rejectWithValue(err.response?.data || "Continue graph error");
+      }
+      return rejectWithValue("Continue graph error");
     }
   },
 );
@@ -89,7 +91,7 @@ type ChainApiResponse = {
     inputPids: string[];
     chain: TechChain;
   };
-  error?: any;
+  error?: { error?: { message?: string } } | string;
 };
 
 export const buildChainLevel1 = createAsyncThunk<
@@ -108,11 +110,14 @@ export const buildChainLevel1 = createAsyncThunk<
 
     const data = res.data;
     if (!data?.success) {
-      return thunkApi.rejectWithValue(
-        data?.error?.error?.message ||
-          data?.error ||
-          "gpt/chain: success=false",
-      );
+      const errObj = data?.error;
+      let msg = "gpt/chain: success=false";
+      if (typeof errObj === "string") {
+        msg = errObj;
+      } else if (typeof errObj === "object" && errObj?.error?.message) {
+        msg = errObj.error.message;
+      }
+      return thunkApi.rejectWithValue(msg);
     }
     if (!data.chain?.Цепочка?.length) {
       return thunkApi.rejectWithValue("gpt/chain: missing chain.Цепочка");
@@ -120,49 +125,19 @@ export const buildChainLevel1 = createAsyncThunk<
 
     // ✅ НИЧЕГО НЕ РИСУЕМ, просто сохраняем rawChain в session (в reducer)
     return { nodeId, raw: data };
-  } catch (e: any) {
-    return thunkApi.rejectWithValue(
-      e?.response?.data?.error?.error?.message ||
-        e?.response?.data?.error ||
-        e?.message ||
-        "gpt/chain: request error",
-    );
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e)) {
+      const errObj = e.response?.data?.error;
+      return thunkApi.rejectWithValue(
+        (typeof errObj === "object" && errObj?.error?.message) ||
+          errObj ||
+          e.message ||
+          "gpt/chain: request error",
+      );
+    }
+    return thunkApi.rejectWithValue("gpt/chain: request error");
   }
 });
-
-// store/api/graph-api.ts (кусок внутри expandChainOneLevel)
-
-function findFreeBaseY(
-  nodes: any[],
-  ax: number,
-  ay: number,
-  direction: "up" | "down",
-  gap: number,
-) {
-  // смотрим узлы в “полосе” по X рядом с anchor, чтобы не пересекаться с уже нарисованными уровнями
-  const xMin = ax - 900;
-  const xMax = ax + 500;
-
-  const band = nodes.filter((n) => {
-    const x = n?.position?.x;
-    const y = n?.position?.y;
-    return (
-      typeof x === "number" && typeof y === "number" && x >= xMin && x <= xMax
-    );
-  });
-
-  if (!band.length) {
-    return direction === "down" ? ay + gap : ay - gap;
-  }
-
-  const ys = band.map((n) => n.position.y);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-
-  return direction === "down"
-    ? Math.max(ay + gap, maxY + gap)
-    : Math.min(ay - gap, minY - gap);
-}
 
 // раскрыть 1 уровень для выбранной product-ноды (без запросов)
 export const expandChainOneLevel = createAsyncThunk<
@@ -191,16 +166,13 @@ export const expandChainOneLevel = createAsyncThunk<
   const ay = anchor?.position?.y ?? 0;
 
   const targetPid =
-    (anchor?.data as any)?.chainPid ||
-    (targetNodeId === rootNodeId ? "Продукт1" : null);
+    anchor?.data?.chainPid || (targetNodeId === rootNodeId ? "Продукт1" : null);
 
   if (!targetPid) {
     return thunkApi.rejectWithValue("missing chainPid on target node");
   }
 
-  /* const chosenTr = state.chainSession.producerByPid[targetPid]; // может быть undefined */
   const lvl = buildLevelFromRawChain(rawChain, targetPid, undefined);
-  /* const lvl = buildLevelFromRawChain(rawChain, targetPid, chosenTr); */ //!ALT
 
   if (!lvl.ok) {
     return thunkApi.rejectWithValue("no producer for this pid (raw material?)");
@@ -244,181 +216,7 @@ export const expandChainOneLevel = createAsyncThunk<
     usedTrId,
   };
 });
-//!ALT
-/* export const expandNextInQueue = createAsyncThunk<
-  {
-    rootNodeId: string;
-    targetPid: string;
-    targetNodeId: string;
-    nodes: CustomNode[];
-    edges: Edge[];
-    pidToNodeIdNext: Record<string, string>;
-    nextPids: string[];
-    usedTrIds: string[];
-    consumeCount: number; // сколько элементов очереди “съесть” (обычно 1)
-  },
-  void,
-  { state: RootState; rejectValue: string }
->("graph/expandNextInQueue", async (_, thunkApi) => {
-  const st = thunkApi.getState().graph;
 
-  const rootNodeId = st.chainSession.rootNodeId;
-  const rawChain = st.chainSession.rawChain;
-  if (!rootNodeId || !rawChain) {
-    return thunkApi.rejectWithValue("no chain session");
-  }
-
-  const queue = st.chainSession.queue || [];
-  if (!queue.length) {
-    return thunkApi.rejectWithValue("queue empty");
-  }
-
-  // Сейчас расширяем ровно head очереди
-  const targetPid = queue[0].pid;
-
-  const targetNodeId =
-    st.chainSession.pidToNodeId?.[targetPid] ||
-    (targetPid === "Продукт1" ? rootNodeId : null);
-
-  if (!targetNodeId) {
-    return thunkApi.rejectWithValue("missing node for pid");
-  }
-
-  const anchor = st.data.nodes.find((n) => n.id === targetNodeId);
-  const ax = anchor?.position?.x ?? 0;
-  const ay = anchor?.position?.y ?? 0;
-
-  const direction = st.chainSession.direction ?? "down";
-
-  // 1) MAIN producer = как раньше выбирался по умолчанию
-  const mainLvl = buildLevelFromRawChain(rawChain, targetPid, undefined);
-  if (!mainLvl.ok) {
-    // нет producer’а -> считаем “нечего строить”
-    return thunkApi.rejectWithValue("no producer for pid");
-  }
-  const mainTrId = mainLvl.transformationId;
-
-  // 2) Все producer’ы
-  const all = listProducersForPid(rawChain, targetPid).map((p) => p.trId);
-
-  // упорядочим: main первым, дальше уникальные
-  const ordered: string[] = [mainTrId, ...all.filter((x) => x !== mainTrId)];
-  const uniqueOrdered = Array.from(new Set(ordered)).filter(Boolean);
-
-  // 3) не строим то, что уже построено
-  const built = st.chainSession.expandedProducerByPid?.[targetPid] || [];
-  const toBuild = uniqueOrdered.filter((trId) => !built.includes(trId));
-
-  if (!toBuild.length) {
-    return thunkApi.rejectWithValue("already expanded");
-  }
-
-  // 4) Строим все variants за один раз
-  let pidToNodeIdNext = { ...st.chainSession.pidToNodeId };
-  const nodesAcc: CustomNode[] = [];
-  const edgesAcc: Edge[] = [];
-  const nextPidsSet = new Set<string>();
-  const usedTrIds: string[] = [];
-
-  // Чтобы transformation’ы не налезали: раскидаем их по X вокруг target
-  const K = toBuild.length;
-  const offsetStep = 340; // можно подстроить под твою ширину узлов
-  const startOffset = -((K - 1) * offsetStep) / 2;
-
-  for (let i = 0; i < toBuild.length; i++) {
-    const trId = toBuild[i];
-
-    const lvl = buildLevelFromRawChain(rawChain, targetPid, trId);
-    if (!lvl.ok) continue;
-
-    usedTrIds.push(lvl.transformationId);
-
-    // union входов в очередь
-    for (const p of lvl.inputPids || []) {
-      if (p && p !== targetPid) nextPidsSet.add(p);
-    }
-
-    const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${lvl.transformationId}`;
-
-    const cx = ax + (startOffset + i * offsetStep);
-
-    const {
-      nodes,
-      edges,
-      pidToNodeIdNext: nextMap,
-    } = levelToFlow(lvl.chain, {
-      namespace: lvlPrefix,
-      rootNodeId,
-      targetNodeId,
-      targetPid,
-      targetX: cx,
-      targetY: ay,
-      direction,
-      pidToNodeId: pidToNodeIdNext,
-    });
-
-    pidToNodeIdNext = nextMap;
-
-    const isAlt = lvl.transformationId !== mainTrId;
-
-    // ✅ помечаем альтернативы флагом (для окраски)
-    const taggedNodes = nodes.map((n) => {
-      if (n.type === "transformation") {
-        return {
-          ...n,
-          data: { ...(n.data as any), chainVariant: isAlt ? "alt" : "main" },
-        };
-      }
-      return n;
-    });
-
-    const taggedEdges = edges.map((e) => ({
-      ...e,
-      data: { ...(e.data as any), chainVariant: isAlt ? "alt" : "main" },
-    }));
-
-    nodesAcc.push(...taggedNodes);
-    edgesAcc.push(...taggedEdges);
-  }
-
-  const nextPids = Array.from(nextPidsSet);
-
-  return {
-    rootNodeId,
-    targetPid,
-    targetNodeId,
-    nodes: nodesAcc,
-    edges: edgesAcc,
-    pidToNodeIdNext,
-    nextPids,
-    usedTrIds,
-    consumeCount: 1, // мы обработали head очереди
-  };
-}); */
-/* export const expandNextInQueue = createAsyncThunk<
-  void,
-  void,
-  { state: RootState; rejectValue: string }
->("graph/expandNextInQueue", async (_, thunkApi) => {
-  const st = thunkApi.getState().graph;
-  const rootNodeId = st.chainSession.rootNodeId;
-  if (!rootNodeId) return thunkApi.rejectWithValue("no chain session");
-
-  const next = st.chainSession.queue?.[0];
-  if (!next) return thunkApi.rejectWithValue("queue empty");
-
-  const pid = next.pid;
-  const targetNodeId =
-    st.chainSession.pidToNodeId?.[pid] ||
-    (pid === "Продукт1" ? rootNodeId : null);
-
-  if (!targetNodeId) return thunkApi.rejectWithValue("missing node for pid");
-
-  // ✅ строим только основной уровень (expandChainOneLevel теперь всегда main)
-  await thunkApi.dispatch(expandChainOneLevel({ targetNodeId })).unwrap();
-});
- */
-// ✅ теперь queue НЕ будет застревать на сырье
 export const expandNextInQueue = createAsyncThunk<
   void,
   void,
@@ -437,14 +235,12 @@ export const expandNextInQueue = createAsyncThunk<
   for (let guard = 0; guard < 50; guard++) {
     st = getSt();
     const queue = st.chainSession.queue || [];
-    if (!queue.length) return; // ✅ всё построено
+    if (!queue.length) return;
 
     const pid = queue[0].pid;
 
-    // ✅ проверяем, можно ли вообще строить этот pid
-    const probe = buildLevelFromRawChain(rawChain, pid, undefined); // main only
+    const probe = buildLevelFromRawChain(rawChain, pid, undefined);
     if (!probe.ok) {
-      // сырьё / нет producer — выкидываем из очереди и идём дальше
       thunkApi.dispatch(popQueueHead());
       continue;
     }
