@@ -5,9 +5,9 @@ import type { ProductCardResponse } from "../types";
 
 export const fetchProductCard = createAsyncThunk<
   { nodeId: string; data: ProductCardResponse },
-  { nodeId: string; customSystemPrompt?: string },
+  { nodeId: string; customSystemPrompt?: string; selectedFields?: string[] },
   { state: RootState; rejectValue: string }
->("graph/fetchProductCard", async ({ nodeId, customSystemPrompt }, thunkApi) => {
+>("graph/fetchProductCard", async ({ nodeId, customSystemPrompt, selectedFields }, thunkApi) => {
   try {
     const st = thunkApi.getState();
 
@@ -50,6 +50,7 @@ export const fetchProductCard = createAsyncThunk<
         node: nodePayload,
         chain,
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
+        ...(selectedFields ? { selectedFields } : {}),
       },
       { headers: { "Content-Type": "application/json" } },
     );

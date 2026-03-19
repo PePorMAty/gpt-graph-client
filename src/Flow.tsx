@@ -496,10 +496,14 @@ export const Flow = () => {
       : "🧬 Получить цепочку (chain)";
 
   const handleBuildProductCard = useCallback(
-    async (customSystemPrompt?: string) => {
+    async (options?: { customSystemPrompt?: string; selectedFields?: string[] }) => {
       if (!selectedNodeId) return;
       await dispatch(
-        fetchProductCard({ nodeId: selectedNodeId, customSystemPrompt }),
+        fetchProductCard({
+          nodeId: selectedNodeId,
+          customSystemPrompt: options?.customSystemPrompt,
+          selectedFields: options?.selectedFields,
+        }),
       ).unwrap();
     },
     [dispatch, selectedNodeId],
