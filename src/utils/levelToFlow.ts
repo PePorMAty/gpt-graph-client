@@ -1,7 +1,11 @@
 // src/utils/levelToFlow.ts
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
-import type { TechChain } from "./chainToFlow";
+import type {
+  ChainProductNode,
+  ChainTransformNode,
+  TechChain,
+} from "./chainToFlow";
 
 function pickPid(
   obj: Record<string, string> | null | undefined,
@@ -43,8 +47,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
   const items = Array.isArray(levelChain?.Цепочка) ? levelChain.Цепочка : [];
 
-  const products = new Map<string, any>();
-  const transforms: any[] = [];
+  const products = new Map<string, ChainProductNode>();
+  const transforms: ChainTransformNode[] = [];
 
   for (const n of items) {
     if (n?.["Тип узла"] === "Продукт") products.set(n["Id узла"], n);
@@ -91,7 +95,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       description: t["Описание технологии"] || "",
       chainTrId,
       chainRootNodeId: rootNodeId,
-    } as any,
+    },
   });
 
   // edge: target -> transformation (stable)
@@ -124,7 +128,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
         description: p?.["Описание продукта"] || "",
         chainPid: pid,
         chainRootNodeId: rootNodeId,
-      } as any,
+      },
     });
 
     // edge: transformation -> input (stable)
@@ -160,7 +164,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
         description: p?.["Описание продукта"] || "",
         chainPid: pid,
         chainRootNodeId: rootNodeId,
-      } as any,
+      },
     });
 
     // edge: transformation -> output (stable)

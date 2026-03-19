@@ -1,12 +1,5 @@
 // src/utils/rawChainLevel.ts
-import type { TechChain } from "./chainToFlow";
-
-type ChainProductNode = {
-  "Id узла": string;
-  "Тип узла": "Продукт";
-  Продукты: string[];
-  "Название узла": string;
-};
+import type { ChainProductNode, TechChain } from "./chainToFlow";
 
 type ChainTransformNode = {
   "Id узла": string;
@@ -15,14 +8,6 @@ type ChainTransformNode = {
   Входы: Array<Record<string, string>>;
   Выходы: Array<Record<string, string>>;
 };
-
-/* function pickPid(
-  obj: Record<string, string> | undefined | null,
-): string | null {
-  if (!obj) return null;
-  const v = Object.values(obj)[0];
-  return typeof v === "string" ? v : null;
-} */
 
 function pickPid(
   obj: Record<string, string> | null | undefined,
@@ -42,7 +27,7 @@ export function getProducersForPid(raw: TechChain, targetPid: string) {
   const producers: ChainTransformNode[] = [];
 
   for (const n of items) {
-    if (n && (n as any)["Тип узла"] === "Преобразование") {
+    if (n && n["Тип узла"] === "Преобразование") {
       const t = n as ChainTransformNode;
       const outs = (t.Выходы || []).map(pickPid).filter(Boolean) as string[];
       if (outs.includes(targetPid)) producers.push(t);
@@ -63,8 +48,8 @@ export function buildLevelFromRawChain(
 ) {
   const items = Array.isArray(rawChain?.Цепочка) ? rawChain.Цепочка : [];
 
-  const productsById = new Map<string, any>();
-  const transforms: any[] = [];
+  const productsById = new Map<string, ChainProductNode>();
+  const transforms: ChainTransformNode[] = [];
 
   for (const n of items) {
     if (n?.["Тип узла"] === "Продукт") productsById.set(n["Id узла"], n);
@@ -88,7 +73,9 @@ export function buildLevelFromRawChain(
   const needPids = uniq([targetPid, ...inPids, ...outPids]);
 
   const цепочка = [
-    ...needPids.map((pid) => productsById.get(pid)).filter(Boolean),
+    ...needPids
+      .map((pid) => productsById.get(pid))
+      .filter((x): x is ChainProductNode => x != null),
     t,
   ];
 
