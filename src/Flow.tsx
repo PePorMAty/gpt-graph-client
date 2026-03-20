@@ -521,13 +521,14 @@ export const Flow = () => {
       : "🧬 Получить цепочку (chain)";
 
   const handleBuildProductCard = useCallback(
-    async (options?: { customSystemPrompt?: string; selectedFields?: string[] }) => {
+    async (options?: { customSystemPrompt?: string; selectedFields?: string[]; useWebSearch?: boolean }) => {
       if (!selectedNodeId) return;
       await dispatch(
         fetchProductCard({
           nodeId: selectedNodeId,
           customSystemPrompt: options?.customSystemPrompt,
           selectedFields: options?.selectedFields,
+          useWebSearch: options?.useWebSearch,
         }),
       ).unwrap();
     },

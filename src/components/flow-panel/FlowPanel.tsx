@@ -89,6 +89,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   // ── prompt editor state ──
   const [promptOpen, setPromptOpen] = useState(false);
   const [manualPrompt, setManualPrompt] = useState<string | null>(null);
+  const [useWebSearch, setUseWebSearch] = useState(false);
 
   const autoPrompt = useMemo(
     () => getDefaultFillCardSystemPrompt(effectiveNodeType, activeFields),
@@ -167,6 +168,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     onBuildProductCard?.({
       customSystemPrompt: needCustom ? displayedPrompt : undefined,
       selectedFields: activeFields.map((f) => f.key),
+      useWebSearch,
     });
   };
 
@@ -364,6 +366,15 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 )}
               </div>
             )}
+
+            <label className={styles.webSearchToggle}>
+              <input
+                type="checkbox"
+                checked={useWebSearch}
+                onChange={(e) => setUseWebSearch(e.target.checked)}
+              />
+              Искать в интернете (web search)
+            </label>
 
             <button
               type="button"

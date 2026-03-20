@@ -456,6 +456,21 @@
   }
 }
 
+.webSearchToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 8px;
+  color: #555;
+}
+
+.webSearchToggle input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .panel {
     width: 100%;

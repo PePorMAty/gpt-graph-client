@@ -8,6 +8,7 @@ import type {
 export interface FillCardOptions {
   customSystemPrompt?: string;
   selectedFields?: string[];
+  useWebSearch?: boolean;
 }
 
 export interface FlowPanelProps {
