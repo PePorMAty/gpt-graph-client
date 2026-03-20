@@ -10,7 +10,10 @@ import {
   reconnectEdge,
 } from "@xyflow/react";
 
-import { normalizeEdges } from "../../utils/normalize-edges";
+import {
+  normalizeEdges,
+  filterConflictingEdges,
+} from "../../utils/normalize-edges";
 import { normalizeNodes } from "../../utils/normalize-nodes";
 import {
   buildChainLevel1,
@@ -260,7 +263,9 @@ const gptSlice = createSlice({
         );
 
         state.data.nodes.push(...filteredNodes);
-        state.data.edges.push(...filteredEdges);
+        state.data.edges.push(
+          ...filterConflictingEdges(filteredEdges, state.data.edges),
+        );
 
         // 🔥 ВАЖНО: пересчитываем ВСЕ leaf-ноды
         state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
@@ -396,8 +401,11 @@ const gptSlice = createSlice({
         );
 
         const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
+        const dedupedEdges = newEdges.filter(
+          (e) => !existingEdgeIds.has(e.id),
+        );
         state.data.edges.push(
-          ...newEdges.filter((e) => !existingEdgeIds.has(e.id)),
+          ...filterConflictingEdges(dedupedEdges, state.data.edges),
         );
 
         // --- 3) обновляем pidToNodeId ---
