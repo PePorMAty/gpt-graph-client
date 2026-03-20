@@ -88,3 +88,14 @@ export function buildLevelFromRawChain(
     chain: { Цепочка: цепочка },
   };
 }
+
+export function countChainSteps(
+  raw: TechChain | null | undefined,
+): number {
+  const items = Array.isArray(raw?.Цепочка) ? raw.Цепочка : [];
+  let count = 0;
+  for (const n of items) {
+    if (n?.["Тип узла"] === "Преобразование") count++;
+  }
+  return count;
+}

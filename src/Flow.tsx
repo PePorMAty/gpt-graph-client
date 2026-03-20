@@ -43,6 +43,7 @@ import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { setBuildDirection } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { listProducersForPid } from "./utils/listProducersForPid";
+import { countChainSteps } from "./utils/rawChainLevel";
 import { fetchProductCard } from "./store/api/product-card-api";
 
 const nodeTypes: NodeTypes = {
@@ -446,7 +447,13 @@ export const Flow = () => {
   const isActiveChainRoot =
     chainUiEnabled && selectedNodeId === chainSession.rootNodeId;
 
-  const queueLen = chainReady ? (chainSession.queue?.length ?? 0) : 0;
+  const totalExpandable = useMemo(
+    () => (chainReady ? countChainSteps(chainSession.rawChain) : 0),
+    [chainReady, chainSession.rawChain],
+  );
+  const queueLen = chainReady
+    ? totalExpandable - (chainSession.expandedPids?.length ?? 0)
+    : 0;
 
   // ✅ КЛЮЧЕВОЕ: следующий pid берём из очереди, а не из selectedNode
   const queuePid: string | null = chainReady
