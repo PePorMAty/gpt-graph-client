@@ -1,5 +1,5 @@
 // src/utils/chainToFlow.ts
-import type { Edge } from "@xyflow/react";
+import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 
 export type ChainProductNode = {
@@ -88,6 +88,8 @@ export function chainToFlow(
     id: tFlowId,
     type: "transformation",
     position: { x: baseX - spacingX, y: baseY },
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
     data: {
       label: t["Название технологии"] || "Преобразование",
       description: t["Описание технологии"] || "", // ✅ NEW
@@ -111,6 +113,8 @@ export function chainToFlow(
       id: pFlowId,
       type: "product",
       position: { x: baseX - spacingX * 2, y: startY + idx * spacingY },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
         description: p?.["Описание продукта"] || "", // ✅ NEW

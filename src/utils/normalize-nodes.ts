@@ -1,3 +1,4 @@
+import { Position } from "@xyflow/react";
 import { type CustomNode, type GPTNode } from "../types";
 
 export function normalizeNodes(nodes: GPTNode[]): CustomNode[] {
@@ -11,6 +12,8 @@ export function normalizeNodes(nodes: GPTNode[]): CustomNode[] {
       label: n.data?.label ?? "",
     },
 
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
     draggable: true,
   }));
 }
