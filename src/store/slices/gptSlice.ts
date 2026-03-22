@@ -1,5 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import {
+  Position,
   type Edge,
   type Connection,
   type NodeChange,
@@ -136,6 +137,8 @@ const gptSlice = createSlice({
         id,
         type,
         position: position, // ← используем переданную позицию
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
         data: {
           label:
             label ||
@@ -322,13 +325,10 @@ const gptSlice = createSlice({
 
         if (!targetPid) return;
 
-        // --- 1) удаляем только уровень этого pid ---
-        const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
-        state.data.nodes = state.data.nodes.filter(
-          (n) => !n.id.startsWith(lvlPrefix),
-        );
+        // --- 1) удаляем старые edges этого преобразования ---
+        const trFlowId = `chain::${rootNodeId}::tr::${usedTrId}`;
         state.data.edges = state.data.edges.filter(
-          (e) => !e.id.startsWith(lvlPrefix),
+          (e) => !e.id.includes(trFlowId),
         );
 
         // --- 2) добавляем новое (dedupe) ---
