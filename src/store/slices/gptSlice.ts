@@ -129,6 +129,8 @@ const gptSlice = createSlice({
         id,
         type,
         position: position, // ← используем переданную позицию
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
         data: {
           label:
             label ||
@@ -293,8 +295,7 @@ const gptSlice = createSlice({
         // стартуем новую chain-сессию (не затрагивая другие)
         state.chainSessions[nodeId] = {
           rawChain: raw.chain,
-          direction:
-            (root?.data?.buildDirection as "up" | "down") ?? "down",
+          direction: (root?.data?.buildDirection as "up" | "down") ?? "down",
           pidToNodeId: { Продукт1: nodeId },
           expandedPids: [],
           producerByPid: {},
@@ -379,12 +380,15 @@ const gptSlice = createSlice({
         if (!targetPid) return;
 
         // --- 1) удаляем только уровень этого pid ---
-        const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
+        /*  const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
         state.data.nodes = state.data.nodes.filter(
           (n) => !n.id.startsWith(lvlPrefix),
-        );
+        ); */
+        // --- 1) удаляем старые edges этого преобразования ---
+        const trFlowId = `chain::${rootNodeId}::tr::${usedTrId}`;
+
         state.data.edges = state.data.edges.filter(
-          (e) => !e.id.startsWith(lvlPrefix),
+          (e) => !e.id.includes(trFlowId),
         );
 
         // --- 2) добавляем новое (dedupe) ---
@@ -397,9 +401,7 @@ const gptSlice = createSlice({
         );
 
         const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
-        const dedupedEdges = newEdges.filter(
-          (e) => !existingEdgeIds.has(e.id),
-        );
+        const dedupedEdges = newEdges.filter((e) => !existingEdgeIds.has(e.id));
         state.data.edges.push(
           ...filterConflictingEdges(dedupedEdges, state.data.edges),
         );
@@ -416,15 +418,11 @@ const gptSlice = createSlice({
         }
 
         // --- 5) очередь: убираем текущий pid + добавляем nextPids ---
-        session.queue = session.queue.filter(
-          (x) => x.pid !== targetPid,
-        );
+        session.queue = session.queue.filter((x) => x.pid !== targetPid);
 
         for (const pid of nextPids) {
           const alreadyExpanded = session.expandedPids.includes(pid);
-          const alreadyQueued = session.queue.some(
-            (x) => x.pid === pid,
-          );
+          const alreadyQueued = session.queue.some((x) => x.pid === pid);
           if (!alreadyExpanded && !alreadyQueued) {
             session.queue.push({ pid });
           }

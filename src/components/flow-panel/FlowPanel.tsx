@@ -364,17 +364,17 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     Сбросить промпт
                   </button>
                 )}
+
+                <label className={styles.webSearchToggle}>
+                  <input
+                    type="checkbox"
+                    checked={useWebSearch}
+                    onChange={(e) => setUseWebSearch(e.target.checked)}
+                  />
+                  Искать в интернете (web search)
+                </label>
               </div>
             )}
-
-            <label className={styles.webSearchToggle}>
-              <input
-                type="checkbox"
-                checked={useWebSearch}
-                onChange={(e) => setUseWebSearch(e.target.checked)}
-              />
-              Искать в интернете (web search)
-            </label>
 
             <button
               type="button"
@@ -517,14 +517,16 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     🧩 Обобщить источники
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={onFindSources}
-                    disabled={sourcesLoading || aggregateLoading}
-                    className={styles.findSourcesButton}
-                  >
-                    🔄 Повторить поиск источников
-                  </button>
+                  {sources.length < 2 && (
+                    <button
+                      type="button"
+                      onClick={onFindSources}
+                      disabled={sourcesLoading || aggregateLoading}
+                      className={styles.findSourcesButton}
+                    >
+                      🔄 Повторить поиск источников
+                    </button>
+                  )}
 
                   {sourcesError && (
                     <div className={styles.errorText}>

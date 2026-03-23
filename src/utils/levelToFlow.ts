@@ -82,6 +82,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     (pid) => pid && pid !== targetPid,
   );
 
+  const isDown = direction === "down";
+
   const nodes: CustomNode[] = [];
   const edges: Edge[] = [];
 
@@ -103,8 +105,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   // edge: target -> transformation (stable)
   edges.push({
     id: `chain::${rootNodeId}::e::${targetNodeId}::${trFlowId}`,
-    source: targetNodeId,
-    target: trFlowId,
+    source: isDown ? targetNodeId : trFlowId,
+    target: isDown ? trFlowId : targetNodeId,
     sourceHandle: "bottom",
     targetHandle: "top",
     type: "straight",
@@ -139,9 +141,9 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
     // edge: input -> transformation (input feeds into process)
     edges.push({
-      id: `chain::${rootNodeId}::e::${pFlowId}::${trFlowId}`,
-      source: pFlowId,
-      target: trFlowId,
+      id: `chain::${rootNodeId}::e-in::${trFlowId}::${pFlowId}`,
+      source: isDown ? trFlowId : pFlowId,
+      target: isDown ? pFlowId : trFlowId,
       sourceHandle: "bottom",
       targetHandle: "top",
       type: "straight",
@@ -180,8 +182,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     // edge: transformation -> output (stable)
     edges.push({
       id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
-      source: trFlowId,
-      target: pFlowId,
+      source: isDown ? trFlowId : pFlowId,
+      target: isDown ? pFlowId : trFlowId,
       sourceHandle: "bottom",
       targetHandle: "top",
       type: "straight",
