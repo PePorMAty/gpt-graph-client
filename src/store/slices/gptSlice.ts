@@ -44,18 +44,7 @@ const initialState: InitialGraphStateI = {
   originalPrompt: null,
   source: null,
   chainBuild: { status: "idle", error: null, nodeId: null },
-  chainSession: {
-    rootNodeId: null,
-    rawChain: null,
-
-    pidToNodeId: {},
-    expandedPids: [],
-
-    producerByPid: {},
-    expandedProducerByPid: {},
-
-    queue: [],
-  },
+  chainSessions: {},
 };
 
 const gptSlice = createSlice({
@@ -181,21 +170,29 @@ const gptSlice = createSlice({
     },
     setProducerForPid: (
       state,
-      action: PayloadAction<{ pid: string; transformationId: string | null }>,
+      action: PayloadAction<{
+        rootNodeId: string;
+        pid: string;
+        transformationId: string | null;
+      }>,
     ) => {
-      const { pid, transformationId } = action.payload;
+      const { rootNodeId, pid, transformationId } = action.payload;
+      const session = state.chainSessions[rootNodeId];
+      if (!session) return;
 
-      const built = state.chainSession.expandedProducerByPid?.[pid] || [];
+      const built = session.expandedProducerByPid?.[pid] || [];
       if (transformationId && built.includes(transformationId)) return;
 
       if (!transformationId) {
-        delete state.chainSession.producerByPid[pid];
+        delete session.producerByPid[pid];
       } else {
-        state.chainSession.producerByPid[pid] = transformationId;
+        session.producerByPid[pid] = transformationId;
       }
     },
-    popQueueHead: (state) => {
-      state.chainSession.queue = state.chainSession.queue.slice(1);
+    popQueueHead: (state, action: PayloadAction<string>) => {
+      const session = state.chainSessions[action.payload];
+      if (!session) return;
+      session.queue = session.queue.slice(1);
     },
   },
   extraReducers: (builder) => {
@@ -293,18 +290,17 @@ const gptSlice = createSlice({
           root.data.chainBuiltRoot = true;
         }
 
-        // стартуем новую chain-сессию (поверх старых узлов, если это не первый запуск)
-        state.chainSession.rootNodeId = nodeId;
-        state.chainSession.rawChain = raw.chain;
-
-        state.chainSession.pidToNodeId = { Продукт1: nodeId };
-        state.chainSession.producerByPid = {};
-        state.chainSession.expandedProducerByPid = {};
-        state.chainSession.queue = [{ pid: "Продукт1" }];
-
-        // ✅ фиксируем направление цепочки на момент старта
-        state.chainSession.direction =
-          (root?.data?.buildDirection as "up" | "down") ?? "down";
+        // стартуем новую chain-сессию (не затрагивая другие)
+        state.chainSessions[nodeId] = {
+          rawChain: raw.chain,
+          direction:
+            (root?.data?.buildDirection as "up" | "down") ?? "down",
+          pidToNodeId: { Продукт1: nodeId },
+          expandedPids: [],
+          producerByPid: {},
+          expandedProducerByPid: {},
+          queue: [{ pid: "Продукт1" }],
+        };
 
         // --- Альтернативы: парсим из techText и создаём ноды ---
         // Удаляем старые альтернативы для этого root (на случай повторного вызова)
@@ -320,7 +316,7 @@ const gptSlice = createSlice({
         if (root && alternatives.length > 0) {
           const rx = root.position?.x ?? 0;
           const ry = root.position?.y ?? 0;
-          const dir = state.chainSession.direction ?? "down";
+          const dir = state.chainSessions[nodeId]?.direction ?? "down";
           const sign = dir === "down" ? 1 : -1;
           const stepY = 180;
           const spacingX = 300;
@@ -408,33 +404,36 @@ const gptSlice = createSlice({
           ...filterConflictingEdges(dedupedEdges, state.data.edges),
         );
 
-        // --- 3) обновляем pidToNodeId ---
-        state.chainSession.pidToNodeId = pidToNodeIdNext;
+        // --- 3) обновляем сессию ---
+        const session = state.chainSessions[rootNodeId];
+        if (!session) return;
+
+        session.pidToNodeId = pidToNodeIdNext;
 
         // --- 4) помечаем pid раскрытым ---
-        if (!state.chainSession.expandedPids.includes(targetPid)) {
-          state.chainSession.expandedPids.push(targetPid);
+        if (!session.expandedPids.includes(targetPid)) {
+          session.expandedPids.push(targetPid);
         }
 
         // --- 5) очередь: убираем текущий pid + добавляем nextPids ---
-        state.chainSession.queue = state.chainSession.queue.filter(
+        session.queue = session.queue.filter(
           (x) => x.pid !== targetPid,
         );
 
         for (const pid of nextPids) {
-          const alreadyExpanded = state.chainSession.expandedPids.includes(pid);
-          const alreadyQueued = state.chainSession.queue.some(
+          const alreadyExpanded = session.expandedPids.includes(pid);
+          const alreadyQueued = session.queue.some(
             (x) => x.pid === pid,
           );
           if (!alreadyExpanded && !alreadyQueued) {
-            state.chainSession.queue.push({ pid });
+            session.queue.push({ pid });
           }
         }
 
         state.leafNodes = getLeafNodes(state.data.nodes, state.data.edges);
-        const arr = state.chainSession.expandedProducerByPid[targetPid] || [];
+        const arr = session.expandedProducerByPid[targetPid] || [];
         if (!arr.includes(usedTrId)) arr.push(usedTrId);
-        state.chainSession.expandedProducerByPid[targetPid] = arr;
+        session.expandedProducerByPid[targetPid] = arr;
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;
         state.chainBuild.nodeId = null;

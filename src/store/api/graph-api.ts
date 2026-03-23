@@ -155,14 +155,23 @@ export const expandChainOneLevel = createAsyncThunk<
   { state: RootState; rejectValue: string }
 >("graph/expandChainOneLevel", async ({ targetNodeId }, thunkApi) => {
   const state = thunkApi.getState().graph;
-  const rootNodeId = state.chainSession.rootNodeId;
-  const rawChain = state.chainSession.rawChain;
 
-  if (!rootNodeId || !rawChain) {
+  const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
+  const rootNodeId =
+    (anchor?.data?.chainRootNodeId as string) ||
+    (Object.keys(state.chainSessions).includes(targetNodeId)
+      ? targetNodeId
+      : null);
+
+  if (!rootNodeId) {
     return thunkApi.rejectWithValue("chain session is not started");
   }
 
-  const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
+  const session = state.chainSessions[rootNodeId];
+  if (!session?.rawChain) {
+    return thunkApi.rejectWithValue("chain session is not started");
+  }
+
   const ax = anchor?.position?.x ?? 0;
   const ay = anchor?.position?.y ?? 0;
 
@@ -173,7 +182,7 @@ export const expandChainOneLevel = createAsyncThunk<
     return thunkApi.rejectWithValue("missing chainPid on target node");
   }
 
-  const lvl = buildLevelFromRawChain(rawChain, targetPid, undefined);
+  const lvl = buildLevelFromRawChain(session.rawChain, targetPid, undefined);
 
   if (!lvl.ok) {
     return thunkApi.rejectWithValue("no producer for this pid (raw material?)");
@@ -182,13 +191,13 @@ export const expandChainOneLevel = createAsyncThunk<
   const usedTrId = lvl.transformationId;
 
   // ✅ блокируем только (pid + конкретный producer)
-  const built = state.chainSession.expandedProducerByPid?.[targetPid] || [];
+  const built = session.expandedProducerByPid?.[targetPid] || [];
   if (built.includes(usedTrId)) {
     return thunkApi.rejectWithValue("already expanded");
   }
 
   // ✅ направление — ТОЛЬКО из session (иначе будет up/down прыгать)
-  const dir = state.chainSession.direction ?? "down";
+  const dir = session.direction ?? "down";
 
   const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
 
@@ -200,7 +209,7 @@ export const expandChainOneLevel = createAsyncThunk<
     targetX: ax,
     targetY: ay,
     direction: dir,
-    pidToNodeId: state.chainSession.pidToNodeId,
+    pidToNodeId: session.pidToNodeId,
   });
 
   const nextPids = Array.from(new Set(lvl.inputPids)).filter(
@@ -220,39 +229,40 @@ export const expandChainOneLevel = createAsyncThunk<
 
 export const expandNextInQueue = createAsyncThunk<
   void,
-  void,
+  { rootNodeId: string },
   { state: RootState; rejectValue: string }
->("graph/expandNextInQueue", async (_, thunkApi) => {
+>("graph/expandNextInQueue", async ({ rootNodeId }, thunkApi) => {
   const getSt = () => thunkApi.getState().graph;
 
   let st = getSt();
-  const rootNodeId = st.chainSession.rootNodeId;
-  const rawChain = st.chainSession.rawChain;
-  if (!rootNodeId || !rawChain) {
+  const session = st.chainSessions[rootNodeId];
+  if (!session?.rawChain) {
     return thunkApi.rejectWithValue("no chain session");
   }
+
+  const rawChain = session.rawChain;
 
   // защитный лимит, чтобы не зациклиться
   for (let guard = 0; guard < 50; guard++) {
     st = getSt();
-    const queue = st.chainSession.queue || [];
+    const curSession = st.chainSessions[rootNodeId];
+    const queue = curSession?.queue || [];
     if (!queue.length) return;
 
     const pid = queue[0].pid;
 
     const probe = buildLevelFromRawChain(rawChain, pid, undefined);
     if (!probe.ok) {
-      thunkApi.dispatch(popQueueHead());
+      thunkApi.dispatch(popQueueHead(rootNodeId));
       continue;
     }
 
     const targetNodeId =
-      st.chainSession.pidToNodeId?.[pid] ||
+      curSession?.pidToNodeId?.[pid] ||
       (pid === "Продукт1" ? rootNodeId : null);
 
     if (!targetNodeId) {
-      // на всякий — если nodeId не найден, тоже пропускаем
-      thunkApi.dispatch(popQueueHead());
+      thunkApi.dispatch(popQueueHead(rootNodeId));
       continue;
     }
 

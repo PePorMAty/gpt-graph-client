@@ -43,7 +43,7 @@ import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { setBuildDirection } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { listProducersForPid } from "./utils/listProducersForPid";
-import { countChainSteps } from "./utils/rawChainLevel";
+
 import { fetchProductCard } from "./store/api/product-card-api";
 
 const nodeTypes: NodeTypes = {
@@ -426,68 +426,61 @@ export const Flow = () => {
       ? chainBuild?.error
       : null;
 
-  // --- CHAIN SESSION ---
-  const chainSession = useAppSelector((s) => s.graph.chainSession);
-  const chainReady = !!chainSession.rootNodeId && !!chainSession.rawChain;
+  // --- CHAIN SESSIONS (multi-session) ---
+  const chainSessions = useAppSelector((s) => s.graph.chainSessions);
 
   // root id цепочки, к которой принадлежит выбранный узел
-  const nodeChainRootId =
-    selectedNode?.data?.chainRootNodeId ??
-    (selectedNodeId === chainSession.rootNodeId
-      ? chainSession.rootNodeId
-      : null);
+  const nodeChainRootId: string | null =
+    (selectedNode?.data?.chainRootNodeId as string) ?? null;
 
-  // UI “раскрывать уровни” включаем только если узел принадлежит активной chain-сессии
-  const chainUiEnabled =
-    !!chainReady &&
-    !!nodeChainRootId &&
-    nodeChainRootId === chainSession.rootNodeId;
-
-  // “queue UI” (кнопка + выбор альтернатив) показываем только на root активной цепочки
-  const isActiveChainRoot =
-    chainUiEnabled && selectedNodeId === chainSession.rootNodeId;
-
-  const totalExpandable = useMemo(
-    () => (chainReady ? countChainSteps(chainSession.rawChain) : 0),
-    [chainReady, chainSession.rawChain],
-  );
-  const queueLen = chainReady
-    ? totalExpandable - (chainSession.expandedPids?.length ?? 0)
-    : 0;
-
-  // ✅ КЛЮЧЕВОЕ: следующий pid берём из очереди, а не из selectedNode
-  const queuePid: string | null = chainReady
-    ? (chainSession.queue?.[0]?.pid ?? null)
+  // активная сессия = сессия для выбранного узла
+  const activeSession = nodeChainRootId
+    ? chainSessions[nodeChainRootId] ?? null
     : null;
 
-  // producers / built / selected — тоже считаем для queuePid
+  const chainReady = !!activeSession?.rawChain;
+  const chainUiEnabled = !!chainReady;
+
+  // "queue UI" показываем только на root активной цепочки
+  const isActiveChainRoot =
+    chainUiEnabled && selectedNodeId === nodeChainRootId;
+
+  const queueLen = chainReady ? (activeSession.queue?.length ?? 0) : 0;
+
+  // следующий pid берём из очереди активной сессии
+  const queuePid: string | null = chainReady
+    ? (activeSession.queue?.[0]?.pid ?? null)
+    : null;
+
+  // producers / built / selected — считаем для queuePid из активной сессии
   const producerOptions =
-    queuePid && chainSession.rawChain
-      ? listProducersForPid(chainSession.rawChain, queuePid)
+    queuePid && activeSession?.rawChain
+      ? listProducersForPid(activeSession.rawChain, queuePid)
       : [];
 
   const builtProducerIds =
-    (queuePid && chainSession.expandedProducerByPid?.[queuePid]) || [];
+    (queuePid && activeSession?.expandedProducerByPid?.[queuePid]) || [];
 
   const builtSet = new Set(builtProducerIds);
 
   const mainProducerId = producerOptions[0]?.trId || "";
 
-  // ✅ если юзер не выбирал — выбираем первый НЕпостроенный
   const selectedProducerId =
-    (queuePid && chainSession.producerByPid?.[queuePid]) ||
+    (queuePid && activeSession?.producerByPid?.[queuePid]) ||
     producerOptions.find((p) => !builtSet.has(p.trId))?.trId ||
     mainProducerId;
 
-  // ✅ нельзя выбрать уже построенный вариант
   const handleSelectProducer = (trId: string) => {
-    if (!queuePid) return;
+    if (!queuePid || !nodeChainRootId) return;
     if (builtSet.has(trId)) return;
     dispatch(
-      setProducerForPid({ pid: queuePid, transformationId: trId || null }),
+      setProducerForPid({
+        rootNodeId: nodeChainRootId,
+        pid: queuePid,
+        transformationId: trId || null,
+      }),
     );
   };
-  //
 
   const handleInitChain = async () => {
     await dispatch(
@@ -499,13 +492,14 @@ export const Flow = () => {
         ).trim(),
       }),
     ).unwrap();
-    // updateNodeInternals handled by the nodeIdsKey useEffect
   };
 
-  // опционально: “раскрыть следующий из очереди”
+  // раскрыть следующий из очереди активной сессии
   const handleExpandNext = async () => {
-    await dispatch(expandNextInQueue()).unwrap();
-    // updateNodeInternals handled by the nodeIdsKey useEffect
+    if (!nodeChainRootId) return;
+    await dispatch(
+      expandNextInQueue({ rootNodeId: nodeChainRootId }),
+    ).unwrap();
   };
 
   const effectiveSources: TechnologySource[] =
@@ -518,7 +512,7 @@ export const Flow = () => {
   const hasAggregated =
     Boolean(selectedNode?.data?.sourcesAggregated) || aggStatus === "succeeded";
 
-  // можно ли “получить цепочку” от этого продукта сейчас?
+  // можно ли "получить цепочку" от этого продукта сейчас?
   const canInitChainHere =
     hasSources && hasAggregated && (!chainReady || !isActiveChainRoot);
 
