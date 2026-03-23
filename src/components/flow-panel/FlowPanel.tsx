@@ -492,21 +492,45 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 </>
               )}
 
-              {/* 2) источники есть, но не обобщено -> ТОЛЬКО обобщить */}
+              {/* 2) источники есть, но не обобщено -> обобщить + повтор если мало */}
               {hasSources && !hasAggregated && (
                 <>
                   <div className={styles.sourcesTitle}>
                     Источники найдены: {sources.length}
                   </div>
 
+                  {sources.length < 2 && (
+                    <div className={styles.warningText}>
+                      Найдено менее 2 источников — обобщение недоступно.
+                      Попробуйте повторить поиск.
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={onAggregateSources}
-                    disabled={sourcesLoading || aggregateLoading}
+                    disabled={
+                      sourcesLoading || aggregateLoading || sources.length < 2
+                    }
                     className={styles.findSourcesButton}
                   >
                     🧩 Обобщить источники
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={onFindSources}
+                    disabled={sourcesLoading || aggregateLoading}
+                    className={styles.findSourcesButton}
+                  >
+                    🔄 Повторить поиск источников
+                  </button>
+
+                  {sourcesError && (
+                    <div className={styles.errorText}>
+                      Ошибка поиска: {sourcesError}
+                    </div>
+                  )}
 
                   {aggregateError && (
                     <div className={styles.errorText}>

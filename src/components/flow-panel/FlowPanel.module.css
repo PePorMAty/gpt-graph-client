@@ -434,6 +434,12 @@
   color: #ff6b6b;
 }
 
+.warningText {
+  margin-top: 8px;
+  color: #e6a700;
+  font-size: 13px;
+}
+
 .btnRow {
   display: inline-flex;
   align-items: center;
