@@ -1,5 +1,5 @@
 // src/utils/levelToFlow.ts
-import type { Edge } from "@xyflow/react";
+import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import type {
   ChainProductNode,
@@ -90,6 +90,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     id: trFlowId,
     type: "transformation",
     position: { x: targetX, y: trY },
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
     data: {
       label: t["Название технологии"] || chainTrId,
       description: t["Описание технологии"] || "",
@@ -125,6 +127,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       id: pFlowId,
       type: "product",
       position: { x, y: inputsY },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
         description: p?.["Описание продукта"] || "",
@@ -133,11 +137,11 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       },
     });
 
-    // edge: transformation -> input (stable)
+    // edge: input -> transformation (input feeds into process)
     edges.push({
-      id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
-      source: trFlowId,
-      target: pFlowId,
+      id: `chain::${rootNodeId}::e::${pFlowId}::${trFlowId}`,
+      source: pFlowId,
+      target: trFlowId,
       sourceHandle: "bottom",
       targetHandle: "top",
       type: "straight",
@@ -163,6 +167,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       id: pFlowId,
       type: "product",
       position: { x, y: outputsY },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
         description: p?.["Описание продукта"] || "",
