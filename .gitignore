@@ -23,3 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+src/.backend-patch/prompt.js
+src/.backend-patch/aggregate.js
+src/.backend-patch/sources.js
+src/.backend-patch/utils-index.js

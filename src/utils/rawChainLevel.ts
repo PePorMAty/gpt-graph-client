@@ -45,6 +45,7 @@ export function buildLevelFromRawChain(
   rawChain: TechChain,
   targetPid: string,
   trId?: string,
+  direction: "up" | "down" = "down",
 ) {
   const items = Array.isArray(rawChain?.Цепочка) ? rawChain.Цепочка : [];
 
@@ -56,11 +57,14 @@ export function buildLevelFromRawChain(
     if (n?.["Тип узла"] === "Преобразование") transforms.push(n);
   }
 
-  // producer
+  // direction="down": ищем трансформацию, которая ПРОИЗВОДИТ targetPid (targetPid в Выходах)
+  // direction="up":   ищем трансформацию, которая ПОТРЕБЛЯЕТ targetPid (targetPid во Входах)
+  const matchField = direction === "up" ? "Входы" : "Выходы";
+
   const t = trId
     ? transforms.find((x) => x["Id узла"] === trId)
     : transforms.find((x) =>
-        (x["Выходы"] || []).map(pickPid).filter(Boolean).includes(targetPid),
+        (x[matchField] || []).map(pickPid).filter(Boolean).includes(targetPid),
       );
 
   if (!t) return { ok: false as const };

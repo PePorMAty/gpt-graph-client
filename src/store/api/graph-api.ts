@@ -182,7 +182,10 @@ export const expandChainOneLevel = createAsyncThunk<
     return thunkApi.rejectWithValue("missing chainPid on target node");
   }
 
-  const lvl = buildLevelFromRawChain(session.rawChain, targetPid, undefined);
+  // ✅ направление — ТОЛЬКО из session (иначе будет up/down прыгать)
+  const dir = session.direction ?? "down";
+
+  const lvl = buildLevelFromRawChain(session.rawChain, targetPid, undefined, dir);
 
   if (!lvl.ok) {
     return thunkApi.rejectWithValue("no producer for this pid (raw material?)");
@@ -195,9 +198,6 @@ export const expandChainOneLevel = createAsyncThunk<
   if (built.includes(usedTrId)) {
     return thunkApi.rejectWithValue("already expanded");
   }
-
-  // ✅ направление — ТОЛЬКО из session (иначе будет up/down прыгать)
-  const dir = session.direction ?? "down";
 
   const lvlPrefix = `chain::${rootNodeId}::lvl::${targetPid}::${usedTrId}`;
 
@@ -212,9 +212,11 @@ export const expandChainOneLevel = createAsyncThunk<
     pidToNodeId: session.pidToNodeId,
   });
 
-  const nextPids = Array.from(new Set(lvl.inputPids)).filter(
-    (p) => p !== targetPid,
-  );
+  // direction="down": раскрываем inputPids (из чего производится)
+  // direction="up":   раскрываем outputPids (что производится дальше)
+  const nextPids = Array.from(
+    new Set(dir === "up" ? lvl.outputPids : lvl.inputPids),
+  ).filter((p) => p !== targetPid);
 
   return {
     rootNodeId,
@@ -250,8 +252,9 @@ export const expandNextInQueue = createAsyncThunk<
     if (!queue.length) return;
 
     const pid = queue[0].pid;
+    const dir = curSession?.direction ?? "down";
 
-    const probe = buildLevelFromRawChain(rawChain, pid, undefined);
+    const probe = buildLevelFromRawChain(rawChain, pid, undefined, dir);
     if (!probe.ok) {
       thunkApi.dispatch(popQueueHead(rootNodeId));
       continue;

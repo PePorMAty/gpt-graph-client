@@ -2,7 +2,11 @@ import axios from "axios";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 
 import { updateNodeData } from "../slices/gptSlice";
-import type { SourcesSearchResponse, TechnologySource } from "../types";
+import type {
+  BuildDirection,
+  SourcesSearchResponse,
+  TechnologySource,
+} from "../types";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "", // как у тебя сделано в других api-файлах
@@ -11,12 +15,18 @@ const api = axios.create({
 
 export const fetchSources = createAsyncThunk<
   { nodeId: string; data: SourcesSearchResponse },
-  { nodeId: string; productName: string; maxItems?: number }
+  {
+    nodeId: string;
+    productName: string;
+    maxItems?: number;
+    direction?: BuildDirection;
+  }
 >("sources/fetchSources", async (payload, thunkApi) => {
   try {
     const res = await api.post<SourcesSearchResponse>(`/graphs/gpt/sources`, {
       productName: payload.productName,
       maxItems: payload.maxItems ?? 5,
+      direction: payload.direction ?? "down",
     });
 
     if (!res.data?.success) {

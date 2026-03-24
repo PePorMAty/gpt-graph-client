@@ -359,8 +359,16 @@ export const Flow = () => {
     const productName = String(selectedNode.data?.label || "").trim();
     if (!productName) return;
 
+    const direction =
+      (selectedNode.data?.buildDirection as BuildDirection) ?? "down";
+
     const result = await dispatch(
-      fetchSources({ nodeId: selectedNodeId, productName, maxItems: 5 }),
+      fetchSources({
+        nodeId: selectedNodeId,
+        productName,
+        maxItems: 5,
+        direction,
+      }),
     ).unwrap();
 
     // ✅ сохраняем источники прямо в node.data (переживёт save/load)
