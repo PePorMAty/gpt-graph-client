@@ -345,7 +345,7 @@ const gptSlice = createSlice({
               type: "transformation",
               position: { x, y },
               data: {
-                label: alt.firstStepName,
+                label: alt.title,
                 description: alt.fullDescription,
                 chainVariant: "alt",
                 chainRootNodeId: nodeId,
