@@ -5,6 +5,12 @@ import type {
   TechnologySource,
 } from "../../store/types";
 
+export interface FillCardOptions {
+  customSystemPrompt?: string;
+  selectedFields?: string[];
+  useWebSearch?: boolean;
+}
+
 export interface FlowPanelProps {
   onClose: () => void;
   isOpen: boolean;
@@ -35,14 +41,11 @@ export interface FlowPanelProps {
 
   chainReady?: boolean;
   chainPid?: string | null;
-  isActiveChainRoot?: boolean; // ✅ новый
-  // ✅ новое: показывать chain-ui только для узлов активной chain-сессии
+  isActiveChainRoot?: boolean;
   chainUiEnabled?: boolean;
 
-  // ✅ новое: можно ли стартовать/переключить chain на этот узел
   canInitChainHere?: boolean;
 
-  // ✅ новое: текст на кнопке init chain
   initChainLabel?: string;
 
   producerOptions?: Array<{ trId: string; title: string }>;
@@ -60,7 +63,7 @@ export interface FlowPanelProps {
   onExpandLevel?: () => void;
   onExpandNext?: () => void;
 
-  onBuildProductCard?: () => void;
+  onBuildProductCard?: (options?: FillCardOptions) => void;
   productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
   productCardError?: string | null;
   productCard?: ProductCard | null;

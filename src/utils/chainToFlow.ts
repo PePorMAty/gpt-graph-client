@@ -1,8 +1,8 @@
 // src/utils/chainToFlow.ts
-import type { Edge } from "@xyflow/react";
+import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 
-type ChainProductNode = {
+export type ChainProductNode = {
   "Id узла": string;
   "Тип узла": "Продукт";
   Продукты: string[];
@@ -10,7 +10,7 @@ type ChainProductNode = {
   "Описание продукта"?: string; // ✅ NEW
 };
 
-type ChainTransformNode = {
+export type ChainTransformNode = {
   "Id узла": string;
   "Тип узла": "Преобразование";
   "Название технологии": string;
@@ -88,13 +88,15 @@ export function chainToFlow(
     id: tFlowId,
     type: "transformation",
     position: { x: baseX - spacingX, y: baseY },
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
     data: {
-      label: t["Название технологии"] || "Преобразование",
+      label: (t["Название технологии"] || "Преобразование").replace(/^Шаг\s+\d+\.\s*/, ""),
       description: t["Описание технологии"] || "", // ✅ NEW
       chainTrId: t["Id узла"], // ✅ useful
       chainLevelOfPid: targetPid, // ✅ useful
       chainRootNodeId: targetNodeId, // ✅ root = nodeId that started chain
-    } as any,
+    },
   });
 
   // input products nodes (не target)
@@ -111,12 +113,14 @@ export function chainToFlow(
       id: pFlowId,
       type: "product",
       position: { x: baseX - spacingX * 2, y: startY + idx * spacingY },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
       data: {
         label: p?.["Название узла"] || p?.["Продукты"]?.[0] || pid,
         description: p?.["Описание продукта"] || "", // ✅ NEW
         chainPid: pid, // ✅ useful
         chainRootNodeId: targetNodeId, // ✅ belongs to this chain root
-      } as any,
+      },
     });
   });
 
@@ -130,6 +134,8 @@ export function chainToFlow(
       id: `${namespace}::e_in_${idx}_${pFlowId}_${tFlowId}`,
       source: pFlowId,
       target: tFlowId,
+      sourceHandle: "bottom",
+      targetHandle: "top",
       type: "straight",
     });
   });
@@ -140,6 +146,8 @@ export function chainToFlow(
       id: `${namespace}::e_out_target_${tFlowId}_${targetNodeId}`,
       source: tFlowId,
       target: targetNodeId,
+      sourceHandle: "bottom",
+      targetHandle: "top",
       type: "straight",
     });
   }

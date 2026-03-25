@@ -239,9 +239,205 @@
   padding-left: 18px;
 }
 
+/* Prompt editor */
+.promptToggle {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 6px;
+  text-decoration: underline;
+}
+
+.promptToggle:hover {
+  color: #0056b3;
+}
+
+.promptEditor {
+  margin-bottom: 8px;
+}
+
+.promptLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+
+/* ── Field selection ── */
+
+.fieldSection {
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.fieldSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.fieldSectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+}
+
+.fieldBulkActions {
+  display: flex;
+  gap: 6px;
+}
+
+.fieldBulkBtn {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.fieldBulkBtn:hover {
+  color: #0056b3;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.fieldCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.fieldCheckbox input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.fieldLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fieldRemoveBtn {
+  background: none;
+  border: none;
+  color: #cc0000;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.fieldRemoveBtn:hover {
+  color: #ff0000;
+}
+
+.addFieldRow {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.addFieldInput {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.addFieldInput:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.addFieldBtn {
+  padding: 4px 10px;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  background: #007bff;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.addFieldBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.addFieldBtn:not(:disabled):hover {
+  background: #0056b3;
+}
+
+.promptTextarea {
+  width: 100%;
+  max-width: 542px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 200px;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.promptTextarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.promptResetBtn {
+  margin-top: 4px;
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #666;
+}
+
+.promptResetBtn:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
 .errorText {
   margin-top: 8px;
   color: #ff6b6b;
+}
+
+.warningText {
+  margin-top: 8px;
+  color: #e6a700;
+  font-size: 13px;
 }
 
 .btnRow {
@@ -264,6 +460,21 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.webSearchToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 8px;
+  color: #555;
+}
+
+.webSearchToggle input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {

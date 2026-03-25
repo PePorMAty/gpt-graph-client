@@ -8,11 +8,11 @@ export function listProducersForPid(
   const items = Array.isArray(raw?.Цепочка) ? raw.Цепочка : [];
   const out: string[] = [];
 
-  for (const n of items as any[]) {
+  for (const n of items) {
     if (n?.["Тип узла"] !== "Преобразование") continue;
     const outs = Array.isArray(n?.["Выходы"]) ? n["Выходы"] : [];
     const produces = outs.some(
-      (o: any) => Object.values(o || {})[0] === targetPid,
+      (o: Record<string, string>) => Object.values(o || {})[0] === targetPid,
     );
     if (produces) out.push(n["Id узла"]);
   }

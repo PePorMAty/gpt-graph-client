@@ -5,9 +5,9 @@ import type { ProductCardResponse } from "../types";
 
 export const fetchProductCard = createAsyncThunk<
   { nodeId: string; data: ProductCardResponse },
-  { nodeId: string },
+  { nodeId: string; customSystemPrompt?: string; selectedFields?: string[]; useWebSearch?: boolean },
   { state: RootState; rejectValue: string }
->("graph/fetchProductCard", async ({ nodeId }, thunkApi) => {
+>("graph/fetchProductCard", async ({ nodeId, customSystemPrompt, selectedFields, useWebSearch }, thunkApi) => {
   try {
     const st = thunkApi.getState();
 
@@ -19,9 +19,7 @@ export const fetchProductCard = createAsyncThunk<
       node.type === "transformation" ? "transformation" : "product";
 
     // ✅ productName как контекст (можно root цепочки, можно сам node)
-    const chainRootId = (node.data as any)?.chainRootNodeId as
-      | string
-      | undefined;
+    const chainRootId = node.data?.chainRootNodeId;
     const rootNode = chainRootId
       ? st.graph.data.nodes.find((n) => n.id === chainRootId)
       : null;
@@ -48,9 +46,12 @@ export const fetchProductCard = createAsyncThunk<
       `${import.meta.env.VITE_API_URL}/graphs/gpt/fill-card`,
       {
         nodeType,
-        productName, // можно оставить даже пустым, но лучше слать
+        productName,
         node: nodePayload,
         chain,
+        ...(customSystemPrompt ? { customSystemPrompt } : {}),
+        ...(selectedFields ? { selectedFields } : {}),
+        ...(useWebSearch ? { useWebSearch: true } : {}),
       },
       { headers: { "Content-Type": "application/json" } },
     );
@@ -62,9 +63,12 @@ export const fetchProductCard = createAsyncThunk<
     }
 
     return { nodeId, data: res.data };
-  } catch (e: any) {
-    return thunkApi.rejectWithValue(
-      e?.response?.data?.error || e?.message || "fill-card request error",
-    );
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err)) {
+      return thunkApi.rejectWithValue(
+        err.response?.data?.error || err.message || "fill-card request error",
+      );
+    }
+    return thunkApi.rejectWithValue("fill-card request error");
   }
 });

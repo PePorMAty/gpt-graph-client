@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { FlowPanelProps } from "./types";
-import type {
-  ProductCardProduct,
-  ProductCardTechnology,
-} from "../../store/types"; // путь подстрой
+import {
+  getDefaultFillCardSystemPrompt,
+  getFieldsForNodeType,
+  labelToKey,
+  type FillCardField,
+} from "../../utils/defaultFillCardPrompts";
 
 import styles from "./FlowPanel.module.css";
 
@@ -40,15 +42,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   initChainLabel,
   onInitChain,
 
-  // ⬇️ дальше параметры ДЛЯ queue[0].pid (следующий продукт)
   queueLen,
-  chainPid, // это queuePid (следующий pid из очереди)
-  producerOptions,
-  selectedProducerId,
+  chainPid,
   onSelectProducer,
-  builtProducerIds,
 
-  onExpandNext, // ✅ единственная кнопка построения
+  onExpandNext,
 
   onBuildProductCard,
   productCardStatus,
@@ -56,7 +54,125 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   productCard,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
+  const effectiveNodeType = nodeType || "product";
 
+  // ── field selection state ──
+  const predefinedFields = useMemo(
+    () => getFieldsForNodeType(effectiveNodeType),
+    [effectiveNodeType],
+  );
+
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+    () => new Set(predefinedFields.map((f) => f.key)),
+  );
+  const [customFields, setCustomFields] = useState<FillCardField[]>([]);
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+
+  // all active fields = predefined (checked) + custom (checked)
+  const activeFields = useMemo(() => {
+    const result: FillCardField[] = [];
+    for (const f of predefinedFields) {
+      if (selectedKeys.has(f.key)) result.push(f);
+    }
+    for (const f of customFields) {
+      if (selectedKeys.has(f.key)) result.push(f);
+    }
+    return result;
+  }, [predefinedFields, customFields, selectedKeys]);
+
+  // all fields for checkbox rendering
+  const allFields = useMemo(
+    () => [...predefinedFields, ...customFields],
+    [predefinedFields, customFields],
+  );
+
+  // ── prompt editor state ──
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [manualPrompt, setManualPrompt] = useState<string | null>(null);
+  const [useWebSearch, setUseWebSearch] = useState(false);
+
+  const autoPrompt = useMemo(
+    () => getDefaultFillCardSystemPrompt(effectiveNodeType, activeFields),
+    [effectiveNodeType, activeFields],
+  );
+
+  const displayedPrompt = manualPrompt ?? autoPrompt;
+  const isPromptDirty = manualPrompt !== null;
+  const fieldsReduced =
+    activeFields.length !== predefinedFields.length ||
+    customFields.length > 0;
+
+  // reset when nodeType changes
+  useEffect(() => {
+    const fields = getFieldsForNodeType(effectiveNodeType);
+    setSelectedKeys(new Set(fields.map((f) => f.key)));
+    setCustomFields([]);
+    setManualPrompt(null);
+    setPromptOpen(false);
+    setNewFieldLabel("");
+  }, [effectiveNodeType]);
+
+  // when checkboxes change → clear manual edits
+  const handleToggleField = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setManualPrompt(null);
+  };
+
+  const handleSelectAll = () => {
+    setSelectedKeys(new Set(allFields.map((f) => f.key)));
+    setManualPrompt(null);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedKeys(new Set());
+    setManualPrompt(null);
+  };
+
+  const handleAddField = () => {
+    const label = newFieldLabel.trim();
+    if (!label) return;
+    const key = labelToKey(label);
+    if (!key || allFields.some((f) => f.key === key)) return;
+    const field: FillCardField = { key, label, custom: true };
+    setCustomFields((prev) => [...prev, field]);
+    setSelectedKeys((prev) => new Set([...prev, key]));
+    setNewFieldLabel("");
+    setManualPrompt(null);
+  };
+
+  const handleRemoveCustomField = (key: string) => {
+    setCustomFields((prev) => prev.filter((f) => f.key !== key));
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setManualPrompt(null);
+  };
+
+  const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setManualPrompt(e.target.value);
+  };
+
+  const handleResetPrompt = () => {
+    setManualPrompt(null);
+  };
+
+  const handleFillCard = () => {
+    const needCustom = isPromptDirty || fieldsReduced;
+    onBuildProductCard?.({
+      customSystemPrompt: needCustom ? displayedPrompt : undefined,
+      selectedFields: activeFields.map((f) => f.key),
+      useWebSearch,
+    });
+  };
+
+  // ── click outside ──
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -82,22 +198,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   const isProduct = nodeType === "product";
   const hasSources = Array.isArray(sources) && sources.length > 0;
 
-  function isProductCard(c: unknown): c is ProductCardProduct {
-    return !!c && typeof c === "object" && "product_name" in c;
-  }
-
-  function isTechCard(c: unknown): c is ProductCardTechnology {
-    return !!c && typeof c === "object" && "technology_name" in c;
-  }
-
-  const producers = Array.isArray(producerOptions) ? producerOptions : [];
-  const builtSet = useMemo(
-    () => new Set((builtProducerIds || []).filter(Boolean)),
-    [builtProducerIds],
-  );
-
-  // ✅ queue-кнопка НЕ зависит от “построено ли у текущего продукта”
-  // она зависит только от очереди и от того, что мы в UI корня активной chain-сессии
   const queueHasWork = !!queueLen && queueLen > 0;
   const canQueue =
     !!chainReady &&
@@ -106,16 +206,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     !!onExpandNext &&
     queueHasWork &&
     !chainLoading;
-
-  // выбранный producer для queuePid
-  const selectedIsBuilt =
-    !!selectedProducerId && builtSet.has(selectedProducerId);
-
-  // доступные producers для queuePid
-  const hasAnyAvailableProducer = producers.some((p) => !builtSet.has(p.trId));
-
-  // queuePid валиден?
-  const hasQueuePid = !!chainPid;
 
   if (!isOpen) return null;
 
@@ -168,175 +258,192 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               rows={4}
             />
           </div>
-          {/* ✅ PRODUCT CARD */}
+
+          {/* ── PRODUCT CARD ── */}
           <div className={styles.formGroup}>
             <button
               type="button"
-              onClick={onBuildProductCard}
-              disabled={!onBuildProductCard || productCardStatus === "loading"}
+              onClick={() => setPromptOpen((v) => !v)}
+              className={styles.promptToggle}
+            >
+              {promptOpen ? "Скрыть настройки промпта" : "Настроить промпт"}
+            </button>
+
+            {promptOpen && (
+              <div className={styles.promptEditor}>
+                {/* ── field checkboxes ── */}
+                <div className={styles.fieldSection}>
+                  <div className={styles.fieldSectionHeader}>
+                    <span className={styles.fieldSectionTitle}>
+                      Поля карточки
+                    </span>
+                    <div className={styles.fieldBulkActions}>
+                      <button
+                        type="button"
+                        className={styles.fieldBulkBtn}
+                        onClick={handleSelectAll}
+                      >
+                        Все
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.fieldBulkBtn}
+                        onClick={handleDeselectAll}
+                      >
+                        Ничего
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={styles.fieldGrid}>
+                    {allFields.map((f) => (
+                      <label key={f.key} className={styles.fieldCheckbox}>
+                        <input
+                          type="checkbox"
+                          checked={selectedKeys.has(f.key)}
+                          onChange={() => handleToggleField(f.key)}
+                        />
+                        <span className={styles.fieldLabel}>{f.label}</span>
+                        {f.custom && (
+                          <button
+                            type="button"
+                            className={styles.fieldRemoveBtn}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleRemoveCustomField(f.key);
+                            }}
+                            title="Удалить поле"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* add custom field */}
+                  <div className={styles.addFieldRow}>
+                    <input
+                      type="text"
+                      value={newFieldLabel}
+                      onChange={(e) => setNewFieldLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddField();
+                        }
+                      }}
+                      className={styles.addFieldInput}
+                      placeholder="Новое поле..."
+                    />
+                    <button
+                      type="button"
+                      className={styles.addFieldBtn}
+                      onClick={handleAddField}
+                      disabled={!newFieldLabel.trim()}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── prompt textarea ── */}
+                <label className={styles.promptLabel}>Системный промпт:</label>
+                <textarea
+                  value={displayedPrompt}
+                  onChange={handlePromptChange}
+                  className={styles.promptTextarea}
+                  rows={12}
+                />
+                {isPromptDirty && (
+                  <button
+                    type="button"
+                    className={styles.promptResetBtn}
+                    onClick={handleResetPrompt}
+                  >
+                    Сбросить промпт
+                  </button>
+                )}
+
+                <label className={styles.webSearchToggle}>
+                  <input
+                    type="checkbox"
+                    checked={useWebSearch}
+                    onChange={(e) => setUseWebSearch(e.target.checked)}
+                  />
+                  Искать в интернете (web search)
+                </label>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleFillCard}
+              disabled={
+                !onBuildProductCard ||
+                productCardStatus === "loading" ||
+                activeFields.length === 0
+              }
               className={styles.findSourcesButton}
             >
               {productCardStatus === "loading"
-                ? "🧾 Заполняю карточку..."
-                : "🧾 Заполнить карточку"}
+                ? "Заполняю карточку..."
+                : isPromptDirty || fieldsReduced
+                  ? "Заполнить (свой промпт)"
+                  : "Заполнить карточку"}
             </button>
 
             {productCardStatus === "failed" && productCardError && (
-              <div className={styles.errorText}>Ошибка: {productCardError}</div>
+              <div className={styles.errorText}>
+                Ошибка: {productCardError}
+              </div>
             )}
 
+            {/* ── card result (dynamic) ── */}
             {productCardStatus === "succeeded" && productCard && (
               <div className={styles.sourcesBox}>
                 <div className={styles.sourcesTitle}>Карточка</div>
-
-                {isProductCard(productCard) && (
-                  <>
-                    <div style={{ fontSize: 12, opacity: 0.9 }}>
-                      <b>{productCard.product_name}</b> —{" "}
-                      {productCard.product_type}
+                {allFields.map(({ key, label }) => {
+                  const val = (productCard as Record<string, string>)[key];
+                  if (!val) return null;
+                  return (
+                    <div key={key} style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 12, opacity: 0.9 }}>
+                        <b>{label}</b>
+                      </div>
+                      <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                        {val}
+                      </div>
                     </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Степень чистоты</b>
+                  );
+                })}
+                {/* fallback for unknown keys from server */}
+                {Object.entries(productCard as Record<string, string>)
+                  .filter(
+                    ([k, v]) => v && !allFields.some((f) => f.key === k),
+                  )
+                  .map(([k, v]) => (
+                    <div key={k} style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 12, opacity: 0.9 }}>
+                        <b>{k}</b>
+                      </div>
+                      <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                        {v}
+                      </div>
                     </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.purity}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Основные примеси</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.main_impurities}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Допустимые примеси</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.allowed_impurities}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Коэффициент конверсии</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.conversion_yield}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Типичный масштаб</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.typical_scale}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Хранение</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.storage}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Углеродный след</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.carbon_footprint}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Производители</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.producers}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Применения</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.applications}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Цена</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.price}
-                    </div>
-                  </>
-                )}
-
-                {isTechCard(productCard) && (
-                  <>
-                    <div style={{ fontSize: 12, opacity: 0.9 }}>
-                      <b>{productCard.technology_name}</b>
-                    </div>
-
-                    <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                      {productCard.technology_short_description}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Оборудование</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.equipment}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Условия</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.conditions}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Ограничения / ключевое свойство</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.constraints_or_key_property}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Материалы / катализаторы</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.additional_materials_or_catalysts}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Энергетика</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.energy}
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 10 }}>
-                      <b>Предприятие и завод</b>
-                    </div>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {productCard.enterprise_and_plant}
-                    </div>
-                  </>
-                )}
-
-                {!isProductCard(productCard) && !isTechCard(productCard) && (
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>
-                    Неизвестный формат карточки (нет ключей product_name /
-                    technology_name)
-                  </div>
-                )}
+                  ))}
               </div>
             )}
           </div>
+
           {isProduct && (
             <div className={styles.formGroup}>
               {/* 1) нет источников -> выбрать направление + поиск */}
               {!hasSources && (
                 <>
-                  <label className={styles.formLabel}>Куда строить граф:</label>
+                  <label className={styles.formLabel}>
+                    Куда строить граф:
+                  </label>
 
                   <div className={styles.inlineRow}>
                     <button
@@ -385,21 +492,47 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 </>
               )}
 
-              {/* 2) источники есть, но не обобщено -> ТОЛЬКО обобщить */}
+              {/* 2) источники есть, но не обобщено -> обобщить + повтор если мало */}
               {hasSources && !hasAggregated && (
                 <>
                   <div className={styles.sourcesTitle}>
                     Источники найдены: {sources.length}
                   </div>
 
+                  {sources.length < 2 && (
+                    <div className={styles.warningText}>
+                      Найдено менее 2 источников — обобщение недоступно.
+                      Попробуйте повторить поиск.
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={onAggregateSources}
-                    disabled={sourcesLoading || aggregateLoading}
+                    disabled={
+                      sourcesLoading || aggregateLoading || sources.length < 2
+                    }
                     className={styles.findSourcesButton}
                   >
                     🧩 Обобщить источники
                   </button>
+
+                  {sources.length < 2 && (
+                    <button
+                      type="button"
+                      onClick={onFindSources}
+                      disabled={sourcesLoading || aggregateLoading}
+                      className={styles.findSourcesButton}
+                    >
+                      🔄 Повторить поиск источников
+                    </button>
+                  )}
+
+                  {sourcesError && (
+                    <div className={styles.errorText}>
+                      Ошибка поиска: {sourcesError}
+                    </div>
+                  )}
 
                   {aggregateError && (
                     <div className={styles.errorText}>
@@ -425,10 +558,8 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     </button>
                   )}
 
-                  {/* chain UI показываем только если узел принадлежит активной chain-сессии */}
                   {chainReady && chainUiEnabled && (
                     <>
-                      {/* ВАЖНО: продолжение (queue) — только на root активной цепочки */}
                       {!isActiveChainRoot && (
                         <div
                           className={styles.sourcesTitle}
@@ -446,125 +577,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           </div>
 
                           <div className={styles.sourcesTitle}>
-                            Следующий продукт:{" "}
-                            <b>{hasQueuePid ? chainPid : "—"}</b>
+                            Следующий продукт: <b>{chainPid || "—"}</b>
                           </div>
 
-                          {/* выбор альтернатив для NEXT pid */}
-                          {hasQueuePid && producers.length > 0 && (
-                            <div className={styles.formGroup}>
-                              <label className={styles.formLabel}>
-                                Маршрут для следующего шага:
-                              </label>
-
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 8,
-                                }}
-                              >
-                                {producers.map((p, idx) => {
-                                  const isSelected =
-                                    selectedProducerId === p.trId;
-                                  const isBuilt = builtSet.has(p.trId);
-
-                                  const title = p.title?.trim()
-                                    ? p.title.trim()
-                                    : idx === 0
-                                      ? "Основной путь"
-                                      : `Альтернатива ${idx}`;
-
-                                  return (
-                                    <button
-                                      key={p.trId}
-                                      type="button"
-                                      className={`${styles.smallBtn} ${
-                                        isSelected ? styles.smallBtnActive : ""
-                                      }`}
-                                      onClick={() => onSelectProducer?.(p.trId)}
-                                      disabled={isBuilt}
-                                      title={
-                                        isBuilt
-                                          ? "Этот вариант уже построен"
-                                          : ""
-                                      }
-                                      style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center",
-                                        gap: 10,
-                                      }}
-                                    >
-                                      <span>
-                                        {isBuilt
-                                          ? "🔒 "
-                                          : isSelected
-                                            ? "✅ "
-                                            : ""}
-                                        {title}
-                                      </span>
-                                      <span
-                                        style={{ opacity: 0.65, fontSize: 12 }}
-                                      >
-                                        {p.trId}
-                                      </span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              <div
-                                className={styles.sourcesTitle}
-                                style={{
-                                  fontSize: 12,
-                                  opacity: 0.8,
-                                  marginTop: 10,
-                                }}
-                              >
-                                Доступно вариантов:{" "}
-                                <b>
-                                  {
-                                    producers.filter(
-                                      (p) => !builtSet.has(p.trId),
-                                    ).length
-                                  }
-                                </b>{" "}
-                                / Всего: <b>{producers.length}</b>
-                              </div>
-
-                              {!hasAnyAvailableProducer && (
-                                <div
-                                  className={styles.sourcesTitle}
-                                  style={{
-                                    fontSize: 12,
-                                    opacity: 0.8,
-                                    marginTop: 6,
-                                  }}
-                                >
-                                  ✅ Для следующего продукта все варианты уже
-                                  построены — queue сам пропустит его и пойдёт
-                                  дальше.
-                                </div>
-                              )}
-
-                              {selectedIsBuilt && (
-                                <div
-                                  className={styles.sourcesTitle}
-                                  style={{
-                                    fontSize: 12,
-                                    opacity: 0.8,
-                                    marginTop: 6,
-                                  }}
-                                >
-                                  Выбран уже построенный вариант — выбери
-                                  другой.
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* ✅ единственная кнопка построения */}
                           <button
                             type="button"
                             onClick={onExpandNext}
@@ -580,7 +595,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           >
                             {!queueHasWork
                               ? "✅ Цепочка завершена"
-                              : "▶️ Раскрыть следующий (queue)"}
+                              : "▶️ Раскрыть следующий (основная цепочка)"}
                           </button>
 
                           {!queueHasWork && (
@@ -599,7 +614,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   )}
 
                   {chainError && (
-                    <div className={styles.errorText}>Ошибка: {chainError}</div>
+                    <div className={styles.errorText}>
+                      Ошибка: {chainError}
+                    </div>
                   )}
                 </>
               )}

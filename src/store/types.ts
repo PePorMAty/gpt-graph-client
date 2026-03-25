@@ -22,22 +22,22 @@ export interface InitialGraphStateI {
     error: string | null;
     nodeId: string | null;
   };
-  chainSession: {
-    rootNodeId: string | null;
-    rawChain: TechChain | null;
-    direction?: "up" | "down";
-    // pid -> XYFlow nodeId (чтобы Продукт6 всегда был одним и тем же nodeId)
-    pidToNodeId: Record<string, string>;
+  chainSessions: Record<string, ChainSessionData>;
+}
 
-    // какие pid уже раскрыли (чтобы не строить заново тот же уровень)
-    expandedPids: string[];
-
-    // выбор producer для pid (альтернатива)
-    producerByPid: Record<string, string>; // pid -> transformationId
-    expandedProducerByPid: Record<string, string[]>; // pid -> transformationId
-    // очередь “что раскрывать дальше”
-    queue: Array<{ pid: string }>;
-  };
+export interface ChainSessionData {
+  rawChain: TechChain | null;
+  mainTrIds: string[];
+  direction?: “up” | “down”;
+  totalSteps: number;
+  rootX: number;
+  chainStatus: “idle” | “loading” | “succeeded” | “failed”;
+  chainError: string | null;
+  pidToNodeId: Record<string, string>;
+  expandedPids: string[];
+  producerByPid: Record<string, string>;
+  expandedProducerByPid: Record<string, string[]>;
+  queue: Array<{ pid: string }>;
 }
 
 export interface GraphApiResponse {

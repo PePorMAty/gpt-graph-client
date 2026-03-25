@@ -19,6 +19,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
       }}
     >
       <Handle
+        id="top"
         type="target"
         position={Position.Top}
         style={{
@@ -30,6 +31,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
 
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
       <Handle
+        id="bottom"
         type="source"
         position={Position.Bottom}
         style={{
