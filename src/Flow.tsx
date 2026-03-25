@@ -453,7 +453,9 @@ export const Flow = () => {
   const isActiveChainRoot =
     chainUiEnabled && selectedNodeId === nodeChainRootId;
 
-  const queueLen = chainReady ? (activeSession.queue?.length ?? 0) : 0;
+  const queueLen = chainReady
+    ? Math.max(0, (activeSession.totalSteps ?? 0) - (activeSession.expandedPids?.length ?? 0))
+    : 0;
 
   // следующий pid берём из очереди активной сессии
   const queuePid: string | null = chainReady
@@ -629,7 +631,10 @@ export const Flow = () => {
         aggregateError={aggregateError}
         // ⚠️ НЕ aggStatus, а реальный hasAggregated (см. ниже)
         hasAggregated={hasAggregated}
-        chainLoading={chainBuild?.status === "loading"} // ✅ проще, без nodeId
+        chainLoading={
+          (chainBuild?.status === "loading" && chainBuild?.nodeId === selectedNode?.id) ||
+          (activeSession?.chainStatus === "loading")
+        }
         chainError={chainError}
         chainReady={chainReady}
         chainUiEnabled={chainUiEnabled}

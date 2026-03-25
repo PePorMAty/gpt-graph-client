@@ -29,6 +29,7 @@ import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
 import { parseAlternatives } from "../../utils/parseAlternatives";
+import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -293,9 +294,15 @@ const gptSlice = createSlice({
         }
 
         // стартуем новую chain-сессию (не затрагивая другие)
+        const steps = countStepsFromDescription(techText);
         state.chainSessions[nodeId] = {
           rawChain: raw.chain,
+          mainTrIds: getMainTransformationIds(raw.chain, steps),
           direction: (root?.data?.buildDirection as "up" | "down") ?? "down",
+          totalSteps: steps,
+          rootX: root?.position?.x ?? 0,
+          chainStatus: "idle",
+          chainError: null,
           pidToNodeId: { Продукт1: nodeId },
           expandedPids: [],
           producerByPid: {},
@@ -360,6 +367,14 @@ const gptSlice = createSlice({
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;
         state.chainBuild.nodeId = null;
+      })
+      .addCase(expandChainOneLevel.pending, (state, action) => {
+        const targetNodeId = action.meta.arg.targetNodeId;
+        const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
+        const rootNodeId =
+          (anchor?.data?.chainRootNodeId as string) || targetNodeId;
+        const session = state.chainSessions[rootNodeId];
+        if (session) session.chainStatus = "loading";
       })
       .addCase(expandChainOneLevel.fulfilled, (state, action) => {
         const {
@@ -432,17 +447,23 @@ const gptSlice = createSlice({
         const arr = session.expandedProducerByPid[targetPid] || [];
         if (!arr.includes(usedTrId)) arr.push(usedTrId);
         session.expandedProducerByPid[targetPid] = arr;
-        state.chainBuild.status = "succeeded";
-        state.chainBuild.error = null;
-        state.chainBuild.nodeId = null;
+        session.chainStatus = "succeeded";
+        session.chainError = null;
       })
       .addCase(expandChainOneLevel.rejected, (state, action) => {
         // "already expanded" можно не считать ошибкой
         const msg = (action.payload as string) || "expandChainOneLevel failed";
         if (msg === "already expanded") return;
 
-        state.chainBuild.status = "failed";
-        state.chainBuild.error = msg;
+        const targetNodeId = action.meta.arg.targetNodeId;
+        const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
+        const rootNodeId =
+          (anchor?.data?.chainRootNodeId as string) || targetNodeId;
+        const session = state.chainSessions[rootNodeId];
+        if (session) {
+          session.chainStatus = "failed";
+          session.chainError = msg;
+        }
       });
     builder
       .addCase(fetchProductCard.pending, (state, action) => {

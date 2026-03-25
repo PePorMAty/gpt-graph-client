@@ -95,7 +95,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     sourcePosition: Position.Bottom,
     targetPosition: Position.Top,
     data: {
-      label: t["Название технологии"] || chainTrId,
+      label: (t["Название технологии"] || chainTrId).replace(/^Шаг\s+\d+\.\s*/, ""),
       description: t["Описание технологии"] || "",
       chainTrId,
       chainRootNodeId: rootNodeId,

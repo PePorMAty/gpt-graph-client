@@ -91,7 +91,7 @@ export function chainToFlow(
     sourcePosition: Position.Bottom,
     targetPosition: Position.Top,
     data: {
-      label: t["Название технологии"] || "Преобразование",
+      label: (t["Название технологии"] || "Преобразование").replace(/^Шаг\s+\d+\.\s*/, ""),
       description: t["Описание технологии"] || "", // ✅ NEW
       chainTrId: t["Id узла"], // ✅ useful
       chainLevelOfPid: targetPid, // ✅ useful

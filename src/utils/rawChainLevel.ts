@@ -41,11 +41,21 @@ export function getProducersForPid(raw: TechChain, targetPid: string) {
 
 // buildLevelFromRawChain.ts (пример логики)
 
+export function getMainTransformationIds(rawChain: TechChain, count: number): string[] {
+  const items = Array.isArray(rawChain?.Цепочка) ? rawChain.Цепочка : [];
+  const transforms = items
+    .filter((n): n is ChainTransformNode => n?.["Тип узла"] === "Преобразование")
+    .sort((a, b) => trNum(a["Id узла"]) - trNum(b["Id узла"]));
+  return transforms.slice(0, count).map((t) => t["Id узла"]);
+}
+
 export function buildLevelFromRawChain(
   rawChain: TechChain,
   targetPid: string,
   trId?: string,
   direction: "up" | "down" = "down",
+  excludeTrIds: string[] = [],
+  allowedTrIds?: string[],
 ) {
   const items = Array.isArray(rawChain?.Цепочка) ? rawChain.Цепочка : [];
 
@@ -64,6 +74,8 @@ export function buildLevelFromRawChain(
   const t = trId
     ? transforms.find((x) => x["Id узла"] === trId)
     : transforms.find((x) =>
+        !excludeTrIds.includes(x["Id узла"]) &&
+        (!allowedTrIds || allowedTrIds.includes(x["Id узла"])) &&
         (x[matchField] || []).map(pickPid).filter(Boolean).includes(targetPid),
       );
 
@@ -93,13 +105,8 @@ export function buildLevelFromRawChain(
   };
 }
 
-export function countChainSteps(
-  raw: TechChain | null | undefined,
-): number {
-  const items = Array.isArray(raw?.Цепочка) ? raw.Цепочка : [];
-  let count = 0;
-  for (const n of items) {
-    if (n?.["Тип узла"] === "Преобразование") count++;
-  }
-  return count;
+export function countStepsFromDescription(techText: string): number {
+  const altIdx = techText.indexOf("# Альтернативы");
+  const mainSection = altIdx >= 0 ? techText.slice(0, altIdx) : techText;
+  return (mainSection.match(/^## Шаг\s/gm) || []).length;
 }

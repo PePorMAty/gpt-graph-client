@@ -3,6 +3,7 @@ import axios from "axios";
 
 import { buildLevelFromRawChain } from "../../utils/rawChainLevel";
 import { levelToFlow } from "../../utils/levelToFlow";
+import { computeShiftX } from "../../utils/resolveChainOverlap";
 
 import type { RootState } from "../store";
 
@@ -172,7 +173,7 @@ export const expandChainOneLevel = createAsyncThunk<
     return thunkApi.rejectWithValue("chain session is not started");
   }
 
-  const ax = anchor?.position?.x ?? 0;
+  const rootX = session.rootX ?? (anchor?.position?.x ?? 0);
   const ay = anchor?.position?.y ?? 0;
 
   const targetPid =
@@ -185,7 +186,10 @@ export const expandChainOneLevel = createAsyncThunk<
   // ✅ направление — ТОЛЬКО из session (иначе будет up/down прыгать)
   const dir = session.direction ?? "down";
 
-  const lvl = buildLevelFromRawChain(session.rawChain, targetPid, undefined, dir);
+  // собираем ВСЕ уже использованные Id преобразований (из любого pid)
+  const allUsedTrIds = Object.values(session.expandedProducerByPid).flat();
+
+  const lvl = buildLevelFromRawChain(session.rawChain, targetPid, undefined, dir, allUsedTrIds, session.mainTrIds);
 
   if (!lvl.ok) {
     return thunkApi.rejectWithValue("no producer for this pid (raw material?)");
@@ -206,16 +210,26 @@ export const expandChainOneLevel = createAsyncThunk<
     rootNodeId,
     targetNodeId,
     targetPid,
-    targetX: ax,
+    targetX: rootX,
     targetY: ay,
     direction: dir,
     pidToNodeId: session.pidToNodeId,
   });
 
-  // direction="down": раскрываем inputPids (из чего производится)
-  // direction="up":   раскрываем outputPids (что производится дальше)
+  // ✅ коллизии: сдвигаем новые ноды если пересекаются с существующими
+  const existingNodes = state.data.nodes.filter(
+    (n) => !nodes.some((newN) => newN.id === n.id),
+  );
+  const dx = computeShiftX(nodes, existingNodes);
+  if (dx !== 0) {
+    for (const n of nodes) {
+      n.position = { x: n.position.x + dx, y: n.position.y };
+    }
+  }
+
+  // все продукты текущего преобразования (входы + выходы) могут иметь свои преобразования
   const nextPids = Array.from(
-    new Set(dir === "up" ? lvl.outputPids : lvl.inputPids),
+    new Set([...lvl.inputPids, ...lvl.outputPids]),
   ).filter((p) => p !== targetPid);
 
   return {
@@ -254,7 +268,8 @@ export const expandNextInQueue = createAsyncThunk<
     const pid = queue[0].pid;
     const dir = curSession?.direction ?? "down";
 
-    const probe = buildLevelFromRawChain(rawChain, pid, undefined, dir);
+    const allUsedTrIds = Object.values(curSession?.expandedProducerByPid ?? {}).flat();
+    const probe = buildLevelFromRawChain(rawChain, pid, undefined, dir, allUsedTrIds, curSession?.mainTrIds);
     if (!probe.ok) {
       thunkApi.dispatch(popQueueHead(rootNodeId));
       continue;
