@@ -128,12 +128,10 @@ export const Flow = () => {
   const flowNodes = useMemo(
     () =>
       data.nodes.map((n) => {
-        const isChainRoot = n.type === "product" && !!n.data?.chainBuiltRoot;
         const isAlt = n.data?.chainVariant === "alt";
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
-          isChainRoot ? "node--chainroot" : "",
           isAlt ? "node--alt" : "",
         ]
           .filter(Boolean)
