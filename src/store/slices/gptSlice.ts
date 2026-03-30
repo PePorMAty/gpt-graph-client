@@ -31,6 +31,7 @@ import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
 import { parseAlternatives } from "../../utils/parseAlternatives";
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
+import { sourcesKey } from "./sourcesSlice";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -45,7 +46,7 @@ const initialState: InitialGraphStateI = {
   leafNodes: [],
   originalPrompt: null,
   source: null,
-  chainBuild: { status: "idle", error: null, nodeId: null },
+  chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
 };
 
@@ -281,9 +282,11 @@ const gptSlice = createSlice({
         state.chainBuild.status = "loading";
         state.chainBuild.error = null;
         state.chainBuild.nodeId = action.meta.arg.nodeId;
+        state.chainBuild.direction = action.meta.arg.direction;
       })
       .addCase(buildChainLevel1.fulfilled, (state, action) => {
-        const { nodeId, raw, techText } = action.payload;
+        const { nodeId, raw, techText, direction } = action.payload;
+        const sKey = sourcesKey(nodeId, direction);
 
         const root = state.data.nodes.find((n) => n.id === nodeId);
 
@@ -292,14 +295,15 @@ const gptSlice = createSlice({
           root.data.chainPid = "Продукт1";
           root.data.chainRootNodeId = nodeId;
           root.data.chainBuiltRoot = true;
+          root.data.chainDirection = direction;
         }
 
-        // стартуем новую chain-сессию (не затрагивая другие)
+        // стартуем новую chain-сессию с составным ключом
         const steps = countStepsFromDescription(techText);
-        state.chainSessions[nodeId] = {
+        state.chainSessions[sKey] = {
           rawChain: raw.chain,
           mainTrIds: getMainTransformationIds(raw.chain, steps),
-          direction: (root?.data?.buildDirection as "up" | "down") ?? "down",
+          direction,
           totalSteps: steps,
           rootX: root?.position?.x ?? 0,
           chainStatus: "idle",
@@ -312,26 +316,25 @@ const gptSlice = createSlice({
         };
 
         // --- Альтернативы: парсим из techText и создаём ноды ---
-        // Удаляем старые альтернативы для этого root (на случай повторного вызова)
-        const altPrefix = `chain::${nodeId}::alt::`;
+        const altPrefix = `chain::${nodeId}::${direction}::alt::`;
         state.data.nodes = state.data.nodes.filter(
           (n) => !n.id.startsWith(altPrefix),
         );
         state.data.edges = state.data.edges.filter(
-          (e) => !e.id.startsWith(`chain::${nodeId}::alt-edge::`),
+          (e) => !e.id.startsWith(`chain::${nodeId}::${direction}::alt-edge::`),
         );
 
         const alternatives = parseAlternatives(techText);
         if (root && alternatives.length > 0) {
           const rx = root.position?.x ?? 0;
           const ry = root.position?.y ?? 0;
-          const dir = state.chainSessions[nodeId]?.direction ?? "down";
+          const dir = direction;
           const sign = dir === "down" ? 1 : -1;
           const stepY = 180;
           const spacingX = 300;
 
           alternatives.forEach((alt, idx) => {
-            const altNodeId = `chain::${nodeId}::alt::${idx}`;
+            const altNodeId = `chain::${nodeId}::${direction}::alt::${idx}`;
 
             // Чередуем лево/право: 0→лево, 1→право, 2→дальше лево, ...
             const side =
@@ -354,7 +357,7 @@ const gptSlice = createSlice({
             });
 
             state.data.edges.push({
-              id: `chain::${nodeId}::alt-edge::${idx}`,
+              id: `chain::${nodeId}::${direction}::alt-edge::${idx}`,
               source: nodeId,
               target: altNodeId,
               sourceHandle: "bottom",
@@ -368,18 +371,21 @@ const gptSlice = createSlice({
         state.chainBuild.status = "succeeded";
         state.chainBuild.error = null;
         state.chainBuild.nodeId = null;
+        state.chainBuild.direction = null;
       })
       .addCase(expandChainOneLevel.pending, (state, action) => {
         const targetNodeId = action.meta.arg.targetNodeId;
         const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
         const rootNodeId =
           (anchor?.data?.chainRootNodeId as string) || targetNodeId;
-        const session = state.chainSessions[rootNodeId];
+        const chainDir = (anchor?.data?.chainDirection as "up" | "down") ?? "down";
+        const sKey = sourcesKey(rootNodeId, chainDir);
+        const session = state.chainSessions[sKey];
         if (session) session.chainStatus = "loading";
       })
       .addCase(expandChainOneLevel.fulfilled, (state, action) => {
         const {
-          rootNodeId,
+          rootNodeId: sessionKey,
           targetNodeId,
           nodes,
           edges,
@@ -389,9 +395,7 @@ const gptSlice = createSlice({
         } = action.payload;
 
         const targetNode = state.data.nodes.find((n) => n.id === targetNodeId);
-        const targetPid =
-          targetNode?.data?.chainPid ||
-          (targetNodeId === rootNodeId ? "Продукт1" : null);
+        const targetPid = targetNode?.data?.chainPid || null;
 
         if (!targetPid) return;
 
@@ -401,7 +405,7 @@ const gptSlice = createSlice({
           (n) => !n.id.startsWith(lvlPrefix),
         ); */
         // --- 1) удаляем старые edges этого преобразования ---
-        const trFlowId = `chain::${rootNodeId}::tr::${usedTrId}`;
+        const trFlowId = `chain::${sessionKey}::tr::${usedTrId}`;
 
         state.data.edges = state.data.edges.filter(
           (e) => !e.id.includes(trFlowId),
@@ -423,7 +427,7 @@ const gptSlice = createSlice({
         );
 
         // --- 3) обновляем сессию ---
-        const session = state.chainSessions[rootNodeId];
+        const session = state.chainSessions[sessionKey];
         if (!session) return;
 
         session.pidToNodeId = pidToNodeIdNext;
@@ -460,7 +464,9 @@ const gptSlice = createSlice({
         const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
         const rootNodeId =
           (anchor?.data?.chainRootNodeId as string) || targetNodeId;
-        const session = state.chainSessions[rootNodeId];
+        const chainDir = (anchor?.data?.chainDirection as "up" | "down") ?? "down";
+        const sKey = sourcesKey(rootNodeId, chainDir);
+        const session = state.chainSessions[sKey];
         if (session) {
           session.chainStatus = "failed";
           session.chainError = msg;

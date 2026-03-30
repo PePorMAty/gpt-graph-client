@@ -1,6 +1,5 @@
 // src/components/flow-panel/types.ts
 import type {
-  BuildDirection,
   ProductCard,
   TechnologySource,
 } from "../../store/types";
@@ -9,6 +8,34 @@ export interface FillCardOptions {
   customSystemPrompt?: string;
   selectedFields?: string[];
   useWebSearch?: boolean;
+}
+
+/** Props for one direction tab (down or up) */
+export interface DirectionTabProps {
+  onFindSources?: () => void;
+  sourcesLoading?: boolean;
+  sourcesError?: string | null;
+  sources: TechnologySource[];
+
+  onAggregateSources?: () => void;
+  aggregateLoading?: boolean;
+  aggregateError?: string | null;
+  hasAggregated?: boolean;
+  aggregatedDescription?: string | null;
+  onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+
+  chainLoading?: boolean;
+  chainError?: string | null;
+  chainReady?: boolean;
+  chainUiEnabled?: boolean;
+  isActiveChainRoot?: boolean;
+  canInitChainHere?: boolean;
+  initChainLabel?: string;
+  onInitChain?: () => void;
+
+  queueLen?: number;
+  chainPid?: string | null;
+  onExpandNext?: () => void;
 }
 
 export interface FlowPanelProps {
@@ -23,48 +50,13 @@ export interface FlowPanelProps {
   nodeId?: string | null;
   nodeType?: string;
 
-  buildDirection?: BuildDirection | null;
-  onSetBuildDirection?: (dir: BuildDirection) => void;
-
-  onFindSources?: () => void;
-  sourcesLoading?: boolean;
-  sourcesError?: string | null;
-  sources: TechnologySource[];
-
-  onAggregateSources?: () => void;
-  aggregateLoading?: boolean;
-  aggregateError?: string | null;
-  hasAggregated?: boolean;
-
-  chainLoading?: boolean;
-  chainError?: string | null;
-
-  chainReady?: boolean;
-  chainPid?: string | null;
-  isActiveChainRoot?: boolean;
-  chainUiEnabled?: boolean;
-
-  canInitChainHere?: boolean;
-
-  initChainLabel?: string;
-
-  producerOptions?: Array<{ trId: string; title: string }>;
-  selectedProducerId?: string;
-  expandedProducerId?: string;
-
-  builtProducerIds: string[];
-  selectedAlreadyBuilt?: boolean;
-
-  queueLen?: number;
-  isChainRootUi?: boolean;
-
-  onInitChain?: () => void;
-  onSelectProducer?: (trId: string) => void;
-  onExpandLevel?: () => void;
-  onExpandNext?: () => void;
-
+  // fill card (Описание tab)
   onBuildProductCard?: (options?: FillCardOptions) => void;
   productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
   productCardError?: string | null;
   productCard?: ProductCard | null;
+
+  // per-direction tabs
+  downTab: DirectionTabProps;
+  upTab: DirectionTabProps;
 }

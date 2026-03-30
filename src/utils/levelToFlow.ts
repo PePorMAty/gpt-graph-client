@@ -99,6 +99,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       description: t["Описание технологии"] || "",
       chainTrId,
       chainRootNodeId: rootNodeId,
+      chainDirection: direction,
     },
   });
 
@@ -136,6 +137,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
         description: p?.["Описание продукта"] || "",
         chainPid: pid,
         chainRootNodeId: rootNodeId,
+        chainDirection: direction,
       },
     });
 
@@ -176,6 +178,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
         description: p?.["Описание продукта"] || "",
         chainPid: pid,
         chainRootNodeId: rootNodeId,
+        chainDirection: direction,
       },
     });
 

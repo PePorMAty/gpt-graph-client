@@ -21,6 +21,7 @@ export interface InitialGraphStateI {
     status: "idle" | "loading" | "succeeded" | "failed";
     error: string | null;
     nodeId: string | null;
+    direction: import("../types").BuildDirection | null;
   };
   chainSessions: Record<string, ChainSessionData>;
 }
