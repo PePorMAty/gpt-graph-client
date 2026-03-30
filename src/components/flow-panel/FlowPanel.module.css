@@ -255,6 +255,17 @@
   color: #0056b3;
 }
 
+.promptToggleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.promptToggleRow .promptToggle {
+  margin-bottom: 0;
+}
+
 .promptEditor {
   margin-bottom: 8px;
 }

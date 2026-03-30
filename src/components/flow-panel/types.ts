@@ -17,12 +17,14 @@ export interface DirectionTabProps {
   sourcesError?: string | null;
   sources: TechnologySource[];
 
-  onAggregateSources?: () => void;
+  onAggregateSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
   aggregateLoading?: boolean;
   aggregateError?: string | null;
   hasAggregated?: boolean;
   aggregatedDescription?: string | null;
   onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+
+  productName?: string;
 
   chainLoading?: boolean;
   chainError?: string | null;
@@ -31,7 +33,7 @@ export interface DirectionTabProps {
   isActiveChainRoot?: boolean;
   canInitChainHere?: boolean;
   initChainLabel?: string;
-  onInitChain?: () => void;
+  onInitChain?: (customSystemPrompt?: string) => void;
 
   queueLen?: number;
   chainPid?: string | null;

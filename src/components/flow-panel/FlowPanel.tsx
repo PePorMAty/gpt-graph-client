@@ -6,6 +6,8 @@ import {
   labelToKey,
   type FillCardField,
 } from "../../utils/defaultFillCardPrompts";
+import { getDefaultChainSystemPrompt } from "../../utils/defaultChainPrompt";
+import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../utils/defaultAggregatePrompt";
 
 import styles from "./FlowPanel.module.css";
 
@@ -24,6 +26,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
   hasAggregated,
   aggregatedDescription,
   onChangeAggregatedDescription,
+
+  productName,
 
   chainLoading,
   chainError,
@@ -45,6 +49,28 @@ const DirectionContent: FC<DirectionTabProps> = ({
   useEffect(() => {
     setLocalDesc(aggregatedDescription ?? "");
   }, [aggregatedDescription]);
+
+  // ── chain prompt editor state ──
+  const [chainPromptOpen, setChainPromptOpen] = useState(false);
+  const [manualChainPrompt, setManualChainPrompt] = useState<string | null>(null);
+
+  const autoChainPrompt = useMemo(
+    () => getDefaultChainSystemPrompt(productName || ""),
+    [productName],
+  );
+  const displayedChainPrompt = manualChainPrompt ?? autoChainPrompt;
+  const isChainPromptDirty = manualChainPrompt !== null;
+  const isChainPromptEmpty = displayedChainPrompt.trim() === "";
+
+  // ── aggregate prompt editor state ──
+  const [aggPromptOpen, setAggPromptOpen] = useState(false);
+  const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
+
+  const autoAggPrompt = useMemo(() => getDefaultAggregateFullPrompt(), []);
+  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
+  const isAggPromptDirty = manualAggPrompt !== null;
+  const isAggPromptEmpty = displayedAggPrompt.trim() === "";
+
   const queueHasWork = !!queueLen && queueLen > 0;
   const canQueue =
     !!chainReady &&
@@ -123,15 +149,65 @@ const DirectionContent: FC<DirectionTabProps> = ({
             </div>
           )}
 
+          {/* aggregate prompt editor */}
+          {sources.length >= 2 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAggPromptOpen((v) => !v)}
+                className={styles.promptToggle}
+              >
+                {aggPromptOpen ? "Скрыть промпт обобщения" : "Редактировать промпт обобщения"}
+              </button>
+
+              {aggPromptOpen && (
+                <div className={styles.promptEditor}>
+                  <label className={styles.promptLabel}>
+                    Системный + пользовательский промпт обобщения:
+                  </label>
+                  <textarea
+                    value={displayedAggPrompt}
+                    onChange={(e) => setManualAggPrompt(e.target.value)}
+                    className={styles.promptTextarea}
+                    rows={12}
+                  />
+                  {isAggPromptDirty && (
+                    <button
+                      type="button"
+                      className={styles.promptResetBtn}
+                      onClick={() => setManualAggPrompt(null)}
+                    >
+                      Сбросить промпт
+                    </button>
+                  )}
+                  {isAggPromptEmpty && (
+                    <div className={styles.errorText}>
+                      Промпт не может быть пустым
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
           <button
             type="button"
-            onClick={onAggregateSources}
-            disabled={sourcesLoading || aggregateLoading || sources.length < 2}
+            onClick={() => {
+              if (isAggPromptDirty) {
+                const { system, user } = splitAggregatePrompt(displayedAggPrompt);
+                onAggregateSources?.(system, user);
+              } else {
+                onAggregateSources?.();
+              }
+            }}
+            disabled={sourcesLoading || aggregateLoading || sources.length < 2 || isAggPromptEmpty}
             className={styles.findSourcesButton}
           >
             {aggregateLoading
               ? "Обобщение источников..."
-              : "Обобщить источники"}
+              : isAggPromptDirty
+                ? "Обобщить источники (свой промпт)"
+                : "Обобщить источники"}
           </button>
 
           {sources.length < 2 && (
@@ -160,16 +236,121 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {/* 3) обобщено -> chain */}
       {hasSources && hasAggregated && (
         <div className={styles.formGroup}>
+          {/* row: chain prompt toggle + re-aggregate toggle */}
+          <div className={styles.promptToggleRow}>
+            <button
+              type="button"
+              onClick={() => { setChainPromptOpen((v) => !v); setAggPromptOpen(false); }}
+              className={styles.promptToggle}
+            >
+              {chainPromptOpen ? "Скрыть промпт цепочки" : "Редактировать промпт цепочки"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAggPromptOpen((v) => !v); setChainPromptOpen(false); }}
+              className={styles.promptToggle}
+            >
+              {aggPromptOpen ? "Скрыть промпт обобщения" : "Повторное обобщение"}
+            </button>
+          </div>
+
+          {/* aggregate prompt editor (re-aggregate) */}
+          {aggPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>
+                Системный + пользовательский промпт обобщения:
+              </label>
+              <textarea
+                value={displayedAggPrompt}
+                onChange={(e) => setManualAggPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isAggPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualAggPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isAggPromptEmpty && (
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAggPromptDirty) {
+                    const { system, user } = splitAggregatePrompt(displayedAggPrompt);
+                    onAggregateSources?.(system, user);
+                  } else {
+                    onAggregateSources?.();
+                  }
+                }}
+                disabled={aggregateLoading || isAggPromptEmpty}
+                className={styles.findSourcesButton}
+              >
+                {aggregateLoading
+                  ? "Обобщение источников..."
+                  : isAggPromptDirty
+                    ? "Обобщить повторно (свой промпт)"
+                    : "Обобщить повторно"}
+              </button>
+              {aggregateError && (
+                <div className={styles.errorText}>Ошибка: {aggregateError}</div>
+              )}
+            </div>
+          )}
+
+          {/* chain prompt editor */}
+
+          {chainPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>
+                Системный промпт цепочки:
+              </label>
+              <textarea
+                value={displayedChainPrompt}
+                onChange={(e) => setManualChainPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isChainPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualChainPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isChainPromptEmpty && (
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
+              )}
+            </div>
+          )}
+
           {canInitChainHere && (
             <button
               type="button"
-              onClick={onInitChain}
-              disabled={sourcesLoading || aggregateLoading || chainLoading}
+              onClick={() =>
+                onInitChain?.(isChainPromptDirty ? displayedChainPrompt : undefined)
+              }
+              disabled={
+                sourcesLoading || aggregateLoading || chainLoading || isChainPromptEmpty
+              }
               className={styles.findSourcesButton}
             >
               {chainLoading
                 ? "Построение chain..."
-                : initChainLabel || "Получить цепочку (chain)"}
+                : isChainPromptDirty
+                  ? (initChainLabel || "Получить цепочку") + " (свой промпт)"
+                  : initChainLabel || "Получить цепочку (chain)"}
             </button>
           )}
 

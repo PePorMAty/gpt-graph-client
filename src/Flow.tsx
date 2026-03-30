@@ -368,7 +368,7 @@ export const Flow = () => {
   );
 
   const handleAggregateSources = useCallback(
-    (direction: BuildDirection) => async () => {
+    (direction: BuildDirection) => async (customSystemPrompt?: string, customUserPrompt?: string) => {
       if (!selectedNodeId || !selectedNode) return;
       const productName = String(selectedNode.data?.label || "").trim();
       if (!productName) return;
@@ -393,6 +393,8 @@ export const Flow = () => {
           productName,
           sources: payloadSources,
           direction,
+          customSystemPrompt,
+          customUserPrompt,
         }),
       ).unwrap();
     },
@@ -403,7 +405,7 @@ export const Flow = () => {
   const chainSessions = useAppSelector((s) => s.graph.chainSessions);
 
   const handleInitChain = useCallback(
-    (direction: BuildDirection) => async () => {
+    (direction: BuildDirection) => async (customSystemPrompt?: string) => {
       if (!selectedNodeId || !selectedNode) return;
 
       const descField = direction === "up" ? "upDescription" : "downDescription";
@@ -419,6 +421,7 @@ export const Flow = () => {
           productName: String(selectedNode.data?.label || "").trim(),
           techText,
           direction,
+          customSystemPrompt,
         }),
       ).unwrap();
     },
@@ -526,6 +529,8 @@ export const Flow = () => {
             }),
           );
         },
+
+        productName: String(selectedNode.data?.label || "").trim(),
 
         chainLoading: chainLoadingForNode,
         chainError: chainErrorForNode,

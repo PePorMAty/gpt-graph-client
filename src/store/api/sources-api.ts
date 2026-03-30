@@ -77,6 +77,8 @@ export type AggregateSourcesArgs = {
   productName: string;
   sources: TechnologySource[];
   direction: BuildDirection;
+  customSystemPrompt?: string;
+  customUserPrompt?: string;
 };
 
 export type AggregateSourcesResponse = {
@@ -93,11 +95,16 @@ export const aggregateSources = createAsyncThunk<
   { rejectValue: string }
 >("sources/aggregateSources", async (args, thunkApi) => {
   try {
-    const { nodeId, productName, sources, direction } = args;
+    const { nodeId, productName, sources, direction, customSystemPrompt, customUserPrompt } = args;
 
     const { data } = await api.post<AggregateSourcesResponse>(
       "/graphs/gpt/sources/aggregate",
-      { productName, sources },
+      {
+        productName,
+        sources,
+        ...(customSystemPrompt ? { customSystemPrompt } : {}),
+        ...(customUserPrompt ? { customUserPrompt } : {}),
+      },
     );
 
     // сохраняем агрегированное описание per-direction в node.data

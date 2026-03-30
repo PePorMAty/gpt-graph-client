@@ -99,15 +99,20 @@ type ChainApiResponse = {
 
 export const buildChainLevel1 = createAsyncThunk<
   { nodeId: string; raw: ChainApiResponse; techText: string; direction: BuildDirection },
-  { nodeId: string; productName: string; techText: string; direction: BuildDirection },
+  { nodeId: string; productName: string; techText: string; direction: BuildDirection; customSystemPrompt?: string },
   { state: RootState; rejectValue: string }
 >("graph/buildChainLevel1", async (args, thunkApi) => {
   try {
-    const { nodeId, productName, techText, direction } = args;
+    const { nodeId, productName, techText, direction, customSystemPrompt } = args;
 
     const res = await axios.post<ChainApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/chain`,
-      { productName, techText, targetProductId: "Продукт1" },
+      {
+        productName,
+        techText,
+        targetProductId: "Продукт1",
+        ...(customSystemPrompt ? { customSystemPrompt } : {}),
+      },
       { headers: { "Content-Type": "application/json" } },
     );
 
