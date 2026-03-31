@@ -214,6 +214,7 @@ export const expandChainOneLevel = createAsyncThunk<
   const { nodes, edges, pidToNodeIdNext } = levelToFlow(lvl.chain, {
     namespace: lvlPrefix,
     rootNodeId,
+    chainSessionKey: sessionKey,
     targetNodeId,
     targetPid,
     targetX: anchor?.position?.x ?? rootX,

@@ -15,6 +15,8 @@ import styles from "./FlowPanel.module.css";
 // DirectionContent — reusable block for "down" / "up" tab
 // ─────────────────────────────────────────────────
 const DirectionContent: FC<DirectionTabProps> = ({
+  direction,
+
   onFindSources,
   sourcesLoading,
   sourcesError,
@@ -66,7 +68,10 @@ const DirectionContent: FC<DirectionTabProps> = ({
   const [aggPromptOpen, setAggPromptOpen] = useState(false);
   const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
 
-  const autoAggPrompt = useMemo(() => getDefaultAggregateFullPrompt(), []);
+  const autoAggPrompt = useMemo(
+    () => getDefaultAggregateFullPrompt(direction, productName),
+    [direction, productName],
+  );
   const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
   const isAggPromptDirty = manualAggPrompt !== null;
   const isAggPromptEmpty = displayedAggPrompt.trim() === "";

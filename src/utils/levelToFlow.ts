@@ -19,6 +19,7 @@ function pickPid(
 type Opts = {
   namespace: string; // можно оставить для совместимости, но мы НЕ используем для id
   rootNodeId: string;
+  chainSessionKey?: string; // для генерации ID нод/рёбер (включает направление)
   targetNodeId: string;
   targetPid: string;
   targetX: number;
@@ -34,6 +35,7 @@ type Opts = {
 export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const {
     rootNodeId,
+    chainSessionKey,
     targetNodeId,
     targetPid,
     targetX,
@@ -44,6 +46,9 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     stepY1 = 180,
     stepY2 = 220,
   } = opts;
+
+  // idRoot includes direction to avoid collisions between up/down chains
+  const idRoot = chainSessionKey ?? rootNodeId;
 
   const items = Array.isArray(levelChain?.Цепочка) ? levelChain.Цепочка : [];
 
@@ -69,7 +74,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
   // stable ids
   const chainTrId = String(t["Id узла"] || "").trim();
-  const trFlowId = `chain::${rootNodeId}::tr::${chainTrId}`;
+  const trFlowId = `chain::${idRoot}::tr::${chainTrId}`;
 
   const inPids = (t["Входы"] || []).map(pickPid).filter(Boolean) as string[];
   const outPids = (t["Выходы"] || []).map(pickPid).filter(Boolean) as string[];
@@ -83,6 +88,11 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   );
 
   const isDown = direction === "down";
+
+  // down: main row (centered) = uniqueInputs; side = uniqueOutputs
+  // up:   main row (centered) = uniqueOutputs; side = uniqueInputs
+  const mainPids = direction === "up" ? uniqueOutputs : uniqueInputs;
+  const sidePids = direction === "up" ? uniqueInputs : uniqueOutputs;
 
   const nodes: CustomNode[] = [];
   const edges: Edge[] = [];
@@ -105,7 +115,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
   // edge: target -> transformation (stable)
   edges.push({
-    id: `chain::${rootNodeId}::e::${targetNodeId}::${trFlowId}`,
+    id: `chain::${idRoot}::e::${targetNodeId}::${trFlowId}`,
     source: isDown ? targetNodeId : trFlowId,
     target: isDown ? trFlowId : targetNodeId,
     sourceHandle: "bottom",
@@ -113,18 +123,18 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     type: "straight",
   });
 
-  // --- inputs row (центрируем относительно targetX) ---
-  const nIn = uniqueInputs.length;
-  const inRowWidth = nIn > 1 ? (nIn - 1) * spacingX : 0;
-  const inStartX = targetX - inRowWidth / 2;
+  // --- main row (центрируем относительно targetX) ---
+  const nMain = mainPids.length;
+  const mainRowWidth = nMain > 1 ? (nMain - 1) * spacingX : 0;
+  const mainStartX = targetX - mainRowWidth / 2;
 
-  uniqueInputs.forEach((pid, idx) => {
+  mainPids.forEach((pid, idx) => {
     const existingId = pidToNodeIdNext[pid];
-    const pFlowId = existingId || `chain::${rootNodeId}::pid::${pid}`;
+    const pFlowId = existingId || `chain::${idRoot}::pid::${pid}`;
     pidToNodeIdNext[pid] = pFlowId;
 
     const p = products.get(pid);
-    const x = inStartX + idx * spacingX;
+    const x = mainStartX + idx * spacingX;
 
     nodes.push({
       id: pFlowId,
@@ -141,9 +151,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       },
     });
 
-    // edge: input -> transformation (input feeds into process)
     edges.push({
-      id: `chain::${rootNodeId}::e-in::${trFlowId}::${pFlowId}`,
+      id: `chain::${idRoot}::e-in::${trFlowId}::${pFlowId}`,
       source: isDown ? trFlowId : pFlowId,
       target: isDown ? pFlowId : trFlowId,
       sourceHandle: "bottom",
@@ -152,25 +161,21 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     });
   });
 
-  // --- side outputs (побочки) ---
-  // ✅ КЛЮЧ: ставим их НА УРОВНЕ inputs-row, как на “правильном” скрине
-  const outputsY = inputsY;
+  // --- side row (побочные ноды — справа от main row) ---
+  const sideStartX = targetX + mainRowWidth / 2 + spacingX;
 
-  // начинаем справа от всего input-ряда (чтобы не налезать)
-  const outStartX = targetX + inRowWidth / 2 + spacingX;
-
-  uniqueOutputs.forEach((pid, idx) => {
+  sidePids.forEach((pid, idx) => {
     const existingId = pidToNodeIdNext[pid];
-    const pFlowId = existingId || `chain::${rootNodeId}::pid::${pid}`;
+    const pFlowId = existingId || `chain::${idRoot}::pid::${pid}`;
     pidToNodeIdNext[pid] = pFlowId;
 
     const p = products.get(pid);
-    const x = outStartX + idx * spacingX;
+    const x = sideStartX + idx * spacingX;
 
     nodes.push({
       id: pFlowId,
       type: "product",
-      position: { x, y: outputsY },
+      position: { x, y: inputsY },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       data: {
@@ -182,9 +187,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
       },
     });
 
-    // edge: transformation -> output (stable)
     edges.push({
-      id: `chain::${rootNodeId}::e::${trFlowId}::${pFlowId}`,
+      id: `chain::${idRoot}::e::${trFlowId}::${pFlowId}`,
       source: isDown ? trFlowId : pFlowId,
       target: isDown ? pFlowId : trFlowId,
       sourceHandle: "bottom",

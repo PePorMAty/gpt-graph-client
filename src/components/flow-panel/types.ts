@@ -1,5 +1,6 @@
 // src/components/flow-panel/types.ts
 import type {
+  BuildDirection,
   ProductCard,
   TechnologySource,
 } from "../../store/types";
@@ -12,6 +13,8 @@ export interface FillCardOptions {
 
 /** Props for one direction tab (down or up) */
 export interface DirectionTabProps {
+  direction: BuildDirection;
+
   onFindSources?: () => void;
   sourcesLoading?: boolean;
   sourcesError?: string | null;

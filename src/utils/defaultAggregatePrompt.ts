@@ -1,5 +1,19 @@
-export function getDefaultAggregateSystemPrompt(): string {
-  return `Ты — инженер\u2011технолог. Собери производственную цепочку по 5 описаниям (один продукт). Цель: пригодность для проектирования нового производства (чёткие материальные интерфейсы узлов).
+export function getDefaultAggregateSystemPrompt(
+  direction?: "up" | "down",
+  productName?: string,
+): string {
+  const upPreamble =
+    direction === "up" && productName
+      ? `НАПРАВЛЕНИЕ: ВВЕРХ (от сырья к продуктам переработки).
+"${productName}" — это ВХОДНОЕ СЫРЬЁ, а не конечный продукт.
+В поле «Исходный продукт» в шаблоне ниже ОБЯЗАТЕЛЬНО укажи "${productName}" (это входное сырьё/реагент, который подают на вход процессов).
+Все описанные цепочки должны начинаться с "${productName}" как входного потока.
+Описывай что и как производят ИЗ "${productName}", а не как получают "${productName}".
+
+`
+      : "";
+
+  return `${upPreamble}Ты — инженер\u2011технолог. Собери производственную цепочку по 5 описаниям (один продукт). Цель: пригодность для проектирования нового производства (чёткие материальные интерфейсы узлов).
 
 Жёсткие ограничения:
 - Используй ТОЛЬКО факты из 5 блоков. Внешние знания/догадки запрещены.
@@ -41,8 +55,17 @@ export function getDefaultAggregateSystemPrompt(): string {
 4) в «Примечаниях» есть «Контроль альтернатив» (route signatures по\u2011русски и соответствие блокам 1–5).`;
 }
 
-export function getDefaultAggregateUserPrompt(): string {
-  return `Ниже 5 описаний технологии получения одного продукта. Сконсолидируй их в производственную цепочку, пригодную для проектирования нового производства (чёткие потоки, альтернативные маршруты сохранены).
+export function getDefaultAggregateUserPrompt(
+  direction?: "up" | "down",
+  productName?: string,
+): string {
+  const intro =
+    direction === "up" && productName
+      ? `Ниже 5 описаний технологий, в которых "${productName}" используется как ВХОДНОЕ СЫРЬЁ/реагент. Сконсолидируй их в производственные цепочки переработки/использования "${productName}", пригодные для проектирования нового производства (чёткие потоки, альтернативные маршруты сохранены).
+"Исходный продукт" = "${productName}" (входное сырьё). НЕ подменяй его на выходной продукт.`
+      : `Ниже 5 описаний технологии получения одного продукта. Сконсолидируй их в производственную цепочку, пригодную для проектирования нового производства (чёткие потоки, альтернативные маршруты сохранены).`;
+
+  return `${intro}
 
 Требование к языку вывода:
 - Все названия потоков, узлов, операций, шагов, альтернатив, route signatures и текста — на русском.
@@ -139,8 +162,15 @@ export function getDefaultAggregateUserPrompt(): string {
 export const AGG_PROMPT_SEPARATOR =
   "\n\n═══════════════════════════════════\nUSER PROMPT (шаблон без блоков — блоки добавляются автоматически)\n═══════════════════════════════════\n\n";
 
-export function getDefaultAggregateFullPrompt(): string {
-  return getDefaultAggregateSystemPrompt() + AGG_PROMPT_SEPARATOR + getDefaultAggregateUserPrompt();
+export function getDefaultAggregateFullPrompt(
+  direction?: "up" | "down",
+  productName?: string,
+): string {
+  return (
+    getDefaultAggregateSystemPrompt(direction, productName) +
+    AGG_PROMPT_SEPARATOR +
+    getDefaultAggregateUserPrompt(direction, productName)
+  );
 }
 
 export function splitAggregatePrompt(full: string): {

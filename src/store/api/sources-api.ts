@@ -102,6 +102,7 @@ export const aggregateSources = createAsyncThunk<
       {
         productName,
         sources,
+        direction,
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
         ...(customUserPrompt ? { customUserPrompt } : {}),
       },

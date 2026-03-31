@@ -444,6 +444,7 @@ export const Flow = () => {
     (direction: BuildDirection): DirectionTabProps => {
       if (!selectedNodeId || !selectedNode) {
         return {
+          direction,
           sources: [],
         };
       }
@@ -507,6 +508,7 @@ export const Flow = () => {
           : "Получить цепочку (chain)";
 
       return {
+        direction,
         onFindSources: handleFindSources(direction),
         sourcesLoading: sliceState?.status === "loading",
         sourcesError: sliceState?.error ?? null,
