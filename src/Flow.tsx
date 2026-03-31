@@ -350,20 +350,22 @@ export const Flow = () => {
 
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
-    (direction: BuildDirection) => async () => {
-      if (!selectedNodeId || !selectedNode) return;
-      const productName = String(selectedNode.data?.label || "").trim();
-      if (!productName) return;
+    (direction: BuildDirection) =>
+      async (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+        if (!selectedNodeId || !selectedNode) return;
+        const productName = String(selectedNode.data?.label || "").trim();
+        if (!productName) return;
 
-      await dispatch(
-        fetchSources({
-          nodeId: selectedNodeId,
-          productName,
-          maxItems: 5,
-          direction,
-        }),
-      ).unwrap();
-    },
+        await dispatch(
+          fetchSources({
+            nodeId: selectedNodeId,
+            productName,
+            maxItems: opts?.maxItems ?? 5,
+            direction,
+            customSystemPrompt: opts?.customSystemPrompt,
+          }),
+        ).unwrap();
+      },
     [dispatch, selectedNodeId, selectedNode],
   );
 

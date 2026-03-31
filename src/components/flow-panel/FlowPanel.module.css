@@ -598,3 +598,20 @@
     left: 0;
   }
 }
+
+.maxItemsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.maxItemsInput {
+  width: 56px;
+  padding: 4px 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: inherit;
+  font-size: 14px;
+  text-align: center;
+}

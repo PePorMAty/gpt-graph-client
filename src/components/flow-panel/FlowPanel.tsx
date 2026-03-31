@@ -8,6 +8,7 @@ import {
 } from "../../utils/defaultFillCardPrompts";
 import { getDefaultChainSystemPrompt } from "../../utils/defaultChainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../utils/defaultAggregatePrompt";
+import { getDefaultSourcesPrompt } from "../../utils/defaultSourcesPrompt";
 
 import styles from "./FlowPanel.module.css";
 
@@ -51,6 +52,26 @@ const DirectionContent: FC<DirectionTabProps> = ({
   useEffect(() => {
     setLocalDesc(aggregatedDescription ?? "");
   }, [aggregatedDescription]);
+
+  // ── sources prompt + maxItems editor state ──
+  const [maxItems, setMaxItems] = useState(5);
+  const [sourcesPromptOpen, setSourcesPromptOpen] = useState(false);
+  const [manualSourcesPrompt, setManualSourcesPrompt] = useState<string | null>(null);
+
+  const autoSourcesPrompt = useMemo(
+    () => getDefaultSourcesPrompt(direction, productName || "", maxItems),
+    [direction, productName, maxItems],
+  );
+  const displayedSourcesPrompt = manualSourcesPrompt ?? autoSourcesPrompt;
+  const isSourcesPromptDirty = manualSourcesPrompt !== null;
+  const isSourcesPromptEmpty = displayedSourcesPrompt.trim() === "";
+
+  const handleFindSourcesClick = () => {
+    onFindSources?.({
+      maxItems,
+      customSystemPrompt: isSourcesPromptDirty ? displayedSourcesPrompt : undefined,
+    });
+  };
 
   // ── chain prompt editor state ──
   const [chainPromptOpen, setChainPromptOpen] = useState(false);
@@ -125,13 +146,65 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {/* 1) нет источников -> поиск */}
       {!hasSources && (
         <div className={styles.formGroup}>
+          {/* maxItems stepper */}
+          <div className={styles.maxItemsRow}>
+            <label className={styles.formLabel}>Количество источников:</label>
+            <input
+              type="number"
+              min={2}
+              max={5}
+              value={maxItems}
+              onChange={(e) =>
+                setMaxItems(Math.min(5, Math.max(2, Number(e.target.value) || 2)))
+              }
+              className={styles.maxItemsInput}
+            />
+          </div>
+
+          {/* sources prompt editor */}
           <button
             type="button"
-            onClick={onFindSources}
-            disabled={sourcesLoading || aggregateLoading}
+            onClick={() => setSourcesPromptOpen((v) => !v)}
+            className={styles.promptToggle}
+          >
+            {sourcesPromptOpen ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
+          </button>
+
+          {sourcesPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>Промпт поиска источников:</label>
+              <textarea
+                value={displayedSourcesPrompt}
+                onChange={(e) => setManualSourcesPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isSourcesPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualSourcesPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isSourcesPromptEmpty && (
+                <div className={styles.errorText}>Промпт не может быть пустым</div>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleFindSourcesClick}
+            disabled={sourcesLoading || aggregateLoading || isSourcesPromptEmpty}
             className={styles.findSourcesButton}
           >
-            {sourcesLoading ? "Поиск источников..." : "Поиск источников"}
+            {sourcesLoading
+              ? "Поиск источников..."
+              : isSourcesPromptDirty
+                ? "Поиск источников (свой промпт)"
+                : "Поиск источников"}
           </button>
 
           {sourcesError && (
@@ -218,8 +291,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
           {sources.length < 2 && (
             <button
               type="button"
-              onClick={onFindSources}
-              disabled={sourcesLoading || aggregateLoading}
+              onClick={handleFindSourcesClick}
+              disabled={sourcesLoading || aggregateLoading || isSourcesPromptEmpty}
               className={styles.findSourcesButton}
             >
               Повторить поиск источников

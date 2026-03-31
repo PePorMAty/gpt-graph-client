@@ -21,6 +21,7 @@ export const fetchSources = createAsyncThunk<
     productName: string;
     maxItems?: number;
     direction: BuildDirection;
+    customSystemPrompt?: string;
   }
 >("sources/fetchSources", async (payload, thunkApi) => {
   try {
@@ -28,6 +29,7 @@ export const fetchSources = createAsyncThunk<
       productName: payload.productName,
       maxItems: payload.maxItems ?? 5,
       direction: payload.direction,
+      ...(payload.customSystemPrompt ? { customSystemPrompt: payload.customSystemPrompt } : {}),
     });
 
     if (!res.data?.success) {

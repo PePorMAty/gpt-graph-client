@@ -15,7 +15,7 @@ export interface FillCardOptions {
 export interface DirectionTabProps {
   direction: BuildDirection;
 
-  onFindSources?: () => void;
+  onFindSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
   sourcesLoading?: boolean;
   sourcesError?: string | null;
   sources: TechnologySource[];
