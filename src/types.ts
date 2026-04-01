@@ -26,13 +26,24 @@ export interface CustomNodeData {
   chainTrId?: string;
   chainLevelOfPid?: string;
 
-  // --- sources ---
+  // --- sources (legacy single-direction, kept for migration) ---
   sources?: TechnologySource[];
   sourcesAggregated?: boolean;
   sources_meta?: { product: string; maxItems: number; fetchedAt: string };
 
-  // --- direction ---
+  // --- per-direction sources ---
+  sourcesDown?: TechnologySource[];
+  sourcesUp?: TechnologySource[];
+  sourcesAggregatedDown?: boolean;
+  sourcesAggregatedUp?: boolean;
+  downDescription?: string;
+  upDescription?: string;
+
+  // --- direction (legacy, kept for migration) ---
   buildDirection?: BuildDirection;
+
+  // --- chain direction (which direction this node's chain uses) ---
+  chainDirection?: BuildDirection;
 
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;

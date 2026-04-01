@@ -1,13 +1,536 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
-import type { FlowPanelProps } from "./types";
+import type { DirectionTabProps, FlowPanelProps } from "./types";
 import {
   getDefaultFillCardSystemPrompt,
   getFieldsForNodeType,
   labelToKey,
   type FillCardField,
 } from "../../utils/defaultFillCardPrompts";
+import { getDefaultChainSystemPrompt } from "../../utils/defaultChainPrompt";
+import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../utils/defaultAggregatePrompt";
+import { getDefaultSourcesPrompt } from "../../utils/defaultSourcesPrompt";
 
 import styles from "./FlowPanel.module.css";
+
+// ─────────────────────────────────────────────────
+// DirectionContent — reusable block for "down" / "up" tab
+// ─────────────────────────────────────────────────
+const DirectionContent: FC<DirectionTabProps> = ({
+  direction,
+
+  onFindSources,
+  sourcesLoading,
+  sourcesError,
+  sources,
+
+  onAggregateSources,
+  aggregateLoading,
+  aggregateError,
+  hasAggregated,
+  aggregatedDescription,
+  onChangeAggregatedDescription,
+
+  productName,
+
+  chainLoading,
+  chainError,
+  chainReady,
+  chainUiEnabled,
+  isActiveChainRoot,
+  canInitChainHere,
+  initChainLabel,
+  onInitChain,
+
+  queueLen,
+  chainPid,
+  onExpandNext,
+}) => {
+  const hasSources = Array.isArray(sources) && sources.length > 0;
+
+  // Local state for textarea to avoid Redux dispatch on every keystroke
+  const [localDesc, setLocalDesc] = useState(aggregatedDescription ?? "");
+  useEffect(() => {
+    setLocalDesc(aggregatedDescription ?? "");
+  }, [aggregatedDescription]);
+
+  // ── sources prompt + maxItems editor state ──
+  const [maxItems, setMaxItems] = useState(5);
+  const [sourcesPromptOpen, setSourcesPromptOpen] = useState(false);
+  const [manualSourcesPrompt, setManualSourcesPrompt] = useState<string | null>(null);
+
+  const autoSourcesPrompt = useMemo(
+    () => getDefaultSourcesPrompt(direction, productName || "", maxItems),
+    [direction, productName, maxItems],
+  );
+  const displayedSourcesPrompt = manualSourcesPrompt ?? autoSourcesPrompt;
+  const isSourcesPromptDirty = manualSourcesPrompt !== null;
+  const isSourcesPromptEmpty = displayedSourcesPrompt.trim() === "";
+
+  const handleFindSourcesClick = () => {
+    onFindSources?.({
+      maxItems,
+      customSystemPrompt: isSourcesPromptDirty ? displayedSourcesPrompt : undefined,
+    });
+  };
+
+  // ── chain prompt editor state ──
+  const [chainPromptOpen, setChainPromptOpen] = useState(false);
+  const [manualChainPrompt, setManualChainPrompt] = useState<string | null>(null);
+
+  const autoChainPrompt = useMemo(
+    () => getDefaultChainSystemPrompt(productName || ""),
+    [productName],
+  );
+  const displayedChainPrompt = manualChainPrompt ?? autoChainPrompt;
+  const isChainPromptDirty = manualChainPrompt !== null;
+  const isChainPromptEmpty = displayedChainPrompt.trim() === "";
+
+  // ── aggregate prompt editor state ──
+  const [aggPromptOpen, setAggPromptOpen] = useState(false);
+  const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
+
+  const autoAggPrompt = useMemo(
+    () => getDefaultAggregateFullPrompt(direction, productName),
+    [direction, productName],
+  );
+  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
+  const isAggPromptDirty = manualAggPrompt !== null;
+  const isAggPromptEmpty = displayedAggPrompt.trim() === "";
+
+  const queueHasWork = !!queueLen && queueLen > 0;
+  const canQueue =
+    !!chainReady &&
+    !!chainUiEnabled &&
+    !!isActiveChainRoot &&
+    !!onExpandNext &&
+    queueHasWork &&
+    !chainLoading;
+
+  const isLoading = sourcesLoading || aggregateLoading || chainLoading;
+
+  return (
+    <>
+      {isLoading && (
+        <div className={styles.tabLoader}>
+          <div className={styles.tabSpinner} />
+          <span>
+            {sourcesLoading
+              ? "Поиск источников..."
+              : aggregateLoading
+                ? "Обобщение источников..."
+                : "Построение chain..."}
+          </span>
+        </div>
+      )}
+
+      {/* aggregated description textarea */}
+      {hasAggregated && aggregatedDescription && (
+        <div className={styles.formGroup}>
+          <label className={styles.formLabel}>Обобщённое описание:</label>
+          <textarea
+            value={localDesc}
+            onChange={(e) => setLocalDesc(e.target.value)}
+            onBlur={() => {
+              if (localDesc !== (aggregatedDescription ?? "")) {
+                onChangeAggregatedDescription?.({
+                  target: { value: localDesc },
+                } as React.ChangeEvent<HTMLTextAreaElement>);
+              }
+            }}
+            className={styles.directionTextarea}
+            rows={4}
+          />
+        </div>
+      )}
+
+      {/* 1) нет источников -> поиск */}
+      {!hasSources && (
+        <div className={styles.formGroup}>
+          {/* maxItems stepper */}
+          <div className={styles.maxItemsRow}>
+            <label className={styles.formLabel}>Количество источников:</label>
+            <input
+              type="number"
+              min={2}
+              max={5}
+              value={maxItems}
+              onChange={(e) =>
+                setMaxItems(Math.min(5, Math.max(2, Number(e.target.value) || 2)))
+              }
+              className={styles.maxItemsInput}
+            />
+          </div>
+
+          {/* sources prompt editor */}
+          <button
+            type="button"
+            onClick={() => setSourcesPromptOpen((v) => !v)}
+            className={styles.promptToggle}
+          >
+            {sourcesPromptOpen ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
+          </button>
+
+          {sourcesPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>Промпт поиска источников:</label>
+              <textarea
+                value={displayedSourcesPrompt}
+                onChange={(e) => setManualSourcesPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isSourcesPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualSourcesPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isSourcesPromptEmpty && (
+                <div className={styles.errorText}>Промпт не может быть пустым</div>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleFindSourcesClick}
+            disabled={sourcesLoading || aggregateLoading || isSourcesPromptEmpty}
+            className={styles.findSourcesButton}
+          >
+            {sourcesLoading
+              ? "Поиск источников..."
+              : isSourcesPromptDirty
+                ? "Поиск источников (свой промпт)"
+                : "Поиск источников"}
+          </button>
+
+          {sourcesError && (
+            <div className={styles.errorText}>Ошибка: {sourcesError}</div>
+          )}
+        </div>
+      )}
+
+      {/* 2) источники есть, не обобщены */}
+      {hasSources && !hasAggregated && (
+        <div className={styles.formGroup}>
+          <div className={styles.sourcesTitle}>
+            Источники найдены: {sources.length}
+          </div>
+
+          {sources.length < 2 && (
+            <div className={styles.warningText}>
+              Найдено менее 2 источников — обобщение недоступно. Попробуйте
+              повторить поиск.
+            </div>
+          )}
+
+          {/* aggregate prompt editor */}
+          {sources.length >= 2 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAggPromptOpen((v) => !v)}
+                className={styles.promptToggle}
+              >
+                {aggPromptOpen ? "Скрыть промпт обобщения" : "Редактировать промпт обобщения"}
+              </button>
+
+              {aggPromptOpen && (
+                <div className={styles.promptEditor}>
+                  <label className={styles.promptLabel}>
+                    Системный + пользовательский промпт обобщения:
+                  </label>
+                  <textarea
+                    value={displayedAggPrompt}
+                    onChange={(e) => setManualAggPrompt(e.target.value)}
+                    className={styles.promptTextarea}
+                    rows={12}
+                  />
+                  {isAggPromptDirty && (
+                    <button
+                      type="button"
+                      className={styles.promptResetBtn}
+                      onClick={() => setManualAggPrompt(null)}
+                    >
+                      Сбросить промпт
+                    </button>
+                  )}
+                  {isAggPromptEmpty && (
+                    <div className={styles.errorText}>
+                      Промпт не может быть пустым
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              if (isAggPromptDirty) {
+                const { system, user } = splitAggregatePrompt(displayedAggPrompt);
+                onAggregateSources?.(system, user);
+              } else {
+                onAggregateSources?.();
+              }
+            }}
+            disabled={sourcesLoading || aggregateLoading || sources.length < 2 || isAggPromptEmpty}
+            className={styles.findSourcesButton}
+          >
+            {aggregateLoading
+              ? "Обобщение источников..."
+              : isAggPromptDirty
+                ? "Обобщить источники (свой промпт)"
+                : "Обобщить источники"}
+          </button>
+
+          {sources.length < 2 && (
+            <button
+              type="button"
+              onClick={handleFindSourcesClick}
+              disabled={sourcesLoading || aggregateLoading || isSourcesPromptEmpty}
+              className={styles.findSourcesButton}
+            >
+              Повторить поиск источников
+            </button>
+          )}
+
+          {sourcesError && (
+            <div className={styles.errorText}>
+              Ошибка поиска: {sourcesError}
+            </div>
+          )}
+
+          {aggregateError && (
+            <div className={styles.errorText}>Ошибка: {aggregateError}</div>
+          )}
+        </div>
+      )}
+
+      {/* 3) обобщено -> chain */}
+      {hasSources && hasAggregated && (
+        <div className={styles.formGroup}>
+          {/* row: chain prompt toggle + re-aggregate toggle */}
+          <div className={styles.promptToggleRow}>
+            <button
+              type="button"
+              onClick={() => { setChainPromptOpen((v) => !v); setAggPromptOpen(false); }}
+              className={styles.promptToggle}
+            >
+              {chainPromptOpen ? "Скрыть промпт цепочки" : "Редактировать промпт цепочки"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAggPromptOpen((v) => !v); setChainPromptOpen(false); }}
+              className={styles.promptToggle}
+            >
+              {aggPromptOpen ? "Скрыть промпт обобщения" : "Повторное обобщение"}
+            </button>
+          </div>
+
+          {/* aggregate prompt editor (re-aggregate) */}
+          {aggPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>
+                Системный + пользовательский промпт обобщения:
+              </label>
+              <textarea
+                value={displayedAggPrompt}
+                onChange={(e) => setManualAggPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isAggPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualAggPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isAggPromptEmpty && (
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAggPromptDirty) {
+                    const { system, user } = splitAggregatePrompt(displayedAggPrompt);
+                    onAggregateSources?.(system, user);
+                  } else {
+                    onAggregateSources?.();
+                  }
+                }}
+                disabled={aggregateLoading || isAggPromptEmpty}
+                className={styles.findSourcesButton}
+              >
+                {aggregateLoading
+                  ? "Обобщение источников..."
+                  : isAggPromptDirty
+                    ? "Обобщить повторно (свой промпт)"
+                    : "Обобщить повторно"}
+              </button>
+              {aggregateError && (
+                <div className={styles.errorText}>Ошибка: {aggregateError}</div>
+              )}
+            </div>
+          )}
+
+          {/* chain prompt editor */}
+
+          {chainPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>
+                Системный промпт цепочки:
+              </label>
+              <textarea
+                value={displayedChainPrompt}
+                onChange={(e) => setManualChainPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isChainPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualChainPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isChainPromptEmpty && (
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
+              )}
+            </div>
+          )}
+
+          {canInitChainHere && (
+            <button
+              type="button"
+              onClick={() =>
+                onInitChain?.(isChainPromptDirty ? displayedChainPrompt : undefined)
+              }
+              disabled={
+                sourcesLoading || aggregateLoading || chainLoading || isChainPromptEmpty
+              }
+              className={styles.findSourcesButton}
+            >
+              {chainLoading
+                ? "Построение chain..."
+                : isChainPromptDirty
+                  ? (initChainLabel || "Получить цепочку") + " (свой промпт)"
+                  : initChainLabel || "Получить цепочку (chain)"}
+            </button>
+          )}
+
+          {chainReady && chainUiEnabled && (
+            <>
+              {!isActiveChainRoot && (
+                <div
+                  className={styles.sourcesTitle}
+                  style={{ fontSize: 12, opacity: 0.75 }}
+                >
+                  Продолжение цепочки доступно только в корневом продукте
+                  активной цепочки.
+                </div>
+              )}
+
+              {isActiveChainRoot && (
+                <>
+                  <div className={styles.sourcesTitle}>
+                    Очередь: <b>{queueLen ?? 0}</b>
+                  </div>
+
+                  <div className={styles.sourcesTitle}>
+                    Следующий продукт: <b>{chainPid || "—"}</b>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={onExpandNext}
+                    disabled={!canQueue}
+                    className={styles.findSourcesButton}
+                    title={
+                      !queueHasWork
+                        ? "Очередь пустая"
+                        : !isActiveChainRoot
+                          ? "Доступно только в корне цепочки"
+                          : ""
+                    }
+                  >
+                    {!queueHasWork
+                      ? "Цепочка завершена"
+                      : "Раскрыть следующий (основная цепочка)"}
+                  </button>
+
+                  {!queueHasWork && (
+                    <div
+                      className={styles.sourcesTitle}
+                      style={{ fontSize: 12, opacity: 0.75 }}
+                    >
+                      Цепочка закончилась. Можно выбрать другой продукт, найти
+                      источники → обобщить → получить новую цепочку.
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {chainError && (
+            <div className={styles.errorText}>Ошибка: {chainError}</div>
+          )}
+        </div>
+      )}
+
+      {/* sources list */}
+      {hasSources && (
+        <div className={styles.sourcesBox}>
+          <div className={styles.sourcesTitle}>
+            Источники ({sources.length})
+          </div>
+
+          {sources.map((s) => (
+            <details key={s.url} className={styles.sourceItem}>
+              <summary className={styles.sourceSummary}>
+                <span className={styles.sourceTitle}>{s.title}</span>
+              </summary>
+
+              <div className={styles.sourceBody}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.sourceLink}
+                >
+                  {s.url}
+                </a>
+
+                <div className={styles.sourceDesc}>
+                  {s.technology_description}
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </>
+  );
+};
+
+// ─────────────────────────────────────────────────
+// FlowPanel — main component
+// ─────────────────────────────────────────────────
+type TabId = "description" | "down" | "up";
 
 export const FlowPanel: FC<FlowPanelProps> = ({
   onClose,
@@ -19,42 +542,20 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onChangeDescription,
 
   nodeType,
-  buildDirection,
-  onSetBuildDirection,
-  onFindSources,
-  sourcesLoading,
-  sourcesError,
-  sources,
-
-  onAggregateSources,
-  aggregateLoading,
-  aggregateError,
-  hasAggregated,
-
-  chainLoading,
-  chainError,
-
-  chainReady,
-  chainUiEnabled,
-  isActiveChainRoot,
-
-  canInitChainHere,
-  initChainLabel,
-  onInitChain,
-
-  queueLen,
-  chainPid,
-  onSelectProducer,
-
-  onExpandNext,
 
   onBuildProductCard,
   productCardStatus,
   productCardError,
   productCard,
+
+  downTab,
+  upTab,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
+  const isProduct = nodeType === "product";
+
+  const [activeTab, setActiveTab] = useState<TabId>("description");
 
   // ── field selection state ──
   const predefinedFields = useMemo(
@@ -68,7 +569,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   const [customFields, setCustomFields] = useState<FillCardField[]>([]);
   const [newFieldLabel, setNewFieldLabel] = useState("");
 
-  // all active fields = predefined (checked) + custom (checked)
   const activeFields = useMemo(() => {
     const result: FillCardField[] = [];
     for (const f of predefinedFields) {
@@ -80,7 +580,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     return result;
   }, [predefinedFields, customFields, selectedKeys]);
 
-  // all fields for checkbox rendering
   const allFields = useMemo(
     () => [...predefinedFields, ...customFields],
     [predefinedFields, customFields],
@@ -99,8 +598,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   const displayedPrompt = manualPrompt ?? autoPrompt;
   const isPromptDirty = manualPrompt !== null;
   const fieldsReduced =
-    activeFields.length !== predefinedFields.length ||
-    customFields.length > 0;
+    activeFields.length !== predefinedFields.length || customFields.length > 0;
 
   // reset when nodeType changes
   useEffect(() => {
@@ -112,7 +610,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     setNewFieldLabel("");
   }, [effectiveNodeType]);
 
-  // when checkboxes change → clear manual edits
   const handleToggleField = (key: string) => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
@@ -195,17 +692,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     }
   };
 
-  const isProduct = nodeType === "product";
-  const hasSources = Array.isArray(sources) && sources.length > 0;
-
-  const queueHasWork = !!queueLen && queueLen > 0;
-  const canQueue =
-    !!chainReady &&
-    !!chainUiEnabled &&
-    !!isActiveChainRoot &&
-    !!onExpandNext &&
-    queueHasWork &&
-    !chainLoading;
+  // loading indicators for inactive tabs
+  const downLoading =
+    downTab.sourcesLoading || downTab.aggregateLoading || downTab.chainLoading;
+  const upLoading =
+    upTab.sourcesLoading || upTab.aggregateLoading || upTab.chainLoading;
 
   if (!isOpen) return null;
 
@@ -217,19 +708,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
         ref={panelRef}
         className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
       >
-        {(sourcesLoading || aggregateLoading || chainLoading) && (
-          <div className={styles.loadingOverlay}>
-            <div className={styles.loadingSpinner}></div>
-            <p>
-              {sourcesLoading
-                ? "Поиск источников..."
-                : aggregateLoading
-                  ? "Обобщение источников..."
-                  : "Построение chain..."}
-            </p>
-          </div>
-        )}
-
         <div className={styles.panelHeader}>
           <h3 className={styles.panelTitle}>Редактирование узла</h3>
           <button className={styles.closeButton} onClick={onClose}>
@@ -238,6 +716,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
         </div>
 
         <div className={styles.panelContent}>
+          {/* Node name */}
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>Название узла:</label>
             <input
@@ -248,421 +727,261 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             />
           </div>
 
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel}>Описание:</label>
-            <textarea
-              value={descriptionValue}
-              onChange={onChangeDescription}
-              className={styles.formTextarea}
-              placeholder="Введите описание узла"
-              rows={4}
-            />
-          </div>
-
-          {/* ── PRODUCT CARD ── */}
-          <div className={styles.formGroup}>
+          {/* ── Tab bar ── */}
+          <div className={styles.tabBar}>
             <button
               type="button"
-              onClick={() => setPromptOpen((v) => !v)}
-              className={styles.promptToggle}
+              className={`${styles.tab} ${activeTab === "description" ? styles.tabActive : ""}`}
+              onClick={() => setActiveTab("description")}
             >
-              {promptOpen ? "Скрыть настройки промпта" : "Настроить промпт"}
+              Описание
             </button>
+            {isProduct && (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.tab} ${activeTab === "down" ? styles.tabActive : ""}`}
+                  onClick={() => setActiveTab("down")}
+                >
+                  Построить вниз
+                  {downLoading && activeTab !== "down" && (
+                    <span className={styles.tabLoadingDot} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.tab} ${activeTab === "up" ? styles.tabActive : ""}`}
+                  onClick={() => setActiveTab("up")}
+                >
+                  Построить вверх
+                  {upLoading && activeTab !== "up" && (
+                    <span className={styles.tabLoadingDot} />
+                  )}
+                </button>
+              </>
+            )}
+          </div>
 
-            {promptOpen && (
-              <div className={styles.promptEditor}>
-                {/* ── field checkboxes ── */}
-                <div className={styles.fieldSection}>
-                  <div className={styles.fieldSectionHeader}>
-                    <span className={styles.fieldSectionTitle}>
-                      Поля карточки
-                    </span>
-                    <div className={styles.fieldBulkActions}>
-                      <button
-                        type="button"
-                        className={styles.fieldBulkBtn}
-                        onClick={handleSelectAll}
-                      >
-                        Все
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.fieldBulkBtn}
-                        onClick={handleDeselectAll}
-                      >
-                        Ничего
-                      </button>
-                    </div>
-                  </div>
+          {/* ══════════ TAB: Описание ══════════ */}
+          {activeTab === "description" && (
+            <>
+              {productCardStatus === "loading" && (
+                <div className={styles.tabLoader}>
+                  <div className={styles.tabSpinner} />
+                  <span>Заполняю карточку...</span>
+                </div>
+              )}
 
-                  <div className={styles.fieldGrid}>
-                    {allFields.map((f) => (
-                      <label key={f.key} className={styles.fieldCheckbox}>
-                        <input
-                          type="checkbox"
-                          checked={selectedKeys.has(f.key)}
-                          onChange={() => handleToggleField(f.key)}
-                        />
-                        <span className={styles.fieldLabel}>{f.label}</span>
-                        {f.custom && (
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Описание:</label>
+                <textarea
+                  value={descriptionValue}
+                  onChange={onChangeDescription}
+                  className={styles.formTextarea}
+                  placeholder="Введите описание узла"
+                  rows={4}
+                />
+              </div>
+
+              {/* ── PRODUCT CARD ── */}
+              <div className={styles.formGroup}>
+                <button
+                  type="button"
+                  onClick={() => setPromptOpen((v) => !v)}
+                  className={styles.promptToggle}
+                >
+                  {promptOpen ? "Скрыть настройки промпта" : "Настроить промпт"}
+                </button>
+
+                {promptOpen && (
+                  <div className={styles.promptEditor}>
+                    {/* field checkboxes */}
+                    <div className={styles.fieldSection}>
+                      <div className={styles.fieldSectionHeader}>
+                        <span className={styles.fieldSectionTitle}>
+                          Поля карточки
+                        </span>
+                        <div className={styles.fieldBulkActions}>
                           <button
                             type="button"
-                            className={styles.fieldRemoveBtn}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleRemoveCustomField(f.key);
-                            }}
-                            title="Удалить поле"
+                            className={styles.fieldBulkBtn}
+                            onClick={handleSelectAll}
                           >
-                            ×
+                            Все
                           </button>
-                        )}
-                      </label>
-                    ))}
-                  </div>
+                          <button
+                            type="button"
+                            className={styles.fieldBulkBtn}
+                            onClick={handleDeselectAll}
+                          >
+                            Ничего
+                          </button>
+                        </div>
+                      </div>
 
-                  {/* add custom field */}
-                  <div className={styles.addFieldRow}>
-                    <input
-                      type="text"
-                      value={newFieldLabel}
-                      onChange={(e) => setNewFieldLabel(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddField();
-                        }
-                      }}
-                      className={styles.addFieldInput}
-                      placeholder="Новое поле..."
+                      <div className={styles.fieldGrid}>
+                        {allFields.map((f) => (
+                          <label key={f.key} className={styles.fieldCheckbox}>
+                            <input
+                              type="checkbox"
+                              checked={selectedKeys.has(f.key)}
+                              onChange={() => handleToggleField(f.key)}
+                            />
+                            <span className={styles.fieldLabel}>{f.label}</span>
+                            {f.custom && (
+                              <button
+                                type="button"
+                                className={styles.fieldRemoveBtn}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handleRemoveCustomField(f.key);
+                                }}
+                                title="Удалить поле"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* add custom field */}
+                      <div className={styles.addFieldRow}>
+                        <input
+                          type="text"
+                          value={newFieldLabel}
+                          onChange={(e) => setNewFieldLabel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddField();
+                            }
+                          }}
+                          className={styles.addFieldInput}
+                          placeholder="Новое поле..."
+                        />
+                        <button
+                          type="button"
+                          className={styles.addFieldBtn}
+                          onClick={handleAddField}
+                          disabled={!newFieldLabel.trim()}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* prompt textarea */}
+                    <label className={styles.promptLabel}>
+                      Системный промпт:
+                    </label>
+                    <textarea
+                      value={displayedPrompt}
+                      onChange={handlePromptChange}
+                      className={styles.promptTextarea}
+                      rows={12}
                     />
-                    <button
-                      type="button"
-                      className={styles.addFieldBtn}
-                      onClick={handleAddField}
-                      disabled={!newFieldLabel.trim()}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
+                    {isPromptDirty && (
+                      <button
+                        type="button"
+                        className={styles.promptResetBtn}
+                        onClick={handleResetPrompt}
+                      >
+                        Сбросить промпт
+                      </button>
+                    )}
 
-                {/* ── prompt textarea ── */}
-                <label className={styles.promptLabel}>Системный промпт:</label>
-                <textarea
-                  value={displayedPrompt}
-                  onChange={handlePromptChange}
-                  className={styles.promptTextarea}
-                  rows={12}
-                />
-                {isPromptDirty && (
-                  <button
-                    type="button"
-                    className={styles.promptResetBtn}
-                    onClick={handleResetPrompt}
-                  >
-                    Сбросить промпт
-                  </button>
+                    <label className={styles.webSearchToggle}>
+                      <input
+                        type="checkbox"
+                        checked={useWebSearch}
+                        onChange={(e) => setUseWebSearch(e.target.checked)}
+                      />
+                      Искать в интернете (web search)
+                    </label>
+                  </div>
                 )}
 
-                <label className={styles.webSearchToggle}>
-                  <input
-                    type="checkbox"
-                    checked={useWebSearch}
-                    onChange={(e) => setUseWebSearch(e.target.checked)}
-                  />
-                  Искать в интернете (web search)
-                </label>
-              </div>
-            )}
+                <button
+                  type="button"
+                  onClick={handleFillCard}
+                  disabled={
+                    !onBuildProductCard ||
+                    productCardStatus === "loading" ||
+                    activeFields.length === 0
+                  }
+                  className={styles.findSourcesButton}
+                >
+                  {productCardStatus === "loading"
+                    ? "Заполняю карточку..."
+                    : isPromptDirty || fieldsReduced
+                      ? "Заполнить (свой промпт)"
+                      : "Заполнить карточку"}
+                </button>
 
-            <button
-              type="button"
-              onClick={handleFillCard}
-              disabled={
-                !onBuildProductCard ||
-                productCardStatus === "loading" ||
-                activeFields.length === 0
-              }
-              className={styles.findSourcesButton}
-            >
-              {productCardStatus === "loading"
-                ? "Заполняю карточку..."
-                : isPromptDirty || fieldsReduced
-                  ? "Заполнить (свой промпт)"
-                  : "Заполнить карточку"}
-            </button>
-
-            {productCardStatus === "failed" && productCardError && (
-              <div className={styles.errorText}>
-                Ошибка: {productCardError}
-              </div>
-            )}
-
-            {/* ── card result (dynamic) ── */}
-            {productCardStatus === "succeeded" && productCard && (
-              <div className={styles.sourcesBox}>
-                <div className={styles.sourcesTitle}>Карточка</div>
-                {allFields.map(({ key, label }) => {
-                  const val = (productCard as Record<string, string>)[key];
-                  if (!val) return null;
-                  return (
-                    <div key={key} style={{ marginTop: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.9 }}>
-                        <b>{label}</b>
-                      </div>
-                      <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                        {val}
-                      </div>
-                    </div>
-                  );
-                })}
-                {/* fallback for unknown keys from server */}
-                {Object.entries(productCard as Record<string, string>)
-                  .filter(
-                    ([k, v]) => v && !allFields.some((f) => f.key === k),
-                  )
-                  .map(([k, v]) => (
-                    <div key={k} style={{ marginTop: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.9 }}>
-                        <b>{k}</b>
-                      </div>
-                      <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                        {v}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-
-          {isProduct && (
-            <div className={styles.formGroup}>
-              {/* 1) нет источников -> выбрать направление + поиск */}
-              {!hasSources && (
-                <>
-                  <label className={styles.formLabel}>
-                    Куда строить граф:
-                  </label>
-
-                  <div className={styles.inlineRow}>
-                    <button
-                      type="button"
-                      className={`${styles.smallBtn} ${
-                        buildDirection === "down" ? styles.smallBtnActive : ""
-                      }`}
-                      onClick={() => onSetBuildDirection?.("down")}
-                      disabled={sourcesLoading || aggregateLoading}
-                    >
-                      {buildDirection === "down"
-                        ? "✅ Строим вниз"
-                        : "⬇ Строить вниз"}
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`${styles.smallBtn} ${
-                        buildDirection === "up" ? styles.smallBtnActive : ""
-                      }`}
-                      onClick={() => onSetBuildDirection?.("up")}
-                      disabled={sourcesLoading || aggregateLoading}
-                    >
-                      {buildDirection === "up"
-                        ? "✅ Строим вверх"
-                        : "⬆ Строить вверх"}
-                    </button>
+                {productCardStatus === "failed" && productCardError && (
+                  <div className={styles.errorText}>
+                    Ошибка: {productCardError}
                   </div>
+                )}
 
-                  {buildDirection && (
-                    <button
-                      type="button"
-                      onClick={onFindSources}
-                      disabled={sourcesLoading || aggregateLoading}
-                      className={styles.findSourcesButton}
-                    >
-                      🔎 Найти источники
-                    </button>
-                  )}
-
-                  {sourcesError && (
-                    <div className={styles.errorText}>
-                      Ошибка: {sourcesError}
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* 2) источники есть, но не обобщено -> обобщить + повтор если мало */}
-              {hasSources && !hasAggregated && (
-                <>
-                  <div className={styles.sourcesTitle}>
-                    Источники найдены: {sources.length}
-                  </div>
-
-                  {sources.length < 2 && (
-                    <div className={styles.warningText}>
-                      Найдено менее 2 источников — обобщение недоступно.
-                      Попробуйте повторить поиск.
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={onAggregateSources}
-                    disabled={
-                      sourcesLoading || aggregateLoading || sources.length < 2
-                    }
-                    className={styles.findSourcesButton}
-                  >
-                    🧩 Обобщить источники
-                  </button>
-
-                  {sources.length < 2 && (
-                    <button
-                      type="button"
-                      onClick={onFindSources}
-                      disabled={sourcesLoading || aggregateLoading}
-                      className={styles.findSourcesButton}
-                    >
-                      🔄 Повторить поиск источников
-                    </button>
-                  )}
-
-                  {sourcesError && (
-                    <div className={styles.errorText}>
-                      Ошибка поиска: {sourcesError}
-                    </div>
-                  )}
-
-                  {aggregateError && (
-                    <div className={styles.errorText}>
-                      Ошибка: {aggregateError}
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* 3) обобщение готово -> можно получить chain / продолжить */}
-              {hasSources && hasAggregated && (
-                <>
-                  {canInitChainHere && (
-                    <button
-                      type="button"
-                      onClick={onInitChain}
-                      disabled={
-                        sourcesLoading || aggregateLoading || chainLoading
-                      }
-                      className={styles.findSourcesButton}
-                    >
-                      {initChainLabel || "🧬 Получить цепочку (chain)"}
-                    </button>
-                  )}
-
-                  {chainReady && chainUiEnabled && (
-                    <>
-                      {!isActiveChainRoot && (
-                        <div
-                          className={styles.sourcesTitle}
-                          style={{ fontSize: 12, opacity: 0.75 }}
-                        >
-                          Продолжение цепочки доступно только в корневом
-                          продукте активной цепочки.
+                {/* card result */}
+                {productCardStatus === "succeeded" && productCard && (
+                  <div className={styles.sourcesBox}>
+                    <div className={styles.sourcesTitle}>Карточка</div>
+                    {allFields.map(({ key, label }) => {
+                      const val = (productCard as Record<string, string>)[key];
+                      if (!val) return null;
+                      return (
+                        <div key={key} style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 12, opacity: 0.9 }}>
+                            <b>{label}</b>
+                          </div>
+                          <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                            {val}
+                          </div>
                         </div>
-                      )}
-
-                      {isActiveChainRoot && (
-                        <>
-                          <div className={styles.sourcesTitle}>
-                            📌 Очередь: <b>{queueLen ?? 0}</b>
+                      );
+                    })}
+                    {/* fallback for unknown keys */}
+                    {Object.entries(productCard as Record<string, string>)
+                      .filter(
+                        ([k, v]) => v && !allFields.some((f) => f.key === k),
+                      )
+                      .map(([k, v]) => (
+                        <div key={k} style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 12, opacity: 0.9 }}>
+                            <b>{k}</b>
                           </div>
-
-                          <div className={styles.sourcesTitle}>
-                            Следующий продукт: <b>{chainPid || "—"}</b>
+                          <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                            {v}
                           </div>
-
-                          <button
-                            type="button"
-                            onClick={onExpandNext}
-                            disabled={!canQueue}
-                            className={styles.findSourcesButton}
-                            title={
-                              !queueHasWork
-                                ? "Очередь пустая"
-                                : !isActiveChainRoot
-                                  ? "Доступно только в корне цепочки"
-                                  : ""
-                            }
-                          >
-                            {!queueHasWork
-                              ? "✅ Цепочка завершена"
-                              : "▶️ Раскрыть следующий (основная цепочка)"}
-                          </button>
-
-                          {!queueHasWork && (
-                            <div
-                              className={styles.sourcesTitle}
-                              style={{ fontSize: 12, opacity: 0.75 }}
-                            >
-                              Цепочка закончилась. Можно выбрать другой продукт,
-                              найти источники → обобщить → получить новую
-                              цепочку.
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {chainError && (
-                    <div className={styles.errorText}>
-                      Ошибка: {chainError}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {isProduct && sources.length > 0 && (
-            <div className={styles.sourcesBox}>
-              <div className={styles.sourcesTitle}>
-                Источники ({sources.length})
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
 
-              {sources.map((s) => (
-                <details key={s.url} className={styles.sourceItem}>
-                  <summary className={styles.sourceSummary}>
-                    <span className={styles.sourceTitle}>{s.title}</span>
-                  </summary>
-
-                  <div className={styles.sourceBody}>
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={styles.sourceLink}
-                    >
-                      {s.url}
-                    </a>
-
-                    <div className={styles.sourceDesc}>
-                      {s.technology_description}
-                    </div>
-                  </div>
-                </details>
-              ))}
-            </div>
+              {/* Delete button */}
+              <div className={styles.formGroup}>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className={styles.deleteButton}
+                >
+                  Удалить узел
+                </button>
+              </div>
+            </>
           )}
 
-          <div className={styles.formGroup}>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className={styles.deleteButton}
-            >
-              Удалить узел
-            </button>
-          </div>
+          {/* ══════════ TAB: Построить вниз ══════════ */}
+          {activeTab === "down" && isProduct && (
+            <DirectionContent {...downTab} />
+          )}
+
+          {/* ══════════ TAB: Построить вверх ══════════ */}
+          {activeTab === "up" && isProduct && <DirectionContent {...upTab} />}
         </div>
       </div>
     </>

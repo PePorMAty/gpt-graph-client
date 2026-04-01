@@ -9,6 +9,7 @@ import type { RootState } from "../store";
 
 import type { CustomNode, GPTGraphResponse } from "../../types";
 import type {
+  BuildDirection,
   CreateGraphArgs,
   CreateGraphResult,
   GraphApiResponse,
@@ -16,6 +17,7 @@ import type {
 import { type TechChain } from "../../utils/chainToFlow";
 import type { Edge } from "@xyflow/react";
 import { popQueueHead } from "../slices/gptSlice";
+import { sourcesKey } from "../slices/sourcesSlice";
 
 export const getGraphData = createAsyncThunk<
   CreateGraphResult,
@@ -96,16 +98,21 @@ type ChainApiResponse = {
 };
 
 export const buildChainLevel1 = createAsyncThunk<
-  { nodeId: string; raw: ChainApiResponse; techText: string },
-  { nodeId: string; productName: string; techText: string },
+  { nodeId: string; raw: ChainApiResponse; techText: string; direction: BuildDirection },
+  { nodeId: string; productName: string; techText: string; direction: BuildDirection; customSystemPrompt?: string },
   { state: RootState; rejectValue: string }
 >("graph/buildChainLevel1", async (args, thunkApi) => {
   try {
-    const { nodeId, productName, techText } = args;
+    const { nodeId, productName, techText, direction, customSystemPrompt } = args;
 
     const res = await axios.post<ChainApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/chain`,
-      { productName, techText, targetProductId: "Продукт1" },
+      {
+        productName,
+        techText,
+        targetProductId: "Продукт1",
+        ...(customSystemPrompt ? { customSystemPrompt } : {}),
+      },
       { headers: { "Content-Type": "application/json" } },
     );
 
@@ -126,7 +133,7 @@ export const buildChainLevel1 = createAsyncThunk<
 
     // ✅ НИЧЕГО НЕ РИСУЕМ, просто сохраняем rawChain в session (в reducer)
     // techText передаём дальше для парсинга альтернатив в reducer
-    return { nodeId, raw: data, techText };
+    return { nodeId, raw: data, techText, direction };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
       const errObj = e.response?.data?.error;
@@ -159,16 +166,15 @@ export const expandChainOneLevel = createAsyncThunk<
 
   const anchor = state.data.nodes.find((n) => n.id === targetNodeId);
   const rootNodeId =
-    (anchor?.data?.chainRootNodeId as string) ||
-    (Object.keys(state.chainSessions).includes(targetNodeId)
-      ? targetNodeId
-      : null);
+    (anchor?.data?.chainRootNodeId as string) || targetNodeId;
+  const chainDir = (anchor?.data?.chainDirection as BuildDirection) ?? "down";
+  const sessionKey = sourcesKey(rootNodeId, chainDir);
 
   if (!rootNodeId) {
     return thunkApi.rejectWithValue("chain session is not started");
   }
 
-  const session = state.chainSessions[rootNodeId];
+  const session = state.chainSessions[sessionKey];
   if (!session?.rawChain) {
     return thunkApi.rejectWithValue("chain session is not started");
   }
@@ -208,9 +214,10 @@ export const expandChainOneLevel = createAsyncThunk<
   const { nodes, edges, pidToNodeIdNext } = levelToFlow(lvl.chain, {
     namespace: lvlPrefix,
     rootNodeId,
+    chainSessionKey: sessionKey,
     targetNodeId,
     targetPid,
-    targetX: rootX,
+    targetX: anchor?.position?.x ?? rootX,
     targetY: ay,
     direction: dir,
     pidToNodeId: session.pidToNodeId,
@@ -233,7 +240,7 @@ export const expandChainOneLevel = createAsyncThunk<
   ).filter((p) => p !== targetPid);
 
   return {
-    rootNodeId,
+    rootNodeId: sessionKey,
     targetNodeId,
     nodes,
     edges,
@@ -243,15 +250,16 @@ export const expandChainOneLevel = createAsyncThunk<
   };
 });
 
+/** sessionKey = sourcesKey(realNodeId, direction) */
 export const expandNextInQueue = createAsyncThunk<
   void,
-  { rootNodeId: string },
+  { sessionKey: string; realRootNodeId: string },
   { state: RootState; rejectValue: string }
->("graph/expandNextInQueue", async ({ rootNodeId }, thunkApi) => {
+>("graph/expandNextInQueue", async ({ sessionKey, realRootNodeId }, thunkApi) => {
   const getSt = () => thunkApi.getState().graph;
 
   let st = getSt();
-  const session = st.chainSessions[rootNodeId];
+  const session = st.chainSessions[sessionKey];
   if (!session?.rawChain) {
     return thunkApi.rejectWithValue("no chain session");
   }
@@ -261,7 +269,7 @@ export const expandNextInQueue = createAsyncThunk<
   // защитный лимит, чтобы не зациклиться
   for (let guard = 0; guard < 50; guard++) {
     st = getSt();
-    const curSession = st.chainSessions[rootNodeId];
+    const curSession = st.chainSessions[sessionKey];
     const queue = curSession?.queue || [];
     if (!queue.length) return;
 
@@ -271,16 +279,16 @@ export const expandNextInQueue = createAsyncThunk<
     const allUsedTrIds = Object.values(curSession?.expandedProducerByPid ?? {}).flat();
     const probe = buildLevelFromRawChain(rawChain, pid, undefined, dir, allUsedTrIds, curSession?.mainTrIds);
     if (!probe.ok) {
-      thunkApi.dispatch(popQueueHead(rootNodeId));
+      thunkApi.dispatch(popQueueHead(sessionKey));
       continue;
     }
 
     const targetNodeId =
       curSession?.pidToNodeId?.[pid] ||
-      (pid === "Продукт1" ? rootNodeId : null);
+      (pid === "Продукт1" ? realRootNodeId : null);
 
     if (!targetNodeId) {
-      thunkApi.dispatch(popQueueHead(rootNodeId));
+      thunkApi.dispatch(popQueueHead(sessionKey));
       continue;
     }
 

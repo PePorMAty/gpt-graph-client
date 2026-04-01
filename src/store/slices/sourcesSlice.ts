@@ -3,6 +3,10 @@ import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { aggregateSources, fetchSources } from "../api/sources-api";
 import type { BuildDirection, TechnologySource } from "../types";
 
+/** Составной ключ для per-direction состояния источников */
+export const sourcesKey = (nodeId: string, direction: BuildDirection) =>
+  `${nodeId}::${direction}`;
+
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
 type NodeSourcesState = {
@@ -47,14 +51,6 @@ const sourcesSlice = createSlice({
   name: "sources",
   initialState,
   reducers: {
-    setBuildDirection: (
-      state,
-      action: PayloadAction<{ nodeId: string; direction: BuildDirection }>,
-    ) => {
-      const { nodeId, direction } = action.payload;
-      state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
-      state.byNodeId[nodeId].direction = direction;
-    },
     clearNodeSources: (state, action: PayloadAction<{ nodeId: string }>) => {
       delete state.byNodeId[action.payload.nodeId];
     },
@@ -62,10 +58,11 @@ const sourcesSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchSources.pending, (state, action) => {
-        const nodeId = action.meta.arg.nodeId;
-        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
-        state.byNodeId[nodeId].status = "loading";
-        state.byNodeId[nodeId].error = null;
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].status = "loading";
+        state.byNodeId[key].error = null;
       })
       .addCase(fetchSources.fulfilled, (state, action) => {
         const { nodeId, data } = action.payload;
@@ -81,18 +78,20 @@ const sourcesSlice = createSlice({
         state.byNodeId[nodeId].aggregatedDescription = null;
       })
       .addCase(fetchSources.rejected, (state, action) => {
-        const nodeId = action.meta.arg.nodeId;
-        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
-        state.byNodeId[nodeId].status = "failed";
-        state.byNodeId[nodeId].error =
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].status = "failed";
+        state.byNodeId[key].error =
           (action.payload as string) || "Ошибка поиска источников";
       })
       // --------- AGGREGATE ----------
       .addCase(aggregateSources.pending, (state, action) => {
-        const nodeId = action.meta.arg.nodeId;
-        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
-        state.byNodeId[nodeId].aggregateStatus = "loading";
-        state.byNodeId[nodeId].aggregateError = null;
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].aggregateStatus = "loading";
+        state.byNodeId[key].aggregateError = null;
       })
       .addCase(aggregateSources.fulfilled, (state, action) => {
         const { nodeId, data } = action.payload;
@@ -108,14 +107,15 @@ const sourcesSlice = createSlice({
           data.aggregated_markdown ?? null;
       })
       .addCase(aggregateSources.rejected, (state, action) => {
-        const nodeId = action.meta.arg.nodeId;
-        state.byNodeId[nodeId] = state.byNodeId[nodeId] ?? makeNodeState();
-        state.byNodeId[nodeId].aggregateStatus = "failed";
-        state.byNodeId[nodeId].aggregateError =
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].aggregateStatus = "failed";
+        state.byNodeId[key].aggregateError =
           (action.payload as string) || "Ошибка обобщения источников";
       });
   },
 });
 
-export const { setBuildDirection, clearNodeSources } = sourcesSlice.actions;
+export const { clearNodeSources } = sourcesSlice.actions;
 export default sourcesSlice.reducer;

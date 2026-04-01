@@ -40,11 +40,12 @@ import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
-import { setBuildDirection } from "./store/slices/sourcesSlice";
+import { sourcesKey } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { listProducersForPid } from "./utils/listProducersForPid";
 
 import { fetchProductCard } from "./store/api/product-card-api";
+import type { DirectionTabProps } from "./components/flow-panel/types";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -128,12 +129,10 @@ export const Flow = () => {
   const flowNodes = useMemo(
     () =>
       data.nodes.map((n) => {
-        const isChainRoot = n.type === "product" && !!n.data?.chainBuiltRoot;
         const isAlt = n.data?.chainVariant === "alt";
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
-          isChainRoot ? "node--chainroot" : "",
           isAlt ? "node--alt" : "",
         ]
           .filter(Boolean)
@@ -171,6 +170,36 @@ export const Flow = () => {
       setTempNodeDescription(description);
       setInitialLabel(label);
       setInitialDescription(description);
+
+      // ── Автомиграция старых данных ──
+      // Если есть старые sources + buildDirection, но нет per-direction данных
+      const oldSources = nodeData?.sources as TechnologySource[] | undefined;
+      const oldDir = nodeData?.buildDirection as BuildDirection | undefined;
+      const hasNewDown = !!(nodeData?.sourcesDown as TechnologySource[] | undefined)?.length;
+      const hasNewUp = !!(nodeData?.sourcesUp as TechnologySource[] | undefined)?.length;
+
+      if (
+        oldSources?.length &&
+        oldDir &&
+        !hasNewDown &&
+        !hasNewUp
+      ) {
+        const dirField = oldDir === "up" ? "sourcesUp" : "sourcesDown";
+        const aggField = oldDir === "up" ? "sourcesAggregatedUp" : "sourcesAggregatedDown";
+        const descField = oldDir === "up" ? "upDescription" : "downDescription";
+
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: {
+              [dirField]: oldSources,
+              [aggField]: !!nodeData?.sourcesAggregated,
+              // если description был перезаписан агрегацией, используем его
+              [descField]: nodeData?.sourcesAggregated ? description : undefined,
+            },
+          }),
+        );
+      }
     }
   }, [selectedNodeId, isPanelOpen, selectedNode]);
 
@@ -296,13 +325,11 @@ export const Flow = () => {
   );
 
   const handleAddNode = (selectedType: "product" | "transformation") => {
-    // центр окна
     const screenCenter = {
       x: window.innerWidth / 2,
       y: window.innerHeight / 2,
     };
 
-    // координаты графа
     const flowPosition = screenToFlowPosition(screenCenter);
 
     dispatch(
@@ -315,224 +342,242 @@ export const Flow = () => {
     setIsTypeSelectorOpen(false);
   };
 
-  const currentSourcesState = selectedNodeId
-    ? sourcesByNodeId[selectedNodeId]
-    : undefined;
+  // ─── Per-direction sources state ───
+  const downKey = selectedNodeId ? sourcesKey(selectedNodeId, "down") : "";
+  const upKey = selectedNodeId ? sourcesKey(selectedNodeId, "up") : "";
+  const downSourcesState = sourcesByNodeId[downKey];
+  const upSourcesState = sourcesByNodeId[upKey];
 
-  const buildDirection: BuildDirection | null =
-    selectedNode?.data?.buildDirection ??
-    currentSourcesState?.direction ??
-    null;
+  // ─── Per-direction handlers (factories) ───
+  const handleFindSources = useCallback(
+    (direction: BuildDirection) =>
+      async (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+        if (!selectedNodeId || !selectedNode) return;
+        const productName = String(selectedNode.data?.label || "").trim();
+        if (!productName) return;
 
-  const sourcesStatus = currentSourcesState?.status ?? "idle";
-  const sourcesLoading = sourcesStatus === "loading";
-  const sourcesError = currentSourcesState?.error ?? null;
-  const sources = currentSourcesState?.sources ?? [];
+        await dispatch(
+          fetchSources({
+            nodeId: selectedNodeId,
+            productName,
+            maxItems: opts?.maxItems ?? 5,
+            direction,
+            customSystemPrompt: opts?.customSystemPrompt,
+          }),
+        ).unwrap();
+      },
+    [dispatch, selectedNodeId, selectedNode],
+  );
 
-  const aggStatus = currentSourcesState?.aggregateStatus ?? "idle";
-  const aggregateLoading = aggStatus === "loading";
-  const aggregateError = currentSourcesState?.aggregateError ?? null;
-  const aggregatedDescription =
-    currentSourcesState?.aggregatedDescription ?? null;
+  const handleAggregateSources = useCallback(
+    (direction: BuildDirection) => async (customSystemPrompt?: string, customUserPrompt?: string) => {
+      if (!selectedNodeId || !selectedNode) return;
+      const productName = String(selectedNode.data?.label || "").trim();
+      if (!productName) return;
 
-  // Источники берём из node.data (чтобы переживало сохранение/загрузку графа)
+      // sources from node.data per-direction
+      const dirSources =
+        direction === "up"
+          ? (selectedNode.data?.sourcesUp as TechnologySource[])
+          : (selectedNode.data?.sourcesDown as TechnologySource[]);
 
-  const handleSetDirection = useCallback(
-    (dir: BuildDirection) => {
-      if (!selectedNodeId) return;
-      dispatch(setBuildDirection({ nodeId: selectedNodeId, direction: dir }));
+      // fallback to sourcesSlice
+      const sliceKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sliceKey];
+      const payloadSources: TechnologySource[] =
+        dirSources ?? sliceState?.sources ?? [];
 
-      // ✅ сохраняем выбор прямо в карточку
-      dispatch(
-        updateNodeData({
+      if (!payloadSources.length) return;
+
+      await dispatch(
+        aggregateSources({
           nodeId: selectedNodeId,
-          data: { buildDirection: dir },
+          productName,
+          sources: payloadSources,
+          direction,
+          customSystemPrompt,
+          customUserPrompt,
         }),
-      );
+      ).unwrap();
+    },
+    [dispatch, selectedNodeId, selectedNode, sourcesByNodeId],
+  );
+
+  // ─── Chain sessions (multi-session, per-direction) ───
+  const chainSessions = useAppSelector((s) => s.graph.chainSessions);
+
+  const handleInitChain = useCallback(
+    (direction: BuildDirection) => async (customSystemPrompt?: string) => {
+      if (!selectedNodeId || !selectedNode) return;
+
+      const descField = direction === "up" ? "upDescription" : "downDescription";
+      const techText = String(
+        selectedNode.data?.[descField] ||
+        selectedNode.data?.description ||
+        "",
+      ).trim();
+
+      await dispatch(
+        buildChainLevel1({
+          nodeId: selectedNodeId,
+          productName: String(selectedNode.data?.label || "").trim(),
+          techText,
+          direction,
+          customSystemPrompt,
+        }),
+      ).unwrap();
+    },
+    [dispatch, selectedNodeId, selectedNode],
+  );
+
+  const handleExpandNext = useCallback(
+    (direction: BuildDirection) => async () => {
+      if (!selectedNodeId) return;
+      const sKey = sourcesKey(selectedNodeId, direction);
+      await dispatch(
+        expandNextInQueue({ sessionKey: sKey, realRootNodeId: selectedNodeId }),
+      ).unwrap();
     },
     [dispatch, selectedNodeId],
   );
 
-  const handleFindSources = useCallback(async () => {
-    if (!selectedNodeId || !selectedNode) return;
+  // ─── Build DirectionTabProps for each direction ───
+  const buildDirectionTab = useCallback(
+    (direction: BuildDirection): DirectionTabProps => {
+      if (!selectedNodeId || !selectedNode) {
+        return {
+          direction,
+          sources: [],
+        };
+      }
 
-    const productName = String(selectedNode.data?.label || "").trim();
-    if (!productName) return;
+      const sKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sKey];
+      const session = chainSessions[sKey];
 
-    const direction =
-      (selectedNode.data?.buildDirection as BuildDirection) ?? "down";
+      // sources from node.data per-direction
+      const nodeSources =
+        direction === "up"
+          ? (selectedNode.data?.sourcesUp as TechnologySource[])
+          : (selectedNode.data?.sourcesDown as TechnologySource[]);
 
-    const result = await dispatch(
-      fetchSources({
-        nodeId: selectedNodeId,
-        productName,
-        maxItems: 5,
+      const effectiveSources: TechnologySource[] =
+        nodeSources ?? sliceState?.sources ?? [];
+
+      const hasSources = effectiveSources.length > 0;
+
+      const aggField = direction === "up" ? "sourcesAggregatedUp" : "sourcesAggregatedDown";
+      const descField = direction === "up" ? "upDescription" : "downDescription";
+      const hasAggregated =
+        Boolean(selectedNode.data?.[aggField]) ||
+        sliceState?.aggregateStatus === "succeeded";
+
+      const chainReady = !!session?.rawChain;
+      const chainUiEnabled = !!chainReady;
+      const isActiveChainRoot =
+        chainUiEnabled && selectedNodeId === selectedNodeId; // root is always the selected node for this session
+
+      const queueLen = chainReady
+        ? Math.max(
+            0,
+            (session.totalSteps ?? 0) - (session.expandedPids?.length ?? 0),
+          )
+        : 0;
+      const queuePid: string | null = chainReady
+        ? (session.queue?.[0]?.pid ?? null)
+        : null;
+
+      const canInitChainHere =
+        hasSources && hasAggregated && (!chainReady || !isActiveChainRoot);
+
+      const chainLoadingForNode =
+        (chainBuild?.status === "loading" &&
+          chainBuild?.nodeId === selectedNodeId &&
+          chainBuild?.direction === direction) ||
+        session?.chainStatus === "loading";
+
+      const chainErrorForNode =
+        (chainBuild?.status === "failed" &&
+          chainBuild?.nodeId === selectedNodeId &&
+          chainBuild?.direction === direction
+          ? chainBuild?.error
+          : null) ||
+        (session?.chainStatus === "failed" ? session?.chainError : null);
+
+      const initChainLabel =
+        chainReady && !isActiveChainRoot
+          ? "Продолжить граф: цепочка от этого продукта"
+          : "Получить цепочку (chain)";
+
+      return {
         direction,
-      }),
-    ).unwrap();
+        onFindSources: handleFindSources(direction),
+        sourcesLoading: sliceState?.status === "loading",
+        sourcesError: sliceState?.error ?? null,
+        sources: effectiveSources,
 
-    // ✅ сохраняем источники прямо в node.data (переживёт save/load)
-    dispatch(
-      updateNodeData({
-        nodeId: selectedNodeId,
-        data: { sources: result.data.sources, sourcesAggregated: false },
-      }),
-    );
-  }, [dispatch, selectedNodeId, selectedNode]);
+        onAggregateSources: handleAggregateSources(direction),
+        aggregateLoading: sliceState?.aggregateStatus === "loading",
+        aggregateError: sliceState?.aggregateError ?? null,
+        hasAggregated,
+        aggregatedDescription:
+          (selectedNode.data?.[descField] as string) ??
+          sliceState?.aggregatedDescription ??
+          null,
+        onChangeAggregatedDescription: (e) => {
+          if (!selectedNodeId) return;
+          dispatch(
+            updateNodeData({
+              nodeId: selectedNodeId,
+              data: { [descField]: e.target.value },
+            }),
+          );
+        },
 
-  const handleAggregateSources = useCallback(async () => {
-    if (!selectedNodeId || !selectedNode) return;
+        productName: String(selectedNode.data?.label || "").trim(),
 
-    const productName = String(selectedNode.data?.label || "").trim();
-    if (!productName) return;
+        chainLoading: chainLoadingForNode,
+        chainError: chainErrorForNode,
+        chainReady,
+        chainUiEnabled,
+        isActiveChainRoot,
+        canInitChainHere,
+        initChainLabel,
+        onInitChain: handleInitChain(direction),
 
-    // ✅ Источник правды — node.data.sources (переживает save/load)
-    const payloadSources: TechnologySource[] =
-      (selectedNode.data?.sources as TechnologySource[]) ??
-      currentSourcesState?.sources ??
-      [];
+        queueLen,
+        chainPid: queuePid,
+        onExpandNext: handleExpandNext(direction),
+      };
+    },
+    [
+      selectedNodeId,
+      selectedNode,
+      sourcesByNodeId,
+      chainSessions,
+      chainBuild,
+      handleFindSources,
+      handleAggregateSources,
+      handleInitChain,
+      handleExpandNext,
+    ],
+  );
 
-    if (!payloadSources.length) return;
-
-    const result = await dispatch(
-      aggregateSources({
-        nodeId: selectedNodeId,
-        productName,
-        sources: payloadSources,
-      }),
-    ).unwrap();
-
-    // ✅ Берём ТОЛЬКО aggregated_description
-    const desc = String(result?.data?.aggregated_description ?? "").trim();
-
-    // (опционально) защита от случайного JSON
-    // если вдруг бек вернул что-то не то
-    const safeDesc = desc.startsWith("{") ? "" : desc;
-
-    dispatch(
-      updateNodeData({
-        nodeId: selectedNodeId,
-        data: { description: safeDesc, sourcesAggregated: true },
-      }),
-    );
-
-    // ✅ ВАЖНО: синхронизируем локальный текст в панели,
-    // иначе textarea продолжит показывать старый JSON
-    setTempNodeDescription(safeDesc);
-    setInitialDescription(safeDesc);
-  }, [
-    dispatch,
-    selectedNodeId,
-    selectedNode,
-    currentSourcesState?.sources,
-    setTempNodeDescription,
-    setInitialDescription,
-  ]);
-
-  const chainError =
-    chainBuild?.status === "failed" && chainBuild?.nodeId === selectedNodeId
-      ? chainBuild?.error
-      : null;
-
-  // --- CHAIN SESSIONS (multi-session) ---
-  const chainSessions = useAppSelector((s) => s.graph.chainSessions);
-
-  // root id цепочки, к которой принадлежит выбранный узел
-  const nodeChainRootId: string | null =
-    (selectedNode?.data?.chainRootNodeId as string) ?? null;
-
-  // активная сессия = сессия для выбранного узла
-  const activeSession = nodeChainRootId
-    ? chainSessions[nodeChainRootId] ?? null
-    : null;
-
-  const chainReady = !!activeSession?.rawChain;
-  const chainUiEnabled = !!chainReady;
-
-  // "queue UI" показываем только на root активной цепочки
-  const isActiveChainRoot =
-    chainUiEnabled && selectedNodeId === nodeChainRootId;
-
-  const queueLen = chainReady
-    ? Math.max(0, (activeSession.totalSteps ?? 0) - (activeSession.expandedPids?.length ?? 0))
-    : 0;
-
-  // следующий pid берём из очереди активной сессии
-  const queuePid: string | null = chainReady
-    ? (activeSession.queue?.[0]?.pid ?? null)
-    : null;
-
-  // producers / built / selected — считаем для queuePid из активной сессии
-  const producerOptions =
-    queuePid && activeSession?.rawChain
-      ? listProducersForPid(activeSession.rawChain, queuePid)
-      : [];
-
-  const builtProducerIds =
-    (queuePid && activeSession?.expandedProducerByPid?.[queuePid]) || [];
-
-  const builtSet = new Set(builtProducerIds);
-
-  const mainProducerId = producerOptions[0]?.trId || "";
-
-  const selectedProducerId =
-    (queuePid && activeSession?.producerByPid?.[queuePid]) ||
-    producerOptions.find((p) => !builtSet.has(p.trId))?.trId ||
-    mainProducerId;
-
-  const handleSelectProducer = (trId: string) => {
-    if (!queuePid || !nodeChainRootId) return;
-    if (builtSet.has(trId)) return;
-    dispatch(
-      setProducerForPid({
-        rootNodeId: nodeChainRootId,
-        pid: queuePid,
-        transformationId: trId || null,
-      }),
-    );
-  };
-
-  const handleInitChain = async () => {
-    await dispatch(
-      buildChainLevel1({
-        nodeId: selectedNodeId!,
-        productName: String(selectedNode?.data?.label || "").trim(),
-        techText: String(
-          aggregatedDescription || selectedNode?.data?.description || "",
-        ).trim(),
-      }),
-    ).unwrap();
-  };
-
-  // раскрыть следующий из очереди активной сессии
-  const handleExpandNext = async () => {
-    if (!nodeChainRootId) return;
-    await dispatch(
-      expandNextInQueue({ rootNodeId: nodeChainRootId }),
-    ).unwrap();
-  };
-
-  const effectiveSources: TechnologySource[] =
-    ((selectedNode?.data?.sources as TechnologySource[]) ?? sources) || [];
-
-  const hasSources =
-    Array.isArray(effectiveSources) && effectiveSources.length > 0;
-
-  // aggregated у тебя сохраняется в node.data.description
-  const hasAggregated =
-    Boolean(selectedNode?.data?.sourcesAggregated) || aggStatus === "succeeded";
-
-  // можно ли "получить цепочку" от этого продукта сейчас?
-  const canInitChainHere =
-    hasSources && hasAggregated && (!chainReady || !isActiveChainRoot);
-
-  const initChainLabel =
-    chainReady && !isActiveChainRoot
-      ? "🧬 Продолжить граф: цепочка от этого продукта"
-      : "🧬 Получить цепочку (chain)";
+  const downTab = useMemo(
+    () => buildDirectionTab("down"),
+    [buildDirectionTab],
+  );
+  const upTab = useMemo(
+    () => buildDirectionTab("up"),
+    [buildDirectionTab],
+  );
 
   const handleBuildProductCard = useCallback(
-    async (options?: { customSystemPrompt?: string; selectedFields?: string[]; useWebSearch?: boolean }) => {
+    async (options?: {
+      customSystemPrompt?: string;
+      selectedFields?: string[];
+      useWebSearch?: boolean;
+    }) => {
       if (!selectedNodeId) return;
       await dispatch(
         fetchProductCard({
@@ -619,40 +664,12 @@ export const Flow = () => {
         onChangeDescription={handleNodeDescriptionChange}
         onDelete={handleDeleteNode}
         nodeType={selectedNode?.type}
-        buildDirection={buildDirection}
-        onSetBuildDirection={handleSetDirection}
-        onFindSources={handleFindSources}
-        onAggregateSources={handleAggregateSources}
-        sourcesLoading={sourcesLoading}
-        sourcesError={sourcesError}
-        // ⚠️ лучше передавать effectiveSources, чтобы переживало save/load
-        sources={effectiveSources}
-        aggregateLoading={aggregateLoading}
-        aggregateError={aggregateError}
-        // ⚠️ НЕ aggStatus, а реальный hasAggregated (см. ниже)
-        hasAggregated={hasAggregated}
-        chainLoading={
-          (chainBuild?.status === "loading" && chainBuild?.nodeId === selectedNode?.id) ||
-          (activeSession?.chainStatus === "loading")
-        }
-        chainError={chainError}
-        chainReady={chainReady}
-        chainUiEnabled={chainUiEnabled}
-        isActiveChainRoot={isActiveChainRoot}
-        canInitChainHere={canInitChainHere}
-        initChainLabel={initChainLabel}
-        onInitChain={handleInitChain}
-        queueLen={queueLen}
-        chainPid={queuePid} // ✅ вот это важно
-        producerOptions={producerOptions} // ✅ для queuePid
-        selectedProducerId={selectedProducerId}
-        onSelectProducer={handleSelectProducer}
-        builtProducerIds={builtProducerIds} // ✅ для queuePid
-        onExpandNext={isActiveChainRoot ? handleExpandNext : undefined}
         onBuildProductCard={handleBuildProductCard}
         productCardStatus={selectedNode?.data?.productCardStatus}
         productCardError={selectedNode?.data?.productCardError}
         productCard={selectedNode?.data?.productCard}
+        downTab={downTab}
+        upTab={upTab}
       />
     </div>
   );
