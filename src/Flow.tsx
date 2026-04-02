@@ -91,7 +91,7 @@ export const Flow = () => {
 
     setIsApplyingLayout(true);
 
-    const { nodes, edges } = await layoutTree(data.nodes, data.edges);
+    const { nodes, edges } = await layoutTree(data.nodes, data.edges, rootId);
 
     const centeredNodes = centerTreeOnRoot(nodes, rootId);
 
