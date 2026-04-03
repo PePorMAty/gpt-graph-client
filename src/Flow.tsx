@@ -564,11 +564,11 @@ export const Flow = () => {
   );
 
   const downTab = useMemo(
-    () => buildDirectionTab("down"),
+    () => buildDirectionTab("up"),
     [buildDirectionTab],
   );
   const upTab = useMemo(
-    () => buildDirectionTab("up"),
+    () => buildDirectionTab("down"),
     [buildDirectionTab],
   );
 

@@ -22,23 +22,28 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         id="top"
         type="target"
         position={Position.Top}
-        style={{
-          background: "#2196f3",
-          width: 8,
-          height: 8,
-        }}
+        style={{ background: "#2196f3", width: 8, height: 8 }}
+      />
+      <Handle
+        id="top-source"
+        type="source"
+        position={Position.Top}
+        style={{ opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0 }}
       />
 
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
+
       <Handle
         id="bottom"
         type="source"
         position={Position.Bottom}
-        style={{
-          background: "#2196f3",
-          width: 8,
-          height: 8,
-        }}
+        style={{ background: "#2196f3", width: 8, height: 8 }}
+      />
+      <Handle
+        id="bottom-target"
+        type="target"
+        position={Position.Bottom}
+        style={{ opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0 }}
       />
     </div>
   );
