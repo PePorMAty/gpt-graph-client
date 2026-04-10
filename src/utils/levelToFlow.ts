@@ -66,7 +66,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const pidToNodeIdNext = { ...pidToNodeId };
   pidToNodeIdNext[targetPid] = targetNodeId;
 
-  const sign = direction === "down" ? 1 : -1;
+  const sign = direction === "up" ? 1 : -1;
 
   // target (на якоре) -> transformation -> inputs-row
   const trY = targetY + sign * stepY1;
@@ -114,12 +114,14 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   });
 
   // edge: target -> transformation (stable)
+  // "down": anchor (upper) → transformation (lower) — exit from anchor's bottom, enter tr's top
+  // "up":   anchor (lower) → transformation (upper) — exit from anchor's top, enter tr's bottom
   edges.push({
     id: `chain::${idRoot}::e::${targetNodeId}::${trFlowId}`,
-    source: isDown ? targetNodeId : trFlowId,
-    target: isDown ? trFlowId : targetNodeId,
-    sourceHandle: "bottom",
-    targetHandle: "top",
+    source: targetNodeId,
+    target: trFlowId,
+    sourceHandle: !isDown ? "bottom" : "top-source",
+    targetHandle: !isDown ? "top" : "bottom-target",
     type: "straight",
   });
 
@@ -153,10 +155,10 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
     edges.push({
       id: `chain::${idRoot}::e-in::${trFlowId}::${pFlowId}`,
-      source: isDown ? trFlowId : pFlowId,
-      target: isDown ? pFlowId : trFlowId,
-      sourceHandle: "bottom",
-      targetHandle: "top",
+      source: trFlowId,
+      target: pFlowId,
+      sourceHandle: !isDown ? "bottom" : "top-source",
+      targetHandle: !isDown ? "top" : "bottom-target",
       type: "straight",
     });
   });
@@ -189,10 +191,10 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
 
     edges.push({
       id: `chain::${idRoot}::e::${trFlowId}::${pFlowId}`,
-      source: isDown ? trFlowId : pFlowId,
-      target: isDown ? pFlowId : trFlowId,
-      sourceHandle: "bottom",
-      targetHandle: "top",
+      source: trFlowId,
+      target: pFlowId,
+      sourceHandle: !isDown ? "bottom" : "top-source",
+      targetHandle: !isDown ? "top" : "bottom-target",
       type: "straight",
     });
   });

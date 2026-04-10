@@ -329,7 +329,7 @@ const gptSlice = createSlice({
           const rx = root.position?.x ?? 0;
           const ry = root.position?.y ?? 0;
           const dir = direction;
-          const sign = dir === "down" ? 1 : -1;
+          const sign = dir === "up" ? 1 : -1;
           const stepY = 180;
           const spacingX = 300;
 
@@ -360,8 +360,8 @@ const gptSlice = createSlice({
               id: `chain::${nodeId}::${direction}::alt-edge::${idx}`,
               source: nodeId,
               target: altNodeId,
-              sourceHandle: "bottom",
-              targetHandle: "top",
+              sourceHandle: dir === "up" ? "bottom" : "top-source",
+              targetHandle: dir === "up" ? "top" : "bottom-target",
               type: "straight",
               className: "edge--alt",
             });
