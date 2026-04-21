@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
+import { StepByStepContent } from "./StepByStepContent";
 import {
   getDefaultFillCardSystemPrompt,
   getFieldsForNodeType,
   labelToKey,
   type FillCardField,
-} from "../../utils/defaultFillCardPrompts";
-import { getDefaultChainSystemPrompt } from "../../utils/defaultChainPrompt";
-import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../utils/defaultAggregatePrompt";
-import { getDefaultSourcesPrompt } from "../../utils/defaultSourcesPrompt";
+} from "../../prompts/fillCardPrompts";
+import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
+import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
+import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
 
 import styles from "./FlowPanel.module.css";
 
@@ -44,6 +45,20 @@ const DirectionContent: FC<DirectionTabProps> = ({
   queueLen,
   chainPid,
   onExpandNext,
+
+  chainBuildMode,
+  onChangeChainBuildMode,
+  stepChainStatus,
+  stepChainError,
+  stepChainStepCount,
+  stepChainCurrentProductLabel,
+  stepChainInsufficientProducts,
+  onFetchNextStep,
+  onUndoStep,
+  stepChainBranchOptions,
+  onSelectBranch,
+  onFetchStepSources,
+  stepSourcesLoading,
 }) => {
   const hasSources = Array.isArray(sources) && sources.length > 0;
 
@@ -314,6 +329,44 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {/* 3) обобщено -> chain */}
       {hasSources && hasAggregated && (
         <div className={styles.formGroup}>
+          {/* Mode toggle: full chain vs step-by-step */}
+          <div className={styles.modeToggleRow}>
+            <button
+              type="button"
+              className={`${styles.modeToggleBtn} ${chainBuildMode !== "step" ? styles.modeToggleBtnActive : ""}`}
+              onClick={() => onChangeChainBuildMode?.("full")}
+            >
+              Вся цепочка
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeToggleBtn} ${chainBuildMode === "step" ? styles.modeToggleBtnActive : ""}`}
+              onClick={() => onChangeChainBuildMode?.("step")}
+            >
+              По шагам
+            </button>
+          </div>
+
+          {/* Step-by-step content */}
+          {chainBuildMode === "step" && (
+            <StepByStepContent
+              stepChainStatus={stepChainStatus}
+              stepChainError={stepChainError}
+              stepChainStepCount={stepChainStepCount}
+
+              stepChainCurrentProductLabel={stepChainCurrentProductLabel}
+              stepChainInsufficientProducts={stepChainInsufficientProducts}
+              onFetchNextStep={onFetchNextStep}
+              onUndoStep={onUndoStep}
+              stepChainBranchOptions={stepChainBranchOptions}
+              onSelectBranch={onSelectBranch}
+              onFetchStepSources={onFetchStepSources}
+              stepSourcesLoading={stepSourcesLoading}
+            />
+          )}
+
+          {/* Full chain content */}
+          {chainBuildMode !== "step" && (<>
           {/* row: chain prompt toggle + re-aggregate toggle */}
           <div className={styles.promptToggleRow}>
             <button
@@ -489,6 +542,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           {chainError && (
             <div className={styles.errorText}>Ошибка: {chainError}</div>
           )}
+          </>)}
         </div>
       )}
 
@@ -530,14 +584,11 @@ const DirectionContent: FC<DirectionTabProps> = ({
 // ─────────────────────────────────────────────────
 // FlowPanel — main component
 // ─────────────────────────────────────────────────
-type TabId = "description" | "down" | "up";
-
 export const FlowPanel: FC<FlowPanelProps> = ({
   onClose,
   isOpen,
   value,
   onChangeValue,
-  onDelete,
   descriptionValue,
   onChangeDescription,
 
@@ -550,12 +601,12 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   downTab,
   upTab,
+
+  mode,
+  buildDirection,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
-  const isProduct = nodeType === "product";
-
-  const [activeTab, setActiveTab] = useState<TabId>("description");
 
   // ── field selection state ──
   const predefinedFields = useMemo(
@@ -685,19 +736,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, onClose]);
 
-  const handleDelete = () => {
-    if (onDelete) {
-      onDelete();
-      onClose();
-    }
-  };
-
-  // loading indicators for inactive tabs
-  const downLoading =
-    downTab.sourcesLoading || downTab.aggregateLoading || downTab.chainLoading;
-  const upLoading =
-    upTab.sourcesLoading || upTab.aggregateLoading || upTab.chainLoading;
-
   if (!isOpen) return null;
 
   return (
@@ -709,7 +747,13 @@ export const FlowPanel: FC<FlowPanelProps> = ({
         className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
       >
         <div className={styles.panelHeader}>
-          <h3 className={styles.panelTitle}>Редактирование узла</h3>
+          <h3 className={styles.panelTitle}>
+            {mode === "build"
+              ? buildDirection === "down"
+                ? "Построить вниз"
+                : "Построить вверх"
+              : "Редактирование узла"}
+          </h3>
           <button className={styles.closeButton} onClick={onClose}>
             ×
           </button>
@@ -727,43 +771,8 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             />
           </div>
 
-          {/* ── Tab bar ── */}
-          <div className={styles.tabBar}>
-            <button
-              type="button"
-              className={`${styles.tab} ${activeTab === "description" ? styles.tabActive : ""}`}
-              onClick={() => setActiveTab("description")}
-            >
-              Описание
-            </button>
-            {isProduct && (
-              <>
-                <button
-                  type="button"
-                  className={`${styles.tab} ${activeTab === "down" ? styles.tabActive : ""}`}
-                  onClick={() => setActiveTab("down")}
-                >
-                  Построить вниз
-                  {downLoading && activeTab !== "down" && (
-                    <span className={styles.tabLoadingDot} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.tab} ${activeTab === "up" ? styles.tabActive : ""}`}
-                  onClick={() => setActiveTab("up")}
-                >
-                  Построить вверх
-                  {upLoading && activeTab !== "up" && (
-                    <span className={styles.tabLoadingDot} />
-                  )}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* ══════════ TAB: Описание ══════════ */}
-          {activeTab === "description" && (
+          {/* ══════════ MODE: Card ══════════ */}
+          {mode === "card" && (
             <>
               {productCardStatus === "loading" && (
                 <div className={styles.tabLoader}>
@@ -961,27 +970,22 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   </div>
                 )}
               </div>
-
-              {/* Delete button */}
-              <div className={styles.formGroup}>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className={styles.deleteButton}
-                >
-                  Удалить узел
-                </button>
-              </div>
             </>
           )}
 
-          {/* ══════════ TAB: Построить вниз ══════════ */}
-          {activeTab === "down" && isProduct && (
-            <DirectionContent {...downTab} />
+          {/* ══════════ MODE: Build ══════════ */}
+          {mode === "build" && buildDirection && (
+            <>
+              <div className={styles.buildHeader}>
+                {buildDirection === "down"
+                  ? `Построить вниз от «${value}»`
+                  : `Построить вверх от «${value}»`}
+              </div>
+              <DirectionContent
+                {...(buildDirection === "down" ? downTab : upTab)}
+              />
+            </>
           )}
-
-          {/* ══════════ TAB: Построить вверх ══════════ */}
-          {activeTab === "up" && isProduct && <DirectionContent {...upTab} />}
         </div>
       </div>
     </>

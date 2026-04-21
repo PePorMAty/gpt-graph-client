@@ -24,6 +24,7 @@ export interface InitialGraphStateI {
     direction: import("../types").BuildDirection | null;
   };
   chainSessions: Record<string, ChainSessionData>;
+  stepChainSessions: Record<string, StepChainSession>;
 }
 
 export interface ChainSessionData {
@@ -206,3 +207,56 @@ export type ProductCardResponse = {
   card_kind?: string;
   took_ms?: number;
 };
+
+// ===== STEP-BY-STEP CHAIN =====
+
+export type StepProduct = {
+  name: string;
+  description?: string;
+  isExisting: boolean;
+  existingNodeLabel?: string;
+};
+
+export type StepChainApiStep = {
+  transformation: { id: string; name: string; description?: string };
+  inputProducts: StepProduct[];
+  outputProducts: StepProduct[];
+};
+
+export type StepChainApiResponse = {
+  success: boolean;
+  step: StepChainApiStep;
+  sourcesStatus: "sufficient" | "insufficient";
+  insufficientProducts?: string[];
+  error?: string;
+};
+
+export interface StepRecord {
+  stepNumber: number;
+  fromProductNodeId: string;
+  transformationNodeId: string;
+  newProductNodeIds: string[];
+  mergedProductNodeIds: string[];
+  addedEdgeIds: string[];
+}
+
+export type StepChainStatus =
+  | "idle"
+  | "loading"
+  | "succeeded"
+  | "failed"
+  | "needs-sources"
+  | "fetching-sources"
+  | "preview";
+
+export interface StepChainSession {
+  direction: "up" | "down";
+  rootNodeId: string;
+  currentProductNodeId: string;
+  steps: StepRecord[];
+  status: StepChainStatus;
+  pendingStep: StepChainApiStep | null;
+  error: string | null;
+  insufficientProducts: string[];
+  accumulatedSources: TechnologySource[];
+}

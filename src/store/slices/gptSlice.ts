@@ -24,7 +24,9 @@ import {
 } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
-import type { InitialGraphStateI } from "../types";
+import type { InitialGraphStateI, StepChainSession } from "../types";
+import { fetchChainStep, fetchStepSources } from "../api/step-chain-api";
+import { stepToFlow } from "../../utils/stepToFlow";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
@@ -48,6 +50,7 @@ const initialState: InitialGraphStateI = {
   source: null,
   chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
+  stepChainSessions: {},
 };
 
 const gptSlice = createSlice({
@@ -198,6 +201,126 @@ const gptSlice = createSlice({
       const session = state.chainSessions[action.payload];
       if (!session) return;
       session.queue = session.queue.slice(1);
+    },
+
+    // ── Step-by-step chain reducers ──
+
+    initStepChainSession: (
+      state,
+      action: PayloadAction<{
+        sessionKey: string;
+        direction: "up" | "down";
+        rootNodeId: string;
+        currentProductNodeId: string;
+      }>,
+    ) => {
+      const { sessionKey, direction, rootNodeId, currentProductNodeId } =
+        action.payload;
+      state.stepChainSessions[sessionKey] = {
+        direction,
+        rootNodeId,
+        currentProductNodeId,
+        steps: [],
+        status: "idle",
+        pendingStep: null,
+        error: null,
+        insufficientProducts: [],
+        accumulatedSources: [],
+      };
+    },
+
+    acceptPendingStep: (
+      state,
+      action: PayloadAction<{
+        sessionKey: string;
+        selectedContinueProductNodeId?: string;
+      }>,
+    ) => {
+      const { sessionKey, selectedContinueProductNodeId } = action.payload;
+      const session = state.stepChainSessions[sessionKey];
+      if (!session || !session.pendingStep) return;
+
+      const anchor = state.data.nodes.find(
+        (n) => n.id === session.currentProductNodeId,
+      );
+      if (!anchor) return;
+
+      const stepNumber = session.steps.length + 1;
+
+      const { nodes, edges, stepRecord } = stepToFlow(session.pendingStep, {
+        sessionKey,
+        rootNodeId: session.rootNodeId,
+        direction: session.direction,
+        anchorNodeId: session.currentProductNodeId,
+        anchorX: anchor.position.x,
+        anchorY: anchor.position.y,
+        stepNumber,
+        existingNodes: state.data.nodes,
+      });
+
+      // Add nodes (dedup by id)
+      const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
+      state.data.nodes.push(...nodes.filter((n) => !existingNodeIds.has(n.id)));
+
+      // Add edges (dedup by id)
+      const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
+      state.data.edges.push(...edges.filter((e) => !existingEdgeIds.has(e.id)));
+
+      session.steps.push(stepRecord);
+
+      // Update current product node for next step
+      if (selectedContinueProductNodeId) {
+        session.currentProductNodeId = selectedContinueProductNodeId;
+      } else {
+        session.currentProductNodeId =
+          stepRecord.newProductNodeIds[0] ??
+          stepRecord.mergedProductNodeIds[0] ??
+          session.currentProductNodeId;
+      }
+
+      session.pendingStep = null;
+      session.status = "idle";
+    },
+
+    rejectPendingStep: (state, action: PayloadAction<string>) => {
+      const session = state.stepChainSessions[action.payload];
+      if (!session) return;
+      session.pendingStep = null;
+      session.status = "idle";
+    },
+
+    undoLastStep: (state, action: PayloadAction<string>) => {
+      const session = state.stepChainSessions[action.payload];
+      if (!session || !session.steps.length) return;
+
+      const lastStep = session.steps.pop()!;
+
+      // Remove nodes created by this step
+      const removeNodeIds = new Set(lastStep.newProductNodeIds);
+      removeNodeIds.add(lastStep.transformationNodeId);
+      state.data.nodes = state.data.nodes.filter(
+        (n) => !removeNodeIds.has(n.id),
+      );
+
+      // Remove edges created by this step
+      const removeEdgeIds = new Set(lastStep.addedEdgeIds);
+      state.data.edges = state.data.edges.filter(
+        (e) => !removeEdgeIds.has(e.id),
+      );
+
+      session.currentProductNodeId = lastStep.fromProductNodeId;
+      session.status = "idle";
+      session.pendingStep = null;
+    },
+
+    setStepChainContinueProduct: (
+      state,
+      action: PayloadAction<{ sessionKey: string; productNodeId: string }>,
+    ) => {
+      const session =
+        state.stepChainSessions[action.payload.sessionKey];
+      if (!session) return;
+      session.currentProductNodeId = action.payload.productNodeId;
     },
   },
   extraReducers: (builder) => {
@@ -500,6 +623,68 @@ const gptSlice = createSlice({
             (action.payload as string) || "product-card failed";
         }
       });
+    // ── Step-by-step chain ──
+    builder
+      .addCase(fetchChainStep.pending, (state, action) => {
+        const session =
+          state.stepChainSessions[action.meta.arg.sessionKey];
+        if (session) {
+          session.status = "loading";
+          session.error = null;
+        }
+      })
+      .addCase(fetchChainStep.fulfilled, (state, action) => {
+        const { sessionKey, response } = action.payload;
+        const session = state.stepChainSessions[sessionKey];
+        if (!session) return;
+
+        if (response.sourcesStatus === "insufficient") {
+          session.status = "needs-sources";
+          session.insufficientProducts =
+            response.insufficientProducts ?? [];
+          session.pendingStep = response.step;
+          return;
+        }
+
+        session.pendingStep = response.step;
+        session.status = "preview";
+        session.error = null;
+      })
+      .addCase(fetchChainStep.rejected, (state, action) => {
+        const session =
+          state.stepChainSessions[action.meta.arg.sessionKey];
+        if (session) {
+          session.status = "failed";
+          session.error =
+            (action.payload as string) || "step chain request failed";
+        }
+      });
+    // ── Step sources fetch ──
+    builder
+      .addCase(fetchStepSources.pending, (state, action) => {
+        const session =
+          state.stepChainSessions[action.meta.arg.sessionKey];
+        if (session) {
+          session.status = "fetching-sources";
+          session.error = null;
+        }
+      })
+      .addCase(fetchStepSources.fulfilled, (state, action) => {
+        const { sessionKey, sources } = action.payload;
+        const session = state.stepChainSessions[sessionKey];
+        if (!session) return;
+        session.accumulatedSources.push(...sources);
+        session.status = "idle";
+      })
+      .addCase(fetchStepSources.rejected, (state, action) => {
+        const session =
+          state.stepChainSessions[action.meta.arg.sessionKey];
+        if (session) {
+          session.status = "needs-sources";
+          session.error =
+            (action.payload as string) || "sources fetch failed";
+        }
+      });
   },
 });
 
@@ -516,5 +701,10 @@ export const {
   loadGraphFromFile,
   setProducerForPid,
   popQueueHead,
+  initStepChainSession,
+  acceptPendingStep,
+  rejectPendingStep,
+  undoLastStep,
+  setStepChainContinueProduct,
 } = gptSlice.actions;
 export default gptSlice.reducer;

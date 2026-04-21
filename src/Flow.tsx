@@ -42,10 +42,19 @@ import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import { sourcesKey } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
-import { listProducersForPid } from "./utils/listProducersForPid";
-
 import { fetchProductCard } from "./store/api/product-card-api";
+import { fetchChainStep, fetchStepSources } from "./store/api/step-chain-api";
+import {
+  initStepChainSession,
+  acceptPendingStep,
+  rejectPendingStep,
+  undoLastStep,
+  setStepChainContinueProduct,
+} from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
+import { NodeContextMenu } from "./components/node-context-menu";
+import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
+import { StepPreviewModal } from "./components/flow-panel/StepPreviewModal";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -124,6 +133,29 @@ export const Flow = () => {
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  // Context menu & panel mode
+  const [contextMenu, setContextMenu] = useState<{
+    nodeId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [panelMode, setPanelMode] = useState<
+    { type: "card" } | { type: "build"; direction: BuildDirection }
+  >({ type: "card" });
+  const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(
+    null,
+  );
+
+  // Step-by-step chain
+  const [chainBuildModes, setChainBuildModes] = useState<
+    Record<string, "full" | "step">
+  >({});
+  const stepChainSessions = useAppSelector(
+    (s) => s.graph.stepChainSessions,
+  );
+  const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
+    `step::${nodeId}::${dir}`;
 
   // Flow.tsx
   const flowNodes = useMemo(
@@ -206,8 +238,62 @@ export const Flow = () => {
   // Обработчик клика по узлу
   const onNodeClick = useCallback((_: unknown, node: Node) => {
     setSelectedNodeId(node.id);
+    setPanelMode({ type: "card" });
     setIsPanelOpen(true);
+    setContextMenu(null);
   }, []);
+
+  // Обработчик правого клика по узлу
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault();
+      setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
+    },
+    [],
+  );
+
+  // Клик по пустому пространству — закрыть контекстное меню
+  const onPaneClick = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Из контекстного меню → открыть панель в build mode
+  const handleContextBuild = useCallback(
+    (direction: BuildDirection) => {
+      const nodeId = contextMenu?.nodeId;
+      if (!nodeId) return;
+      setSelectedNodeId(nodeId);
+      setPanelMode({ type: "build", direction });
+      setIsPanelOpen(true);
+      setContextMenu(null);
+    },
+    [contextMenu],
+  );
+
+  // Из контекстного меню → показать модалку подтверждения удаления
+  const handleContextDelete = useCallback(() => {
+    if (!contextMenu) return;
+    setDeleteConfirmNodeId(contextMenu.nodeId);
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  // Подтверждение удаления
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteConfirmNodeId) return;
+    dispatch(removeNode(deleteConfirmNodeId));
+    setDeleteConfirmNodeId(null);
+
+    if (deleteConfirmNodeId === selectedNodeId) {
+      setIsPanelOpen(false);
+      setTimeout(() => {
+        setSelectedNodeId(null);
+        setTempNodeLabel("");
+        setTempNodeDescription("");
+        setInitialLabel("");
+        setInitialDescription("");
+      }, 300);
+    }
+  }, [deleteConfirmNodeId, selectedNodeId, dispatch]);
 
   // Закрытие панели с сохранением изменений
   const closePanel = useCallback(() => {
@@ -233,6 +319,7 @@ export const Flow = () => {
     }
 
     setIsPanelOpen(false);
+    setPanelMode({ type: "card" });
     setTimeout(() => {
       setSelectedNodeId(null);
       setTempNodeLabel("");
@@ -248,21 +335,6 @@ export const Flow = () => {
     initialDescription,
     dispatch,
   ]);
-
-  // Обработчик удаления узла
-  const handleDeleteNode = useCallback(() => {
-    if (selectedNodeId) {
-      dispatch(removeNode(selectedNodeId));
-      setIsPanelOpen(false);
-      setTimeout(() => {
-        setSelectedNodeId(null);
-        setTempNodeLabel("");
-        setTempNodeDescription("");
-        setInitialLabel("");
-        setInitialDescription("");
-      }, 300);
-    }
-  }, [selectedNodeId, dispatch]);
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
@@ -441,6 +513,112 @@ export const Flow = () => {
     [dispatch, selectedNodeId],
   );
 
+  // ─── Step-by-step chain handlers ───
+
+  const handleFetchNextStep = useCallback(
+    (direction: BuildDirection) => async () => {
+      if (!selectedNodeId || !selectedNode) return;
+      const sKey = stepSessionKey(selectedNodeId, direction);
+
+      // Initialize session if not exists
+      if (!stepChainSessions[sKey]) {
+        dispatch(
+          initStepChainSession({
+            sessionKey: sKey,
+            direction,
+            rootNodeId: selectedNodeId,
+            currentProductNodeId: selectedNodeId,
+          }),
+        );
+      }
+
+      const session = stepChainSessions[sKey];
+      const currentProductNode = session
+        ? data.nodes.find((n) => n.id === session.currentProductNodeId)
+        : selectedNode;
+
+      const descField =
+        direction === "up" ? "upDescription" : "downDescription";
+      const techText = String(
+        selectedNode.data?.[descField] ||
+          selectedNode.data?.description ||
+          "",
+      ).trim();
+
+      const sliceKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sliceKey];
+
+      const mergedSources = [
+        ...(sliceState?.sources ?? []),
+        ...(session?.accumulatedSources ?? []),
+      ];
+
+      await dispatch(
+        fetchChainStep({
+          sessionKey: sKey,
+          nodeId: selectedNodeId,
+          productName: String(
+            currentProductNode?.data?.label ||
+              selectedNode.data?.label ||
+              "",
+          ).trim(),
+          direction,
+          techText,
+          existingSources: mergedSources.length ? mergedSources : undefined,
+        }),
+      ).unwrap();
+    },
+    [
+      dispatch,
+      selectedNodeId,
+      selectedNode,
+      stepChainSessions,
+      data.nodes,
+      sourcesByNodeId,
+    ],
+  );
+
+  const handleAcceptStep = useCallback(
+    (direction: BuildDirection) =>
+      (selectedContinueProductNodeId?: string) => {
+        if (!selectedNodeId) return;
+        const sKey = stepSessionKey(selectedNodeId, direction);
+        dispatch(
+          acceptPendingStep({
+            sessionKey: sKey,
+            selectedContinueProductNodeId,
+          }),
+        );
+      },
+    [dispatch, selectedNodeId],
+  );
+
+  const handleFetchStepSources = useCallback(
+    (direction: BuildDirection) => () => {
+      if (!selectedNodeId) return;
+      const sKey = stepSessionKey(selectedNodeId, direction);
+      const session = stepChainSessions[sKey];
+      if (!session) return;
+
+      const currentProductNode = data.nodes.find(
+        (n) => n.id === session.currentProductNodeId,
+      );
+      const productName = String(
+        currentProductNode?.data?.label || "",
+      ).trim();
+      if (!productName) return;
+
+      dispatch(
+        fetchStepSources({
+          sessionKey: sKey,
+          productName,
+          direction,
+        }),
+      );
+    },
+    [dispatch, selectedNodeId, stepChainSessions, data.nodes],
+  );
+
   // ─── Build DirectionTabProps for each direction ───
   const buildDirectionTab = useCallback(
     (direction: BuildDirection): DirectionTabProps => {
@@ -509,6 +687,30 @@ export const Flow = () => {
           ? "Продолжить граф: цепочка от этого продукта"
           : "Получить цепочку (chain)";
 
+      // step-by-step chain
+      const sKeyStep = stepSessionKey(selectedNodeId, direction);
+      const stepSession = stepChainSessions[sKeyStep];
+      const buildModeKey = sourcesKey(selectedNodeId, direction);
+
+      const lastStep =
+        stepSession?.steps.length
+          ? stepSession.steps[stepSession.steps.length - 1]
+          : null;
+
+      const branchOptions =
+        lastStep &&
+        [...lastStep.newProductNodeIds, ...lastStep.mergedProductNodeIds]
+          .length > 1
+          ? [
+              ...lastStep.newProductNodeIds,
+              ...lastStep.mergedProductNodeIds,
+            ].map((id) => ({
+              nodeId: id,
+              label:
+                data.nodes.find((n) => n.id === id)?.data?.label || id,
+            }))
+          : undefined;
+
       return {
         direction,
         onFindSources: handleFindSources(direction),
@@ -548,6 +750,45 @@ export const Flow = () => {
         queueLen,
         chainPid: queuePid,
         onExpandNext: handleExpandNext(direction),
+
+        // step-by-step chain props
+        chainBuildMode: chainBuildModes[buildModeKey] ?? "full",
+        onChangeChainBuildMode: (mode: "full" | "step") =>
+          setChainBuildModes((prev) => ({ ...prev, [buildModeKey]: mode })),
+
+        stepChainStatus: stepSession?.status ?? "idle",
+        stepChainError: stepSession?.error ?? null,
+        stepChainStepCount: stepSession?.steps.length ?? 0,
+
+        stepChainCurrentProductLabel: stepSession
+          ? (data.nodes.find(
+              (n) => n.id === stepSession.currentProductNodeId,
+            )?.data?.label ?? "")
+          : "",
+        stepChainInsufficientProducts:
+          stepSession?.insufficientProducts ?? [],
+
+        onFetchNextStep: handleFetchNextStep(direction),
+        onAcceptStep: handleAcceptStep(direction),
+        onRejectStep: () =>
+          dispatch(rejectPendingStep(sKeyStep)),
+        onRetryStep: handleFetchNextStep(direction),
+        onUndoStep: () =>
+          dispatch(undoLastStep(sKeyStep)),
+
+        pendingStep: stepSession?.pendingStep ?? null,
+
+        stepChainBranchOptions: branchOptions,
+        onSelectBranch: (nodeId: string) =>
+          dispatch(
+            setStepChainContinueProduct({
+              sessionKey: sKeyStep,
+              productNodeId: nodeId,
+            }),
+          ),
+
+        onFetchStepSources: handleFetchStepSources(direction),
+        stepSourcesLoading: stepSession?.status === "fetching-sources",
       };
     },
     [
@@ -560,6 +801,13 @@ export const Flow = () => {
       handleAggregateSources,
       handleInitChain,
       handleExpandNext,
+      stepChainSessions,
+      chainBuildModes,
+      handleFetchNextStep,
+      handleAcceptStep,
+      handleFetchStepSources,
+      data.nodes,
+      dispatch,
     ],
   );
 
@@ -635,6 +883,8 @@ export const Flow = () => {
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         onNodeClick={onNodeClick}
+        onNodeContextMenu={onNodeContextMenu}
+        onPaneClick={onPaneClick}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         onReconnect={handleReconnect}
@@ -655,6 +905,20 @@ export const Flow = () => {
         <Controls position="bottom-left" style={{ bottom: "25%" }} />
         <Background />
       </ReactFlow>
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          isProduct={
+            data.nodes.find((n) => n.id === contextMenu.nodeId)?.type ===
+            "product"
+          }
+          onBuildUp={() => handleContextBuild("up")}
+          onBuildDown={() => handleContextBuild("down")}
+          onDelete={handleContextDelete}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}
@@ -662,7 +926,6 @@ export const Flow = () => {
         onChangeValue={handleNodeNameChange}
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
-        onDelete={handleDeleteNode}
         nodeType={selectedNode?.type}
         onBuildProductCard={handleBuildProductCard}
         productCardStatus={selectedNode?.data?.productCardStatus}
@@ -670,7 +933,38 @@ export const Flow = () => {
         productCard={selectedNode?.data?.productCard}
         downTab={downTab}
         upTab={upTab}
+        mode={panelMode.type}
+        buildDirection={
+          panelMode.type === "build" ? panelMode.direction : undefined
+        }
       />
+      {deleteConfirmNodeId && (
+        <ConfirmDeleteModal
+          nodeName={
+            data.nodes.find((n) => n.id === deleteConfirmNodeId)?.data?.label ||
+            ""
+          }
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteConfirmNodeId(null)}
+        />
+      )}
+      {(() => {
+        if (panelMode.type !== "build" || !selectedNodeId) return null;
+        const sKey = stepSessionKey(selectedNodeId, panelMode.direction);
+        const session = stepChainSessions[sKey];
+        if (session?.status !== "preview" || !session.pendingStep) return null;
+        return (
+          <StepPreviewModal
+            step={session.pendingStep}
+            stepNumber={(session.steps?.length ?? 0) + 1}
+            onAccept={() =>
+              dispatch(acceptPendingStep({ sessionKey: sKey }))
+            }
+            onRetry={() => handleFetchNextStep(panelMode.direction)()}
+            onReject={() => dispatch(rejectPendingStep(sKey))}
+          />
+        );
+      })()}
     </div>
   );
 };

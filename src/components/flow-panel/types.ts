@@ -2,6 +2,8 @@
 import type {
   BuildDirection,
   ProductCard,
+  StepChainApiStep,
+  StepChainStatus,
   TechnologySource,
 } from "../../store/types";
 
@@ -41,6 +43,30 @@ export interface DirectionTabProps {
   queueLen?: number;
   chainPid?: string | null;
   onExpandNext?: () => void;
+
+  // --- step-by-step chain ---
+  chainBuildMode?: "full" | "step";
+  onChangeChainBuildMode?: (mode: "full" | "step") => void;
+
+  stepChainStatus?: StepChainStatus;
+  stepChainError?: string | null;
+  stepChainStepCount?: number;
+  stepChainCurrentProductLabel?: string;
+  stepChainInsufficientProducts?: string[];
+
+  onFetchNextStep?: () => void;
+  onAcceptStep?: (selectedContinueProductNodeId?: string) => void;
+  onRejectStep?: () => void;
+  onRetryStep?: () => void;
+  onUndoStep?: () => void;
+
+  pendingStep?: StepChainApiStep | null;
+
+  stepChainBranchOptions?: Array<{ nodeId: string; label: string }>;
+  onSelectBranch?: (nodeId: string) => void;
+
+  onFetchStepSources?: () => void;
+  stepSourcesLoading?: boolean;
 }
 
 export interface FlowPanelProps {
@@ -48,7 +74,6 @@ export interface FlowPanelProps {
   isOpen: boolean;
   value: string;
   onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onDelete?: () => void;
   descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
 
@@ -64,4 +89,8 @@ export interface FlowPanelProps {
   // per-direction tabs
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
+
+  // panel mode
+  mode: "card" | "build";
+  buildDirection?: BuildDirection;
 }

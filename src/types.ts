@@ -45,6 +45,10 @@ export interface CustomNodeData {
   // --- chain direction (which direction this node's chain uses) ---
   chainDirection?: BuildDirection;
 
+  // --- step-by-step chain ---
+  stepChainSessionKey?: string;
+  stepChainStepNumber?: number;
+
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }

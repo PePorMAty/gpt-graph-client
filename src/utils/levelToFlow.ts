@@ -6,15 +6,7 @@ import type {
   ChainTransformNode,
   TechChain,
 } from "./chainToFlow";
-
-function pickPid(
-  obj: Record<string, string> | null | undefined,
-): string | null {
-  if (!obj || typeof obj !== "object") return null;
-  const vals = Object.values(obj);
-  const v = vals[0];
-  return typeof v === "string" ? v : null;
-}
+import { pickPid } from "./pickPid";
 
 type Opts = {
   namespace: string; // можно оставить для совместимости, но мы НЕ используем для id
