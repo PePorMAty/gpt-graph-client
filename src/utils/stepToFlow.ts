@@ -41,7 +41,7 @@ export function stepToFlow(
   } = opts;
 
   const isDown = direction === "down";
-  const sign = direction === "up" ? 1 : -1;
+  const sign = direction === "down" ? 1 : -1;
 
   const nodes: CustomNode[] = [];
   const edges: Edge[] = [];
@@ -77,8 +77,8 @@ export function stepToFlow(
     id: anchorToTrEdgeId,
     source: anchorNodeId,
     target: trFlowId,
-    sourceHandle: !isDown ? "bottom" : "top-source",
-    targetHandle: !isDown ? "top" : "bottom-target",
+    sourceHandle: isDown ? "bottom" : "top-source",
+    targetHandle: isDown ? "top" : "bottom-target",
     type: "straight",
   });
   addedEdgeIds.push(anchorToTrEdgeId);

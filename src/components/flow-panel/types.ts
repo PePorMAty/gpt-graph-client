@@ -90,7 +90,7 @@ export interface DirectionTabProps {
 
   onFetchStepSources?: () => void;
   onAggregateStepSources?: () => void;
-  onBuildStep?: () => void;
+  onBuildStep?: (customText?: string) => void;
   onClearStepState?: () => void;
 }
 

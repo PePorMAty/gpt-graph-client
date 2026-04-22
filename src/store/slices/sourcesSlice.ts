@@ -38,7 +38,6 @@ type NodeSourcesState = {
 
   stepSourcesStatus: Status;
   stepSourcesError: string | null;
-  stepSources: TechnologySource[];
 
   stepAggregateStatus: Status;
   stepAggregateError: string | null;
@@ -71,7 +70,6 @@ const makeNodeState = (): NodeSourcesState => ({
 
   stepSourcesStatus: "idle",
   stepSourcesError: null,
-  stepSources: [],
 
   stepAggregateStatus: "idle",
   stepAggregateError: null,
@@ -118,7 +116,6 @@ const sourcesSlice = createSlice({
       if (!s) return;
       s.stepSourcesStatus = "idle";
       s.stepSourcesError = null;
-      s.stepSources = [];
       s.stepAggregateStatus = "idle";
       s.stepAggregateError = null;
       s.stepAggregatedText = null;
@@ -209,13 +206,11 @@ const sourcesSlice = createSlice({
         state.byNodeId[key].stepSourcesError = null;
       })
       .addCase(fetchStepSourcesV2.fulfilled, (state, action) => {
-        const { nodeId, direction, sources, product, maxItems } =
-          action.payload;
+        const { nodeId, direction, product, maxItems } = action.payload;
         const key = sourcesKey(nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "succeeded";
         state.byNodeId[key].stepSourcesError = null;
-        state.byNodeId[key].stepSources = sources;
         if (product) state.byNodeId[key].product = product;
         if (typeof maxItems === "number")
           state.byNodeId[key].maxItems = maxItems;

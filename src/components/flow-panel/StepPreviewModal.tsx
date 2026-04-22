@@ -1,9 +1,11 @@
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import type { StepChainApiStep } from "../../store/types";
+import { normalizeProductName } from "../../utils/normalizeProductName";
 import styles from "./StepPreviewModal.module.css";
 
 interface StepPreviewModalProps {
   step: StepChainApiStep;
+  anchorProductName: string;
   stepNumber: number;
   onAccept: (filteredStep: StepChainApiStep) => void;
   onRetry: () => void;
@@ -12,17 +14,34 @@ interface StepPreviewModalProps {
 
 export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   step,
+  anchorProductName,
   stepNumber,
   onAccept,
   onRetry,
   onReject,
 }) => {
-  const [excludedInputs, setExcludedInputs] = useState<Set<number>>(
-    new Set(),
+  const anchorNorm = useMemo(
+    () => normalizeProductName(anchorProductName),
+    [anchorProductName],
   );
-  const [excludedOutputs, setExcludedOutputs] = useState<Set<number>>(
-    new Set(),
+
+  const visibleInputs = useMemo(
+    () =>
+      step.inputProducts
+        .map((p, idx) => ({ product: p, origIdx: idx }))
+        .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
+    [step.inputProducts, anchorNorm],
   );
+  const visibleOutputs = useMemo(
+    () =>
+      step.outputProducts
+        .map((p, idx) => ({ product: p, origIdx: idx }))
+        .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
+    [step.outputProducts, anchorNorm],
+  );
+
+  const [excludedInputs, setExcludedInputs] = useState<Set<number>>(new Set());
+  const [excludedOutputs, setExcludedOutputs] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,20 +51,20 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onReject]);
 
-  const toggleInput = (idx: number) => {
+  const toggleInput = (origIdx: number) => {
     setExcludedInputs((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
+      if (next.has(origIdx)) next.delete(origIdx);
+      else next.add(origIdx);
       return next;
     });
   };
 
-  const toggleOutput = (idx: number) => {
+  const toggleOutput = (origIdx: number) => {
     setExcludedOutputs((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
+      if (next.has(origIdx)) next.delete(origIdx);
+      else next.add(origIdx);
       return next;
     });
   };
@@ -78,17 +97,17 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           </div>
         )}
 
-        {step.inputProducts.length > 0 && (
+        {visibleInputs.length > 0 && (
           <>
             <p className={styles.sectionTitle}>Входы:</p>
             <ul className={styles.productList}>
-              {step.inputProducts.map((p, i) => (
-                <li key={i} className={styles.productItem}>
+              {visibleInputs.map(({ product: p, origIdx }) => (
+                <li key={origIdx} className={styles.productItem}>
                   <label className={styles.productCheckbox}>
                     <input
                       type="checkbox"
-                      checked={!excludedInputs.has(i)}
-                      onChange={() => toggleInput(i)}
+                      checked={!excludedInputs.has(origIdx)}
+                      onChange={() => toggleInput(origIdx)}
                     />
                     <span>{p.name}</span>
                   </label>
@@ -107,17 +126,17 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           </>
         )}
 
-        {step.outputProducts.length > 0 && (
+        {visibleOutputs.length > 0 && (
           <>
             <p className={styles.sectionTitle}>Выходы:</p>
             <ul className={styles.productList}>
-              {step.outputProducts.map((p, i) => (
-                <li key={i} className={styles.productItem}>
+              {visibleOutputs.map(({ product: p, origIdx }) => (
+                <li key={origIdx} className={styles.productItem}>
                   <label className={styles.productCheckbox}>
                     <input
                       type="checkbox"
-                      checked={!excludedOutputs.has(i)}
-                      onChange={() => toggleOutput(i)}
+                      checked={!excludedOutputs.has(origIdx)}
+                      onChange={() => toggleOutput(origIdx)}
                     />
                     <span>{p.name}</span>
                   </label>

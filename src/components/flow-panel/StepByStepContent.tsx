@@ -1,21 +1,17 @@
-import type { FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
+import { parseAlternatives } from "../../utils/parseAlternatives";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
-  // session / global step-chain state
   | "stepChainStatus"
   | "stepChainError"
   | "stepChainStepCount"
   | "stepChainCurrentProductLabel"
-  | "stepChainCurrentProductNodeId"
   | "stepChainInsufficientProducts"
-  | "stepChainBranchOptions"
-  | "onSelectBranch"
   | "onUndoStep"
-  // step v2 per-direction state
   | "stepSources"
   | "stepSourcesStatus"
   | "stepSourcesError"
@@ -41,9 +37,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepChainError,
   stepChainStepCount = 0,
   stepChainCurrentProductLabel,
-  stepChainCurrentProductNodeId,
-  stepChainBranchOptions,
-  onSelectBranch,
   onUndoStep,
 
   stepSources = [],
@@ -74,9 +67,28 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const hasSteps = stepChainStepCount > 0;
   const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
 
+  const alternatives = useMemo(
+    () => (hasValidAggregate ? parseAlternatives(stepAggregatedText ?? "") : []),
+    [hasValidAggregate, stepAggregatedText],
+  );
+  const hasMultipleAlternatives = alternatives.length > 1;
+  const [selectedAltIdx, setSelectedAltIdx] = useState(0);
+
+  useEffect(() => {
+    setSelectedAltIdx(0);
+  }, [stepAggregatedText]);
+
+  const handleBuildClick = () => {
+    if (hasMultipleAlternatives) {
+      const chosen = alternatives[selectedAltIdx];
+      onBuildStep?.(chosen.fullDescription);
+    } else {
+      onBuildStep?.();
+    }
+  };
+
   return (
     <div className={styles.formGroup}>
-      {/* Current session info */}
       <div className={styles.sourcesTitle}>
         Текущий продукт: <b>{stepChainCurrentProductLabel || "—"}</b>
       </div>
@@ -84,27 +96,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
 
-      {/* Branch selection (когда на последнем шаге несколько новых продуктов) */}
-      {stepChainBranchOptions && stepChainBranchOptions.length > 1 && (
-        <div className={styles.formGroup}>
-          <label className={styles.formLabel}>
-            Выберите продукт для продолжения:
-          </label>
-          {stepChainBranchOptions.map((opt) => (
-            <label key={opt.nodeId} className={styles.fieldCheckbox}>
-              <input
-                type="radio"
-                name="stepBranch"
-                checked={opt.nodeId === stepChainCurrentProductNodeId}
-                onChange={() => onSelectBranch?.(opt.nodeId)}
-              />
-              <span className={styles.fieldLabel}>{opt.label}</span>
-            </label>
-          ))}
-        </div>
-      )}
-
-      {/* Stage 1: no sources yet */}
+      {/* Stage 1: fetch sources button (when no sources yet) */}
       {!hasSources && (
         <>
           {sourcesLoading && (
@@ -131,34 +123,38 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage 2: sources found, not aggregated yet */}
-      {hasSources && !stepAggregatedText && (
-        <>
-          <div className={styles.sourcesBox}>
-            <div className={styles.sourcesTitle}>
-              Источники ({stepSources.length})
-            </div>
-            {stepSources.map((s) => (
-              <details key={s.url} className={styles.sourceItem}>
-                <summary className={styles.sourceSummary}>
-                  <span className={styles.sourceTitle}>{s.title}</span>
-                </summary>
-                <div className={styles.sourceBody}>
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={styles.sourceLink}
-                  >
-                    {s.url}
-                  </a>
-                  <div className={styles.sourceDesc}>
-                    {s.technology_description}
-                  </div>
-                </div>
-              </details>
-            ))}
+      {/* Sources list — always visible when any sources exist */}
+      {hasSources && (
+        <div className={styles.sourcesBox}>
+          <div className={styles.sourcesTitle}>
+            Источники ({stepSources.length})
           </div>
+          {stepSources.map((s) => (
+            <details key={s.url} className={styles.sourceItem}>
+              <summary className={styles.sourceSummary}>
+                <span className={styles.sourceTitle}>{s.title}</span>
+              </summary>
+              <div className={styles.sourceBody}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.sourceLink}
+                >
+                  {s.url}
+                </a>
+                <div className={styles.sourceDesc}>
+                  {s.technology_description}
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
+      {hasSources && !hasValidAggregate && !stepNeedsSources && (
+        <>
           {aggregateLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -180,7 +176,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            Повторить поиск источников
+            {sourcesLoading ? "Поиск..." : "Добрать источники"}
           </button>
           {stepAggregateError && (
             <div className={styles.errorText}>
@@ -190,7 +186,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage 2b: needs more sources */}
+      {/* Stage: needs more sources */}
       {stepNeedsSources && (
         <>
           <div className={styles.warningText}>
@@ -213,7 +209,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage 3: aggregated markdown ready → build step */}
+      {/* Stage: aggregated ready → alt selection + build */}
       {hasValidAggregate && (
         <>
           <div className={styles.formGroup}>
@@ -227,6 +223,28 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               rows={6}
             />
           </div>
+
+          {hasMultipleAlternatives && (
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>
+                Выберите альтернативу ({alternatives.length}):
+              </label>
+              {alternatives.map((alt, idx) => (
+                <label key={idx} className={styles.fieldCheckbox}>
+                  <input
+                    type="radio"
+                    name="stepAlternative"
+                    checked={idx === selectedAltIdx}
+                    onChange={() => setSelectedAltIdx(idx)}
+                  />
+                  <span className={styles.fieldLabel}>
+                    {alt.firstStepName || alt.title}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
           {buildLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -235,7 +253,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
           <button
             type="button"
-            onClick={onBuildStep}
+            onClick={handleBuildClick}
             disabled={buildLoading}
             className={styles.findSourcesButton}
           >
@@ -256,7 +274,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Reset step pipeline (start fresh cycle) */}
+      {/* Reset */}
       {(hasSources || hasValidAggregate) && (
         <button
           type="button"
@@ -269,7 +287,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </button>
       )}
 
-      {/* Undo last applied step */}
       {hasSteps && (
         <button
           type="button"
@@ -281,15 +298,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </button>
       )}
 
-      {/* Session error */}
       {stepChainError && (
         <div className={styles.errorText}>Ошибка: {stepChainError}</div>
       )}
 
-      {/* Preview modal */}
       {showPreview && pendingStep && (
         <StepPreviewModal
           step={pendingStep}
+          anchorProductName={stepChainCurrentProductLabel ?? ""}
           stepNumber={stepChainStepCount + 1}
           onAccept={(filteredStep) =>
             onAcceptStep?.(undefined, filteredStep)

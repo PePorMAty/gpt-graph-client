@@ -58,7 +58,7 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
   const pidToNodeIdNext = { ...pidToNodeId };
   pidToNodeIdNext[targetPid] = targetNodeId;
 
-  const sign = direction === "up" ? 1 : -1;
+  const sign = direction === "down" ? 1 : -1;
 
   // target (на якоре) -> transformation -> inputs-row
   const trY = targetY + sign * stepY1;
@@ -112,8 +112,8 @@ export function levelToFlow(levelChain: TechChain, opts: Opts) {
     id: `chain::${idRoot}::e::${targetNodeId}::${trFlowId}`,
     source: targetNodeId,
     target: trFlowId,
-    sourceHandle: !isDown ? "bottom" : "top-source",
-    targetHandle: !isDown ? "top" : "bottom-target",
+    sourceHandle: isDown ? "bottom" : "top-source",
+    targetHandle: isDown ? "top" : "bottom-target",
     type: "straight",
   });
 

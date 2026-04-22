@@ -55,7 +55,18 @@ const initialState: InitialGraphStateI = {
   chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
   stepChainSessions: {},
+  sourcesPool: {},
 };
+
+export const sourcesPoolKey = (
+  productName: string,
+  direction: "up" | "down",
+) =>
+  `${productName
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .trim()
+    .replace(/\s+/g, " ")}::${direction}`;
 
 const gptSlice = createSlice({
   name: "graph",
@@ -332,6 +343,44 @@ const gptSlice = createSlice({
       if (!session) return;
       session.currentProductNodeId = action.payload.productNodeId;
     },
+
+    addSourcesToPool: (
+      state,
+      action: PayloadAction<{
+        productName: string;
+        direction: "up" | "down";
+        sources: import("../../store/types").TechnologySource[];
+      }>,
+    ) => {
+      const { productName, direction, sources } = action.payload;
+      const key = sourcesPoolKey(productName, direction);
+      const existing = state.sourcesPool[key];
+      const existingByUrl = new Map(
+        (existing?.sources ?? []).map((s) => [s.url, s]),
+      );
+      for (const s of sources) {
+        if (!existingByUrl.has(s.url)) existingByUrl.set(s.url, s);
+      }
+      state.sourcesPool[key] = {
+        sources: Array.from(existingByUrl.values()),
+        product: existing?.product || productName,
+        lastFetchedAt: new Date().toISOString(),
+      };
+    },
+
+    clearSourcesPool: (
+      state,
+      action: PayloadAction<{
+        productName: string;
+        direction: "up" | "down";
+      }>,
+    ) => {
+      const key = sourcesPoolKey(
+        action.payload.productName,
+        action.payload.direction,
+      );
+      delete state.sourcesPool[key];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -462,7 +511,7 @@ const gptSlice = createSlice({
           const rx = root.position?.x ?? 0;
           const ry = root.position?.y ?? 0;
           const dir = direction;
-          const sign = dir === "up" ? 1 : -1;
+          const sign = dir === "down" ? 1 : -1;
           const stepY = 180;
           const spacingX = 300;
 
@@ -751,5 +800,7 @@ export const {
   rejectPendingStep,
   undoLastStep,
   setStepChainContinueProduct,
+  addSourcesToPool,
+  clearSourcesPool,
 } = gptSlice.actions;
 export default gptSlice.reducer;
