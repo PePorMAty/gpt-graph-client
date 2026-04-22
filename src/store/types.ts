@@ -30,10 +30,10 @@ export interface InitialGraphStateI {
 export interface ChainSessionData {
   rawChain: TechChain | null;
   mainTrIds: string[];
-  direction?: “up” | “down”;
+  direction?: "up" | "down";
   totalSteps: number;
   rootX: number;
-  chainStatus: “idle” | “loading” | “succeeded” | “failed”;
+  chainStatus: "idle" | "loading" | "succeeded" | "failed";
   chainError: string | null;
   pidToNodeId: Record<string, string>;
   expandedPids: string[];

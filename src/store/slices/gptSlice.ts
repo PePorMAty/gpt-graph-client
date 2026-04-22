@@ -24,8 +24,12 @@ import {
 } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
-import type { InitialGraphStateI, StepChainSession } from "../types";
-import { fetchChainStep, fetchStepSources } from "../api/step-chain-api";
+import type { InitialGraphStateI } from "../types";
+import {
+  buildStep,
+  fetchChainStep,
+  fetchStepSources,
+} from "../api/step-chain-api";
 import { stepToFlow } from "../../utils/stepToFlow";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
@@ -683,6 +687,41 @@ const gptSlice = createSlice({
           session.status = "needs-sources";
           session.error =
             (action.payload as string) || "sources fetch failed";
+        }
+      });
+    // ── Step build (new /step/build route) ──
+    builder
+      .addCase(buildStep.pending, (state, action) => {
+        const session = state.stepChainSessions[action.meta.arg.sessionKey];
+        if (session) {
+          session.status = "loading";
+          session.error = null;
+        }
+      })
+      .addCase(buildStep.fulfilled, (state, action) => {
+        const { sessionKey, step, sourcesStatus, insufficientProducts } =
+          action.payload;
+        const session = state.stepChainSessions[sessionKey];
+        if (!session) return;
+
+        session.pendingStep = step;
+
+        if (sourcesStatus === "insufficient") {
+          session.status = "needs-sources";
+          session.insufficientProducts = insufficientProducts;
+          return;
+        }
+
+        session.status = "preview";
+        session.error = null;
+        session.insufficientProducts = [];
+      })
+      .addCase(buildStep.rejected, (state, action) => {
+        const session = state.stepChainSessions[action.meta.arg.sessionKey];
+        if (session) {
+          session.status = "failed";
+          session.error =
+            (action.payload as string) || "step/build request failed";
         }
       });
   },

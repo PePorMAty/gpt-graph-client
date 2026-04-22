@@ -1,13 +1,21 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
 import { aggregateSources, fetchSources } from "../api/sources-api";
+import {
+  aggregateStepSources,
+  buildStep,
+  fetchStepSourcesV2,
+} from "../api/step-chain-api";
 import type { BuildDirection, TechnologySource } from "../types";
+import type { TechChain } from "../../utils/chainToFlow";
 
 /** Составной ключ для per-direction состояния источников */
 export const sourcesKey = (nodeId: string, direction: BuildDirection) =>
   `${nodeId}::${direction}`;
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
+
+export type BuildMode = "whole" | "step" | null;
 
 type NodeSourcesState = {
   direction: BuildDirection | null;
@@ -24,6 +32,22 @@ type NodeSourcesState = {
   aggregateError: string | null;
   aggregatedDescription: string | null;
   aggregatedMarkdown: string | null;
+
+  // ── step-by-step build state ──
+  buildMode: BuildMode;
+
+  stepSourcesStatus: Status;
+  stepSourcesError: string | null;
+  stepSources: TechnologySource[];
+
+  stepAggregateStatus: Status;
+  stepAggregateError: string | null;
+  stepAggregatedText: string | null;
+  stepInsufficientProducts: string[];
+
+  stepBuildStatus: Status;
+  stepBuildError: string | null;
+  stepBuildResult: TechChain | null;
 };
 
 type SourcesState = {
@@ -41,6 +65,21 @@ const makeNodeState = (): NodeSourcesState => ({
   aggregateError: null,
   aggregatedDescription: null,
   aggregatedMarkdown: null,
+
+  buildMode: null,
+
+  stepSourcesStatus: "idle",
+  stepSourcesError: null,
+  stepSources: [],
+
+  stepAggregateStatus: "idle",
+  stepAggregateError: null,
+  stepAggregatedText: null,
+  stepInsufficientProducts: [],
+
+  stepBuildStatus: "idle",
+  stepBuildError: null,
+  stepBuildResult: null,
 });
 
 const initialState: SourcesState = {
@@ -53,6 +92,38 @@ const sourcesSlice = createSlice({
   reducers: {
     clearNodeSources: (state, action: PayloadAction<{ nodeId: string }>) => {
       delete state.byNodeId[action.payload.nodeId];
+    },
+    setBuildMode: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: BuildDirection;
+        mode: BuildMode;
+      }>,
+    ) => {
+      const { nodeId, direction, mode } = action.payload;
+      const key = sourcesKey(nodeId, direction);
+      state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+      state.byNodeId[key].buildMode = mode;
+    },
+    clearStepState: (
+      state,
+      action: PayloadAction<{ nodeId: string; direction: BuildDirection }>,
+    ) => {
+      const { nodeId, direction } = action.payload;
+      const key = sourcesKey(nodeId, direction);
+      const s = state.byNodeId[key];
+      if (!s) return;
+      s.stepSourcesStatus = "idle";
+      s.stepSourcesError = null;
+      s.stepSources = [];
+      s.stepAggregateStatus = "idle";
+      s.stepAggregateError = null;
+      s.stepAggregatedText = null;
+      s.stepInsufficientProducts = [];
+      s.stepBuildStatus = "idle";
+      s.stepBuildError = null;
+      s.stepBuildResult = null;
     },
   },
   extraReducers: (builder) => {
@@ -113,9 +184,89 @@ const sourcesSlice = createSlice({
         state.byNodeId[key].aggregateStatus = "failed";
         state.byNodeId[key].aggregateError =
           (action.payload as string) || "Ошибка обобщения источников";
+      })
+      // --------- STEP SOURCES (/step/sources) ----------
+      .addCase(fetchStepSourcesV2.pending, (state, action) => {
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepSourcesStatus = "loading";
+        state.byNodeId[key].stepSourcesError = null;
+      })
+      .addCase(fetchStepSourcesV2.fulfilled, (state, action) => {
+        const { nodeId, direction, sources, product, maxItems } =
+          action.payload;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepSourcesStatus = "succeeded";
+        state.byNodeId[key].stepSourcesError = null;
+        state.byNodeId[key].stepSources = sources;
+        if (product) state.byNodeId[key].product = product;
+        if (typeof maxItems === "number")
+          state.byNodeId[key].maxItems = maxItems;
+      })
+      .addCase(fetchStepSourcesV2.rejected, (state, action) => {
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepSourcesStatus = "failed";
+        state.byNodeId[key].stepSourcesError =
+          (action.payload as string) || "Ошибка поиска step-источников";
+      })
+      // --------- STEP AGGREGATE (/step/aggregate) ----------
+      .addCase(aggregateStepSources.pending, (state, action) => {
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepAggregateStatus = "loading";
+        state.byNodeId[key].stepAggregateError = null;
+      })
+      .addCase(aggregateStepSources.fulfilled, (state, action) => {
+        const { nodeId, direction, aggregatedText, insufficientProducts } =
+          action.payload;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepAggregateStatus = "succeeded";
+        state.byNodeId[key].stepAggregateError = null;
+        state.byNodeId[key].stepAggregatedText = aggregatedText;
+        state.byNodeId[key].stepInsufficientProducts =
+          insufficientProducts ?? [];
+      })
+      .addCase(aggregateStepSources.rejected, (state, action) => {
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepAggregateStatus = "failed";
+        state.byNodeId[key].stepAggregateError =
+          (action.payload as string) || "Ошибка обобщения step-источников";
+      })
+      // --------- STEP BUILD (/step/build) ----------
+      .addCase(buildStep.pending, (state, action) => {
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepBuildStatus = "loading";
+        state.byNodeId[key].stepBuildError = null;
+      })
+      .addCase(buildStep.fulfilled, (state, action) => {
+        const { nodeId, direction, chain } = action.payload;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepBuildStatus = "succeeded";
+        state.byNodeId[key].stepBuildError = null;
+        state.byNodeId[key].stepBuildResult = chain;
+      })
+      .addCase(buildStep.rejected, (state, action) => {
+        const { nodeId, direction } = action.meta.arg;
+        const key = sourcesKey(nodeId, direction);
+        state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        state.byNodeId[key].stepBuildStatus = "failed";
+        state.byNodeId[key].stepBuildError =
+          (action.payload as string) || "Ошибка построения step-шага";
       });
   },
 });
 
-export const { clearNodeSources } = sourcesSlice.actions;
+export const { clearNodeSources, setBuildMode, clearStepState } =
+  sourcesSlice.actions;
 export default sourcesSlice.reducer;

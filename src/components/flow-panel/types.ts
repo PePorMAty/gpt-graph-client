@@ -6,6 +6,10 @@ import type {
   StepChainStatus,
   TechnologySource,
 } from "../../store/types";
+import type { BuildMode } from "../../store/slices/sourcesSlice";
+import type { TechChain } from "../../utils/chainToFlow";
+
+type Status = "idle" | "loading" | "succeeded" | "failed";
 
 export interface FillCardOptions {
   customSystemPrompt?: string;
@@ -44,17 +48,17 @@ export interface DirectionTabProps {
   chainPid?: string | null;
   onExpandNext?: () => void;
 
-  // --- step-by-step chain ---
-  chainBuildMode?: "full" | "step";
-  onChangeChainBuildMode?: (mode: "full" | "step") => void;
+  // --- build mode toggle (shared by full + step flows) ---
+  buildMode?: BuildMode;
+  onChangeBuildMode?: (mode: BuildMode) => void;
 
+  // --- step-by-step chain ---
   stepChainStatus?: StepChainStatus;
   stepChainError?: string | null;
   stepChainStepCount?: number;
   stepChainCurrentProductLabel?: string;
   stepChainInsufficientProducts?: string[];
 
-  onFetchNextStep?: () => void;
   onAcceptStep?: (selectedContinueProductNodeId?: string) => void;
   onRejectStep?: () => void;
   onRetryStep?: () => void;
@@ -65,8 +69,24 @@ export interface DirectionTabProps {
   stepChainBranchOptions?: Array<{ nodeId: string; label: string }>;
   onSelectBranch?: (nodeId: string) => void;
 
+  // --- step v2 flow (dedicated /step/* routes) ---
+  stepSources?: TechnologySource[];
+  stepSourcesStatus?: Status;
+  stepSourcesError?: string | null;
+
+  stepAggregatedText?: string | null;
+  stepAggregateStatus?: Status;
+  stepAggregateError?: string | null;
+  stepInsufficientProducts?: string[];
+
+  stepBuildResult?: TechChain | null;
+  stepBuildStatus?: Status;
+  stepBuildError?: string | null;
+
   onFetchStepSources?: () => void;
-  stepSourcesLoading?: boolean;
+  onAggregateStepSources?: () => void;
+  onBuildStep?: () => void;
+  onClearStepState?: () => void;
 }
 
 export interface FlowPanelProps {

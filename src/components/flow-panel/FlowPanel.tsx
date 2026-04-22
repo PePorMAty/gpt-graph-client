@@ -46,19 +46,36 @@ const DirectionContent: FC<DirectionTabProps> = ({
   chainPid,
   onExpandNext,
 
-  chainBuildMode,
-  onChangeChainBuildMode,
+  buildMode,
+  onChangeBuildMode,
   stepChainStatus,
   stepChainError,
   stepChainStepCount,
   stepChainCurrentProductLabel,
   stepChainInsufficientProducts,
-  onFetchNextStep,
   onUndoStep,
   stepChainBranchOptions,
   onSelectBranch,
+
+  // step v2
+  stepSources,
+  stepSourcesStatus,
+  stepSourcesError,
+  stepAggregatedText,
+  stepAggregateStatus,
+  stepAggregateError,
+  stepInsufficientProducts,
+  stepBuildResult,
+  stepBuildStatus,
+  stepBuildError,
+  pendingStep,
   onFetchStepSources,
-  stepSourcesLoading,
+  onAggregateStepSources,
+  onBuildStep,
+  onClearStepState,
+  onAcceptStep,
+  onRejectStep,
+  onRetryStep,
 }) => {
   const hasSources = Array.isArray(sources) && sources.length > 0;
 
@@ -123,8 +140,80 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
   const isLoading = sourcesLoading || aggregateLoading || chainLoading;
 
+  // buildMode может быть undefined (если компонент в card-режиме или проп не передан).
+  // В build-режиме: null = пользователь ещё не выбрал, "whole"/"step" = выбран.
+  const isBuildContext = typeof buildMode !== "undefined";
+
   return (
     <>
+      {/* ── Build mode toggle (shown FIRST, before any requests) ── */}
+      {isBuildContext && (
+        <div className={styles.formGroup}>
+          <div className={styles.modeToggleRow}>
+            <button
+              type="button"
+              className={`${styles.modeToggleBtn} ${buildMode === "whole" ? styles.modeToggleBtnActive : ""}`}
+              onClick={() => onChangeBuildMode?.("whole")}
+            >
+              Вся цепочка
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeToggleBtn} ${buildMode === "step" ? styles.modeToggleBtnActive : ""}`}
+              onClick={() => onChangeBuildMode?.("step")}
+            >
+              По шагам
+            </button>
+          </div>
+
+          {buildMode === null && (
+            <div
+              className={styles.sourcesTitle}
+              style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}
+            >
+              Выберите режим: «Вся цепочка» — один запрос → целая цепочка;
+              «По шагам» — один запрос = один шаг с превью и возможностью
+              откатить.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Step-by-step v2 flow (dedicated /step/* routes) ── */}
+      {isBuildContext && buildMode === "step" && (
+        <StepByStepContent
+          stepChainStatus={stepChainStatus}
+          stepChainError={stepChainError}
+          stepChainStepCount={stepChainStepCount}
+          stepChainCurrentProductLabel={stepChainCurrentProductLabel}
+          stepChainInsufficientProducts={stepChainInsufficientProducts}
+          stepChainBranchOptions={stepChainBranchOptions}
+          onSelectBranch={onSelectBranch}
+          onUndoStep={onUndoStep}
+          stepSources={stepSources}
+          stepSourcesStatus={stepSourcesStatus}
+          stepSourcesError={stepSourcesError}
+          stepAggregatedText={stepAggregatedText}
+          stepAggregateStatus={stepAggregateStatus}
+          stepAggregateError={stepAggregateError}
+          stepInsufficientProducts={stepInsufficientProducts}
+          stepBuildResult={stepBuildResult}
+          stepBuildStatus={stepBuildStatus}
+          stepBuildError={stepBuildError}
+          pendingStep={pendingStep}
+          onFetchStepSources={onFetchStepSources}
+          onAggregateStepSources={onAggregateStepSources}
+          onBuildStep={onBuildStep}
+          onClearStepState={onClearStepState}
+          onAcceptStep={onAcceptStep}
+          onRejectStep={onRejectStep}
+          onRetryStep={onRetryStep}
+        />
+      )}
+
+      {/* ── Full-chain ("whole") flow — the original path, unchanged ── */}
+      {(!isBuildContext || buildMode === "whole") && (
+      <>
       {isLoading && (
         <div className={styles.tabLoader}>
           <div className={styles.tabSpinner} />
@@ -329,44 +418,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {/* 3) обобщено -> chain */}
       {hasSources && hasAggregated && (
         <div className={styles.formGroup}>
-          {/* Mode toggle: full chain vs step-by-step */}
-          <div className={styles.modeToggleRow}>
-            <button
-              type="button"
-              className={`${styles.modeToggleBtn} ${chainBuildMode !== "step" ? styles.modeToggleBtnActive : ""}`}
-              onClick={() => onChangeChainBuildMode?.("full")}
-            >
-              Вся цепочка
-            </button>
-            <button
-              type="button"
-              className={`${styles.modeToggleBtn} ${chainBuildMode === "step" ? styles.modeToggleBtnActive : ""}`}
-              onClick={() => onChangeChainBuildMode?.("step")}
-            >
-              По шагам
-            </button>
-          </div>
-
-          {/* Step-by-step content */}
-          {chainBuildMode === "step" && (
-            <StepByStepContent
-              stepChainStatus={stepChainStatus}
-              stepChainError={stepChainError}
-              stepChainStepCount={stepChainStepCount}
-
-              stepChainCurrentProductLabel={stepChainCurrentProductLabel}
-              stepChainInsufficientProducts={stepChainInsufficientProducts}
-              onFetchNextStep={onFetchNextStep}
-              onUndoStep={onUndoStep}
-              stepChainBranchOptions={stepChainBranchOptions}
-              onSelectBranch={onSelectBranch}
-              onFetchStepSources={onFetchStepSources}
-              stepSourcesLoading={stepSourcesLoading}
-            />
-          )}
-
-          {/* Full chain content */}
-          {chainBuildMode !== "step" && (<>
           {/* row: chain prompt toggle + re-aggregate toggle */}
           <div className={styles.promptToggleRow}>
             <button
@@ -542,7 +593,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
           {chainError && (
             <div className={styles.errorText}>Ошибка: {chainError}</div>
           )}
-          </>)}
         </div>
       )}
 
@@ -576,6 +626,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
             </details>
           ))}
         </div>
+      )}
+      </>
       )}
     </>
   );

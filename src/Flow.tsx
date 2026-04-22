@@ -27,7 +27,6 @@ import {
   removeNode,
   addNode,
   setGraphData,
-  setProducerForPid,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -40,10 +39,18 @@ import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
-import { sourcesKey } from "./store/slices/sourcesSlice";
+import {
+  sourcesKey,
+  setBuildMode,
+  clearStepState,
+} from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { fetchProductCard } from "./store/api/product-card-api";
-import { fetchChainStep, fetchStepSources } from "./store/api/step-chain-api";
+import {
+  fetchStepSourcesV2,
+  aggregateStepSources,
+  buildStep,
+} from "./store/api/step-chain-api";
 import {
   initStepChainSession,
   acceptPendingStep,
@@ -54,7 +61,6 @@ import {
 import type { DirectionTabProps } from "./components/flow-panel/types";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
-import { StepPreviewModal } from "./components/flow-panel/StepPreviewModal";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -148,9 +154,6 @@ export const Flow = () => {
   );
 
   // Step-by-step chain
-  const [chainBuildModes, setChainBuildModes] = useState<
-    Record<string, "full" | "step">
-  >({});
   const stepChainSessions = useAppSelector(
     (s) => s.graph.stepChainSessions,
   );
@@ -414,12 +417,6 @@ export const Flow = () => {
     setIsTypeSelectorOpen(false);
   };
 
-  // ─── Per-direction sources state ───
-  const downKey = selectedNodeId ? sourcesKey(selectedNodeId, "down") : "";
-  const upKey = selectedNodeId ? sourcesKey(selectedNodeId, "up") : "";
-  const downSourcesState = sourcesByNodeId[downKey];
-  const upSourcesState = sourcesByNodeId[upKey];
-
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
     (direction: BuildDirection) =>
@@ -513,14 +510,12 @@ export const Flow = () => {
     [dispatch, selectedNodeId],
   );
 
-  // ─── Step-by-step chain handlers ───
+  // ─── Step-by-step chain handlers (new /step/* flow) ───
 
-  const handleFetchNextStep = useCallback(
-    (direction: BuildDirection) => async () => {
-      if (!selectedNodeId || !selectedNode) return;
+  const ensureStepSession = useCallback(
+    (direction: BuildDirection) => {
+      if (!selectedNodeId) return null;
       const sKey = stepSessionKey(selectedNodeId, direction);
-
-      // Initialize session if not exists
       if (!stepChainSessions[sKey]) {
         dispatch(
           initStepChainSession({
@@ -531,51 +526,9 @@ export const Flow = () => {
           }),
         );
       }
-
-      const session = stepChainSessions[sKey];
-      const currentProductNode = session
-        ? data.nodes.find((n) => n.id === session.currentProductNodeId)
-        : selectedNode;
-
-      const descField =
-        direction === "up" ? "upDescription" : "downDescription";
-      const techText = String(
-        selectedNode.data?.[descField] ||
-          selectedNode.data?.description ||
-          "",
-      ).trim();
-
-      const sliceKey = sourcesKey(selectedNodeId, direction);
-      const sliceState = sourcesByNodeId[sliceKey];
-
-      const mergedSources = [
-        ...(sliceState?.sources ?? []),
-        ...(session?.accumulatedSources ?? []),
-      ];
-
-      await dispatch(
-        fetchChainStep({
-          sessionKey: sKey,
-          nodeId: selectedNodeId,
-          productName: String(
-            currentProductNode?.data?.label ||
-              selectedNode.data?.label ||
-              "",
-          ).trim(),
-          direction,
-          techText,
-          existingSources: mergedSources.length ? mergedSources : undefined,
-        }),
-      ).unwrap();
+      return sKey;
     },
-    [
-      dispatch,
-      selectedNodeId,
-      selectedNode,
-      stepChainSessions,
-      data.nodes,
-      sourcesByNodeId,
-    ],
+    [dispatch, selectedNodeId, stepChainSessions],
   );
 
   const handleAcceptStep = useCallback(
@@ -589,34 +542,145 @@ export const Flow = () => {
             selectedContinueProductNodeId,
           }),
         );
+        // Сбрасываем step-state, чтобы начать следующий цикл
+        dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
       },
     [dispatch, selectedNodeId],
   );
 
-  const handleFetchStepSources = useCallback(
+  const handleFetchStepSourcesV2 = useCallback(
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
+      ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
       const session = stepChainSessions[sKey];
-      if (!session) return;
-
-      const currentProductNode = data.nodes.find(
-        (n) => n.id === session.currentProductNodeId,
-      );
+      const currentProductNode =
+        (session &&
+          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
+        selectedNode;
       const productName = String(
-        currentProductNode?.data?.label || "",
+        currentProductNode?.data?.label || selectedNode?.data?.label || "",
       ).trim();
       if (!productName) return;
 
       dispatch(
-        fetchStepSources({
-          sessionKey: sKey,
+        fetchStepSourcesV2({
+          nodeId: selectedNodeId,
           productName,
           direction,
         }),
       );
     },
-    [dispatch, selectedNodeId, stepChainSessions, data.nodes],
+    [
+      dispatch,
+      selectedNodeId,
+      selectedNode,
+      stepChainSessions,
+      data.nodes,
+      ensureStepSession,
+    ],
+  );
+
+  const handleAggregateStepSources = useCallback(
+    (direction: BuildDirection) => () => {
+      if (!selectedNodeId) return;
+      const sKey = stepSessionKey(selectedNodeId, direction);
+      const session = stepChainSessions[sKey];
+      const currentProductNode =
+        (session &&
+          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
+        selectedNode;
+      const productName = String(
+        currentProductNode?.data?.label || selectedNode?.data?.label || "",
+      ).trim();
+      if (!productName) return;
+
+      const sliceKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sliceKey];
+      const stepSources = sliceState?.stepSources ?? [];
+      if (!stepSources.length) return;
+
+      const descField =
+        direction === "up" ? "upDescription" : "downDescription";
+      const existingChain = String(
+        selectedNode?.data?.[descField] ||
+          selectedNode?.data?.description ||
+          "",
+      ).trim();
+
+      dispatch(
+        aggregateStepSources({
+          nodeId: selectedNodeId,
+          productName,
+          direction,
+          sources: stepSources,
+          existingChain,
+        }),
+      );
+    },
+    [
+      dispatch,
+      selectedNodeId,
+      selectedNode,
+      stepChainSessions,
+      data.nodes,
+      sourcesByNodeId,
+    ],
+  );
+
+  const handleBuildStep = useCallback(
+    (direction: BuildDirection) => () => {
+      if (!selectedNodeId) return;
+      ensureStepSession(direction);
+      const sKey = stepSessionKey(selectedNodeId, direction);
+      const session = stepChainSessions[sKey];
+      const currentProductNode =
+        (session &&
+          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
+        selectedNode;
+      const productName = String(
+        currentProductNode?.data?.label || selectedNode?.data?.label || "",
+      ).trim();
+      if (!productName) return;
+
+      const sliceKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sliceKey];
+      const aggregated = sliceState?.stepAggregatedText;
+      if (!aggregated || aggregated === "needs-sources") return;
+
+      const mergedSources = [
+        ...(sliceState?.stepSources ?? []),
+        ...(session?.accumulatedSources ?? []),
+      ];
+
+      dispatch(
+        buildStep({
+          sessionKey: sKey,
+          nodeId: selectedNodeId,
+          productName,
+          direction,
+          techText: aggregated,
+          existingSources: mergedSources.length ? mergedSources : undefined,
+        }),
+      );
+    },
+    [
+      dispatch,
+      selectedNodeId,
+      selectedNode,
+      stepChainSessions,
+      data.nodes,
+      sourcesByNodeId,
+      ensureStepSession,
+    ],
+  );
+
+  const handleClearStepState = useCallback(
+    (direction: BuildDirection) => () => {
+      if (!selectedNodeId) return;
+      dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
+    },
+    [dispatch, selectedNodeId],
   );
 
   // ─── Build DirectionTabProps for each direction ───
@@ -690,7 +754,6 @@ export const Flow = () => {
       // step-by-step chain
       const sKeyStep = stepSessionKey(selectedNodeId, direction);
       const stepSession = stepChainSessions[sKeyStep];
-      const buildModeKey = sourcesKey(selectedNodeId, direction);
 
       const lastStep =
         stepSession?.steps.length
@@ -751,11 +814,14 @@ export const Flow = () => {
         chainPid: queuePid,
         onExpandNext: handleExpandNext(direction),
 
-        // step-by-step chain props
-        chainBuildMode: chainBuildModes[buildModeKey] ?? "full",
-        onChangeChainBuildMode: (mode: "full" | "step") =>
-          setChainBuildModes((prev) => ({ ...prev, [buildModeKey]: mode })),
+        // --- build mode (Redux-backed, per-(nodeId, direction)) ---
+        buildMode: sliceState?.buildMode ?? null,
+        onChangeBuildMode: (mode) =>
+          dispatch(
+            setBuildMode({ nodeId: selectedNodeId, direction, mode }),
+          ),
 
+        // --- step-by-step chain (session-level state) ---
         stepChainStatus: stepSession?.status ?? "idle",
         stepChainError: stepSession?.error ?? null,
         stepChainStepCount: stepSession?.steps.length ?? 0,
@@ -764,17 +830,14 @@ export const Flow = () => {
           ? (data.nodes.find(
               (n) => n.id === stepSession.currentProductNodeId,
             )?.data?.label ?? "")
-          : "",
+          : String(selectedNode.data?.label || ""),
         stepChainInsufficientProducts:
           stepSession?.insufficientProducts ?? [],
 
-        onFetchNextStep: handleFetchNextStep(direction),
         onAcceptStep: handleAcceptStep(direction),
-        onRejectStep: () =>
-          dispatch(rejectPendingStep(sKeyStep)),
-        onRetryStep: handleFetchNextStep(direction),
-        onUndoStep: () =>
-          dispatch(undoLastStep(sKeyStep)),
+        onRejectStep: () => dispatch(rejectPendingStep(sKeyStep)),
+        onRetryStep: handleBuildStep(direction),
+        onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
         pendingStep: stepSession?.pendingStep ?? null,
 
@@ -787,8 +850,24 @@ export const Flow = () => {
             }),
           ),
 
-        onFetchStepSources: handleFetchStepSources(direction),
-        stepSourcesLoading: stepSession?.status === "fetching-sources",
+        // --- step v2 flow (per-(nodeId, direction) in sourcesSlice) ---
+        stepSources: sliceState?.stepSources ?? [],
+        stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
+        stepSourcesError: sliceState?.stepSourcesError ?? null,
+
+        stepAggregatedText: sliceState?.stepAggregatedText ?? null,
+        stepAggregateStatus: sliceState?.stepAggregateStatus ?? "idle",
+        stepAggregateError: sliceState?.stepAggregateError ?? null,
+        stepInsufficientProducts: sliceState?.stepInsufficientProducts ?? [],
+
+        stepBuildResult: sliceState?.stepBuildResult ?? null,
+        stepBuildStatus: sliceState?.stepBuildStatus ?? "idle",
+        stepBuildError: sliceState?.stepBuildError ?? null,
+
+        onFetchStepSources: handleFetchStepSourcesV2(direction),
+        onAggregateStepSources: handleAggregateStepSources(direction),
+        onBuildStep: handleBuildStep(direction),
+        onClearStepState: handleClearStepState(direction),
       };
     },
     [
@@ -802,21 +881,22 @@ export const Flow = () => {
       handleInitChain,
       handleExpandNext,
       stepChainSessions,
-      chainBuildModes,
-      handleFetchNextStep,
       handleAcceptStep,
-      handleFetchStepSources,
+      handleFetchStepSourcesV2,
+      handleAggregateStepSources,
+      handleBuildStep,
+      handleClearStepState,
       data.nodes,
       dispatch,
     ],
   );
 
   const downTab = useMemo(
-    () => buildDirectionTab("up"),
+    () => buildDirectionTab("down"),
     [buildDirectionTab],
   );
   const upTab = useMemo(
-    () => buildDirectionTab("down"),
+    () => buildDirectionTab("up"),
     [buildDirectionTab],
   );
 
@@ -948,23 +1028,6 @@ export const Flow = () => {
           onCancel={() => setDeleteConfirmNodeId(null)}
         />
       )}
-      {(() => {
-        if (panelMode.type !== "build" || !selectedNodeId) return null;
-        const sKey = stepSessionKey(selectedNodeId, panelMode.direction);
-        const session = stepChainSessions[sKey];
-        if (session?.status !== "preview" || !session.pendingStep) return null;
-        return (
-          <StepPreviewModal
-            step={session.pendingStep}
-            stepNumber={(session.steps?.length ?? 0) + 1}
-            onAccept={() =>
-              dispatch(acceptPendingStep({ sessionKey: sKey }))
-            }
-            onRetry={() => handleFetchNextStep(panelMode.direction)()}
-            onReject={() => dispatch(rejectPendingStep(sKey))}
-          />
-        );
-      })()}
     </div>
   );
 };
