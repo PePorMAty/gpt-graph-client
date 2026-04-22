@@ -10,6 +10,7 @@ import type {
   TechnologySource,
 } from "../types";
 import type { TechChain } from "../../utils/chainToFlow";
+import { addSourcesToPool } from "../slices/gptSlice";
 
 export const fetchChainStep = createAsyncThunk<
   { sessionKey: string; response: StepChainApiResponse },
@@ -126,9 +127,10 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     productName: string;
     direction: BuildDirection;
     maxItems?: number;
+    existingSources?: TechnologySource[];
     customSystemPrompt?: string;
   },
-  { rejectValue: string }
+  { state: RootState; rejectValue: string }
 >("stepBuild/fetchSources", async (args, thunkApi) => {
   try {
     const res = await axios.post<SourcesSearchResponse>(
@@ -137,6 +139,9 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         productName: args.productName,
         maxItems: args.maxItems ?? 5,
         direction: args.direction,
+        ...(args.existingSources?.length
+          ? { existingSources: args.existingSources }
+          : {}),
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
@@ -149,6 +154,14 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         "step/sources: server returned success=false",
       );
     }
+
+    thunkApi.dispatch(
+      addSourcesToPool({
+        productName: args.productName,
+        direction: args.direction,
+        sources: res.data.sources ?? [],
+      }),
+    );
 
     return {
       nodeId: args.nodeId,

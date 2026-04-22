@@ -158,8 +158,15 @@ export const Flow = () => {
   const stepChainSessions = useAppSelector(
     (s) => s.graph.stepChainSessions,
   );
+  const sourcesPool = useAppSelector((s) => s.graph.sourcesPool);
   const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
     `step::${nodeId}::${dir}`;
+  const poolKey = (productName: string, dir: BuildDirection) =>
+    `${productName
+      .toLowerCase()
+      .replace(/ё/g, "е")
+      .trim()
+      .replace(/\s+/g, " ")}::${dir}`;
 
   // Flow.tsx
   const flowNodes = useMemo(
@@ -567,11 +574,15 @@ export const Flow = () => {
       ).trim();
       if (!productName) return;
 
+      const existingSources =
+        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+
       dispatch(
         fetchStepSourcesV2({
           nodeId: selectedNodeId,
           productName,
           direction,
+          ...(existingSources.length ? { existingSources } : {}),
         }),
       );
     },
@@ -582,6 +593,7 @@ export const Flow = () => {
       stepChainSessions,
       data.nodes,
       ensureStepSession,
+      sourcesPool,
     ],
   );
 
@@ -599,10 +611,9 @@ export const Flow = () => {
       ).trim();
       if (!productName) return;
 
-      const sliceKey = sourcesKey(selectedNodeId, direction);
-      const sliceState = sourcesByNodeId[sliceKey];
-      const stepSources = sliceState?.stepSources ?? [];
-      if (!stepSources.length) return;
+      const poolSources =
+        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+      if (!poolSources.length) return;
 
       const descField =
         direction === "up" ? "upDescription" : "downDescription";
@@ -617,7 +628,7 @@ export const Flow = () => {
           nodeId: selectedNodeId,
           productName,
           direction,
-          sources: stepSources,
+          sources: poolSources,
           existingChain,
         }),
       );
@@ -628,12 +639,12 @@ export const Flow = () => {
       selectedNode,
       stepChainSessions,
       data.nodes,
-      sourcesByNodeId,
+      sourcesPool,
     ],
   );
 
   const handleBuildStep = useCallback(
-    (direction: BuildDirection) => () => {
+    (direction: BuildDirection) => (customText?: string) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -649,13 +660,12 @@ export const Flow = () => {
 
       const sliceKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
-      const aggregated = sliceState?.stepAggregatedText;
-      if (!aggregated || aggregated === "needs-sources") return;
+      const aggregated =
+        customText ?? sliceState?.stepAggregatedText ?? "";
+      if (!aggregated) return;
 
-      const mergedSources = [
-        ...(sliceState?.stepSources ?? []),
-        ...(session?.accumulatedSources ?? []),
-      ];
+      const poolSources =
+        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
 
       dispatch(
         buildStep({
@@ -664,7 +674,7 @@ export const Flow = () => {
           productName,
           direction,
           techText: aggregated,
-          existingSources: mergedSources.length ? mergedSources : undefined,
+          existingSources: poolSources.length ? poolSources : undefined,
         }),
       );
     },
@@ -675,6 +685,7 @@ export const Flow = () => {
       stepChainSessions,
       data.nodes,
       sourcesByNodeId,
+      sourcesPool,
       ensureStepSession,
     ],
   );
@@ -857,8 +868,20 @@ export const Flow = () => {
             }),
           ),
 
-        // --- step v2 flow (per-(nodeId, direction) in sourcesSlice) ---
-        stepSources: sliceState?.stepSources ?? [],
+        // --- step v2 flow (sources from graph-level pool) ---
+        stepSources:
+          sourcesPool[
+            poolKey(
+              String(
+                stepSession
+                  ? (data.nodes.find(
+                      (n) => n.id === stepSession.currentProductNodeId,
+                    )?.data?.label ?? selectedNode.data?.label ?? "")
+                  : selectedNode.data?.label ?? "",
+              ),
+              direction,
+            )
+          ]?.sources ?? [],
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
 
@@ -884,6 +907,7 @@ export const Flow = () => {
       sourcesByNodeId,
       chainSessions,
       chainBuild,
+      sourcesPool,
       handleFindSources,
       handleAggregateSources,
       handleInitChain,
