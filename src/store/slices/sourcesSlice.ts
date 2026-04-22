@@ -43,6 +43,7 @@ type NodeSourcesState = {
   stepAggregateStatus: Status;
   stepAggregateError: string | null;
   stepAggregatedText: string | null;
+  stepNeedsSources: boolean;
   stepInsufficientProducts: string[];
 
   stepBuildStatus: Status;
@@ -75,6 +76,7 @@ const makeNodeState = (): NodeSourcesState => ({
   stepAggregateStatus: "idle",
   stepAggregateError: null,
   stepAggregatedText: null,
+  stepNeedsSources: false,
   stepInsufficientProducts: [],
 
   stepBuildStatus: "idle",
@@ -120,7 +122,20 @@ const sourcesSlice = createSlice({
       s.stepAggregateStatus = "idle";
       s.stepAggregateError = null;
       s.stepAggregatedText = null;
+      s.stepNeedsSources = false;
       s.stepInsufficientProducts = [];
+      s.stepBuildStatus = "idle";
+      s.stepBuildError = null;
+      s.stepBuildResult = null;
+    },
+    resetStepBuild: (
+      state,
+      action: PayloadAction<{ nodeId: string; direction: BuildDirection }>,
+    ) => {
+      const { nodeId, direction } = action.payload;
+      const key = sourcesKey(nodeId, direction);
+      const s = state.byNodeId[key];
+      if (!s) return;
       s.stepBuildStatus = "idle";
       s.stepBuildError = null;
       s.stepBuildResult = null;
@@ -228,7 +243,11 @@ const sourcesSlice = createSlice({
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepAggregateStatus = "succeeded";
         state.byNodeId[key].stepAggregateError = null;
-        state.byNodeId[key].stepAggregatedText = aggregatedText;
+        const needsSources = aggregatedText === "needs-sources";
+        state.byNodeId[key].stepNeedsSources = needsSources;
+        state.byNodeId[key].stepAggregatedText = needsSources
+          ? null
+          : aggregatedText;
         state.byNodeId[key].stepInsufficientProducts =
           insufficientProducts ?? [];
       })
@@ -267,6 +286,6 @@ const sourcesSlice = createSlice({
   },
 });
 
-export const { clearNodeSources, setBuildMode, clearStepState } =
+export const { clearNodeSources, setBuildMode, clearStepState, resetStepBuild } =
   sourcesSlice.actions;
 export default sourcesSlice.reducer;

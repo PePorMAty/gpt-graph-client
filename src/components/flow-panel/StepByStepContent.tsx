@@ -10,6 +10,7 @@ type StepByStepContentProps = Pick<
   | "stepChainError"
   | "stepChainStepCount"
   | "stepChainCurrentProductLabel"
+  | "stepChainCurrentProductNodeId"
   | "stepChainInsufficientProducts"
   | "stepChainBranchOptions"
   | "onSelectBranch"
@@ -21,6 +22,7 @@ type StepByStepContentProps = Pick<
   | "stepAggregatedText"
   | "stepAggregateStatus"
   | "stepAggregateError"
+  | "stepNeedsSources"
   | "stepInsufficientProducts"
   | "stepBuildResult"
   | "stepBuildStatus"
@@ -39,6 +41,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepChainError,
   stepChainStepCount = 0,
   stepChainCurrentProductLabel,
+  stepChainCurrentProductNodeId,
   stepChainBranchOptions,
   onSelectBranch,
   onUndoStep,
@@ -49,6 +52,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepAggregatedText,
   stepAggregateStatus = "idle",
   stepAggregateError,
+  stepNeedsSources = false,
   stepInsufficientProducts,
   stepBuildStatus = "idle",
   stepBuildError,
@@ -66,9 +70,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
-  const needsMoreSources = stepAggregatedText === "needs-sources";
-  const hasValidAggregate =
-    !!stepAggregatedText && stepAggregatedText !== "needs-sources";
+  const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
   const hasSteps = stepChainStepCount > 0;
   const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
 
@@ -93,7 +95,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               <input
                 type="radio"
                 name="stepBranch"
-                checked={opt.label === stepChainCurrentProductLabel}
+                checked={opt.nodeId === stepChainCurrentProductNodeId}
                 onChange={() => onSelectBranch?.(opt.nodeId)}
               />
               <span className={styles.fieldLabel}>{opt.label}</span>
@@ -189,7 +191,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {/* Stage 2b: needs more sources */}
-      {needsMoreSources && (
+      {stepNeedsSources && (
         <>
           <div className={styles.warningText}>
             Недостаточно источников
@@ -289,7 +291,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         <StepPreviewModal
           step={pendingStep}
           stepNumber={stepChainStepCount + 1}
-          onAccept={() => onAcceptStep?.()}
+          onAccept={(filteredStep) =>
+            onAcceptStep?.(undefined, filteredStep)
+          }
           onRetry={() => onRetryStep?.()}
           onReject={() => onRejectStep?.()}
         />

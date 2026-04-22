@@ -1,11 +1,11 @@
-import { useEffect, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import type { StepChainApiStep } from "../../store/types";
 import styles from "./StepPreviewModal.module.css";
 
 interface StepPreviewModalProps {
   step: StepChainApiStep;
   stepNumber: number;
-  onAccept: () => void;
+  onAccept: (filteredStep: StepChainApiStep) => void;
   onRetry: () => void;
   onReject: () => void;
 }
@@ -17,6 +17,13 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   onRetry,
   onReject,
 }) => {
+  const [excludedInputs, setExcludedInputs] = useState<Set<number>>(
+    new Set(),
+  );
+  const [excludedOutputs, setExcludedOutputs] = useState<Set<number>>(
+    new Set(),
+  );
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onReject();
@@ -24,6 +31,37 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onReject]);
+
+  const toggleInput = (idx: number) => {
+    setExcludedInputs((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleOutput = (idx: number) => {
+    setExcludedOutputs((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const handleAccept = () => {
+    const filteredStep: StepChainApiStep = {
+      ...step,
+      inputProducts: step.inputProducts.filter(
+        (_, i) => !excludedInputs.has(i),
+      ),
+      outputProducts: step.outputProducts.filter(
+        (_, i) => !excludedOutputs.has(i),
+      ),
+    };
+    onAccept(filteredStep);
+  };
 
   return (
     <div className={styles.overlay} onClick={onReject}>
@@ -46,7 +84,14 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             <ul className={styles.productList}>
               {step.inputProducts.map((p, i) => (
                 <li key={i} className={styles.productItem}>
-                  <span>{p.name}</span>
+                  <label className={styles.productCheckbox}>
+                    <input
+                      type="checkbox"
+                      checked={!excludedInputs.has(i)}
+                      onChange={() => toggleInput(i)}
+                    />
+                    <span>{p.name}</span>
+                  </label>
                   <span
                     className={
                       p.isExisting ? styles.badgeExisting : styles.badgeNew
@@ -68,7 +113,14 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             <ul className={styles.productList}>
               {step.outputProducts.map((p, i) => (
                 <li key={i} className={styles.productItem}>
-                  <span>{p.name}</span>
+                  <label className={styles.productCheckbox}>
+                    <input
+                      type="checkbox"
+                      checked={!excludedOutputs.has(i)}
+                      onChange={() => toggleOutput(i)}
+                    />
+                    <span>{p.name}</span>
+                  </label>
                   <span
                     className={
                       p.isExisting ? styles.badgeExisting : styles.badgeNew
@@ -91,7 +143,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           <button className={styles.cancelBtn} onClick={onReject}>
             Отменить
           </button>
-          <button className={styles.acceptBtn} onClick={onAccept}>
+          <button className={styles.acceptBtn} onClick={handleAccept}>
             Добавить шаг
           </button>
         </div>
