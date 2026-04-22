@@ -1,26 +1,6 @@
 // src/utils/rawChainLevel.ts
-import type { ChainProductNode, TechChain } from "./chainToFlow";
-
-type ChainTransformNode = {
-  "Id узла": string;
-  "Тип узла": "Преобразование";
-  "Название технологии": string;
-  Входы: Array<Record<string, string>>;
-  Выходы: Array<Record<string, string>>;
-};
-
-function pickPid(
-  obj: Record<string, string> | null | undefined,
-): string | null {
-  if (!obj || typeof obj !== "object") return null;
-  const v = Object.values(obj)[0];
-  return typeof v === "string" ? v : null;
-}
-
-function trNum(id: string): number {
-  const m = String(id).match(/\d+/);
-  return m ? Number(m[0]) : 999999;
-}
+import type { ChainProductNode, ChainTransformNode, TechChain } from "./chainToFlow";
+import { pickPid, trNum } from "./pickPid";
 
 export function getProducersForPid(raw: TechChain, targetPid: string) {
   const items = Array.isArray(raw?.Цепочка) ? raw.Цепочка : [];

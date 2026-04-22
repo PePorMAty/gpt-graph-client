@@ -2,8 +2,14 @@
 import type {
   BuildDirection,
   ProductCard,
+  StepChainApiStep,
+  StepChainStatus,
   TechnologySource,
 } from "../../store/types";
+import type { BuildMode } from "../../store/slices/sourcesSlice";
+import type { TechChain } from "../../utils/chainToFlow";
+
+type Status = "idle" | "loading" | "succeeded" | "failed";
 
 export interface FillCardOptions {
   customSystemPrompt?: string;
@@ -41,6 +47,51 @@ export interface DirectionTabProps {
   queueLen?: number;
   chainPid?: string | null;
   onExpandNext?: () => void;
+
+  // --- build mode toggle (shared by full + step flows) ---
+  buildMode?: BuildMode;
+  onChangeBuildMode?: (mode: BuildMode) => void;
+
+  // --- step-by-step chain ---
+  stepChainStatus?: StepChainStatus;
+  stepChainError?: string | null;
+  stepChainStepCount?: number;
+  stepChainCurrentProductLabel?: string;
+  stepChainCurrentProductNodeId?: string;
+  stepChainInsufficientProducts?: string[];
+
+  onAcceptStep?: (
+    selectedContinueProductNodeId?: string,
+    filteredStep?: StepChainApiStep,
+  ) => void;
+  onRejectStep?: () => void;
+  onRetryStep?: () => void;
+  onUndoStep?: () => void;
+
+  pendingStep?: StepChainApiStep | null;
+
+  stepChainBranchOptions?: Array<{ nodeId: string; label: string }>;
+  onSelectBranch?: (nodeId: string) => void;
+
+  // --- step v2 flow (dedicated /step/* routes) ---
+  stepSources?: TechnologySource[];
+  stepSourcesStatus?: Status;
+  stepSourcesError?: string | null;
+
+  stepAggregatedText?: string | null;
+  stepAggregateStatus?: Status;
+  stepAggregateError?: string | null;
+  stepNeedsSources?: boolean;
+  stepInsufficientProducts?: string[];
+
+  stepBuildResult?: TechChain | null;
+  stepBuildStatus?: Status;
+  stepBuildError?: string | null;
+
+  onFetchStepSources?: () => void;
+  onAggregateStepSources?: () => void;
+  onBuildStep?: () => void;
+  onClearStepState?: () => void;
 }
 
 export interface FlowPanelProps {
@@ -48,7 +99,6 @@ export interface FlowPanelProps {
   isOpen: boolean;
   value: string;
   onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onDelete?: () => void;
   descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
 
@@ -64,4 +114,8 @@ export interface FlowPanelProps {
   // per-direction tabs
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
+
+  // panel mode
+  mode: "card" | "build";
+  buildDirection?: BuildDirection;
 }

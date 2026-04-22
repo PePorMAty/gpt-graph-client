@@ -27,3 +27,6 @@ src/.backend-patch/prompt.js
 src/.backend-patch/aggregate.js
 src/.backend-patch/sources.js
 src/.backend-patch/utils-index.js
+.backend-patch
+
+REFACTOR_PLAN.md

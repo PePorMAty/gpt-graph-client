@@ -33,15 +33,7 @@ type ChainToFlowOpts = {
   spacingY?: number;
 };
 
-function pickPid(
-  obj: Record<string, string> | null | undefined,
-): string | null {
-  if (!obj || typeof obj !== "object") return null;
-  const vals = Object.values(obj);
-  if (!vals.length) return null;
-  const v = vals[0];
-  return typeof v === "string" ? v : null;
-}
+import { pickPid } from "./pickPid";
 
 export function chainToFlow(
   chain: TechChain,
