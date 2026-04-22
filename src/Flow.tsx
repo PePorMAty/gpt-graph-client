@@ -43,6 +43,7 @@ import {
   sourcesKey,
   setBuildMode,
   clearStepState,
+  resetStepBuild,
 } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { fetchProductCard } from "./store/api/product-card-api";
@@ -533,17 +534,20 @@ export const Flow = () => {
 
   const handleAcceptStep = useCallback(
     (direction: BuildDirection) =>
-      (selectedContinueProductNodeId?: string) => {
+      (
+        selectedContinueProductNodeId?: string,
+        filteredStep?: import("./store/types").StepChainApiStep,
+      ) => {
         if (!selectedNodeId) return;
         const sKey = stepSessionKey(selectedNodeId, direction);
         dispatch(
           acceptPendingStep({
             sessionKey: sKey,
             selectedContinueProductNodeId,
+            filteredStep,
           }),
         );
-        // Сбрасываем step-state, чтобы начать следующий цикл
-        dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
+        dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
       },
     [dispatch, selectedNodeId],
   );
@@ -831,6 +835,9 @@ export const Flow = () => {
               (n) => n.id === stepSession.currentProductNodeId,
             )?.data?.label ?? "")
           : String(selectedNode.data?.label || ""),
+        stepChainCurrentProductNodeId: stepSession
+          ? stepSession.currentProductNodeId
+          : selectedNodeId,
         stepChainInsufficientProducts:
           stepSession?.insufficientProducts ?? [],
 
@@ -858,6 +865,7 @@ export const Flow = () => {
         stepAggregatedText: sliceState?.stepAggregatedText ?? null,
         stepAggregateStatus: sliceState?.stepAggregateStatus ?? "idle",
         stepAggregateError: sliceState?.stepAggregateError ?? null,
+        stepNeedsSources: sliceState?.stepNeedsSources ?? false,
         stepInsufficientProducts: sliceState?.stepInsufficientProducts ?? [],
 
         stepBuildResult: sliceState?.stepBuildResult ?? null,

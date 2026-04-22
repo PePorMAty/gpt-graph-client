@@ -57,9 +57,13 @@ export interface DirectionTabProps {
   stepChainError?: string | null;
   stepChainStepCount?: number;
   stepChainCurrentProductLabel?: string;
+  stepChainCurrentProductNodeId?: string;
   stepChainInsufficientProducts?: string[];
 
-  onAcceptStep?: (selectedContinueProductNodeId?: string) => void;
+  onAcceptStep?: (
+    selectedContinueProductNodeId?: string,
+    filteredStep?: StepChainApiStep,
+  ) => void;
   onRejectStep?: () => void;
   onRetryStep?: () => void;
   onUndoStep?: () => void;
@@ -77,6 +81,7 @@ export interface DirectionTabProps {
   stepAggregatedText?: string | null;
   stepAggregateStatus?: Status;
   stepAggregateError?: string | null;
+  stepNeedsSources?: boolean;
   stepInsufficientProducts?: string[];
 
   stepBuildResult?: TechChain | null;

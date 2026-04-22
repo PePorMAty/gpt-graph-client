@@ -52,6 +52,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepChainError,
   stepChainStepCount,
   stepChainCurrentProductLabel,
+  stepChainCurrentProductNodeId,
   stepChainInsufficientProducts,
   onUndoStep,
   stepChainBranchOptions,
@@ -64,6 +65,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepAggregatedText,
   stepAggregateStatus,
   stepAggregateError,
+  stepNeedsSources,
   stepInsufficientProducts,
   stepBuildResult,
   stepBuildStatus,
@@ -186,6 +188,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepChainError={stepChainError}
           stepChainStepCount={stepChainStepCount}
           stepChainCurrentProductLabel={stepChainCurrentProductLabel}
+          stepChainCurrentProductNodeId={stepChainCurrentProductNodeId}
           stepChainInsufficientProducts={stepChainInsufficientProducts}
           stepChainBranchOptions={stepChainBranchOptions}
           onSelectBranch={onSelectBranch}
@@ -196,6 +199,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepAggregatedText={stepAggregatedText}
           stepAggregateStatus={stepAggregateStatus}
           stepAggregateError={stepAggregateError}
+          stepNeedsSources={stepNeedsSources}
           stepInsufficientProducts={stepInsufficientProducts}
           stepBuildResult={stepBuildResult}
           stepBuildStatus={stepBuildStatus}

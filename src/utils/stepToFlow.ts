@@ -121,10 +121,9 @@ export function stepToFlow(
 
   uniqueProducts.forEach(({ product }, idx) => {
     // Check if existing product matches
-    const existingNodeId =
-      product.isExisting
-        ? findExistingProductNode(product.name, existingNodes)
-        : findExistingProductNode(product.name, existingNodes);
+    const existingNodeId = product.isExisting
+      ? findExistingProductNode(product.name, existingNodes)
+      : null;
 
     const x = startX + idx * spacingX;
 

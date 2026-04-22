@@ -24,7 +24,7 @@ import {
 } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
-import type { InitialGraphStateI } from "../types";
+import type { InitialGraphStateI, StepChainApiStep } from "../types";
 import {
   buildStep,
   fetchChainStep,
@@ -238,11 +238,16 @@ const gptSlice = createSlice({
       action: PayloadAction<{
         sessionKey: string;
         selectedContinueProductNodeId?: string;
+        filteredStep?: StepChainApiStep;
       }>,
     ) => {
-      const { sessionKey, selectedContinueProductNodeId } = action.payload;
+      const { sessionKey, selectedContinueProductNodeId, filteredStep } =
+        action.payload;
       const session = state.stepChainSessions[sessionKey];
       if (!session || !session.pendingStep) return;
+      if (filteredStep) {
+        session.pendingStep = filteredStep;
+      }
 
       const anchor = state.data.nodes.find(
         (n) => n.id === session.currentProductNodeId,
@@ -284,6 +289,7 @@ const gptSlice = createSlice({
 
       session.pendingStep = null;
       session.status = "idle";
+      session.accumulatedSources = [];
     },
 
     rejectPendingStep: (state, action: PayloadAction<string>) => {
