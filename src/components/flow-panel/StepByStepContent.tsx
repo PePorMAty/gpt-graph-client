@@ -34,9 +34,11 @@ type StepByStepContentProps = Pick<
 >;
 
 export const StepByStepContent: FC<StepByStepContentProps> = ({
+  stepChainStatus,
   stepChainError,
   stepChainStepCount = 0,
   stepChainCurrentProductLabel,
+  stepChainInsufficientProducts,
   onUndoStep,
 
   stepSources = [],
@@ -65,7 +67,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const buildLoading = stepBuildStatus === "loading";
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
   const hasSteps = stepChainStepCount > 0;
-  const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
+  const buildNeedsSources = stepChainStatus === "needs-sources";
+  const showPreview =
+    !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
 
   const alternatives = useMemo(
     () => (hasValidAggregate ? parseAlternatives(stepAggregatedText ?? "") : []),
@@ -244,6 +248,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
         </>
       )}
+
+      {/* Build returned "insufficient sources" for new products */}
+      {buildNeedsSources &&
+        stepChainInsufficientProducts &&
+        stepChainInsufficientProducts.length > 0 && (
+          <div className={styles.warningText}>
+            Для продолжения цепочки нужны дополнительные источники
+            {` для: ${stepChainInsufficientProducts.join(", ")}`}.
+            Откройте панель этих продуктов и выполните поиск источников.
+          </div>
+        )}
 
       {/* Sources list — always visible BELOW description when any sources exist */}
       {hasSources && (

@@ -291,6 +291,13 @@ export const Flow = () => {
   // Подтверждение удаления
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirmNodeId) return;
+
+    for (const dir of ["down", "up"] as const) {
+      dispatch(
+        clearStepState({ nodeId: deleteConfirmNodeId, direction: dir }),
+      );
+    }
+
     dispatch(removeNode(deleteConfirmNodeId));
     setDeleteConfirmNodeId(null);
 

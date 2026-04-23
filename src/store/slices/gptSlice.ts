@@ -88,6 +88,25 @@ const gptSlice = createSlice({
       state.data.edges = state.data.edges.filter(
         (edge) => edge.source !== nodeId && edge.target !== nodeId,
       );
+
+      for (const [sKey, session] of Object.entries(
+        state.stepChainSessions,
+      )) {
+        if (!session) continue;
+        if (session.currentProductNodeId === nodeId) {
+          session.currentProductNodeId = session.rootNodeId;
+          session.pendingStep = null;
+          session.status = "idle";
+          session.steps = session.steps.filter(
+            (s) =>
+              !s.newProductNodeIds.includes(nodeId) &&
+              s.transformationNodeId !== nodeId,
+          );
+        }
+        if (session.rootNodeId === nodeId) {
+          delete state.stepChainSessions[sKey];
+        }
+      }
     },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
@@ -301,33 +320,6 @@ const gptSlice = createSlice({
       session.pendingStep = null;
       session.status = "idle";
       session.accumulatedSources = [];
-
-      // Transfer sources pool from old product to new product
-      const oldLabel = String(anchor.data?.label ?? "").trim();
-      const newNode = state.data.nodes.find(
-        (n) => n.id === session.currentProductNodeId,
-      );
-      const newLabel = String(newNode?.data?.label ?? "").trim();
-
-      if (oldLabel && newLabel && oldLabel !== newLabel) {
-        const oldPK = sourcesPoolKey(oldLabel, session.direction);
-        const newPK = sourcesPoolKey(newLabel, session.direction);
-        const oldPool = state.sourcesPool[oldPK];
-        if (oldPool?.sources?.length) {
-          const cur = state.sourcesPool[newPK];
-          const byUrl = new Map(
-            (cur?.sources ?? []).map((s) => [s.url, s]),
-          );
-          for (const s of oldPool.sources) {
-            if (!byUrl.has(s.url)) byUrl.set(s.url, s);
-          }
-          state.sourcesPool[newPK] = {
-            sources: Array.from(byUrl.values()),
-            product: cur?.product || newLabel,
-            lastFetchedAt: new Date().toISOString(),
-          };
-        }
-      }
     },
 
     rejectPendingStep: (state, action: PayloadAction<string>) => {
