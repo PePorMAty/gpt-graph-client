@@ -123,35 +123,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Sources list — always visible when any sources exist */}
-      {hasSources && (
-        <div className={styles.sourcesBox}>
-          <div className={styles.sourcesTitle}>
-            Источники ({stepSources.length})
-          </div>
-          {stepSources.map((s) => (
-            <details key={s.url} className={styles.sourceItem}>
-              <summary className={styles.sourceSummary}>
-                <span className={styles.sourceTitle}>{s.title}</span>
-              </summary>
-              <div className={styles.sourceBody}>
-                <a
-                  href={s.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={styles.sourceLink}
-                >
-                  {s.url}
-                </a>
-                <div className={styles.sourceDesc}>
-                  {s.technology_description}
-                </div>
-              </div>
-            </details>
-          ))}
-        </div>
-      )}
-
       {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
       {hasSources && !hasValidAggregate && !stepNeedsSources && (
         <>
@@ -272,6 +243,35 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
           )}
         </>
+      )}
+
+      {/* Sources list — always visible BELOW description when any sources exist */}
+      {hasSources && (
+        <div className={styles.sourcesBox}>
+          <div className={styles.sourcesTitle}>
+            Источники ({stepSources.length})
+          </div>
+          {stepSources.map((s) => (
+            <details key={s.url} className={styles.sourceItem}>
+              <summary className={styles.sourceSummary}>
+                <span className={styles.sourceTitle}>{s.title}</span>
+              </summary>
+              <div className={styles.sourceBody}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.sourceLink}
+                >
+                  {s.url}
+                </a>
+                <div className={styles.sourceDesc}>
+                  {s.technology_description}
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
       )}
 
       {/* Reset */}
