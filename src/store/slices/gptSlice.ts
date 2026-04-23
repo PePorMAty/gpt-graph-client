@@ -88,6 +88,25 @@ const gptSlice = createSlice({
       state.data.edges = state.data.edges.filter(
         (edge) => edge.source !== nodeId && edge.target !== nodeId,
       );
+
+      for (const [sKey, session] of Object.entries(
+        state.stepChainSessions,
+      )) {
+        if (!session) continue;
+        if (session.currentProductNodeId === nodeId) {
+          session.currentProductNodeId = session.rootNodeId;
+          session.pendingStep = null;
+          session.status = "idle";
+          session.steps = session.steps.filter(
+            (s) =>
+              !s.newProductNodeIds.includes(nodeId) &&
+              s.transformationNodeId !== nodeId,
+          );
+        }
+        if (session.rootNodeId === nodeId) {
+          delete state.stepChainSessions[sKey];
+        }
+      }
     },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
