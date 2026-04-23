@@ -301,6 +301,33 @@ const gptSlice = createSlice({
       session.pendingStep = null;
       session.status = "idle";
       session.accumulatedSources = [];
+
+      // Transfer sources pool from old product to new product
+      const oldLabel = String(anchor.data?.label ?? "").trim();
+      const newNode = state.data.nodes.find(
+        (n) => n.id === session.currentProductNodeId,
+      );
+      const newLabel = String(newNode?.data?.label ?? "").trim();
+
+      if (oldLabel && newLabel && oldLabel !== newLabel) {
+        const oldPK = sourcesPoolKey(oldLabel, session.direction);
+        const newPK = sourcesPoolKey(newLabel, session.direction);
+        const oldPool = state.sourcesPool[oldPK];
+        if (oldPool?.sources?.length) {
+          const cur = state.sourcesPool[newPK];
+          const byUrl = new Map(
+            (cur?.sources ?? []).map((s) => [s.url, s]),
+          );
+          for (const s of oldPool.sources) {
+            if (!byUrl.has(s.url)) byUrl.set(s.url, s);
+          }
+          state.sourcesPool[newPK] = {
+            sources: Array.from(byUrl.values()),
+            product: cur?.product || newLabel,
+            lastFetchedAt: new Date().toISOString(),
+          };
+        }
+      }
     },
 
     rejectPendingStep: (state, action: PayloadAction<string>) => {
