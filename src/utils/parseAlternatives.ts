@@ -26,14 +26,12 @@ export function parseAlternatives(text: string): ParsedAlternative[] {
 
   const result: ParsedAlternative[] = [];
 
-  // Отсекаем всё после "# Примечания" или "# Контроль" (top-level heading)
   const notesIdx = text.search(/^# (?:Примечания|Контроль)/m);
   const body = notesIdx >= 0 ? text.slice(0, notesIdx).trim() : text.trim();
 
-  // Ищем основной шаг: "## Шаг"
-  const mainMatch = body.match(/^## Шаг\b/m);
+  // "## Шаг" without \b — \b doesn't work with Cyrillic in JS
+  const mainMatch = body.match(/^## Шаг(?:\s|$)/m);
 
-  // Ищем все "## Альтернатива:"
   const altRegex = /^## Альтернатива:\s*(.+)/gm;
   const altMatches: { title: string; startIndex: number }[] = [];
   let m;
@@ -41,16 +39,15 @@ export function parseAlternatives(text: string): ParsedAlternative[] {
     altMatches.push({ title: m[1].trim(), startIndex: m.index });
   }
 
-  if (!mainMatch && altMatches.length === 0) return [];
+  const altSectionIdx = body.search(/^# Альтернативы/m);
 
-  // Основной шаг
   if (mainMatch) {
     const mainStart = mainMatch.index;
     const mainEnd =
       altMatches.length > 0
         ? altMatches[0].startIndex
-        : body.search(/^# Альтернативы/m) >= 0
-          ? body.search(/^# Альтернативы/m)
+        : altSectionIdx >= 0
+          ? altSectionIdx
           : body.length;
     const section = body.slice(mainStart, mainEnd).trim();
 
@@ -66,9 +63,34 @@ export function parseAlternatives(text: string): ParsedAlternative[] {
       firstStepName,
       fullDescription: section,
     });
+  } else if (altMatches.length > 0) {
+    // Fallback: no "## Шаг" found — take everything before first alternative as main
+    const fallbackStart = body.search(/^# Новый производственный шаг/m);
+    const mainBodyStart = fallbackStart >= 0 ? fallbackStart : 0;
+    const mainBodyEnd =
+      altSectionIdx >= 0
+        ? Math.min(altSectionIdx, altMatches[0].startIndex)
+        : altMatches[0].startIndex;
+    const section = body.slice(mainBodyStart, mainBodyEnd).trim();
+
+    if (section) {
+      const formulaMatch = section.match(
+        /\*\*Краткая формула шага:\*\*\s*(.+)/,
+      );
+      const firstStepName = formulaMatch
+        ? formulaMatch[1].trim()
+        : "Основной вариант";
+
+      result.push({
+        title: "Основной вариант",
+        firstStepName,
+        fullDescription: section,
+      });
+    }
   }
 
-  // Альтернативы
+  if (altMatches.length === 0) return result.length > 0 ? result : [];
+
   for (let i = 0; i < altMatches.length; i++) {
     const { title, startIndex } = altMatches[i];
     const endIndex =
