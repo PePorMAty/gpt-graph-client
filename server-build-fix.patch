@@ -1,0 +1,114 @@
+diff --git a/routes/step/build.js b/routes/step/build.js
+index f581cb3..5a34db2 100644
+--- a/routes/step/build.js
++++ b/routes/step/build.js
+@@ -120,6 +120,12 @@ const STEP_BUILD_SYSTEM = `Ты — парсер производственны
+ - Не используй внешние знания — только данные из Markdown и списка existingProducts.
+ - Если в Markdown вместо шага написано только "needs-sources" — всё равно верни ОСМЫСЛЕННЫЙ JSON по схеме, используя только целевой продукт (в этом случае другое поле оставь максимально бедным, но непустым).
+ - outputProducts и inputProducts не должны быть пустыми массивами.
++
++КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО ИМЕНОВАНИЯ:
++- Перед тем как назвать продукт, ОБЯЗАТЕЛЬНО проверь список existingProducts.
++- Если продукт семантически совпадает с одним из existingProducts (тот же материал/вещество, возможно с уточнением в скобках или чуть иной формулировкой), ИСПОЛЬЗУЙ ТОЧНО ТО ИМЯ, которое указано в existingProducts. Не придумывай вариации.
++- Примеры совпадений: «Природный газ» = «Природный газ (метан)» = «Природный газ (метановая фракция)» — используй то, что в existingProducts.
++- Если точного или семантического совпадения нет — дай короткое рыночно-понятное название.
+ `;
+ 
+ function buildStepBuildUserPrompt({
+@@ -145,6 +151,8 @@ ${techText}
+ - inputProducts  = «Из чего производят» (сырьё).
+ Оба массива должны быть непустыми.
+ 
++ОБЯЗАТЕЛЬНО: для каждого продукта проверь список «Существующие продукты в графе». Если продукт по смыслу совпадает с любым из них (даже если формулировка чуть отличается, или в скобках указано уточнение, или регистр другой), используй ТОЧНО ТО ИМЯ из списка. Не создавай новое имя, если существующее подходит.
++
+ Верни СТРОГО JSON по прикреплённому json_schema. Никакого свободного текста вне JSON.`;
+ }
+ 
+@@ -254,14 +262,39 @@ router.post("/gpt/step/build", async (req, res) => {
+     const trName = String(parsed.transformation.name || "").trim();
+     const trDesc = String(parsed.transformation.description || "").trim();
+ 
++    // Fuzzy product matching: exact → normalized → base-name (strip parentheses)
++    const normalize = (s) =>
++      String(s || "")
++        .toLowerCase()
++        .replace(/ё/g, "е")
++        .trim()
++        .replace(/\s+/g, " ");
++
++    const baseName = (s) => normalize(s).replace(/\s*\([^)]*\)\s*/g, "").trim();
++
++    const findExistingMatch = (name) => {
++      const norm = normalize(name);
++      const base = baseName(name);
++      // 1) exact normalized
++      for (const ep of existingProducts) {
++        if (normalize(ep) === norm) return ep;
++      }
++      // 2) base-name match (strip parentheticals)
++      for (const ep of existingProducts) {
++        if (baseName(ep) === base && base.length >= 3) return ep;
++      }
++      return null;
++    };
++
+     const markProduct = (p) => {
+-      const name = String(p?.name || "").trim();
+-      const isExisting = existingProducts.includes(name);
++      const rawName = String(p?.name || "").trim();
++      const match = findExistingMatch(rawName);
++      const name = match || rawName;
+       return {
+         name,
+         description: String(p?.description || "").trim() || undefined,
+-        isExisting,
+-        existingNodeLabel: isExisting ? name : undefined,
++        isExisting: !!match,
++        existingNodeLabel: match || undefined,
+       };
+     };
+ 
+@@ -287,12 +320,42 @@ router.post("/gpt/step/build", async (req, res) => {
+       });
+     }
+ 
++    // ---------- sufficiency check ----------
++    // For each NEW product (not existing), check if the provided sources
++    // or techText mention it. If not, it likely needs dedicated sources.
++    const existingSources = Array.isArray(req.body?.existingSources)
++      ? req.body.existingSources
++      : [];
++    const allSourceText = existingSources
++      .map((s) => normalize(String(s.technology_description || "")))
++      .join(" ");
++    const techLower = normalize(techText);
++
++    const insufficientProducts = [];
++    const allProducts = [...step.inputProducts, ...step.outputProducts];
++    for (const p of allProducts) {
++      if (p.isExisting) continue;
++      const pNorm = normalize(p.name);
++      const pBase = baseName(p.name);
++      // Product covered if mentioned in techText or any source description
++      const inTech = techLower.includes(pNorm) || techLower.includes(pBase);
++      const inSources =
++        allSourceText.includes(pNorm) || allSourceText.includes(pBase);
++      if (!inTech && !inSources) {
++        insufficientProducts.push(p.name);
++      }
++    }
++
++    const sourcesStatus =
++      insufficientProducts.length > 0 ? "insufficient" : "sufficient";
++
+     return reply(200, {
+       success: true,
+       product: productName,
+       direction,
+       step,
+-      sourcesStatus: "sufficient",
++      sourcesStatus,
++      insufficientProducts,
+     });
+   } catch (err) {
+     return reply(500, {
