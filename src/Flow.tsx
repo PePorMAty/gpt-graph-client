@@ -571,15 +571,17 @@ export const Flow = () => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
-      const session = stepChainSessions[sKey];
-      const currentProductNode =
-        (session &&
-          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
-        selectedNode;
-      const productName = String(
-        currentProductNode?.data?.label || selectedNode?.data?.label || "",
-      ).trim();
+      const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
+
+      // Sync chain tip to selectedNodeId — panel actions always target the
+      // selected node, not wherever a prior step advanced the chain.
+      dispatch(
+        setStepChainContinueProduct({
+          sessionKey: sKey,
+          productNodeId: selectedNodeId,
+        }),
+      );
 
       const existingSources =
         sourcesPool[poolKey(productName, direction)]?.sources ?? [];
@@ -597,8 +599,6 @@ export const Flow = () => {
       dispatch,
       selectedNodeId,
       selectedNode,
-      stepChainSessions,
-      data.nodes,
       ensureStepSession,
       sourcesPool,
     ],
@@ -608,15 +608,15 @@ export const Flow = () => {
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
-      const session = stepChainSessions[sKey];
-      const currentProductNode =
-        (session &&
-          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
-        selectedNode;
-      const productName = String(
-        currentProductNode?.data?.label || selectedNode?.data?.label || "",
-      ).trim();
+      const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
+
+      dispatch(
+        setStepChainContinueProduct({
+          sessionKey: sKey,
+          productNodeId: selectedNodeId,
+        }),
+      );
 
       const poolSources =
         sourcesPool[poolKey(productName, direction)]?.sources ?? [];
@@ -644,8 +644,6 @@ export const Flow = () => {
       dispatch,
       selectedNodeId,
       selectedNode,
-      stepChainSessions,
-      data.nodes,
       sourcesPool,
     ],
   );
@@ -655,15 +653,15 @@ export const Flow = () => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
-      const session = stepChainSessions[sKey];
-      const currentProductNode =
-        (session &&
-          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
-        selectedNode;
-      const productName = String(
-        currentProductNode?.data?.label || selectedNode?.data?.label || "",
-      ).trim();
+      const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
+
+      dispatch(
+        setStepChainContinueProduct({
+          sessionKey: sKey,
+          productNodeId: selectedNodeId,
+        }),
+      );
 
       const sliceKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
@@ -689,8 +687,6 @@ export const Flow = () => {
       dispatch,
       selectedNodeId,
       selectedNode,
-      stepChainSessions,
-      data.nodes,
       sourcesByNodeId,
       sourcesPool,
       ensureStepSession,
@@ -848,14 +844,8 @@ export const Flow = () => {
         stepChainError: stepSession?.error ?? null,
         stepChainStepCount: stepSession?.steps.length ?? 0,
 
-        stepChainCurrentProductLabel: stepSession
-          ? (data.nodes.find(
-              (n) => n.id === stepSession.currentProductNodeId,
-            )?.data?.label ?? "")
-          : String(selectedNode.data?.label || ""),
-        stepChainCurrentProductNodeId: stepSession
-          ? stepSession.currentProductNodeId
-          : selectedNodeId,
+        stepChainCurrentProductLabel: String(selectedNode.data?.label || ""),
+        stepChainCurrentProductNodeId: selectedNodeId,
         stepChainInsufficientProducts:
           stepSession?.insufficientProducts ?? [],
 
@@ -876,18 +866,11 @@ export const Flow = () => {
           ),
 
         // --- step v2 flow (sources from graph-level pool) ---
+        // Always read pool for the panel's own product — panel actions target
+        // the selected node, not the chain tip.
         stepSources:
           sourcesPool[
-            poolKey(
-              String(
-                stepSession
-                  ? (data.nodes.find(
-                      (n) => n.id === stepSession.currentProductNodeId,
-                    )?.data?.label ?? selectedNode.data?.label ?? "")
-                  : selectedNode.data?.label ?? "",
-              ),
-              direction,
-            )
+            poolKey(String(selectedNode.data?.label ?? ""), direction)
           ]?.sources ?? [],
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
