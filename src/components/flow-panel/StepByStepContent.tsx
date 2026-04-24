@@ -68,8 +68,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
-  const showPreview =
-    !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
+  const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
 
   const alternatives = useMemo(
     () => (hasValidAggregate ? parseAlternatives(stepAggregatedText ?? "") : []),

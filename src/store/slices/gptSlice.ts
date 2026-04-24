@@ -317,6 +317,46 @@ const gptSlice = createSlice({
           session.currentProductNodeId;
       }
 
+      // Selective source transfer: copy pool to new products NOT in insufficientProducts
+      const anchorLabel =
+        anchor.data?.label || (anchor as { label?: string }).label || "";
+      if (anchorLabel) {
+        const anchorPoolKey = sourcesPoolKey(anchorLabel, session.direction);
+        const anchorPool = state.sourcesPool[anchorPoolKey];
+        if (anchorPool && anchorPool.sources.length > 0) {
+          const insufficient = new Set(
+            (session.insufficientProducts ?? []).map((p: string) =>
+              p.toLowerCase().replace(/ё/g, "е").trim(),
+            ),
+          );
+          const allNewNodeIds = [
+            ...stepRecord.newProductNodeIds,
+            ...stepRecord.mergedProductNodeIds,
+          ];
+          for (const nid of allNewNodeIds) {
+            const newNode = state.data.nodes.find((n) => n.id === nid);
+            const newLabel =
+              newNode?.data?.label ||
+              (newNode as unknown as { label?: string })?.label ||
+              "";
+            if (!newLabel) continue;
+            const normalized = newLabel
+              .toLowerCase()
+              .replace(/ё/g, "е")
+              .trim();
+            if (insufficient.has(normalized)) continue;
+            const newKey = sourcesPoolKey(newLabel, session.direction);
+            if (!state.sourcesPool[newKey]) {
+              state.sourcesPool[newKey] = {
+                sources: [...anchorPool.sources],
+                product: newLabel,
+                lastFetchedAt: new Date().toISOString(),
+              };
+            }
+          }
+        }
+      }
+
       session.pendingStep = null;
       session.status = "idle";
       session.accumulatedSources = [];
