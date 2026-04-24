@@ -242,6 +242,15 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           >
             Переобобщить (свежий шаг)
           </button>
+          <button
+            type="button"
+            onClick={onFetchStepSources}
+            disabled={sourcesLoading || aggregateLoading || buildLoading}
+            className={styles.findSourcesButton}
+            style={{ marginTop: 4 }}
+          >
+            {sourcesLoading ? "Поиск..." : "Добрать источники"}
+          </button>
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
           )}
