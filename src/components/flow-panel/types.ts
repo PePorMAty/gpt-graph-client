@@ -92,6 +92,10 @@ export interface DirectionTabProps {
   onAggregateStepSources?: () => void;
   onBuildStep?: (customText?: string) => void;
   onClearStepState?: () => void;
+
+  // --- alternative node (step-by-step flow) ---
+  isAlternativeNode?: boolean;
+  altDescription?: string;
 }
 
 export interface FlowPanelProps {

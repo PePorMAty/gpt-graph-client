@@ -27,6 +27,8 @@ import {
   removeNode,
   addNode,
   setGraphData,
+  createStepAlternativeNodes,
+  removeStepAlternativeNodes,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -60,6 +62,7 @@ import {
   setStepChainContinueProduct,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
+import { parseAlternatives } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 
@@ -248,8 +251,17 @@ export const Flow = () => {
 
   // Обработчик клика по узлу
   const onNodeClick = useCallback((_: unknown, node: Node) => {
+    const isStepAlt =
+      node.data?.chainVariant === "alt" && !!node.data?.stepAltDirection;
     setSelectedNodeId(node.id);
-    setPanelMode({ type: "card" });
+    if (isStepAlt) {
+      setPanelMode({
+        type: "build",
+        direction: node.data.stepAltDirection as BuildDirection,
+      });
+    } else {
+      setPanelMode({ type: "card" });
+    }
     setIsPanelOpen(true);
     setContextMenu(null);
   }, []);
@@ -697,9 +709,40 @@ export const Flow = () => {
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
       dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
+      dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
     },
     [dispatch, selectedNodeId],
   );
+
+  // ─── Create / remove step alternative nodes when aggregate text changes ───
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    for (const direction of ["up", "down"] as const) {
+      const sKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sKey];
+      const text = sliceState?.stepAggregatedText;
+      if (text) {
+        const alts = parseAlternatives(text);
+        if (alts.length > 1) {
+          dispatch(
+            createStepAlternativeNodes({
+              nodeId: selectedNodeId,
+              direction,
+              alternatives: alts.slice(1),
+            }),
+          );
+        } else {
+          dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+        }
+      } else {
+        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      }
+    }
+  }, [
+    selectedNodeId,
+    sourcesByNodeId,
+    dispatch,
+  ]);
 
   // ─── Build DirectionTabProps for each direction ───
   const buildDirectionTab = useCallback(
@@ -792,7 +835,7 @@ export const Flow = () => {
             }))
           : undefined;
 
-      return {
+      const baseResult: DirectionTabProps = {
         direction,
         onFindSources: handleFindSources(direction),
         sourcesLoading: sliceState?.status === "loading",
@@ -890,6 +933,104 @@ export const Flow = () => {
         onBuildStep: handleBuildStep(direction),
         onClearStepState: handleClearStepState(direction),
       };
+
+      // ── Override for step alternative nodes ──
+      const isStepAlt =
+        selectedNode.data?.chainVariant === "alt" &&
+        selectedNode.data?.stepAltDirection === direction;
+
+      if (isStepAlt) {
+        const rootNodeId = String(selectedNode.data?.chainRootNodeId || "");
+        const rootNode = data.nodes.find((n) => n.id === rootNodeId);
+        if (rootNode) {
+          const rootProductName = String(rootNode.data?.label || "").trim();
+          const rootSKey = sourcesKey(rootNodeId, direction);
+          const rootSliceState = sourcesByNodeId[rootSKey];
+          const rootStepSKey = stepSessionKey(rootNodeId, direction);
+          const rootStepSession = stepChainSessions[rootStepSKey];
+          const altDesc = String(selectedNode.data?.description || "");
+
+          baseResult.isAlternativeNode = true;
+          baseResult.altDescription = altDesc;
+          baseResult.buildMode = rootSliceState?.buildMode ?? "step";
+          baseResult.stepChainCurrentProductLabel = rootProductName;
+
+          baseResult.stepSources =
+            sourcesPool[poolKey(rootProductName, direction)]?.sources ?? [];
+          baseResult.stepSourcesStatus =
+            rootSliceState?.stepSourcesStatus ?? "idle";
+          baseResult.stepAggregatedText =
+            rootSliceState?.stepAggregatedText ?? null;
+          baseResult.stepAggregateStatus =
+            rootSliceState?.stepAggregateStatus ?? "idle";
+          baseResult.stepBuildStatus =
+            rootSliceState?.stepBuildStatus ?? "idle";
+          baseResult.stepBuildError =
+            rootSliceState?.stepBuildError ?? null;
+          baseResult.pendingStep =
+            rootStepSession?.pendingStep ?? null;
+          baseResult.stepChainStepCount =
+            rootStepSession?.steps.length ?? 0;
+          baseResult.stepChainStatus =
+            rootStepSession?.status ?? "idle";
+
+          baseResult.onBuildStep = (customText?: string) => {
+            const sKey = stepSessionKey(rootNodeId, direction);
+            if (!stepChainSessions[sKey]) {
+              dispatch(
+                initStepChainSession({
+                  sessionKey: sKey,
+                  direction,
+                  rootNodeId,
+                  currentProductNodeId: rootNodeId,
+                }),
+              );
+            }
+            dispatch(
+              setStepChainContinueProduct({
+                sessionKey: sKey,
+                productNodeId: rootNodeId,
+              }),
+            );
+            const poolSrcs =
+              sourcesPool[poolKey(rootProductName, direction)]?.sources ?? [];
+            dispatch(
+              buildStep({
+                sessionKey: sKey,
+                nodeId: rootNodeId,
+                productName: rootProductName,
+                direction,
+                techText: customText || altDesc,
+                existingSources: poolSrcs.length ? poolSrcs : undefined,
+              }),
+            );
+          };
+
+          baseResult.onAcceptStep = (
+            selectedContinueProductNodeId?: string,
+            filteredStep?: import("./store/types").StepChainApiStep,
+          ) => {
+            const sKey = stepSessionKey(rootNodeId, direction);
+            dispatch(
+              acceptPendingStep({
+                sessionKey: sKey,
+                selectedContinueProductNodeId,
+                filteredStep,
+              }),
+            );
+            dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
+          };
+
+          baseResult.onRejectStep = () => {
+            const sKey = stepSessionKey(rootNodeId, direction);
+            dispatch(rejectPendingStep(sKey));
+          };
+
+          baseResult.onRetryStep = baseResult.onBuildStep;
+        }
+      }
+
+      return baseResult;
     },
     [
       selectedNodeId,

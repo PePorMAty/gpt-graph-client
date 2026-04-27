@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState, type FC } from "react";
+import { type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
-import { parseAlternatives } from "../../utils/parseAlternatives";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -31,6 +30,8 @@ type StepByStepContentProps = Pick<
   | "onAcceptStep"
   | "onRejectStep"
   | "onRetryStep"
+  | "isAlternativeNode"
+  | "altDescription"
 >;
 
 export const StepByStepContent: FC<StepByStepContentProps> = ({
@@ -60,6 +61,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onAcceptStep,
   onRejectStep,
   onRetryStep,
+
+  isAlternativeNode = false,
+  altDescription,
 }) => {
   const hasSources = stepSources.length > 0;
   const sourcesLoading = stepSourcesStatus === "loading";
@@ -70,26 +74,77 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
 
-  const alternatives = useMemo(
-    () => (hasValidAggregate ? parseAlternatives(stepAggregatedText ?? "") : []),
-    [hasValidAggregate, stepAggregatedText],
-  );
-  const hasMultipleAlternatives = alternatives.length > 1;
-  const [selectedAltIdx, setSelectedAltIdx] = useState(0);
+  // ── Alternative node: simplified flow ──
+  if (isAlternativeNode) {
+    return (
+      <div className={styles.formGroup}>
+        <div className={styles.sourcesTitle}>
+          Альтернатива для: <b>{stepChainCurrentProductLabel || "—"}</b>
+        </div>
+        <div className={styles.sourcesTitle}>
+          Шагов выполнено: <b>{stepChainStepCount}</b>
+        </div>
 
-  useEffect(() => {
-    setSelectedAltIdx(0);
-  }, [stepAggregatedText]);
+        <div className={styles.formGroup}>
+          <label className={styles.formLabel}>Описание альтернативы:</label>
+          <textarea
+            readOnly
+            value={altDescription ?? ""}
+            className={styles.directionTextarea}
+            rows={6}
+          />
+        </div>
 
-  const handleBuildClick = () => {
-    if (hasMultipleAlternatives) {
-      const chosen = alternatives[selectedAltIdx];
-      onBuildStep?.(chosen.fullDescription);
-    } else {
-      onBuildStep?.();
-    }
-  };
+        {buildLoading && (
+          <div className={styles.tabLoader}>
+            <div className={styles.tabSpinner} />
+            <span>Построение альтернативы...</span>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => onBuildStep?.(altDescription)}
+          disabled={buildLoading}
+          className={styles.findSourcesButton}
+        >
+          {buildLoading ? "Построение..." : "Построить альтернативу"}
+        </button>
 
+        {stepBuildError && (
+          <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
+        )}
+
+        {buildNeedsSources &&
+          stepChainInsufficientProducts &&
+          stepChainInsufficientProducts.length > 0 && (
+            <div className={styles.warningText}>
+              Нужны дополнительные источники
+              {` для: ${stepChainInsufficientProducts.join(", ")}`}.
+              Откройте панель этих продуктов и выполните поиск источников.
+            </div>
+          )}
+
+        {stepChainError && (
+          <div className={styles.errorText}>Ошибка: {stepChainError}</div>
+        )}
+
+        {showPreview && pendingStep && (
+          <StepPreviewModal
+            step={pendingStep}
+            anchorProductName={stepChainCurrentProductLabel ?? ""}
+            stepNumber={stepChainStepCount + 1}
+            onAccept={(filteredStep) =>
+              onAcceptStep?.(undefined, filteredStep)
+            }
+            onRetry={() => onRetryStep?.()}
+            onReject={() => onRejectStep?.()}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Regular product node: standard flow ──
   return (
     <div className={styles.formGroup}>
       <div className={styles.sourcesTitle}>
@@ -183,7 +238,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage: aggregated ready → alt selection + build */}
+      {/* Stage: aggregated ready → build */}
       {hasValidAggregate && (
         <>
           <div className={styles.formGroup}>
@@ -198,27 +253,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             />
           </div>
 
-          {hasMultipleAlternatives && (
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>
-                Выберите альтернативу ({alternatives.length}):
-              </label>
-              {alternatives.map((alt, idx) => (
-                <label key={idx} className={styles.fieldCheckbox}>
-                  <input
-                    type="radio"
-                    name="stepAlternative"
-                    checked={idx === selectedAltIdx}
-                    onChange={() => setSelectedAltIdx(idx)}
-                  />
-                  <span className={styles.fieldLabel}>
-                    {alt.firstStepName || alt.title}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-
           {buildLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -227,7 +261,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
           <button
             type="button"
-            onClick={handleBuildClick}
+            onClick={() => onBuildStep?.()}
             disabled={buildLoading}
             className={styles.findSourcesButton}
           >
