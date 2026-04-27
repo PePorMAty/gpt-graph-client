@@ -251,17 +251,8 @@ export const Flow = () => {
 
   // Обработчик клика по узлу
   const onNodeClick = useCallback((_: unknown, node: Node) => {
-    const isStepAlt =
-      node.data?.chainVariant === "alt" && !!node.data?.stepAltDirection;
     setSelectedNodeId(node.id);
-    if (isStepAlt) {
-      setPanelMode({
-        type: "build",
-        direction: node.data.stepAltDirection as BuildDirection,
-      });
-    } else {
-      setPanelMode({ type: "card" });
-    }
+    setPanelMode({ type: "card" });
     setIsPanelOpen(true);
     setContextMenu(null);
   }, []);
@@ -1148,20 +1139,32 @@ export const Flow = () => {
         <Controls position="bottom-left" style={{ bottom: "25%" }} />
         <Background />
       </ReactFlow>
-      {contextMenu && (
-        <NodeContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          isProduct={
-            data.nodes.find((n) => n.id === contextMenu.nodeId)?.type ===
-            "product"
-          }
-          onBuildUp={() => handleContextBuild("up")}
-          onBuildDown={() => handleContextBuild("down")}
-          onDelete={handleContextDelete}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      {contextMenu && (() => {
+        const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
+        const ctxIsStepAlt =
+          ctxNode?.data?.chainVariant === "alt" &&
+          !!ctxNode?.data?.stepAltDirection;
+        return (
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            isProduct={ctxNode?.type === "product"}
+            isStepAlt={ctxIsStepAlt}
+            onBuildUp={() => handleContextBuild("up")}
+            onBuildDown={() => handleContextBuild("down")}
+            onBuildAlt={
+              ctxIsStepAlt
+                ? () =>
+                    handleContextBuild(
+                      ctxNode!.data!.stepAltDirection as BuildDirection,
+                    )
+                : undefined
+            }
+            onDelete={handleContextDelete}
+            onClose={() => setContextMenu(null)}
+          />
+        );
+      })()}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}
