@@ -1,5 +1,5 @@
 diff --git a/routes/step/build.js b/routes/step/build.js
-index f581cb3..5a34db2 100644
+index f581cb3..3710ee8 100644
 --- a/routes/step/build.js
 +++ b/routes/step/build.js
 @@ -120,6 +120,12 @@ const STEP_BUILD_SYSTEM = `Ты — парсер производственны
@@ -24,11 +24,10 @@ index f581cb3..5a34db2 100644
  Верни СТРОГО JSON по прикреплённому json_schema. Никакого свободного текста вне JSON.`;
  }
  
-@@ -254,14 +262,39 @@ router.post("/gpt/step/build", async (req, res) => {
+@@ -254,14 +262,36 @@ router.post("/gpt/step/build", async (req, res) => {
      const trName = String(parsed.transformation.name || "").trim();
      const trDesc = String(parsed.transformation.description || "").trim();
  
-+    // Fuzzy product matching: exact → normalized → base-name (strip parentheses)
 +    const normalize = (s) =>
 +      String(s || "")
 +        .toLowerCase()
@@ -41,11 +40,9 @@ index f581cb3..5a34db2 100644
 +    const findExistingMatch = (name) => {
 +      const norm = normalize(name);
 +      const base = baseName(name);
-+      // 1) exact normalized
 +      for (const ep of existingProducts) {
 +        if (normalize(ep) === norm) return ep;
 +      }
-+      // 2) base-name match (strip parentheticals)
 +      for (const ep of existingProducts) {
 +        if (baseName(ep) === base && base.length >= 3) return ep;
 +      }
@@ -68,13 +65,11 @@ index f581cb3..5a34db2 100644
        };
      };
  
-@@ -287,12 +320,42 @@ router.post("/gpt/step/build", async (req, res) => {
+@@ -287,12 +317,39 @@ router.post("/gpt/step/build", async (req, res) => {
        });
      }
  
 +    // ---------- sufficiency check ----------
-+    // For each NEW product (not existing), check if the provided sources
-+    // or techText mention it. If not, it likely needs dedicated sources.
 +    const existingSources = Array.isArray(req.body?.existingSources)
 +      ? req.body.existingSources
 +      : [];
@@ -89,7 +84,6 @@ index f581cb3..5a34db2 100644
 +      if (p.isExisting) continue;
 +      const pNorm = normalize(p.name);
 +      const pBase = baseName(p.name);
-+      // Product covered if mentioned in techText or any source description
 +      const inTech = techLower.includes(pNorm) || techLower.includes(pBase);
 +      const inSources =
 +        allSourceText.includes(pNorm) || allSourceText.includes(pBase);
