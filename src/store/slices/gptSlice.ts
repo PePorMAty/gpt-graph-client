@@ -357,6 +357,12 @@ const gptSlice = createSlice({
         }
       }
 
+      // Clean up step alternative nodes
+      const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
+      const altEdgePrefix = `step::${session.rootNodeId}::${session.direction}::alt-edge::`;
+      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(altPrefix));
+      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(altEdgePrefix));
+
       session.pendingStep = null;
       session.status = "idle";
       session.accumulatedSources = [];
@@ -439,6 +445,78 @@ const gptSlice = createSlice({
         action.payload.direction,
       );
       delete state.sourcesPool[key];
+    },
+
+    createStepAlternativeNodes: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: "up" | "down";
+        alternatives: { title: string; firstStepName: string; fullDescription: string }[];
+      }>,
+    ) => {
+      const { nodeId, direction, alternatives } = action.payload;
+      const prefix = `step::${nodeId}::${direction}::alt::`;
+      const edgePrefix = `step::${nodeId}::${direction}::alt-edge::`;
+
+      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
+      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
+
+      const root = state.data.nodes.find((n) => n.id === nodeId);
+      if (!root || alternatives.length === 0) return;
+
+      const rx = root.position?.x ?? 0;
+      const ry = root.position?.y ?? 0;
+      const sign = direction === "down" ? 1 : -1;
+      const stepY = 180;
+      const spacingX = 300;
+
+      alternatives.forEach((alt, idx) => {
+        const altNodeId = `${prefix}${idx}`;
+        const side =
+          idx % 2 === 0
+            ? -(Math.floor(idx / 2) + 1)
+            : Math.floor(idx / 2) + 1;
+        const x = rx + side * spacingX;
+        const y = ry + sign * stepY;
+
+        state.data.nodes.push({
+          id: altNodeId,
+          type: "transformation",
+          position: { x, y },
+          data: {
+            label: alt.title,
+            description: alt.fullDescription,
+            chainVariant: "alt",
+            chainRootNodeId: nodeId,
+            stepAltDirection: direction,
+          },
+        });
+
+        state.data.edges.push({
+          id: `${edgePrefix}${idx}`,
+          source: nodeId,
+          target: altNodeId,
+          sourceHandle: direction === "up" ? "bottom" : "top-source",
+          targetHandle: direction === "up" ? "top" : "bottom-target",
+          type: "straight",
+          className: "edge--alt",
+        });
+      });
+    },
+
+    removeStepAlternativeNodes: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: "up" | "down";
+      }>,
+    ) => {
+      const { nodeId, direction } = action.payload;
+      const prefix = `step::${nodeId}::${direction}::alt::`;
+      const edgePrefix = `step::${nodeId}::${direction}::alt-edge::`;
+      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
+      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
     },
   },
   extraReducers: (builder) => {
@@ -861,5 +939,7 @@ export const {
   setStepChainContinueProduct,
   addSourcesToPool,
   clearSourcesPool,
+  createStepAlternativeNodes,
+  removeStepAlternativeNodes,
 } = gptSlice.actions;
 export default gptSlice.reducer;

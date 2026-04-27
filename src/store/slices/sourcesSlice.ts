@@ -214,6 +214,12 @@ const sourcesSlice = createSlice({
         if (product) state.byNodeId[key].product = product;
         if (typeof maxItems === "number")
           state.byNodeId[key].maxItems = maxItems;
+        // Fetching more sources means the user wants to retry aggregation.
+        // Clear needs-sources flags so the UI returns to the aggregate stage.
+        state.byNodeId[key].stepNeedsSources = false;
+        state.byNodeId[key].stepInsufficientProducts = [];
+        state.byNodeId[key].stepAggregateStatus = "idle";
+        state.byNodeId[key].stepAggregateError = null;
       })
       .addCase(fetchStepSourcesV2.rejected, (state, action) => {
         const { nodeId, direction } = action.meta.arg;

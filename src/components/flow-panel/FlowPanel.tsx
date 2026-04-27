@@ -78,6 +78,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
   onAcceptStep,
   onRejectStep,
   onRetryStep,
+
+  isAlternativeNode,
+  altDescription,
 }) => {
   const hasSources = Array.isArray(sources) && sources.length > 0;
 
@@ -209,6 +212,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
           onRetryStep={onRetryStep}
+          isAlternativeNode={isAlternativeNode}
+          altDescription={altDescription}
         />
       )}
 
