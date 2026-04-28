@@ -5,8 +5,10 @@ interface NodeContextMenuProps {
   x: number;
   y: number;
   isProduct: boolean;
+  isStepAlt?: boolean;
   onBuildUp: () => void;
   onBuildDown: () => void;
+  onBuildAlt?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -15,8 +17,10 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   x,
   y,
   isProduct,
+  isStepAlt,
   onBuildUp,
   onBuildDown,
+  onBuildAlt,
   onDelete,
   onClose,
 }) => {
@@ -85,6 +89,14 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
           </button>
           <button className={styles.item} onClick={onBuildDown}>
             Построить вниз
+          </button>
+          <div className={styles.separator} />
+        </>
+      )}
+      {isStepAlt && onBuildAlt && (
+        <>
+          <button className={styles.item} onClick={onBuildAlt}>
+            Построить альтернативу
           </button>
           <div className={styles.separator} />
         </>

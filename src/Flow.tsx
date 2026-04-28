@@ -251,17 +251,8 @@ export const Flow = () => {
 
   // Обработчик клика по узлу
   const onNodeClick = useCallback((_: unknown, node: Node) => {
-    const isStepAlt =
-      node.data?.chainVariant === "alt" && !!node.data?.stepAltDirection;
     setSelectedNodeId(node.id);
-    if (isStepAlt) {
-      setPanelMode({
-        type: "build",
-        direction: node.data.stepAltDirection as BuildDirection,
-      });
-    } else {
-      setPanelMode({ type: "card" });
-    }
+    setPanelMode({ type: "card" });
     setIsPanelOpen(true);
     setContextMenu(null);
   }, []);
@@ -579,15 +570,13 @@ export const Flow = () => {
   );
 
   const handleFetchStepSourcesV2 = useCallback(
-    (direction: BuildDirection) => () => {
+    (direction: BuildDirection) => (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
 
-      // Sync chain tip to selectedNodeId — panel actions always target the
-      // selected node, not wherever a prior step advanced the chain.
       dispatch(
         setStepChainContinueProduct({
           sessionKey: sKey,
@@ -604,6 +593,8 @@ export const Flow = () => {
           productName,
           direction,
           ...(existingSources.length ? { existingSources } : {}),
+          ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
+          ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
         }),
       );
     },
@@ -617,7 +608,7 @@ export const Flow = () => {
   );
 
   const handleAggregateStepSources = useCallback(
-    (direction: BuildDirection) => () => {
+    (direction: BuildDirection) => (customSystemPrompt?: string, customUserPrompt?: string) => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();
@@ -649,6 +640,8 @@ export const Flow = () => {
           direction,
           sources: poolSources,
           existingChain,
+          ...(customSystemPrompt ? { customSystemPrompt } : {}),
+          ...(customUserPrompt ? { customUserPrompt } : {}),
         }),
       );
     },
@@ -661,7 +654,7 @@ export const Flow = () => {
   );
 
   const handleBuildStep = useCallback(
-    (direction: BuildDirection) => (customText?: string) => {
+    (direction: BuildDirection) => (customText?: string, customSystemPrompt?: string) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -692,6 +685,7 @@ export const Flow = () => {
           direction,
           techText: aggregated,
           existingSources: poolSources.length ? poolSources : undefined,
+          ...(customSystemPrompt ? { customSystemPrompt } : {}),
         }),
       );
     },
@@ -974,7 +968,7 @@ export const Flow = () => {
           baseResult.stepChainStatus =
             rootStepSession?.status ?? "idle";
 
-          baseResult.onBuildStep = (customText?: string) => {
+          baseResult.onBuildStep = (customText?: string, customSystemPrompt?: string) => {
             const sKey = stepSessionKey(rootNodeId, direction);
             if (!stepChainSessions[sKey]) {
               dispatch(
@@ -1002,6 +996,7 @@ export const Flow = () => {
                 direction,
                 techText: customText || altDesc,
                 existingSources: poolSrcs.length ? poolSrcs : undefined,
+                ...(customSystemPrompt ? { customSystemPrompt } : {}),
               }),
             );
           };
@@ -1148,20 +1143,32 @@ export const Flow = () => {
         <Controls position="bottom-left" style={{ bottom: "25%" }} />
         <Background />
       </ReactFlow>
-      {contextMenu && (
-        <NodeContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          isProduct={
-            data.nodes.find((n) => n.id === contextMenu.nodeId)?.type ===
-            "product"
-          }
-          onBuildUp={() => handleContextBuild("up")}
-          onBuildDown={() => handleContextBuild("down")}
-          onDelete={handleContextDelete}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      {contextMenu && (() => {
+        const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
+        const ctxIsStepAlt =
+          ctxNode?.data?.chainVariant === "alt" &&
+          !!ctxNode?.data?.stepAltDirection;
+        return (
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            isProduct={ctxNode?.type === "product"}
+            isStepAlt={ctxIsStepAlt}
+            onBuildUp={() => handleContextBuild("up")}
+            onBuildDown={() => handleContextBuild("down")}
+            onBuildAlt={
+              ctxIsStepAlt
+                ? () =>
+                    handleContextBuild(
+                      ctxNode!.data!.stepAltDirection as BuildDirection,
+                    )
+                : undefined
+            }
+            onDelete={handleContextDelete}
+            onClose={() => setContextMenu(null)}
+          />
+        );
+      })()}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}

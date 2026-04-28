@@ -187,6 +187,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {/* ── Step-by-step v2 flow (dedicated /step/* routes) ── */}
       {isBuildContext && buildMode === "step" && (
         <StepByStepContent
+          direction={direction}
           stepChainStatus={stepChainStatus}
           stepChainError={stepChainError}
           stepChainStepCount={stepChainStepCount}
