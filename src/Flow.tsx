@@ -27,6 +27,8 @@ import {
   removeNode,
   addNode,
   setGraphData,
+  createStepAlternativeNodes,
+  removeStepAlternativeNodes,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -60,6 +62,7 @@ import {
   setStepChainContinueProduct,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
+import { parseAlternatives } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 
@@ -158,8 +161,15 @@ export const Flow = () => {
   const stepChainSessions = useAppSelector(
     (s) => s.graph.stepChainSessions,
   );
+  const sourcesPool = useAppSelector((s) => s.graph.sourcesPool);
   const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
     `step::${nodeId}::${dir}`;
+  const poolKey = (productName: string, dir: BuildDirection) =>
+    `${productName
+      .toLowerCase()
+      .replace(/ё/g, "е")
+      .trim()
+      .replace(/\s+/g, " ")}::${dir}`;
 
   // Flow.tsx
   const flowNodes = useMemo(
@@ -284,6 +294,13 @@ export const Flow = () => {
   // Подтверждение удаления
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirmNodeId) return;
+
+    for (const dir of ["down", "up"] as const) {
+      dispatch(
+        clearStepState({ nodeId: deleteConfirmNodeId, direction: dir }),
+      );
+    }
+
     dispatch(removeNode(deleteConfirmNodeId));
     setDeleteConfirmNodeId(null);
 
@@ -553,25 +570,31 @@ export const Flow = () => {
   );
 
   const handleFetchStepSourcesV2 = useCallback(
-    (direction: BuildDirection) => () => {
+    (direction: BuildDirection) => (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
-      const session = stepChainSessions[sKey];
-      const currentProductNode =
-        (session &&
-          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
-        selectedNode;
-      const productName = String(
-        currentProductNode?.data?.label || selectedNode?.data?.label || "",
-      ).trim();
+      const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
+
+      dispatch(
+        setStepChainContinueProduct({
+          sessionKey: sKey,
+          productNodeId: selectedNodeId,
+        }),
+      );
+
+      const existingSources =
+        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
 
       dispatch(
         fetchStepSourcesV2({
           nodeId: selectedNodeId,
           productName,
           direction,
+          ...(existingSources.length ? { existingSources } : {}),
+          ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
+          ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
         }),
       );
     },
@@ -579,30 +602,28 @@ export const Flow = () => {
       dispatch,
       selectedNodeId,
       selectedNode,
-      stepChainSessions,
-      data.nodes,
       ensureStepSession,
+      sourcesPool,
     ],
   );
 
   const handleAggregateStepSources = useCallback(
-    (direction: BuildDirection) => () => {
+    (direction: BuildDirection) => (customSystemPrompt?: string, customUserPrompt?: string) => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
-      const session = stepChainSessions[sKey];
-      const currentProductNode =
-        (session &&
-          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
-        selectedNode;
-      const productName = String(
-        currentProductNode?.data?.label || selectedNode?.data?.label || "",
-      ).trim();
+      const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
 
-      const sliceKey = sourcesKey(selectedNodeId, direction);
-      const sliceState = sourcesByNodeId[sliceKey];
-      const stepSources = sliceState?.stepSources ?? [];
-      if (!stepSources.length) return;
+      dispatch(
+        setStepChainContinueProduct({
+          sessionKey: sKey,
+          productNodeId: selectedNodeId,
+        }),
+      );
+
+      const poolSources =
+        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+      if (!poolSources.length) return;
 
       const descField =
         direction === "up" ? "upDescription" : "downDescription";
@@ -617,8 +638,10 @@ export const Flow = () => {
           nodeId: selectedNodeId,
           productName,
           direction,
-          sources: stepSources,
+          sources: poolSources,
           existingChain,
+          ...(customSystemPrompt ? { customSystemPrompt } : {}),
+          ...(customUserPrompt ? { customUserPrompt } : {}),
         }),
       );
     },
@@ -626,36 +649,33 @@ export const Flow = () => {
       dispatch,
       selectedNodeId,
       selectedNode,
-      stepChainSessions,
-      data.nodes,
-      sourcesByNodeId,
+      sourcesPool,
     ],
   );
 
   const handleBuildStep = useCallback(
-    (direction: BuildDirection) => () => {
+    (direction: BuildDirection) => (customText?: string, customSystemPrompt?: string) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
-      const session = stepChainSessions[sKey];
-      const currentProductNode =
-        (session &&
-          data.nodes.find((n) => n.id === session.currentProductNodeId)) ||
-        selectedNode;
-      const productName = String(
-        currentProductNode?.data?.label || selectedNode?.data?.label || "",
-      ).trim();
+      const productName = String(selectedNode?.data?.label || "").trim();
       if (!productName) return;
+
+      dispatch(
+        setStepChainContinueProduct({
+          sessionKey: sKey,
+          productNodeId: selectedNodeId,
+        }),
+      );
 
       const sliceKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
-      const aggregated = sliceState?.stepAggregatedText;
-      if (!aggregated || aggregated === "needs-sources") return;
+      const aggregated =
+        customText ?? sliceState?.stepAggregatedText ?? "";
+      if (!aggregated) return;
 
-      const mergedSources = [
-        ...(sliceState?.stepSources ?? []),
-        ...(session?.accumulatedSources ?? []),
-      ];
+      const poolSources =
+        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
 
       dispatch(
         buildStep({
@@ -664,7 +684,8 @@ export const Flow = () => {
           productName,
           direction,
           techText: aggregated,
-          existingSources: mergedSources.length ? mergedSources : undefined,
+          existingSources: poolSources.length ? poolSources : undefined,
+          ...(customSystemPrompt ? { customSystemPrompt } : {}),
         }),
       );
     },
@@ -672,9 +693,8 @@ export const Flow = () => {
       dispatch,
       selectedNodeId,
       selectedNode,
-      stepChainSessions,
-      data.nodes,
       sourcesByNodeId,
+      sourcesPool,
       ensureStepSession,
     ],
   );
@@ -683,9 +703,40 @@ export const Flow = () => {
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
       dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
+      dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
     },
     [dispatch, selectedNodeId],
   );
+
+  // ─── Create / remove step alternative nodes when aggregate text changes ───
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    for (const direction of ["up", "down"] as const) {
+      const sKey = sourcesKey(selectedNodeId, direction);
+      const sliceState = sourcesByNodeId[sKey];
+      const text = sliceState?.stepAggregatedText;
+      if (text) {
+        const alts = parseAlternatives(text);
+        if (alts.length > 1) {
+          dispatch(
+            createStepAlternativeNodes({
+              nodeId: selectedNodeId,
+              direction,
+              alternatives: alts.slice(1),
+            }),
+          );
+        } else {
+          dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+        }
+      } else {
+        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      }
+    }
+  }, [
+    selectedNodeId,
+    sourcesByNodeId,
+    dispatch,
+  ]);
 
   // ─── Build DirectionTabProps for each direction ───
   const buildDirectionTab = useCallback(
@@ -778,7 +829,7 @@ export const Flow = () => {
             }))
           : undefined;
 
-      return {
+      const baseResult: DirectionTabProps = {
         direction,
         onFindSources: handleFindSources(direction),
         sourcesLoading: sliceState?.status === "loading",
@@ -830,14 +881,8 @@ export const Flow = () => {
         stepChainError: stepSession?.error ?? null,
         stepChainStepCount: stepSession?.steps.length ?? 0,
 
-        stepChainCurrentProductLabel: stepSession
-          ? (data.nodes.find(
-              (n) => n.id === stepSession.currentProductNodeId,
-            )?.data?.label ?? "")
-          : String(selectedNode.data?.label || ""),
-        stepChainCurrentProductNodeId: stepSession
-          ? stepSession.currentProductNodeId
-          : selectedNodeId,
+        stepChainCurrentProductLabel: String(selectedNode.data?.label || ""),
+        stepChainCurrentProductNodeId: selectedNodeId,
         stepChainInsufficientProducts:
           stepSession?.insufficientProducts ?? [],
 
@@ -857,8 +902,13 @@ export const Flow = () => {
             }),
           ),
 
-        // --- step v2 flow (per-(nodeId, direction) in sourcesSlice) ---
-        stepSources: sliceState?.stepSources ?? [],
+        // --- step v2 flow (sources from graph-level pool) ---
+        // Always read pool for the panel's own product — panel actions target
+        // the selected node, not the chain tip.
+        stepSources:
+          sourcesPool[
+            poolKey(String(selectedNode.data?.label ?? ""), direction)
+          ]?.sources ?? [],
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
 
@@ -877,6 +927,105 @@ export const Flow = () => {
         onBuildStep: handleBuildStep(direction),
         onClearStepState: handleClearStepState(direction),
       };
+
+      // ── Override for step alternative nodes ──
+      const isStepAlt =
+        selectedNode.data?.chainVariant === "alt" &&
+        selectedNode.data?.stepAltDirection === direction;
+
+      if (isStepAlt) {
+        const rootNodeId = String(selectedNode.data?.chainRootNodeId || "");
+        const rootNode = data.nodes.find((n) => n.id === rootNodeId);
+        if (rootNode) {
+          const rootProductName = String(rootNode.data?.label || "").trim();
+          const rootSKey = sourcesKey(rootNodeId, direction);
+          const rootSliceState = sourcesByNodeId[rootSKey];
+          const rootStepSKey = stepSessionKey(rootNodeId, direction);
+          const rootStepSession = stepChainSessions[rootStepSKey];
+          const altDesc = String(selectedNode.data?.description || "");
+
+          baseResult.isAlternativeNode = true;
+          baseResult.altDescription = altDesc;
+          baseResult.buildMode = rootSliceState?.buildMode ?? "step";
+          baseResult.stepChainCurrentProductLabel = rootProductName;
+
+          baseResult.stepSources =
+            sourcesPool[poolKey(rootProductName, direction)]?.sources ?? [];
+          baseResult.stepSourcesStatus =
+            rootSliceState?.stepSourcesStatus ?? "idle";
+          baseResult.stepAggregatedText =
+            rootSliceState?.stepAggregatedText ?? null;
+          baseResult.stepAggregateStatus =
+            rootSliceState?.stepAggregateStatus ?? "idle";
+          baseResult.stepBuildStatus =
+            rootSliceState?.stepBuildStatus ?? "idle";
+          baseResult.stepBuildError =
+            rootSliceState?.stepBuildError ?? null;
+          baseResult.pendingStep =
+            rootStepSession?.pendingStep ?? null;
+          baseResult.stepChainStepCount =
+            rootStepSession?.steps.length ?? 0;
+          baseResult.stepChainStatus =
+            rootStepSession?.status ?? "idle";
+
+          baseResult.onBuildStep = (customText?: string, customSystemPrompt?: string) => {
+            const sKey = stepSessionKey(rootNodeId, direction);
+            if (!stepChainSessions[sKey]) {
+              dispatch(
+                initStepChainSession({
+                  sessionKey: sKey,
+                  direction,
+                  rootNodeId,
+                  currentProductNodeId: rootNodeId,
+                }),
+              );
+            }
+            dispatch(
+              setStepChainContinueProduct({
+                sessionKey: sKey,
+                productNodeId: rootNodeId,
+              }),
+            );
+            const poolSrcs =
+              sourcesPool[poolKey(rootProductName, direction)]?.sources ?? [];
+            dispatch(
+              buildStep({
+                sessionKey: sKey,
+                nodeId: rootNodeId,
+                productName: rootProductName,
+                direction,
+                techText: customText || altDesc,
+                existingSources: poolSrcs.length ? poolSrcs : undefined,
+                ...(customSystemPrompt ? { customSystemPrompt } : {}),
+              }),
+            );
+          };
+
+          baseResult.onAcceptStep = (
+            selectedContinueProductNodeId?: string,
+            filteredStep?: import("./store/types").StepChainApiStep,
+          ) => {
+            const sKey = stepSessionKey(rootNodeId, direction);
+            dispatch(
+              acceptPendingStep({
+                sessionKey: sKey,
+                selectedContinueProductNodeId,
+                filteredStep,
+              }),
+            );
+            dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
+          };
+
+          baseResult.onRejectStep = () => {
+            const sKey = stepSessionKey(rootNodeId, direction);
+            dispatch(rejectPendingStep(sKey));
+          };
+
+          baseResult.onRetryStep = baseResult.onBuildStep;
+        }
+      }
+
+      return baseResult;
     },
     [
       selectedNodeId,
@@ -884,6 +1033,7 @@ export const Flow = () => {
       sourcesByNodeId,
       chainSessions,
       chainBuild,
+      sourcesPool,
       handleFindSources,
       handleAggregateSources,
       handleInitChain,
@@ -993,20 +1143,32 @@ export const Flow = () => {
         <Controls position="bottom-left" style={{ bottom: "25%" }} />
         <Background />
       </ReactFlow>
-      {contextMenu && (
-        <NodeContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          isProduct={
-            data.nodes.find((n) => n.id === contextMenu.nodeId)?.type ===
-            "product"
-          }
-          onBuildUp={() => handleContextBuild("up")}
-          onBuildDown={() => handleContextBuild("down")}
-          onDelete={handleContextDelete}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      {contextMenu && (() => {
+        const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
+        const ctxIsStepAlt =
+          ctxNode?.data?.chainVariant === "alt" &&
+          !!ctxNode?.data?.stepAltDirection;
+        return (
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            isProduct={ctxNode?.type === "product"}
+            isStepAlt={ctxIsStepAlt}
+            onBuildUp={() => handleContextBuild("up")}
+            onBuildDown={() => handleContextBuild("down")}
+            onBuildAlt={
+              ctxIsStepAlt
+                ? () =>
+                    handleContextBuild(
+                      ctxNode!.data!.stepAltDirection as BuildDirection,
+                    )
+                : undefined
+            }
+            onDelete={handleContextDelete}
+            onClose={() => setContextMenu(null)}
+          />
+        );
+      })()}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}

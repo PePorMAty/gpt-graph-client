@@ -1,21 +1,23 @@
-import type { FC } from "react";
+import { useMemo, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
+import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
+import {
+  getDefaultAggregateFullPrompt,
+  splitAggregatePrompt,
+} from "../../prompts/aggregatePrompt";
+import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
-  // session / global step-chain state
+  | "direction"
   | "stepChainStatus"
   | "stepChainError"
   | "stepChainStepCount"
   | "stepChainCurrentProductLabel"
-  | "stepChainCurrentProductNodeId"
   | "stepChainInsufficientProducts"
-  | "stepChainBranchOptions"
-  | "onSelectBranch"
   | "onUndoStep"
-  // step v2 per-direction state
   | "stepSources"
   | "stepSourcesStatus"
   | "stepSourcesError"
@@ -35,15 +37,17 @@ type StepByStepContentProps = Pick<
   | "onAcceptStep"
   | "onRejectStep"
   | "onRetryStep"
+  | "isAlternativeNode"
+  | "altDescription"
 >;
 
 export const StepByStepContent: FC<StepByStepContentProps> = ({
+  direction,
+  stepChainStatus,
   stepChainError,
   stepChainStepCount = 0,
   stepChainCurrentProductLabel,
-  stepChainCurrentProductNodeId,
-  stepChainBranchOptions,
-  onSelectBranch,
+  stepChainInsufficientProducts,
   onUndoStep,
 
   stepSources = [],
@@ -65,63 +69,267 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onAcceptStep,
   onRejectStep,
   onRetryStep,
+
+  isAlternativeNode = false,
+  altDescription,
 }) => {
+  const productName = stepChainCurrentProductLabel || "";
   const hasSources = stepSources.length > 0;
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
   const hasSteps = stepChainStepCount > 0;
+  const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
 
+  // ── Sources prompt state ──
+  const [maxItems, setMaxItems] = useState(5);
+  const [srcPromptOpen, setSrcPromptOpen] = useState(false);
+  const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
+
+  const autoSrcPrompt = useMemo(
+    () => getDefaultSourcesPrompt(direction, productName, maxItems),
+    [direction, productName, maxItems],
+  );
+  const displayedSrcPrompt = manualSrcPrompt ?? autoSrcPrompt;
+  const isSrcPromptDirty = manualSrcPrompt !== null;
+  const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";
+
+  // ── Aggregate prompt state ──
+  const [aggPromptOpen, setAggPromptOpen] = useState(false);
+  const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
+
+  const autoAggPrompt = useMemo(
+    () => getDefaultAggregateFullPrompt(direction, productName),
+    [direction, productName],
+  );
+  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
+  const isAggPromptDirty = manualAggPrompt !== null;
+  const isAggPromptEmpty = displayedAggPrompt.trim() === "";
+
+  // ── Build prompt state ──
+  const [buildPromptOpen, setBuildPromptOpen] = useState(false);
+  const [manualBuildPrompt, setManualBuildPrompt] = useState<string | null>(null);
+
+  const autoBuildPrompt = useMemo(
+    () => getDefaultChainSystemPrompt(productName),
+    [productName],
+  );
+  const displayedBuildPrompt = manualBuildPrompt ?? autoBuildPrompt;
+  const isBuildPromptDirty = manualBuildPrompt !== null;
+  const isBuildPromptEmpty = displayedBuildPrompt.trim() === "";
+
+  // ── Handlers with prompt support ──
+  const handleFetchSources = () => {
+    onFetchStepSources?.({
+      maxItems,
+      customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
+    });
+  };
+
+  const handleAggregate = () => {
+    if (isAggPromptDirty) {
+      const { system, user } = splitAggregatePrompt(displayedAggPrompt);
+      onAggregateStepSources?.(system, user);
+    } else {
+      onAggregateStepSources?.();
+    }
+  };
+
+  const handleBuild = (customText?: string) => {
+    onBuildStep?.(
+      customText,
+      isBuildPromptDirty ? displayedBuildPrompt : undefined,
+    );
+  };
+
+  // ── Alternative node: simplified flow ──
+  if (isAlternativeNode) {
+    return (
+      <div className={styles.formGroup}>
+        <div className={styles.sourcesTitle}>
+          Альтернатива для: <b>{productName || "—"}</b>
+        </div>
+        <div className={styles.sourcesTitle}>
+          Шагов выполнено: <b>{stepChainStepCount}</b>
+        </div>
+
+        <div className={styles.formGroup}>
+          <label className={styles.formLabel}>Описание альтернативы:</label>
+          <textarea
+            readOnly
+            value={altDescription ?? ""}
+            className={styles.directionTextarea}
+            rows={6}
+          />
+        </div>
+
+        {/* Build prompt editor */}
+        <button
+          type="button"
+          onClick={() => setBuildPromptOpen((v) => !v)}
+          className={styles.promptToggle}
+        >
+          {buildPromptOpen ? "Скрыть промпт построения" : "Редактировать промпт построения"}
+        </button>
+
+        {buildPromptOpen && (
+          <div className={styles.promptEditor}>
+            <label className={styles.promptLabel}>Системный промпт построения шага:</label>
+            <textarea
+              value={displayedBuildPrompt}
+              onChange={(e) => setManualBuildPrompt(e.target.value)}
+              className={styles.promptTextarea}
+              rows={12}
+            />
+            {isBuildPromptDirty && (
+              <button
+                type="button"
+                className={styles.promptResetBtn}
+                onClick={() => setManualBuildPrompt(null)}
+              >
+                Сбросить промпт
+              </button>
+            )}
+            {isBuildPromptEmpty && (
+              <div className={styles.errorText}>Промпт не может быть пустым</div>
+            )}
+          </div>
+        )}
+
+        {buildLoading && (
+          <div className={styles.tabLoader}>
+            <div className={styles.tabSpinner} />
+            <span>Построение альтернативы...</span>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => handleBuild(altDescription)}
+          disabled={buildLoading || isBuildPromptEmpty}
+          className={styles.findSourcesButton}
+        >
+          {buildLoading
+            ? "Построение..."
+            : isBuildPromptDirty
+              ? "Построить альтернативу (свой промпт)"
+              : "Построить альтернативу"}
+        </button>
+
+        {stepBuildError && (
+          <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
+        )}
+
+        {buildNeedsSources &&
+          stepChainInsufficientProducts &&
+          stepChainInsufficientProducts.length > 0 && (
+            <div className={styles.warningText}>
+              Нужны дополнительные источники
+              {` для: ${stepChainInsufficientProducts.join(", ")}`}.
+              Откройте панель этих продуктов и выполните поиск источников.
+            </div>
+          )}
+
+        {stepChainError && (
+          <div className={styles.errorText}>Ошибка: {stepChainError}</div>
+        )}
+
+        {showPreview && pendingStep && (
+          <StepPreviewModal
+            step={pendingStep}
+            anchorProductName={productName}
+            stepNumber={stepChainStepCount + 1}
+            onAccept={(filteredStep) =>
+              onAcceptStep?.(undefined, filteredStep)
+            }
+            onRetry={() => onRetryStep?.()}
+            onReject={() => onRejectStep?.()}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Regular product node: standard flow ──
   return (
     <div className={styles.formGroup}>
-      {/* Current session info */}
       <div className={styles.sourcesTitle}>
-        Текущий продукт: <b>{stepChainCurrentProductLabel || "—"}</b>
+        Текущий продукт: <b>{productName || "—"}</b>
       </div>
       <div className={styles.sourcesTitle}>
         Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
 
-      {/* Branch selection (когда на последнем шаге несколько новых продуктов) */}
-      {stepChainBranchOptions && stepChainBranchOptions.length > 1 && (
-        <div className={styles.formGroup}>
-          <label className={styles.formLabel}>
-            Выберите продукт для продолжения:
-          </label>
-          {stepChainBranchOptions.map((opt) => (
-            <label key={opt.nodeId} className={styles.fieldCheckbox}>
-              <input
-                type="radio"
-                name="stepBranch"
-                checked={opt.nodeId === stepChainCurrentProductNodeId}
-                onChange={() => onSelectBranch?.(opt.nodeId)}
-              />
-              <span className={styles.fieldLabel}>{opt.label}</span>
-            </label>
-          ))}
-        </div>
-      )}
-
-      {/* Stage 1: no sources yet */}
+      {/* Stage 1: fetch sources button (when no sources yet) */}
       {!hasSources && (
         <>
+          <div className={styles.maxItemsRow}>
+            <label className={styles.formLabel}>Количество источников:</label>
+            <input
+              type="number"
+              min={2}
+              max={5}
+              value={maxItems}
+              onChange={(e) =>
+                setMaxItems(Math.min(5, Math.max(2, Number(e.target.value) || 2)))
+              }
+              className={styles.maxItemsInput}
+            />
+          </div>
+
+          {/* Sources prompt editor */}
+          <button
+            type="button"
+            onClick={() => setSrcPromptOpen((v) => !v)}
+            className={styles.promptToggle}
+          >
+            {srcPromptOpen ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
+          </button>
+
+          {srcPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>Промпт поиска источников:</label>
+              <textarea
+                value={displayedSrcPrompt}
+                onChange={(e) => setManualSrcPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isSrcPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualSrcPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isSrcPromptEmpty && (
+                <div className={styles.errorText}>Промпт не может быть пустым</div>
+              )}
+            </div>
+          )}
+
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
               <span>
-                Поиск источников для «{stepChainCurrentProductLabel}»...
+                Поиск источников для «{productName}»...
               </span>
             </div>
           )}
           <button
             type="button"
-            onClick={onFetchStepSources}
-            disabled={sourcesLoading}
+            onClick={handleFetchSources}
+            disabled={sourcesLoading || isSrcPromptEmpty}
             className={styles.findSourcesButton}
           >
-            {sourcesLoading ? "Поиск..." : "Найти источники (шаг)"}
+            {sourcesLoading
+              ? "Поиск..."
+              : isSrcPromptDirty
+                ? "Найти источники (свой промпт)"
+                : "Найти источники (шаг)"}
           </button>
           {stepSourcesError && (
             <div className={styles.errorText}>
@@ -131,34 +339,44 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage 2: sources found, not aggregated yet */}
-      {hasSources && !stepAggregatedText && (
+      {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
+      {hasSources && !hasValidAggregate && !stepNeedsSources && (
         <>
-          <div className={styles.sourcesBox}>
-            <div className={styles.sourcesTitle}>
-              Источники ({stepSources.length})
+          {/* Aggregate prompt editor */}
+          <button
+            type="button"
+            onClick={() => setAggPromptOpen((v) => !v)}
+            className={styles.promptToggle}
+          >
+            {aggPromptOpen ? "Скрыть промпт обобщения" : "Редактировать промпт обобщения"}
+          </button>
+
+          {aggPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>
+                Системный + пользовательский промпт обобщения:
+              </label>
+              <textarea
+                value={displayedAggPrompt}
+                onChange={(e) => setManualAggPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isAggPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualAggPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isAggPromptEmpty && (
+                <div className={styles.errorText}>Промпт не может быть пустым</div>
+              )}
             </div>
-            {stepSources.map((s) => (
-              <details key={s.url} className={styles.sourceItem}>
-                <summary className={styles.sourceSummary}>
-                  <span className={styles.sourceTitle}>{s.title}</span>
-                </summary>
-                <div className={styles.sourceBody}>
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={styles.sourceLink}
-                  >
-                    {s.url}
-                  </a>
-                  <div className={styles.sourceDesc}>
-                    {s.technology_description}
-                  </div>
-                </div>
-              </details>
-            ))}
-          </div>
+          )}
+
           {aggregateLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -167,20 +385,24 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
           <button
             type="button"
-            onClick={onAggregateStepSources}
-            disabled={aggregateLoading || stepSources.length < 1}
+            onClick={handleAggregate}
+            disabled={aggregateLoading || stepSources.length < 1 || isAggPromptEmpty}
             className={styles.findSourcesButton}
           >
-            {aggregateLoading ? "Обобщение..." : "Обобщить (один шаг)"}
+            {aggregateLoading
+              ? "Обобщение..."
+              : isAggPromptDirty
+                ? "Обобщить (свой промпт)"
+                : "Обобщить (один шаг)"}
           </button>
           <button
             type="button"
-            onClick={onFetchStepSources}
+            onClick={handleFetchSources}
             disabled={sourcesLoading || aggregateLoading}
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            Повторить поиск источников
+            {sourcesLoading ? "Поиск..." : "Добрать источники"}
           </button>
           {stepAggregateError && (
             <div className={styles.errorText}>
@@ -190,7 +412,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage 2b: needs more sources */}
+      {/* Stage: needs more sources */}
       {stepNeedsSources && (
         <>
           <div className={styles.warningText}>
@@ -202,18 +424,18 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </div>
           <button
             type="button"
-            onClick={onFetchStepSources}
+            onClick={handleFetchSources}
             disabled={sourcesLoading}
             className={styles.findSourcesButton}
           >
             {sourcesLoading
               ? "Поиск..."
-              : `Добрать источники для «${stepChainCurrentProductLabel}»`}
+              : `Добрать источники для «${productName}»`}
           </button>
         </>
       )}
 
-      {/* Stage 3: aggregated markdown ready → build step */}
+      {/* Stage: aggregated ready → build */}
       {hasValidAggregate && (
         <>
           <div className={styles.formGroup}>
@@ -227,6 +449,40 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               rows={6}
             />
           </div>
+
+          {/* Build prompt editor */}
+          <button
+            type="button"
+            onClick={() => setBuildPromptOpen((v) => !v)}
+            className={styles.promptToggle}
+          >
+            {buildPromptOpen ? "Скрыть промпт построения" : "Редактировать промпт построения"}
+          </button>
+
+          {buildPromptOpen && (
+            <div className={styles.promptEditor}>
+              <label className={styles.promptLabel}>Системный промпт построения шага:</label>
+              <textarea
+                value={displayedBuildPrompt}
+                onChange={(e) => setManualBuildPrompt(e.target.value)}
+                className={styles.promptTextarea}
+                rows={12}
+              />
+              {isBuildPromptDirty && (
+                <button
+                  type="button"
+                  className={styles.promptResetBtn}
+                  onClick={() => setManualBuildPrompt(null)}
+                >
+                  Сбросить промпт
+                </button>
+              )}
+              {isBuildPromptEmpty && (
+                <div className={styles.errorText}>Промпт не может быть пустым</div>
+              )}
+            </div>
+          )}
+
           {buildLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -235,20 +491,33 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
           <button
             type="button"
-            onClick={onBuildStep}
-            disabled={buildLoading}
+            onClick={() => handleBuild()}
+            disabled={buildLoading || isBuildPromptEmpty}
             className={styles.findSourcesButton}
           >
-            {buildLoading ? "Построение..." : "Построить шаг"}
+            {buildLoading
+              ? "Построение..."
+              : isBuildPromptDirty
+                ? "Построить шаг (свой промпт)"
+                : "Построить шаг"}
           </button>
           <button
             type="button"
-            onClick={onAggregateStepSources}
+            onClick={handleAggregate}
             disabled={aggregateLoading || buildLoading}
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
             Переобобщить (свежий шаг)
+          </button>
+          <button
+            type="button"
+            onClick={handleFetchSources}
+            disabled={sourcesLoading || aggregateLoading || buildLoading}
+            className={styles.findSourcesButton}
+            style={{ marginTop: 4 }}
+          >
+            {sourcesLoading ? "Поиск..." : "Добрать источники"}
           </button>
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
@@ -256,7 +525,47 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Reset step pipeline (start fresh cycle) */}
+      {/* Build returned "insufficient sources" for new products */}
+      {buildNeedsSources &&
+        stepChainInsufficientProducts &&
+        stepChainInsufficientProducts.length > 0 && (
+          <div className={styles.warningText}>
+            Для продолжения цепочки нужны дополнительные источники
+            {` для: ${stepChainInsufficientProducts.join(", ")}`}.
+            Откройте панель этих продуктов и выполните поиск источников.
+          </div>
+        )}
+
+      {/* Sources list — always visible BELOW description when any sources exist */}
+      {hasSources && (
+        <div className={styles.sourcesBox}>
+          <div className={styles.sourcesTitle}>
+            Источники ({stepSources.length})
+          </div>
+          {stepSources.map((s) => (
+            <details key={s.url} className={styles.sourceItem}>
+              <summary className={styles.sourceSummary}>
+                <span className={styles.sourceTitle}>{s.title}</span>
+              </summary>
+              <div className={styles.sourceBody}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.sourceLink}
+                >
+                  {s.url}
+                </a>
+                <div className={styles.sourceDesc}>
+                  {s.technology_description}
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {/* Reset */}
       {(hasSources || hasValidAggregate) && (
         <button
           type="button"
@@ -269,7 +578,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </button>
       )}
 
-      {/* Undo last applied step */}
       {hasSteps && (
         <button
           type="button"
@@ -281,15 +589,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </button>
       )}
 
-      {/* Session error */}
       {stepChainError && (
         <div className={styles.errorText}>Ошибка: {stepChainError}</div>
       )}
 
-      {/* Preview modal */}
       {showPreview && pendingStep && (
         <StepPreviewModal
           step={pendingStep}
+          anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
           onAccept={(filteredStep) =>
             onAcceptStep?.(undefined, filteredStep)

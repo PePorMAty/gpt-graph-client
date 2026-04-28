@@ -88,10 +88,14 @@ export interface DirectionTabProps {
   stepBuildStatus?: Status;
   stepBuildError?: string | null;
 
-  onFetchStepSources?: () => void;
-  onAggregateStepSources?: () => void;
-  onBuildStep?: () => void;
+  onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
+  onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
+  onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
   onClearStepState?: () => void;
+
+  // --- alternative node (step-by-step flow) ---
+  isAlternativeNode?: boolean;
+  altDescription?: string;
 }
 
 export interface FlowPanelProps {

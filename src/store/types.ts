@@ -25,6 +25,13 @@ export interface InitialGraphStateI {
   };
   chainSessions: Record<string, ChainSessionData>;
   stepChainSessions: Record<string, StepChainSession>;
+  sourcesPool: Record<string, SourcesPoolEntry>;
+}
+
+export interface SourcesPoolEntry {
+  sources: TechnologySource[];
+  product: string;
+  lastFetchedAt: string;
 }
 
 export interface ChainSessionData {

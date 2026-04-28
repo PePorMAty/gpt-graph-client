@@ -78,6 +78,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
   onAcceptStep,
   onRejectStep,
   onRetryStep,
+
+  isAlternativeNode,
+  altDescription,
 }) => {
   const hasSources = Array.isArray(sources) && sources.length > 0;
 
@@ -184,14 +187,12 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {/* ── Step-by-step v2 flow (dedicated /step/* routes) ── */}
       {isBuildContext && buildMode === "step" && (
         <StepByStepContent
+          direction={direction}
           stepChainStatus={stepChainStatus}
           stepChainError={stepChainError}
           stepChainStepCount={stepChainStepCount}
           stepChainCurrentProductLabel={stepChainCurrentProductLabel}
-          stepChainCurrentProductNodeId={stepChainCurrentProductNodeId}
           stepChainInsufficientProducts={stepChainInsufficientProducts}
-          stepChainBranchOptions={stepChainBranchOptions}
-          onSelectBranch={onSelectBranch}
           onUndoStep={onUndoStep}
           stepSources={stepSources}
           stepSourcesStatus={stepSourcesStatus}
@@ -212,6 +213,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
           onRetryStep={onRetryStep}
+          isAlternativeNode={isAlternativeNode}
+          altDescription={altDescription}
         />
       )}
 

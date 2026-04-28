@@ -55,7 +55,18 @@ const initialState: InitialGraphStateI = {
   chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
   stepChainSessions: {},
+  sourcesPool: {},
 };
+
+export const sourcesPoolKey = (
+  productName: string,
+  direction: "up" | "down",
+) =>
+  `${productName
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .trim()
+    .replace(/\s+/g, " ")}::${direction}`;
 
 const gptSlice = createSlice({
   name: "graph",
@@ -77,6 +88,25 @@ const gptSlice = createSlice({
       state.data.edges = state.data.edges.filter(
         (edge) => edge.source !== nodeId && edge.target !== nodeId,
       );
+
+      for (const [sKey, session] of Object.entries(
+        state.stepChainSessions,
+      )) {
+        if (!session) continue;
+        if (session.currentProductNodeId === nodeId) {
+          session.currentProductNodeId = session.rootNodeId;
+          session.pendingStep = null;
+          session.status = "idle";
+          session.steps = session.steps.filter(
+            (s) =>
+              !s.newProductNodeIds.includes(nodeId) &&
+              s.transformationNodeId !== nodeId,
+          );
+        }
+        if (session.rootNodeId === nodeId) {
+          delete state.stepChainSessions[sKey];
+        }
+      }
     },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
@@ -287,6 +317,52 @@ const gptSlice = createSlice({
           session.currentProductNodeId;
       }
 
+      // Selective source transfer: copy pool to new products NOT in insufficientProducts
+      const anchorLabel =
+        anchor.data?.label || (anchor as { label?: string }).label || "";
+      if (anchorLabel) {
+        const anchorPoolKey = sourcesPoolKey(anchorLabel, session.direction);
+        const anchorPool = state.sourcesPool[anchorPoolKey];
+        if (anchorPool && anchorPool.sources.length > 0) {
+          const insufficient = new Set(
+            (session.insufficientProducts ?? []).map((p: string) =>
+              p.toLowerCase().replace(/ё/g, "е").trim(),
+            ),
+          );
+          const allNewNodeIds = [
+            ...stepRecord.newProductNodeIds,
+            ...stepRecord.mergedProductNodeIds,
+          ];
+          for (const nid of allNewNodeIds) {
+            const newNode = state.data.nodes.find((n) => n.id === nid);
+            const newLabel =
+              newNode?.data?.label ||
+              (newNode as unknown as { label?: string })?.label ||
+              "";
+            if (!newLabel) continue;
+            const normalized = newLabel
+              .toLowerCase()
+              .replace(/ё/g, "е")
+              .trim();
+            if (insufficient.has(normalized)) continue;
+            const newKey = sourcesPoolKey(newLabel, session.direction);
+            if (!state.sourcesPool[newKey]) {
+              state.sourcesPool[newKey] = {
+                sources: [...anchorPool.sources],
+                product: newLabel,
+                lastFetchedAt: new Date().toISOString(),
+              };
+            }
+          }
+        }
+      }
+
+      // Clean up step alternative nodes
+      const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
+      const altEdgePrefix = `step::${session.rootNodeId}::${session.direction}::alt-edge::`;
+      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(altPrefix));
+      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(altEdgePrefix));
+
       session.pendingStep = null;
       session.status = "idle";
       session.accumulatedSources = [];
@@ -331,6 +407,116 @@ const gptSlice = createSlice({
         state.stepChainSessions[action.payload.sessionKey];
       if (!session) return;
       session.currentProductNodeId = action.payload.productNodeId;
+    },
+
+    addSourcesToPool: (
+      state,
+      action: PayloadAction<{
+        productName: string;
+        direction: "up" | "down";
+        sources: import("../../store/types").TechnologySource[];
+      }>,
+    ) => {
+      const { productName, direction, sources } = action.payload;
+      const key = sourcesPoolKey(productName, direction);
+      const existing = state.sourcesPool[key];
+      const existingByUrl = new Map(
+        (existing?.sources ?? []).map((s) => [s.url, s]),
+      );
+      for (const s of sources) {
+        if (!existingByUrl.has(s.url)) existingByUrl.set(s.url, s);
+      }
+      state.sourcesPool[key] = {
+        sources: Array.from(existingByUrl.values()),
+        product: existing?.product || productName,
+        lastFetchedAt: new Date().toISOString(),
+      };
+    },
+
+    clearSourcesPool: (
+      state,
+      action: PayloadAction<{
+        productName: string;
+        direction: "up" | "down";
+      }>,
+    ) => {
+      const key = sourcesPoolKey(
+        action.payload.productName,
+        action.payload.direction,
+      );
+      delete state.sourcesPool[key];
+    },
+
+    createStepAlternativeNodes: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: "up" | "down";
+        alternatives: { title: string; firstStepName: string; fullDescription: string }[];
+      }>,
+    ) => {
+      const { nodeId, direction, alternatives } = action.payload;
+      const prefix = `step::${nodeId}::${direction}::alt::`;
+      const edgePrefix = `step::${nodeId}::${direction}::alt-edge::`;
+
+      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
+      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
+
+      const root = state.data.nodes.find((n) => n.id === nodeId);
+      if (!root || alternatives.length === 0) return;
+
+      const rx = root.position?.x ?? 0;
+      const ry = root.position?.y ?? 0;
+      const sign = direction === "down" ? 1 : -1;
+      const stepY = 180;
+      const spacingX = 300;
+
+      alternatives.forEach((alt, idx) => {
+        const altNodeId = `${prefix}${idx}`;
+        const side =
+          idx % 2 === 0
+            ? -(Math.floor(idx / 2) + 1)
+            : Math.floor(idx / 2) + 1;
+        const x = rx + side * spacingX;
+        const y = ry + sign * stepY;
+
+        state.data.nodes.push({
+          id: altNodeId,
+          type: "transformation",
+          position: { x, y },
+          data: {
+            label: alt.title,
+            description: alt.fullDescription,
+            chainVariant: "alt",
+            chainRootNodeId: nodeId,
+            stepAltDirection: direction,
+          },
+        });
+
+        state.data.edges.push({
+          id: `${edgePrefix}${idx}`,
+          source: nodeId,
+          target: altNodeId,
+          sourceHandle: direction === "up" ? "bottom" : "top-source",
+          targetHandle: direction === "up" ? "top" : "bottom-target",
+          type: "straight",
+          className: "edge--alt",
+        });
+      });
+    },
+
+    removeStepAlternativeNodes: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: "up" | "down";
+      }>,
+    ) => {
+      const { nodeId, direction } = action.payload;
+      const prefix = `step::${nodeId}::${direction}::alt::`;
+      const edgePrefix = `step::${nodeId}::${direction}::alt-edge::`;
+      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
+      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
     },
   },
   extraReducers: (builder) => {
@@ -462,7 +648,7 @@ const gptSlice = createSlice({
           const rx = root.position?.x ?? 0;
           const ry = root.position?.y ?? 0;
           const dir = direction;
-          const sign = dir === "up" ? 1 : -1;
+          const sign = dir === "down" ? 1 : -1;
           const stepY = 180;
           const spacingX = 300;
 
@@ -751,5 +937,9 @@ export const {
   rejectPendingStep,
   undoLastStep,
   setStepChainContinueProduct,
+  addSourcesToPool,
+  clearSourcesPool,
+  createStepAlternativeNodes,
+  removeStepAlternativeNodes,
 } = gptSlice.actions;
 export default gptSlice.reducer;
