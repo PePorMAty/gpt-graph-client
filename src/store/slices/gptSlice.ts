@@ -317,7 +317,13 @@ const gptSlice = createSlice({
           session.currentProductNodeId;
       }
 
-      // Selective source transfer: copy pool to new products NOT in insufficientProducts
+      // Унаследование источников от родителя в новые потомки:
+      // - копируем pool родителя только в те новые product-ноды, которых НЕТ
+      //   в insufficientProducts (для них модель явно сказала, что текущих
+      //   источников недостаточно — нужно искать заново);
+      // - не трогаем pool потомка, если у него уже есть собственный pool;
+      // - переиск источников у конкретного продукта (addSourcesToPool)
+      //   затирает старый pool ТОЛЬКО у этого продукта, не у братьев/детей.
       const anchorLabel =
         anchor.data?.label || (anchor as { label?: string }).label || "";
       if (anchorLabel) {
@@ -417,18 +423,14 @@ const gptSlice = createSlice({
         sources: import("../../store/types").TechnologySource[];
       }>,
     ) => {
+      // Замена, а не merge: каждый успешный поиск источников полностью затирает
+      // pool именно этого (productName, direction). Pool братьев / предков /
+      // потомков не трогается — у них другие ключи.
       const { productName, direction, sources } = action.payload;
       const key = sourcesPoolKey(productName, direction);
-      const existing = state.sourcesPool[key];
-      const existingByUrl = new Map(
-        (existing?.sources ?? []).map((s) => [s.url, s]),
-      );
-      for (const s of sources) {
-        if (!existingByUrl.has(s.url)) existingByUrl.set(s.url, s);
-      }
       state.sourcesPool[key] = {
-        sources: Array.from(existingByUrl.values()),
-        product: existing?.product || productName,
+        sources: [...sources],
+        product: state.sourcesPool[key]?.product || productName,
         lastFetchedAt: new Date().toISOString(),
       };
     },
