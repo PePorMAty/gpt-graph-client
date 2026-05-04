@@ -317,7 +317,13 @@ const gptSlice = createSlice({
           session.currentProductNodeId;
       }
 
-      // Selective source transfer: copy pool to new products NOT in insufficientProducts
+      // Унаследование источников от родителя в новые потомки:
+      // - копируем pool родителя только в те новые product-ноды, которых НЕТ
+      //   в insufficientProducts (для них модель явно сказала, что текущих
+      //   источников недостаточно — нужно искать заново);
+      // - не трогаем pool потомка, если у него уже есть собственный pool;
+      // - переиск источников у конкретного продукта (addSourcesToPool)
+      //   затирает старый pool ТОЛЬКО у этого продукта, не у братьев/детей.
       const anchorLabel =
         anchor.data?.label || (anchor as { label?: string }).label || "";
       if (anchorLabel) {
@@ -357,11 +363,10 @@ const gptSlice = createSlice({
         }
       }
 
-      // Clean up step alternative nodes
-      const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
-      const altEdgePrefix = `step::${session.rootNodeId}::${session.direction}::alt-edge::`;
-      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(altPrefix));
-      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(altEdgePrefix));
+      // Alt-ноды у anchor НЕ трогаем: пользователь мог принять основной шаг,
+      // оставив альтернативы как опции для последующего построения.
+      // Удаляются alt-ноды только при accept конкретной альтернативы — это
+      // делает caller отдельно (см. baseResult.onAcceptStep в Flow.tsx).
 
       session.pendingStep = null;
       session.status = "idle";
@@ -417,18 +422,14 @@ const gptSlice = createSlice({
         sources: import("../../store/types").TechnologySource[];
       }>,
     ) => {
+      // Замена, а не merge: каждый успешный поиск источников полностью затирает
+      // pool именно этого (productName, direction). Pool братьев / предков /
+      // потомков не трогается — у них другие ключи.
       const { productName, direction, sources } = action.payload;
       const key = sourcesPoolKey(productName, direction);
-      const existing = state.sourcesPool[key];
-      const existingByUrl = new Map(
-        (existing?.sources ?? []).map((s) => [s.url, s]),
-      );
-      for (const s of sources) {
-        if (!existingByUrl.has(s.url)) existingByUrl.set(s.url, s);
-      }
       state.sourcesPool[key] = {
-        sources: Array.from(existingByUrl.values()),
-        product: existing?.product || productName,
+        sources: [...sources],
+        product: state.sourcesPool[key]?.product || productName,
         lastFetchedAt: new Date().toISOString(),
       };
     },
@@ -459,6 +460,15 @@ const gptSlice = createSlice({
       const prefix = `step::${nodeId}::${direction}::alt::`;
       const edgePrefix = `step::${nodeId}::${direction}::alt-edge::`;
 
+      // Сохраняем позиции уже существующих alt-нод (пользователь мог их перетащить).
+      // При пересоздании по тому же altNodeId переиспользуем сохранённые координаты.
+      const existingPositions = new Map();
+      for (const n of state.data.nodes) {
+        if (n.id.startsWith(prefix) && n.position) {
+          existingPositions.set(n.id, { x: n.position.x, y: n.position.y });
+        }
+      }
+
       state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
       state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
 
@@ -477,13 +487,15 @@ const gptSlice = createSlice({
           idx % 2 === 0
             ? -(Math.floor(idx / 2) + 1)
             : Math.floor(idx / 2) + 1;
-        const x = rx + side * spacingX;
-        const y = ry + sign * stepY;
+        const defaultX = rx + side * spacingX;
+        const defaultY = ry + sign * stepY;
+        const saved = existingPositions.get(altNodeId);
+        const position = saved ?? { x: defaultX, y: defaultY };
 
         state.data.nodes.push({
           id: altNodeId,
           type: "transformation",
-          position: { x, y },
+          position,
           data: {
             label: alt.title,
             description: alt.fullDescription,

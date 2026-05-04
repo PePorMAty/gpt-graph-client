@@ -1,10 +1,10 @@
 import { useMemo, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
-import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
+import { getDefaultStepSourcesPrompt } from "../../prompts/sourcesPrompt";
 import {
-  getDefaultAggregateFullPrompt,
-  splitAggregatePrompt,
+  getDefaultStepAggregateFullPrompt,
+  splitStepAggregatePrompt,
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import styles from "./FlowPanel.module.css";
@@ -89,7 +89,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
 
   const autoSrcPrompt = useMemo(
-    () => getDefaultSourcesPrompt(direction, productName, maxItems),
+    () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
     [direction, productName, maxItems],
   );
   const displayedSrcPrompt = manualSrcPrompt ?? autoSrcPrompt;
@@ -101,7 +101,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
 
   const autoAggPrompt = useMemo(
-    () => getDefaultAggregateFullPrompt(direction, productName),
+    () => getDefaultStepAggregateFullPrompt(direction, productName),
     [direction, productName],
   );
   const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
@@ -110,7 +110,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   // ── Build prompt state ──
   const [buildPromptOpen, setBuildPromptOpen] = useState(false);
-  const [manualBuildPrompt, setManualBuildPrompt] = useState<string | null>(null);
+  const [manualBuildPrompt, setManualBuildPrompt] = useState<string | null>(
+    null,
+  );
 
   const autoBuildPrompt = useMemo(
     () => getDefaultChainSystemPrompt(productName),
@@ -130,7 +132,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   const handleAggregate = () => {
     if (isAggPromptDirty) {
-      const { system, user } = splitAggregatePrompt(displayedAggPrompt);
+      const { system, user } = splitStepAggregatePrompt(displayedAggPrompt);
       onAggregateStepSources?.(system, user);
     } else {
       onAggregateStepSources?.();
@@ -171,12 +173,16 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           onClick={() => setBuildPromptOpen((v) => !v)}
           className={styles.promptToggle}
         >
-          {buildPromptOpen ? "Скрыть промпт построения" : "Редактировать промпт построения"}
+          {buildPromptOpen
+            ? "Скрыть промпт построения"
+            : "Редактировать промпт построения"}
         </button>
 
         {buildPromptOpen && (
           <div className={styles.promptEditor}>
-            <label className={styles.promptLabel}>Системный промпт построения шага:</label>
+            <label className={styles.promptLabel}>
+              Системный промпт построения шага:
+            </label>
             <textarea
               value={displayedBuildPrompt}
               onChange={(e) => setManualBuildPrompt(e.target.value)}
@@ -193,7 +199,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               </button>
             )}
             {isBuildPromptEmpty && (
-              <div className={styles.errorText}>Промпт не может быть пустым</div>
+              <div className={styles.errorText}>
+                Промпт не может быть пустым
+              </div>
             )}
           </div>
         )}
@@ -226,8 +234,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           stepChainInsufficientProducts.length > 0 && (
             <div className={styles.warningText}>
               Нужны дополнительные источники
-              {` для: ${stepChainInsufficientProducts.join(", ")}`}.
-              Откройте панель этих продуктов и выполните поиск источников.
+              {` для: ${stepChainInsufficientProducts.join(", ")}`}. Откройте
+              панель этих продуктов и выполните поиск источников.
             </div>
           )}
 
@@ -240,9 +248,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             step={pendingStep}
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
-            onAccept={(filteredStep) =>
-              onAcceptStep?.(undefined, filteredStep)
-            }
+            onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
             onRetry={() => onRetryStep?.()}
             onReject={() => onRejectStep?.()}
           />
@@ -272,7 +278,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               max={5}
               value={maxItems}
               onChange={(e) =>
-                setMaxItems(Math.min(5, Math.max(2, Number(e.target.value) || 2)))
+                setMaxItems(
+                  Math.min(5, Math.max(2, Number(e.target.value) || 2)),
+                )
               }
               className={styles.maxItemsInput}
             />
@@ -284,12 +292,16 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             onClick={() => setSrcPromptOpen((v) => !v)}
             className={styles.promptToggle}
           >
-            {srcPromptOpen ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
+            {srcPromptOpen
+              ? "Скрыть промпт поиска"
+              : "Редактировать промпт поиска"}
           </button>
 
           {srcPromptOpen && (
             <div className={styles.promptEditor}>
-              <label className={styles.promptLabel}>Промпт поиска источников:</label>
+              <label className={styles.promptLabel}>
+                Промпт поиска источников:
+              </label>
               <textarea
                 value={displayedSrcPrompt}
                 onChange={(e) => setManualSrcPrompt(e.target.value)}
@@ -306,7 +318,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 </button>
               )}
               {isSrcPromptEmpty && (
-                <div className={styles.errorText}>Промпт не может быть пустым</div>
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
               )}
             </div>
           )}
@@ -314,9 +328,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
-              <span>
-                Поиск источников для «{productName}»...
-              </span>
+              <span>Поиск источников для «{productName}»...</span>
             </div>
           )}
           <button
@@ -332,9 +344,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 : "Найти источники (шаг)"}
           </button>
           {stepSourcesError && (
-            <div className={styles.errorText}>
-              Ошибка: {stepSourcesError}
-            </div>
+            <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
           )}
         </>
       )}
@@ -348,7 +358,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             onClick={() => setAggPromptOpen((v) => !v)}
             className={styles.promptToggle}
           >
-            {aggPromptOpen ? "Скрыть промпт обобщения" : "Редактировать промпт обобщения"}
+            {aggPromptOpen
+              ? "Скрыть промпт обобщения"
+              : "Редактировать промпт обобщения"}
           </button>
 
           {aggPromptOpen && (
@@ -372,7 +384,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 </button>
               )}
               {isAggPromptEmpty && (
-                <div className={styles.errorText}>Промпт не может быть пустым</div>
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
               )}
             </div>
           )}
@@ -386,7 +400,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           <button
             type="button"
             onClick={handleAggregate}
-            disabled={aggregateLoading || stepSources.length < 1 || isAggPromptEmpty}
+            disabled={
+              aggregateLoading || stepSources.length < 1 || isAggPromptEmpty
+            }
             className={styles.findSourcesButton}
           >
             {aggregateLoading
@@ -402,12 +418,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            {sourcesLoading ? "Поиск..." : "Добрать источники"}
+            {sourcesLoading ? "Поиск..." : "Найти источники заново"}
           </button>
           {stepAggregateError && (
-            <div className={styles.errorText}>
-              Ошибка: {stepAggregateError}
-            </div>
+            <div className={styles.errorText}>Ошибка: {stepAggregateError}</div>
           )}
         </>
       )}
@@ -430,7 +444,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           >
             {sourcesLoading
               ? "Поиск..."
-              : `Добрать источники для «${productName}»`}
+              : `Найти источники заново для «${productName}»`}
           </button>
         </>
       )}
@@ -456,12 +470,16 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             onClick={() => setBuildPromptOpen((v) => !v)}
             className={styles.promptToggle}
           >
-            {buildPromptOpen ? "Скрыть промпт построения" : "Редактировать промпт построения"}
+            {buildPromptOpen
+              ? "Скрыть промпт построения"
+              : "Редактировать промпт построения"}
           </button>
 
           {buildPromptOpen && (
             <div className={styles.promptEditor}>
-              <label className={styles.promptLabel}>Системный промпт построения шага:</label>
+              <label className={styles.promptLabel}>
+                Системный промпт построения шага:
+              </label>
               <textarea
                 value={displayedBuildPrompt}
                 onChange={(e) => setManualBuildPrompt(e.target.value)}
@@ -478,7 +496,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 </button>
               )}
               {isBuildPromptEmpty && (
-                <div className={styles.errorText}>Промпт не может быть пустым</div>
+                <div className={styles.errorText}>
+                  Промпт не может быть пустым
+                </div>
               )}
             </div>
           )}
@@ -517,7 +537,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            {sourcesLoading ? "Поиск..." : "Добрать источники"}
+            {sourcesLoading ? "Поиск..." : "Найти источники заново"}
           </button>
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
@@ -531,8 +551,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         stepChainInsufficientProducts.length > 0 && (
           <div className={styles.warningText}>
             Для продолжения цепочки нужны дополнительные источники
-            {` для: ${stepChainInsufficientProducts.join(", ")}`}.
-            Откройте панель этих продуктов и выполните поиск источников.
+            {` для: ${stepChainInsufficientProducts.join(", ")}`}. Откройте
+            панель этих продуктов и выполните поиск источников.
           </div>
         )}
 
@@ -598,9 +618,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           step={pendingStep}
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
-          onAccept={(filteredStep) =>
-            onAcceptStep?.(undefined, filteredStep)
-          }
+          onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           onRetry={() => onRetryStep?.()}
           onReject={() => onRejectStep?.()}
         />

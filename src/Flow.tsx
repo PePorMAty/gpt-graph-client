@@ -565,6 +565,9 @@ export const Flow = () => {
           }),
         );
         dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
+        // stepAggregatedText НЕ чистим: после построения основного пути
+        // альтернативы должны остаться видимыми, и useEffect пересоздаст
+        // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
     [dispatch, selectedNodeId],
   );
@@ -1014,6 +1017,14 @@ export const Flow = () => {
               }),
             );
             dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
+            // Один из вариантов реализован → виртуальные альтернативы у этого
+            // родителя становятся неактуальны. Чистим aggregated text родителя
+            // и явно удаляем alt-ноды (useEffect не сработает: selectedNodeId
+            // здесь — это alt-нода, а не rootNodeId).
+            dispatch(clearStepState({ nodeId: rootNodeId, direction }));
+            dispatch(
+              removeStepAlternativeNodes({ nodeId: rootNodeId, direction }),
+            );
           };
 
           baseResult.onRejectStep = () => {
