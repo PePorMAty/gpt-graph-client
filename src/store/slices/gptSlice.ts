@@ -363,11 +363,10 @@ const gptSlice = createSlice({
         }
       }
 
-      // Clean up step alternative nodes
-      const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
-      const altEdgePrefix = `step::${session.rootNodeId}::${session.direction}::alt-edge::`;
-      state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(altPrefix));
-      state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(altEdgePrefix));
+      // Alt-ноды у anchor НЕ трогаем: пользователь мог принять основной шаг,
+      // оставив альтернативы как опции для последующего построения.
+      // Удаляются alt-ноды только при accept конкретной альтернативы — это
+      // делает caller отдельно (см. baseResult.onAcceptStep в Flow.tsx).
 
       session.pendingStep = null;
       session.status = "idle";
@@ -461,6 +460,15 @@ const gptSlice = createSlice({
       const prefix = `step::${nodeId}::${direction}::alt::`;
       const edgePrefix = `step::${nodeId}::${direction}::alt-edge::`;
 
+      // Сохраняем позиции уже существующих alt-нод (пользователь мог их перетащить).
+      // При пересоздании по тому же altNodeId переиспользуем сохранённые координаты.
+      const existingPositions = new Map();
+      for (const n of state.data.nodes) {
+        if (n.id.startsWith(prefix) && n.position) {
+          existingPositions.set(n.id, { x: n.position.x, y: n.position.y });
+        }
+      }
+
       state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
       state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
 
@@ -479,13 +487,15 @@ const gptSlice = createSlice({
           idx % 2 === 0
             ? -(Math.floor(idx / 2) + 1)
             : Math.floor(idx / 2) + 1;
-        const x = rx + side * spacingX;
-        const y = ry + sign * stepY;
+        const defaultX = rx + side * spacingX;
+        const defaultY = ry + sign * stepY;
+        const saved = existingPositions.get(altNodeId);
+        const position = saved ?? { x: defaultX, y: defaultY };
 
         state.data.nodes.push({
           id: altNodeId,
           type: "transformation",
-          position: { x, y },
+          position,
           data: {
             label: alt.title,
             description: alt.fullDescription,
