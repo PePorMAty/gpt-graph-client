@@ -570,7 +570,7 @@ export const Flow = () => {
   );
 
   const handleFetchStepSourcesV2 = useCallback(
-    (direction: BuildDirection) => (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+    (direction: BuildDirection) => (opts?: { customSystemPrompt?: string; maxItems?: number; provider?: string; model?: string }) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -595,6 +595,8 @@ export const Flow = () => {
           ...(existingSources.length ? { existingSources } : {}),
           ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
           ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
+          ...(opts?.provider ? { provider: opts.provider } : {}),
+          ...(opts?.model ? { model: opts.model } : {}),
         }),
       );
     },
@@ -608,7 +610,7 @@ export const Flow = () => {
   );
 
   const handleAggregateStepSources = useCallback(
-    (direction: BuildDirection) => (customSystemPrompt?: string, customUserPrompt?: string) => {
+    (direction: BuildDirection) => (customSystemPrompt?: string, customUserPrompt?: string, provider?: string, model?: string) => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();
@@ -642,6 +644,8 @@ export const Flow = () => {
           existingChain,
           ...(customSystemPrompt ? { customSystemPrompt } : {}),
           ...(customUserPrompt ? { customUserPrompt } : {}),
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
         }),
       );
     },
@@ -654,7 +658,7 @@ export const Flow = () => {
   );
 
   const handleBuildStep = useCallback(
-    (direction: BuildDirection) => (customText?: string, customSystemPrompt?: string) => {
+    (direction: BuildDirection) => (customText?: string, customSystemPrompt?: string, provider?: string, model?: string) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -686,6 +690,8 @@ export const Flow = () => {
           techText: aggregated,
           existingSources: poolSources.length ? poolSources : undefined,
           ...(customSystemPrompt ? { customSystemPrompt } : {}),
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
         }),
       );
     },

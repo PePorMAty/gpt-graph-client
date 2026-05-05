@@ -1,4 +1,4 @@
-import { useMemo, useState, type FC } from "react";
+import { useMemo, useState, useCallback, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
@@ -8,6 +8,37 @@ import {
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import styles from "./FlowPanel.module.css";
+
+const AI_PROVIDERS = [
+  { value: "", label: "По умолчанию (сервер)" },
+  { value: "openai", label: "OpenAI" },
+  { value: "qwen", label: "Qwen (DashScope)" },
+] as const;
+
+const AI_MODELS: Record<string, Array<{ value: string; label: string }>> = {
+  "": [{ value: "", label: "По умолчанию" }],
+  openai: [
+    { value: "", label: "По умолчанию (gpt-5-mini)" },
+    { value: "gpt-5-mini", label: "GPT-5 Mini" },
+    { value: "gpt-5", label: "GPT-5" },
+  ],
+  qwen: [
+    { value: "", label: "По умолчанию (qwen-plus)" },
+    { value: "qwen3-max", label: "Qwen3 Max" },
+    { value: "qwen3.5-plus", label: "Qwen3.5 Plus" },
+    { value: "qwen-plus", label: "Qwen Plus" },
+    { value: "qwen-flash", label: "Qwen Flash" },
+    { value: "qwen3-coder-plus", label: "Qwen3 Coder Plus" },
+    { value: "qwen3-coder-flash", label: "Qwen3 Coder Flash" },
+  ],
+};
+
+type StageAiConfig = { provider: string; model: string };
+type AiConfigState = {
+  sources: StageAiConfig;
+  aggregate: StageAiConfig;
+  build: StageAiConfig;
+};
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
@@ -120,27 +151,55 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const isBuildPromptDirty = manualBuildPrompt !== null;
   const isBuildPromptEmpty = displayedBuildPrompt.trim() === "";
 
+  // ── AI Config state ──
+  const [aiConfigOpen, setAiConfigOpen] = useState(false);
+  const [aiConfig, setAiConfig] = useState<AiConfigState>({
+    sources: { provider: "", model: "" },
+    aggregate: { provider: "", model: "" },
+    build: { provider: "", model: "" },
+  });
+
+  const updateAiConfig = useCallback(
+    (stage: keyof AiConfigState, field: "provider" | "model", value: string) => {
+      setAiConfig((prev) => {
+        const updated = { ...prev, [stage]: { ...prev[stage], [field]: value } };
+        if (field === "provider" && value !== prev[stage].provider) {
+          updated[stage].model = "";
+        }
+        return updated;
+      });
+    },
+    [],
+  );
+
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
+    const { provider, model } = aiConfig.sources;
     onFetchStepSources?.({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
+      ...(provider ? { provider } : {}),
+      ...(model ? { model } : {}),
     });
   };
 
   const handleAggregate = () => {
+    const { provider, model } = aiConfig.aggregate;
     if (isAggPromptDirty) {
       const { system, user } = splitAggregatePrompt(displayedAggPrompt);
-      onAggregateStepSources?.(system, user);
+      onAggregateStepSources?.(system, user, provider || undefined, model || undefined);
     } else {
-      onAggregateStepSources?.();
+      onAggregateStepSources?.(undefined, undefined, provider || undefined, model || undefined);
     }
   };
 
   const handleBuild = (customText?: string) => {
+    const { provider, model } = aiConfig.build;
     onBuildStep?.(
       customText,
       isBuildPromptDirty ? displayedBuildPrompt : undefined,
+      provider || undefined,
+      model || undefined,
     );
   };
 
@@ -251,6 +310,52 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     );
   }
 
+  // ── AI Config UI block ──
+  const aiConfigBlock = (
+    <>
+      <button
+        type="button"
+        onClick={() => setAiConfigOpen((v) => !v)}
+        className={styles.promptToggle}
+      >
+        {aiConfigOpen ? "Скрыть AI Config" : "AI Config (провайдер/модель)"}
+      </button>
+
+      {aiConfigOpen && (
+        <div className={styles.aiConfigSection}>
+          {(["sources", "aggregate", "build"] as const).map((stage) => {
+            const stageLabel = stage === "sources" ? "Поиск" : stage === "aggregate" ? "Обобщение" : "Построение";
+            const cfg = aiConfig[stage];
+            const models = AI_MODELS[cfg.provider] || AI_MODELS[""];
+            return (
+              <div key={stage} className={styles.aiConfigRow}>
+                <span className={styles.aiConfigLabel}>{stageLabel}</span>
+                <select
+                  value={cfg.provider}
+                  onChange={(e) => updateAiConfig(stage, "provider", e.target.value)}
+                  className={styles.aiConfigSelect}
+                >
+                  {AI_PROVIDERS.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={cfg.model}
+                  onChange={(e) => updateAiConfig(stage, "model", e.target.value)}
+                  className={styles.aiConfigSelect}
+                >
+                  {models.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
   // ── Regular product node: standard flow ──
   return (
     <div className={styles.formGroup}>
@@ -260,6 +365,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       <div className={styles.sourcesTitle}>
         Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
+
+      {aiConfigBlock}
 
       {/* Stage 1: fetch sources button (when no sources yet) */}
       {!hasSources && (

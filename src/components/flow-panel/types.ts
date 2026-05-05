@@ -88,9 +88,9 @@ export interface DirectionTabProps {
   stepBuildStatus?: Status;
   stepBuildError?: string | null;
 
-  onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
-  onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
-  onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
+  onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number; provider?: string; model?: string }) => void;
+  onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string, provider?: string, model?: string) => void;
+  onBuildStep?: (customText?: string, customSystemPrompt?: string, provider?: string, model?: string) => void;
   onClearStepState?: () => void;
 
   // --- alternative node (step-by-step flow) ---

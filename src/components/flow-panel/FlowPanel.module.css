@@ -644,3 +644,41 @@
   font-size: 14px;
   text-align: center;
 }
+
+/* ── AI Config ── */
+
+.aiConfigSection {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #f8f9fa;
+}
+
+.aiConfigRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.aiConfigRow:last-child {
+  margin-bottom: 0;
+}
+
+.aiConfigLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  min-width: 80px;
+}
+
+.aiConfigSelect {
+  flex: 1;
+  padding: 3px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fff;
+  color: #333;
+}
