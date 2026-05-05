@@ -152,7 +152,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const isBuildPromptEmpty = displayedBuildPrompt.trim() === "";
 
   // ── AI Config state ──
-  const [aiConfigOpen, setAiConfigOpen] = useState(false);
   const [aiConfig, setAiConfig] = useState<AiConfigState>({
     sources: { provider: "", model: "" },
     aggregate: { provider: "", model: "" },
@@ -171,6 +170,33 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     },
     [],
   );
+
+  const renderAiSelect = (stage: keyof AiConfigState) => {
+    const cfg = aiConfig[stage];
+    const models = AI_MODELS[cfg.provider] || AI_MODELS[""];
+    return (
+      <div className={styles.aiConfigRow}>
+        <select
+          value={cfg.provider}
+          onChange={(e) => updateAiConfig(stage, "provider", e.target.value)}
+          className={styles.aiConfigSelect}
+        >
+          {AI_PROVIDERS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
+        <select
+          value={cfg.model}
+          onChange={(e) => updateAiConfig(stage, "model", e.target.value)}
+          className={styles.aiConfigSelect}
+        >
+          {models.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  };
 
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
@@ -257,6 +283,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </div>
         )}
 
+        {renderAiSelect("build")}
+
         {buildLoading && (
           <div className={styles.tabLoader}>
             <div className={styles.tabSpinner} />
@@ -310,52 +338,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     );
   }
 
-  // ── AI Config UI block ──
-  const aiConfigBlock = (
-    <>
-      <button
-        type="button"
-        onClick={() => setAiConfigOpen((v) => !v)}
-        className={styles.promptToggle}
-      >
-        {aiConfigOpen ? "Скрыть AI Config" : "AI Config (провайдер/модель)"}
-      </button>
-
-      {aiConfigOpen && (
-        <div className={styles.aiConfigSection}>
-          {(["sources", "aggregate", "build"] as const).map((stage) => {
-            const stageLabel = stage === "sources" ? "Поиск" : stage === "aggregate" ? "Обобщение" : "Построение";
-            const cfg = aiConfig[stage];
-            const models = AI_MODELS[cfg.provider] || AI_MODELS[""];
-            return (
-              <div key={stage} className={styles.aiConfigRow}>
-                <span className={styles.aiConfigLabel}>{stageLabel}</span>
-                <select
-                  value={cfg.provider}
-                  onChange={(e) => updateAiConfig(stage, "provider", e.target.value)}
-                  className={styles.aiConfigSelect}
-                >
-                  {AI_PROVIDERS.map((p) => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
-                <select
-                  value={cfg.model}
-                  onChange={(e) => updateAiConfig(stage, "model", e.target.value)}
-                  className={styles.aiConfigSelect}
-                >
-                  {models.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-
   // ── Regular product node: standard flow ──
   return (
     <div className={styles.formGroup}>
@@ -365,8 +347,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       <div className={styles.sourcesTitle}>
         Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
-
-      {aiConfigBlock}
 
       {/* Stage 1: fetch sources button (when no sources yet) */}
       {!hasSources && (
@@ -417,6 +397,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
+
+          {renderAiSelect("sources")}
 
           {sourcesLoading && (
             <div className={styles.tabLoader}>
@@ -483,6 +465,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
+
+          {renderAiSelect("aggregate")}
 
           {aggregateLoading && (
             <div className={styles.tabLoader}>
@@ -589,6 +573,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
+
+          {renderAiSelect("build")}
 
           {buildLoading && (
             <div className={styles.tabLoader}>
