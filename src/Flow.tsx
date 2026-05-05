@@ -29,6 +29,7 @@ import {
   setGraphData,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
+  acceptStepAlternative,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -565,6 +566,9 @@ export const Flow = () => {
           }),
         );
         dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
+        // stepAggregatedText НЕ чистим: после построения основного пути
+        // альтернативы должны остаться видимыми, и useEffect пересоздаст
+        // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
     [dispatch, selectedNodeId],
   );
@@ -1020,6 +1024,17 @@ export const Flow = () => {
               }),
             );
             dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
+            // Помечаем именно эту альтернативу как принятую: alt-нода с этим idx
+            // удаляется и в дальнейшем не пересоздаётся useEffect-ом, остальные
+            // альтернативы остаются доступны для построения.
+            const altIdxStr =
+              (selectedNode?.id ?? "").split("::").pop() ?? "";
+            const idx = parseInt(altIdxStr, 10);
+            if (Number.isFinite(idx)) {
+              dispatch(
+                acceptStepAlternative({ rootNodeId, direction, idx }),
+              );
+            }
           };
 
           baseResult.onRejectStep = () => {

@@ -10,7 +10,10 @@ import type {
   TechnologySource,
 } from "../types";
 import type { TechChain } from "../../utils/chainToFlow";
-import { addSourcesToPool } from "../slices/gptSlice";
+import {
+  addSourcesToPool,
+  clearAcceptedStepAlternatives,
+} from "../slices/gptSlice";
 
 export const fetchChainStep = createAsyncThunk<
   { sessionKey: string; response: StepChainApiResponse },
@@ -214,9 +217,17 @@ export const aggregateStepSources = createAsyncThunk<
     provider?: string;
     model?: string;
   },
-  { rejectValue: string }
+  { state: RootState; rejectValue: string }
 >("stepBuild/aggregate", async (args, thunkApi) => {
   try {
+    // Список всех product-нод графа: aggregate должен избегать их в качестве
+    // НОВЫХ выходов шага (иначе модель повторяет уже построенный продукт).
+    const state = thunkApi.getState().graph;
+    const existingProducts = state.data.nodes
+      .filter((n) => n.type === "product")
+      .map((n) => String(n.data?.label || "").trim())
+      .filter(Boolean);
+
     const res = await axios.post<StepAggregateApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/step/aggregate`,
       {
@@ -224,6 +235,7 @@ export const aggregateStepSources = createAsyncThunk<
         direction: args.direction,
         sources: args.sources,
         existingChain: args.existingChain,
+        existingProducts,
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
@@ -241,6 +253,15 @@ export const aggregateStepSources = createAsyncThunk<
         res.data?.error || "step/aggregate: server returned success=false",
       );
     }
+
+    // Новое обобщение → набор альтернатив сменился, ранее принятые indices
+    // теперь не относятся к актуальному списку.
+    thunkApi.dispatch(
+      clearAcceptedStepAlternatives({
+        nodeId: args.nodeId,
+        direction: args.direction,
+      }),
+    );
 
     if (res.data.status === "needs-sources") {
       return {
