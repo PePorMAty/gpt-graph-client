@@ -15,21 +15,21 @@ const AI_PROVIDERS = [
   { value: "qwen", label: "Qwen (DashScope)" },
 ] as const;
 
-const AI_MODELS: Record<string, Array<{ value: string; label: string }>> = {
+const AI_MODELS: Record<string, Array<{ value: string; label: string; hint?: string }>> = {
   "": [{ value: "", label: "По умолчанию" }],
   openai: [
     { value: "", label: "По умолчанию (gpt-5-mini)" },
-    { value: "gpt-5-mini", label: "GPT-5 Mini" },
-    { value: "gpt-5", label: "GPT-5" },
+    { value: "gpt-5-mini", label: "GPT-5 Mini", hint: "Быстрый и дешёвый, хорош для рутинных задач" },
+    { value: "gpt-5", label: "GPT-5", hint: "Максимальное качество, сложные рассуждения, дороже" },
   ],
   qwen: [
     { value: "", label: "По умолчанию (qwen-plus)" },
-    { value: "qwen3-max", label: "Qwen3 Max" },
-    { value: "qwen3.5-plus", label: "Qwen3.5 Plus" },
-    { value: "qwen-plus", label: "Qwen Plus" },
-    { value: "qwen-flash", label: "Qwen Flash" },
-    { value: "qwen3-coder-plus", label: "Qwen3 Coder Plus" },
-    { value: "qwen3-coder-flash", label: "Qwen3 Coder Flash" },
+    { value: "qwen3-max", label: "Qwen3 Max", hint: "Премиум: лучшее качество, глубокий reasoning, web search agent" },
+    { value: "qwen3.5-plus", label: "Qwen3.5 Plus", hint: "Качество ≈ Max, но быстрее и дешевле, мультимодальный" },
+    { value: "qwen-plus", label: "Qwen Plus", hint: "Баланс качество/цена/скорость, средняя сложность задач" },
+    { value: "qwen-flash", label: "Qwen Flash", hint: "Самый быстрый и дешёвый, простые задачи, поддержка кеша" },
+    { value: "qwen3-coder-plus", label: "Qwen3 Coder Plus", hint: "Специализирован на коде и агентных задачах, 480B параметров" },
+    { value: "qwen3-coder-flash", label: "Qwen3 Coder Flash", hint: "Быстрый кодовый, 30B параметров, достаточно для типовых задач" },
   ],
 };
 
@@ -174,26 +174,31 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const renderAiSelect = (stage: keyof AiConfigState) => {
     const cfg = aiConfig[stage];
     const models = AI_MODELS[cfg.provider] || AI_MODELS[""];
+    const selectedModel = models.find((m) => m.value === cfg.model);
+    const hint = selectedModel?.hint;
     return (
-      <div className={styles.aiConfigRow}>
-        <select
-          value={cfg.provider}
-          onChange={(e) => updateAiConfig(stage, "provider", e.target.value)}
-          className={styles.aiConfigSelect}
-        >
-          {AI_PROVIDERS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
-        </select>
-        <select
-          value={cfg.model}
-          onChange={(e) => updateAiConfig(stage, "model", e.target.value)}
-          className={styles.aiConfigSelect}
-        >
-          {models.map((m) => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
+      <div className={styles.aiConfigBlock}>
+        <div className={styles.aiConfigRow}>
+          <select
+            value={cfg.provider}
+            onChange={(e) => updateAiConfig(stage, "provider", e.target.value)}
+            className={styles.aiConfigSelect}
+          >
+            {AI_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+          <select
+            value={cfg.model}
+            onChange={(e) => updateAiConfig(stage, "model", e.target.value)}
+            className={styles.aiConfigSelect}
+          >
+            {models.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        {hint && <div className={styles.aiConfigHint}>{hint}</div>}
       </div>
     );
   };

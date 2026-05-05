@@ -647,11 +647,14 @@
 
 /* ── AI Config ── */
 
+.aiConfigBlock {
+  margin-bottom: 6px;
+}
+
 .aiConfigRow {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
 }
 
 .aiConfigSelect {
@@ -662,4 +665,11 @@
   font-size: 12px;
   background: #fff;
   color: #333;
+}
+
+.aiConfigHint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #888;
+  line-height: 1.3;
 }
