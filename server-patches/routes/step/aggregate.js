@@ -103,16 +103,13 @@ router.post("/gpt/step/aggregate", async (req, res) => {
   const customUserPrompt = req.body?.customUserPrompt
     ? String(req.body.customUserPrompt).trim()
     : null;
+  const provider = req.body?.provider ? String(req.body.provider).trim() : undefined;
+  const model = req.body?.model ? String(req.body.model).trim() : undefined;
 
   if (!productName) {
     return res
       .status(400)
       .json({ success: false, error: "productName is required" });
-  }
-  if (!process.env.GPT_API_KEY) {
-    return res
-      .status(500)
-      .json({ success: false, error: "GPT_API_KEY is not set in env" });
   }
   if (!sources.length) {
     return res
@@ -168,9 +165,10 @@ router.post("/gpt/step/aggregate", async (req, res) => {
     };
 
     const resp = await callOpenAIResponsesRaw({
-      apiKey: process.env.GPT_API_KEY,
       payload,
       timeoutMs: 10 * 60 * 1000,
+      provider,
+      model,
     });
 
     if (resp?.status !== "completed") {

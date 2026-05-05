@@ -205,6 +205,8 @@ router.post("/gpt/step/build", async (req, res) => {
   const customSystemPrompt = req.body?.customSystemPrompt
     ? String(req.body.customSystemPrompt).trim()
     : null;
+  const provider = req.body?.provider ? String(req.body.provider).trim() : undefined;
+  const model = req.body?.model ? String(req.body.model).trim() : undefined;
 
   if (!productName) {
     return res
@@ -215,11 +217,6 @@ router.post("/gpt/step/build", async (req, res) => {
     return res
       .status(400)
       .json({ success: false, error: "techText is required" });
-  }
-  if (!process.env.GPT_API_KEY) {
-    return res
-      .status(500)
-      .json({ success: false, error: "GPT_API_KEY is not set in env" });
   }
 
   const stream = startAntiIdle(res, req, { heartbeatMs: 15000 });
@@ -256,9 +253,10 @@ router.post("/gpt/step/build", async (req, res) => {
     };
 
     const resp = await callOpenAIResponsesRaw({
-      apiKey: process.env.GPT_API_KEY,
       payload,
       timeoutMs: 10 * 60 * 1000,
+      provider,
+      model,
     });
 
     if (resp?.status !== "completed") {
@@ -374,9 +372,9 @@ router.post("/gpt/step/build", async (req, res) => {
     if (newProducts.length > 0 && sourcesDescriptions.length > 0) {
       try {
         const suffResp = await callOpenAIResponsesRaw({
-          apiKey: process.env.GPT_API_KEY,
+          provider,
+          model,
           payload: {
-            model: "gpt-5-mini",
             instructions: SUFFICIENCY_CHECK_SYSTEM,
             input: buildSufficiencyPrompt({
               newProducts,

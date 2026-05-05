@@ -1,34 +1,30 @@
-// routes/step/sources.js
-//
-// POST /gpt/step/sources — найти источники для ОДНОГО шага (один продукт).
-// Возвращает TechnologySource[] в JSON (тот же shape, что и /gpt/sources).
-//
-// Совместимость: существующий /gpt/sources НЕ трогаем. Этот роут параллельный.
-
+// routes/sources/sources.js
 const express = require("express");
 const router = express.Router();
 
-// reuse OpenAI utils from existing sources module
 const {
+  buildSourcesPrompt,
+  buildSourcesPromptUp,
   callOpenAIResponses,
   extractOutputText,
   safeJsonParse,
   normalizeAndFilterItems,
-} = require("../sources/utils");
+} = require("./utils");
 
-const { buildStepSourcesPromptDown } = require("./utils/prompts");
-
-// ---------- heartbeat (как в routes/sources/sources.js) ----------
+// аккуратный heartbeat, который НЕ ломает JSON
 function startAntiIdle(res, req, { heartbeatMs = 15000 } = {}) {
   let aborted = false;
 
+  // статус/хедеры надо отдать сразу, иначе nginx будет ждать "response header"
   res.status(200);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Accel-Buffering", "no");
+
+  // важно: протолкнуть заголовки и хотя бы 1 байт
   res.flushHeaders?.();
   try {
-    res.write(" ");
+    res.write(" "); // ведущий пробел допустим для JSON
   } catch {}
 
   const hb = setInterval(() => {
@@ -39,10 +35,12 @@ function startAntiIdle(res, req, { heartbeatMs = 15000 } = {}) {
   }, heartbeatMs);
 
   const stop = () => clearInterval(hb);
+
   req.on("aborted", () => {
     aborted = true;
     stop();
   });
+
   res.on("close", () => {
     if (!res.writableEnded) {
       aborted = true;
@@ -58,17 +56,14 @@ function startAntiIdle(res, req, { heartbeatMs = 15000 } = {}) {
   };
 }
 
-router.post("/gpt/step/sources", async (req, res) => {
+router.post("/gpt/sources", async (req, res) => {
   const t0 = Date.now();
 
-  // ---------- валидация ДО стрима ----------
+  // 1) Валидация ДО старта стрима (чтобы можно было вернуть 400/500 нормальным способом)
   const productName = String(req.body?.productName || "").trim();
+  const maxItemsRaw = Number(req.body?.maxItems ?? 5);
+  const maxItems = Number.isFinite(maxItemsRaw) ? maxItemsRaw : 5;
   const direction = req.body?.direction === "up" ? "up" : "down";
-  const maxItemsRaw = Number(req.body?.maxItems ?? 8);
-  const maxItems = Number.isFinite(maxItemsRaw) ? maxItemsRaw : 8;
-  const customSystemPrompt = req.body?.customSystemPrompt
-    ? String(req.body.customSystemPrompt).trim()
-    : null;
   const provider = req.body?.provider ? String(req.body.provider).trim() : undefined;
   const model = req.body?.model ? String(req.body.model).trim() : undefined;
 
@@ -77,29 +72,20 @@ router.post("/gpt/step/sources", async (req, res) => {
       .status(400)
       .json({ success: false, error: "productName is required" });
   }
-  if (maxItems < 1 || maxItems > 15) {
+  if (maxItems < 1 || maxItems > 10) {
     return res
       .status(400)
-      .json({ success: false, error: "maxItems must be between 1 and 15" });
+      .json({ success: false, error: "maxItems must be between 1 and 10" });
   }
 
-  // ---------- step-up: заглушка до появления up-промпта ----------
-  if (direction === "up") {
-    return res.status(200).json({
-      success: false,
-      error: "step-up not implemented yet",
-      product: productName,
-      direction,
-      sources: [],
-      took_ms: Date.now() - t0,
-    });
-  }
-
-  // ---------- step-down: OpenAI web-search + json_schema ----------
+  // 2) Стартуем anti-idle, чтобы браузер/прокси не резали долгий "молчаливый" запрос
   const stream = startAntiIdle(res, req, { heartbeatMs: 15000 });
 
   try {
-    const prompt = customSystemPrompt || buildStepSourcesPromptDown(productName, maxItems);
+    const prompt =
+      direction === "up"
+        ? buildSourcesPromptUp(productName, maxItems)
+        : buildSourcesPrompt(productName, maxItems);
 
     const openaiResp = await callOpenAIResponses({
       prompt,
@@ -113,6 +99,7 @@ router.post("/gpt/step/sources", async (req, res) => {
     if (stream.aborted) return;
 
     if (openaiResp?.status !== "completed") {
+      // статус уже 200 — поэтому реальный статус кладём внутрь
       return res.end(
         JSON.stringify({
           success: false,
@@ -141,6 +128,7 @@ router.post("/gpt/step/sources", async (req, res) => {
     }
 
     const items = normalizeAndFilterItems(parsed.items);
+
     if (items.length < 1) {
       return res.end(
         JSON.stringify({
@@ -153,21 +141,23 @@ router.post("/gpt/step/sources", async (req, res) => {
       );
     }
 
-    const blocks_preview = items.slice(0, maxItems).map((it, i) =>
-      [
-        `--- Блок ${i + 1} ---`,
-        `URL: ${it.url}`,
-        `access_hint: ${it.access_hint}`,
-        `technology_description: ${it.technology_description}`,
-      ].join("\n"),
-    );
+    const blocks_preview = items
+      .slice(0, maxItems)
+      .map((it, i) =>
+        [
+          `--- Блок ${i + 1} ---`,
+          `URL: ${it.url}`,
+          `access_hint: ${it.access_hint}`,
+          `technology_description: ${it.technology_description}`,
+        ].join("\n"),
+      );
 
     return res.end(
       JSON.stringify({
         success: true,
         product: productName,
-        direction,
         maxItems,
+        direction,
         blocks_preview,
         sources: items.slice(0, maxItems),
         took_ms: Date.now() - t0,
