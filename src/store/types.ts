@@ -26,6 +26,7 @@ export interface InitialGraphStateI {
   chainSessions: Record<string, ChainSessionData>;
   stepChainSessions: Record<string, StepChainSession>;
   sourcesPool: Record<string, SourcesPoolEntry>;
+  acceptedStepAlternatives: Record<string, number[]>;
 }
 
 export interface SourcesPoolEntry {
