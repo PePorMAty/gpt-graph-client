@@ -517,8 +517,8 @@ const gptSlice = createSlice({
           id: `${edgePrefix}${idx}`,
           source: nodeId,
           target: altNodeId,
-          sourceHandle: direction === "up" ? "bottom" : "top-source",
-          targetHandle: direction === "up" ? "top" : "bottom-target",
+          sourceHandle: direction === "down" ? "bottom" : "top-source",
+          targetHandle: direction === "down" ? "top" : "bottom-target",
           type: "straight",
           className: "edge--alt",
         });
@@ -729,8 +729,8 @@ const gptSlice = createSlice({
               id: `chain::${nodeId}::${direction}::alt-edge::${idx}`,
               source: nodeId,
               target: altNodeId,
-              sourceHandle: dir === "up" ? "bottom" : "top-source",
-              targetHandle: dir === "up" ? "top" : "bottom-target",
+              sourceHandle: dir === "down" ? "bottom" : "top-source",
+              targetHandle: dir === "down" ? "top" : "bottom-target",
               type: "straight",
               className: "edge--alt",
             });
