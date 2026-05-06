@@ -136,8 +136,8 @@ export function stepToFlow(
         id: edgeId,
         source: trFlowId,
         target: existingNodeId,
-        sourceHandle: !isDown ? "bottom" : "top-source",
-        targetHandle: !isDown ? "top" : "bottom-target",
+        sourceHandle: isDown ? "bottom" : "top-source",
+        targetHandle: isDown ? "top" : "bottom-target",
         type: "straight",
       });
       addedEdgeIds.push(edgeId);
@@ -171,8 +171,8 @@ export function stepToFlow(
         id: edgeId,
         source: trFlowId,
         target: pFlowId,
-        sourceHandle: !isDown ? "bottom" : "top-source",
-        targetHandle: !isDown ? "top" : "bottom-target",
+        sourceHandle: isDown ? "bottom" : "top-source",
+        targetHandle: isDown ? "top" : "bottom-target",
         type: "straight",
       });
       addedEdgeIds.push(edgeId);
