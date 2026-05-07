@@ -119,6 +119,17 @@ const gptSlice = createSlice({
       state.data.edges = applyEdgeChanges(action.payload, state.data.edges);
     },
     onConnect: (state, action: PayloadAction<Connection>) => {
+      const { source, target } = action.payload;
+      if (!source || !target) return;
+      if (source === target) return;
+
+      const exists = state.data.edges.some(
+        (e) =>
+          (e.source === source && e.target === target) ||
+          (e.source === target && e.target === source),
+      );
+      if (exists) return;
+
       state.data.edges = normalizeEdges(
         addEdge({ ...action.payload, type: "straight" }, state.data.edges),
       );
@@ -203,10 +214,10 @@ const gptSlice = createSlice({
 
       state.source = "loaded";
 
-      // ⚠️ rootId аккуратно
-      if (!state.rootId && action.payload.nodes.length > 0) {
-        state.rootId = findRootNodeId(state.data.nodes, state.data.edges);
-      }
+      state.rootId =
+        state.data.nodes.length > 0
+          ? findRootNodeId(state.data.nodes, state.data.edges)
+          : null;
 
       state.isError = false;
       state.error = null;
@@ -567,6 +578,67 @@ const gptSlice = createSlice({
     ) => {
       const { nodeId, direction } = action.payload;
       delete state.acceptedStepAlternatives[`${nodeId}::${direction}`];
+    },
+
+    insertTransformationBetween: (
+      state,
+      action: PayloadAction<{
+        edgeId: string;
+        fromNodeId: string;
+        toNodeId: string;
+        transformation: { name: string; description?: string };
+      }>,
+    ) => {
+      const { edgeId, fromNodeId, toNodeId, transformation } = action.payload;
+
+      const fromNode = state.data.nodes.find((n) => n.id === fromNodeId);
+      const toNode = state.data.nodes.find((n) => n.id === toNodeId);
+      if (!fromNode || !toNode) return;
+
+      const trId = `tr-between::${crypto.randomUUID()}`;
+      const midX = (fromNode.position.x + toNode.position.x) / 2;
+      const midY = (fromNode.position.y + toNode.position.y) / 2;
+
+      state.data.edges = state.data.edges.filter((e) => e.id !== edgeId);
+
+      state.data.nodes.push({
+        id: trId,
+        type: "transformation",
+        position: { x: midX, y: midY },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: {
+          label: transformation.name,
+          description: transformation.description ?? "",
+        },
+      });
+
+      const inEdgeId = `${trId}::in::${fromNodeId}`;
+      const outEdgeId = `${trId}::out::${toNodeId}`;
+
+      const newEdges: Edge[] = [
+        {
+          id: inEdgeId,
+          source: fromNodeId,
+          target: trId,
+          sourceHandle: "bottom",
+          targetHandle: "top",
+          type: "straight",
+        },
+        {
+          id: outEdgeId,
+          source: trId,
+          target: toNodeId,
+          sourceHandle: "bottom",
+          targetHandle: "top",
+          type: "straight",
+        },
+      ];
+
+      const existingIds = new Set(state.data.edges.map((e) => e.id));
+      state.data.edges.push(
+        ...normalizeEdges(newEdges.filter((e) => !existingIds.has(e.id))),
+      );
     },
   },
   extraReducers: (builder) => {
@@ -993,5 +1065,6 @@ export const {
   removeStepAlternativeNodes,
   acceptStepAlternative,
   clearAcceptedStepAlternatives,
+  insertTransformationBetween,
 } = gptSlice.actions;
 export default gptSlice.reducer;

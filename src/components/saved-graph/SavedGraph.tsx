@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 
 import styles from "./SavedGraph.module.css";
@@ -17,6 +17,8 @@ import { OpenGraphModal } from "../open-graph-modal/OpenGraphModal";
 import { SelectNodeModal } from "../select-node-modal/SelectNodeModal";
 import { SelectDepthModal } from "../select-depth-modal/SelectDepthModal";
 import { getMaxDepth } from "../../utils/getMaxDepth";
+import { parseGraphJson } from "../../utils/parseGraphJson";
+import { applyAutoLayout } from "../../utils/applyAutoLayout";
 
 export const SavedGraph = () => {
   const dispatch = useAppDispatch();
@@ -36,6 +38,9 @@ export const SavedGraph = () => {
   const [showSelectNode, setShowSelectNode] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showSelectDepth, setShowSelectDepth] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const openFull = () => {
     if (!selectedGraph) return;
@@ -134,6 +139,41 @@ export const SavedGraph = () => {
     setShowOpenModal(true);
   };
 
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const text = await file.text();
+      const { payload, warnings, needsLayout } = parseGraphJson(text);
+
+      let finalPayload = payload;
+      if (needsLayout) {
+        const laid = await applyAutoLayout(payload.nodes, payload.edges);
+        finalPayload = { ...payload, nodes: laid.nodes, edges: laid.edges };
+      }
+
+      dispatch(loadGraphFromFile(finalPayload));
+
+      const summary = `Загружено узлов: ${finalPayload.nodes.length}, рёбер: ${finalPayload.edges.length}.`;
+      if (warnings.length) {
+        alert(`${summary}\n\nПредупреждения:\n• ${warnings.join("\n• ")}`);
+      } else {
+        alert(`Граф загружен ✅\n${summary}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Не удалось загрузить граф: " +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className={styles.container}>
       <OpenGraphModal
@@ -185,6 +225,22 @@ export const SavedGraph = () => {
       >
         💾 Сохранить граф
       </button>
+
+      <button
+        className={styles.uploadButton}
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+      >
+        {isUploading ? "⏳ Загрузка..." : "📂 Загрузить из файла"}
+      </button>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={handleFileUpload}
+      />
 
       <SaveGraphModal
         isOpen={showSaveModal}

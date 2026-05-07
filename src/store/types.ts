@@ -268,3 +268,16 @@ export interface StepChainSession {
   insufficientProducts: string[];
   accumulatedSources: TechnologySource[];
 }
+
+// ===== TRANSFORMATION BETWEEN TWO PRODUCTS =====
+
+export type TransformationBetweenPayload = {
+  name: string;
+  description?: string;
+};
+
+export type TransformationBetweenResponse = {
+  success: boolean;
+  transformation: TransformationBetweenPayload;
+  error?: string;
+};
