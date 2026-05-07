@@ -1,4 +1,5 @@
 import type { Edge } from "@xyflow/react";
+import type { CustomNode } from "../types";
 
 /**
  * Отфильтровывает из newEdges те, для которых обратное ребро
@@ -44,4 +45,35 @@ export function normalizeEdges(edges: Edge[]): Edge[] {
   }
 
   return result;
+}
+
+/**
+ * Перевыставляет sourceHandle/targetHandle у edges, исходя из реальной
+ * y-геометрии нод. Если source.y < target.y — поток идёт вниз
+ * (bottom → top); если source.y > target.y — вверх (top-source →
+ * bottom-target). Это нужно когда layout/server раскладывает граф
+ * "снизу вверх" (root внизу), и захардкоженный bottom→top рисует линии
+ * сквозь сам source-узел.
+ */
+export function applyHandlesByGeometry(
+  nodes: CustomNode[],
+  edges: Edge[],
+): Edge[] {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+  return edges.map((e) => {
+    const src = nodeMap.get(e.source);
+    const tgt = nodeMap.get(e.target);
+    if (!src || !tgt) return e;
+
+    const sy = src.position?.y ?? 0;
+    const ty = tgt.position?.y ?? 0;
+    const isDown = ty >= sy;
+
+    return {
+      ...e,
+      sourceHandle: isDown ? "bottom" : "top-source",
+      targetHandle: isDown ? "top" : "bottom-target",
+    };
+  });
 }
