@@ -107,15 +107,12 @@ export const SavedGraph = () => {
      Сохранение графа
   ======================= */
   const handleSaveGraph = async (name?: string) => {
-    if (!originalPrompt) {
-      alert("Нет исходного промпта для сохранения");
-      return;
-    }
+    const prompt = originalPrompt ?? name ?? "graph";
 
     try {
       await saveGraph({
         name,
-        prompt: originalPrompt,
+        prompt,
         nodes: data.nodes,
         edges: data.edges,
         leaf_nodes: leafNodes,
@@ -148,10 +145,13 @@ export const SavedGraph = () => {
       const text = await file.text();
       const { payload, warnings, needsLayout } = parseGraphJson(text);
 
-      let finalPayload = payload;
+      const promptFromFile =
+        payload.originalPrompt ?? file.name.replace(/\.[^.]+$/, "");
+
+      let finalPayload = { ...payload, originalPrompt: promptFromFile };
       if (needsLayout) {
         const laid = await applyAutoLayout(payload.nodes, payload.edges);
-        finalPayload = { ...payload, nodes: laid.nodes, edges: laid.edges };
+        finalPayload = { ...finalPayload, nodes: laid.nodes, edges: laid.edges };
       }
 
       dispatch(loadGraphFromFile(finalPayload));
