@@ -30,6 +30,7 @@ import {
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   acceptStepAlternative,
+  insertTransformationBetween,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -66,6 +67,12 @@ import type { DirectionTabProps } from "./components/flow-panel/types";
 import { parseAlternatives } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
+import { SelectNeighborModal } from "./components/select-neighbor-modal";
+import {
+  getDirectProductNeighbors,
+  type DirectProductNeighbor,
+} from "./utils/getDirectProductNeighbors";
+import { fetchTransformationBetween } from "./store/api/transformation-between-api";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -128,8 +135,20 @@ export const Flow = () => {
     if (!data.nodes.length) return;
     if (!rootId) return;
 
-    if (source === "new" || source === "loaded") {
+    if (source === "new") {
       applyLayout();
+      return;
+    }
+
+    if (source === "loaded") {
+      // Для загруженных графов уважаем сохранённые позиции — не перераскладываем,
+      // иначе layoutTree (rankdir BT для root без входящих) переворачивает граф
+      // и теряются ручные правки. Layout запускаем только если позиции
+      // отсутствуют/нулевые (например, БД отдала граф без позиций).
+      const allZero = data.nodes.every(
+        (n) => !n.position || (n.position.x === 0 && n.position.y === 0),
+      );
+      if (allZero) applyLayout();
     }
   }, [source, rootId]);
 
@@ -157,6 +176,14 @@ export const Flow = () => {
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(
     null,
   );
+
+  const [insertTrState, setInsertTrState] = useState<{
+    nodeId: string;
+    productLabel: string;
+    neighbors: DirectProductNeighbor[];
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
 
   // Step-by-step chain
   const stepChainSessions = useAppSelector(
@@ -291,6 +318,91 @@ export const Flow = () => {
     setDeleteConfirmNodeId(contextMenu.nodeId);
     setContextMenu(null);
   }, [contextMenu]);
+
+  // Из контекстного меню → открыть модалку выбора соседа
+  const handleContextInsertTransformation = useCallback(() => {
+    if (!contextMenu) return;
+    const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+    if (!node) return;
+    const neighbors = getDirectProductNeighbors(
+      contextMenu.nodeId,
+      data.nodes,
+      data.edges,
+    );
+    if (!neighbors.length) {
+      setContextMenu(null);
+      return;
+    }
+    setInsertTrState({
+      nodeId: contextMenu.nodeId,
+      productLabel: String(node.data?.label ?? ""),
+      neighbors,
+      loading: false,
+      error: null,
+    });
+    setContextMenu(null);
+  }, [contextMenu, data.nodes, data.edges]);
+
+  const handleSelectNeighbor = useCallback(
+    async (neighbor: DirectProductNeighbor) => {
+      if (!insertTrState) return;
+      const fromId =
+        neighbor.role === "outgoing"
+          ? insertTrState.nodeId
+          : neighbor.neighborNodeId;
+      const toId =
+        neighbor.role === "outgoing"
+          ? neighbor.neighborNodeId
+          : insertTrState.nodeId;
+
+      const fromNode = data.nodes.find((n) => n.id === fromId);
+      const toNode = data.nodes.find((n) => n.id === toId);
+      if (!fromNode || !toNode) return;
+
+      setInsertTrState((s) => (s ? { ...s, loading: true, error: null } : s));
+      try {
+        const result = await dispatch(
+          fetchTransformationBetween({
+            fromNodeId: fromId,
+            toNodeId: toId,
+            edgeId: neighbor.edgeId,
+            fromProduct: String(fromNode.data?.label ?? ""),
+            toProduct: String(toNode.data?.label ?? ""),
+          }),
+        ).unwrap();
+
+        dispatch(
+          insertTransformationBetween({
+            edgeId: result.edgeId,
+            fromNodeId: result.fromNodeId,
+            toNodeId: result.toNodeId,
+            transformation: result.transformation,
+          }),
+        );
+        setInsertTrState(null);
+      } catch (err) {
+        const msg =
+          typeof err === "string"
+            ? err
+            : (err as { message?: string })?.message ||
+              "Не удалось получить преобразование";
+        setInsertTrState((s) =>
+          s ? { ...s, loading: false, error: msg } : s,
+        );
+      }
+    },
+    [dispatch, insertTrState, data.nodes],
+  );
+
+  // Соседи для пункта меню (для текущего contextMenu.nodeId)
+  const contextMenuNeighbors = useMemo(() => {
+    if (!contextMenu) return [];
+    return getDirectProductNeighbors(
+      contextMenu.nodeId,
+      data.nodes,
+      data.edges,
+    );
+  }, [contextMenu, data.nodes, data.edges]);
 
   // Подтверждение удаления
   const handleConfirmDelete = useCallback(() => {
@@ -1169,6 +1281,7 @@ export const Flow = () => {
             y={contextMenu.y}
             isProduct={ctxNode?.type === "product"}
             isStepAlt={ctxIsStepAlt}
+            hasDirectProductNeighbors={contextMenuNeighbors.length > 0}
             onBuildUp={() => handleContextBuild("up")}
             onBuildDown={() => handleContextBuild("down")}
             onBuildAlt={
@@ -1179,6 +1292,7 @@ export const Flow = () => {
                     )
                 : undefined
             }
+            onInsertTransformation={handleContextInsertTransformation}
             onDelete={handleContextDelete}
             onClose={() => setContextMenu(null)}
           />
@@ -1211,6 +1325,18 @@ export const Flow = () => {
           }
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteConfirmNodeId(null)}
+        />
+      )}
+      {insertTrState && (
+        <SelectNeighborModal
+          productLabel={insertTrState.productLabel}
+          neighbors={insertTrState.neighbors}
+          loading={insertTrState.loading}
+          error={insertTrState.error}
+          onSelect={handleSelectNeighbor}
+          onClose={() =>
+            !insertTrState.loading && setInsertTrState(null)
+          }
         />
       )}
     </div>

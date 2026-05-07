@@ -6,9 +6,11 @@ interface NodeContextMenuProps {
   y: number;
   isProduct: boolean;
   isStepAlt?: boolean;
+  hasDirectProductNeighbors?: boolean;
   onBuildUp: () => void;
   onBuildDown: () => void;
   onBuildAlt?: () => void;
+  onInsertTransformation?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -18,9 +20,11 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   y,
   isProduct,
   isStepAlt,
+  hasDirectProductNeighbors,
   onBuildUp,
   onBuildDown,
   onBuildAlt,
+  onInsertTransformation,
   onDelete,
   onClose,
 }) => {
@@ -97,6 +101,14 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
         <>
           <button className={styles.item} onClick={onBuildAlt}>
             Построить альтернативу
+          </button>
+          <div className={styles.separator} />
+        </>
+      )}
+      {isProduct && hasDirectProductNeighbors && onInsertTransformation && (
+        <>
+          <button className={styles.item} onClick={onInsertTransformation}>
+            Получить преобразование с соседом
           </button>
           <div className={styles.separator} />
         </>

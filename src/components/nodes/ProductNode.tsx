@@ -28,7 +28,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         id="top-source"
         type="source"
         position={Position.Top}
-        style={{ opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0 }}
+        style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
 
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
@@ -43,7 +43,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         id="bottom-target"
         type="target"
         position={Position.Bottom}
-        style={{ opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0 }}
+        style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
     </div>
   );
