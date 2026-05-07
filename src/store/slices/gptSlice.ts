@@ -214,10 +214,10 @@ const gptSlice = createSlice({
 
       state.source = "loaded";
 
-      // ⚠️ rootId аккуратно
-      if (!state.rootId && action.payload.nodes.length > 0) {
-        state.rootId = findRootNodeId(state.data.nodes, state.data.edges);
-      }
+      state.rootId =
+        state.data.nodes.length > 0
+          ? findRootNodeId(state.data.nodes, state.data.edges)
+          : null;
 
       state.isError = false;
       state.error = null;

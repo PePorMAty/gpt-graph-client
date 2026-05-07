@@ -40,3 +40,26 @@
 .empty {
   opacity: 0.6;
 }
+
+.saveButton,
+.uploadButton {
+  background: #2196f3;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 8px;
+  margin-bottom: 12px;
+}
+
+.saveButton:hover:not(:disabled),
+.uploadButton:hover:not(:disabled) {
+  background: #1976d2;
+}
+
+.saveButton:disabled,
+.uploadButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
