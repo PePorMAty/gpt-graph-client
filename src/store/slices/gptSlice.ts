@@ -568,6 +568,67 @@ const gptSlice = createSlice({
       const { nodeId, direction } = action.payload;
       delete state.acceptedStepAlternatives[`${nodeId}::${direction}`];
     },
+
+    insertTransformationBetween: (
+      state,
+      action: PayloadAction<{
+        edgeId: string;
+        fromNodeId: string;
+        toNodeId: string;
+        transformation: { name: string; description?: string };
+      }>,
+    ) => {
+      const { edgeId, fromNodeId, toNodeId, transformation } = action.payload;
+
+      const fromNode = state.data.nodes.find((n) => n.id === fromNodeId);
+      const toNode = state.data.nodes.find((n) => n.id === toNodeId);
+      if (!fromNode || !toNode) return;
+
+      const trId = `tr-between::${crypto.randomUUID()}`;
+      const midX = (fromNode.position.x + toNode.position.x) / 2;
+      const midY = (fromNode.position.y + toNode.position.y) / 2;
+
+      state.data.edges = state.data.edges.filter((e) => e.id !== edgeId);
+
+      state.data.nodes.push({
+        id: trId,
+        type: "transformation",
+        position: { x: midX, y: midY },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: {
+          label: transformation.name,
+          description: transformation.description ?? "",
+        },
+      });
+
+      const inEdgeId = `${trId}::in::${fromNodeId}`;
+      const outEdgeId = `${trId}::out::${toNodeId}`;
+
+      const newEdges: Edge[] = [
+        {
+          id: inEdgeId,
+          source: fromNodeId,
+          target: trId,
+          sourceHandle: "bottom",
+          targetHandle: "top",
+          type: "straight",
+        },
+        {
+          id: outEdgeId,
+          source: trId,
+          target: toNodeId,
+          sourceHandle: "bottom",
+          targetHandle: "top",
+          type: "straight",
+        },
+      ];
+
+      const existingIds = new Set(state.data.edges.map((e) => e.id));
+      state.data.edges.push(
+        ...normalizeEdges(newEdges.filter((e) => !existingIds.has(e.id))),
+      );
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -993,5 +1054,6 @@ export const {
   removeStepAlternativeNodes,
   acceptStepAlternative,
   clearAcceptedStepAlternatives,
+  insertTransformationBetween,
 } = gptSlice.actions;
 export default gptSlice.reducer;
