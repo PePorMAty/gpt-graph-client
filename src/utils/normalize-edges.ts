@@ -32,8 +32,14 @@ export function normalizeEdges(edges: Edge[]): Edge[] {
       continue;
     }
 
-    // иначе добавляем
-    result.push(e);
+    // дефолтные handles для edges, пришедших без них (от сервера / из файла):
+    // top-down layout → source.bottom → target.top. Если handles уже выставлены
+    // (например, top-source/bottom-target для направления "up") — сохраняем их.
+    result.push({
+      ...e,
+      sourceHandle: e.sourceHandle ?? "bottom",
+      targetHandle: e.targetHandle ?? "top",
+    });
     seenPairs.add(key);
   }
 
