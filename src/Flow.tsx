@@ -135,8 +135,20 @@ export const Flow = () => {
     if (!data.nodes.length) return;
     if (!rootId) return;
 
-    if (source === "new" || source === "loaded") {
+    if (source === "new") {
       applyLayout();
+      return;
+    }
+
+    if (source === "loaded") {
+      // Для загруженных графов уважаем сохранённые позиции — не перераскладываем,
+      // иначе layoutTree (rankdir BT для root без входящих) переворачивает граф
+      // и теряются ручные правки. Layout запускаем только если позиции
+      // отсутствуют/нулевые (например, БД отдала граф без позиций).
+      const allZero = data.nodes.every(
+        (n) => !n.position || (n.position.x === 0 && n.position.y === 0),
+      );
+      if (allZero) applyLayout();
     }
   }, [source, rootId]);
 
