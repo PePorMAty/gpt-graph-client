@@ -17,9 +17,11 @@ export function getDirectProductNeighbors(
   if (!node || node.type !== "product") return [];
 
   const result: DirectProductNeighbor[] = [];
-  const seen = new Set<string>();
+  const seenNeighbors = new Set<string>();
 
   for (const e of edges) {
+    if (e.source === e.target) continue;
+
     let otherId: string | null = null;
     let role: "incoming" | "outgoing" | null = null;
 
@@ -32,12 +34,12 @@ export function getDirectProductNeighbors(
     }
 
     if (!otherId || !role) continue;
-    if (seen.has(e.id)) continue;
+    if (seenNeighbors.has(otherId)) continue;
 
     const other = nodes.find((n) => n.id === otherId);
     if (!other || other.type !== "product") continue;
 
-    seen.add(e.id);
+    seenNeighbors.add(otherId);
     result.push({
       neighborNodeId: otherId,
       neighborLabel: String(other.data?.label ?? ""),

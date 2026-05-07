@@ -119,6 +119,17 @@ const gptSlice = createSlice({
       state.data.edges = applyEdgeChanges(action.payload, state.data.edges);
     },
     onConnect: (state, action: PayloadAction<Connection>) => {
+      const { source, target } = action.payload;
+      if (!source || !target) return;
+      if (source === target) return;
+
+      const exists = state.data.edges.some(
+        (e) =>
+          (e.source === source && e.target === target) ||
+          (e.source === target && e.target === source),
+      );
+      if (exists) return;
+
       state.data.edges = normalizeEdges(
         addEdge({ ...action.payload, type: "straight" }, state.data.edges),
       );

@@ -23,16 +23,14 @@ export function normalizeEdges(edges: Edge[]): Edge[] {
   const seenPairs = new Set<string>();
 
   for (const e of edges) {
+    if (e.source === e.target) continue;
+
     const key = `${e.source}->${e.target}`;
     const reverseKey = `${e.target}->${e.source}`;
 
-    // если обратная связь уже есть → не создаём цикл
-    if (seenPairs.has(reverseKey)) {
-      // просто игнорируем это ребро, цикл убираем
-      continue;
-    }
+    if (seenPairs.has(key)) continue;
+    if (seenPairs.has(reverseKey)) continue;
 
-    // иначе добавляем
     result.push(e);
     seenPairs.add(key);
   }
