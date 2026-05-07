@@ -14,6 +14,7 @@ import {
 import {
   normalizeEdges,
   filterConflictingEdges,
+  applyHandlesByGeometry,
 } from "../../utils/normalize-edges";
 import { normalizeNodes } from "../../utils/normalize-nodes";
 import {
@@ -164,7 +165,11 @@ const gptSlice = createSlice({
       state,
       action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>,
     ) => {
-      state.data = action.payload;
+      const { nodes, edges } = action.payload;
+      state.data = {
+        nodes,
+        edges: applyHandlesByGeometry(nodes, edges),
+      };
     },
     addNode: (
       state,
@@ -203,9 +208,11 @@ const gptSlice = createSlice({
         originalPrompt: string | null;
       }>,
     ) => {
+      const normNodes = normalizeNodes(action.payload.nodes);
+      const normEdges = normalizeEdges(action.payload.edges);
       state.data = {
-        nodes: normalizeNodes(action.payload.nodes),
-        edges: normalizeEdges(action.payload.edges),
+        nodes: normNodes,
+        edges: applyHandlesByGeometry(normNodes, normEdges),
       };
 
       state.leafNodes = action.payload.leafNodes;
@@ -665,9 +672,11 @@ const gptSlice = createSlice({
           return;
         }
 
+        const normNodes = normalizeNodes(data.nodes);
+        const normEdges = normalizeEdges(data.edges) || [];
         state.data = {
-          nodes: normalizeNodes(data.nodes),
-          edges: normalizeEdges(data.edges) || [],
+          nodes: normNodes,
+          edges: applyHandlesByGeometry(normNodes, normEdges),
         };
 
         if (!state.rootId && action.payload.data.nodes.length > 0) {
@@ -708,6 +717,13 @@ const gptSlice = createSlice({
         state.data.nodes.push(...filteredNodes);
         state.data.edges.push(
           ...filterConflictingEdges(filteredEdges, state.data.edges),
+        );
+
+        // пересчитываем handles по геометрии для всех edges (новые ноды
+        // могут изменить относительные позиции у существующих связей)
+        state.data.edges = applyHandlesByGeometry(
+          state.data.nodes,
+          state.data.edges,
         );
 
         // 🔥 ВАЖНО: пересчитываем ВСЕ leaf-ноды
