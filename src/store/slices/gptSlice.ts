@@ -502,6 +502,7 @@ const gptSlice = createSlice({
       const ry = root.position?.y ?? 0;
       const sign = direction === "down" ? 1 : -1;
       const stepY = 180;
+      const stepY2 = 220;
       const spacingX = 300;
 
       alternatives.forEach((alt, idx) => {
@@ -514,7 +515,7 @@ const gptSlice = createSlice({
             ? -(Math.floor(idx / 2) + 1)
             : Math.floor(idx / 2) + 1;
         const defaultX = rx + side * spacingX;
-        const defaultY = ry + sign * stepY;
+        const defaultY = ry + sign * (stepY + stepY2);
         const saved = existingPositions.get(altNodeId);
         const position = saved ?? { x: defaultX, y: defaultY };
 
@@ -788,6 +789,7 @@ const gptSlice = createSlice({
           const dir = direction;
           const sign = dir === "down" ? 1 : -1;
           const stepY = 180;
+          const stepY2 = 220;
           const spacingX = 300;
 
           alternatives.forEach((alt, idx) => {
@@ -799,7 +801,7 @@ const gptSlice = createSlice({
                 ? -(Math.floor(idx / 2) + 1)
                 : Math.floor(idx / 2) + 1;
             const x = rx + side * spacingX;
-            const y = ry + sign * stepY;
+            const y = ry + sign * (stepY + stepY2);
 
             state.data.nodes.push({
               id: altNodeId,
