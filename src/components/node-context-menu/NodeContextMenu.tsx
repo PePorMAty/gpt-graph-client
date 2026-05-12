@@ -6,11 +6,11 @@ interface NodeContextMenuProps {
   y: number;
   isProduct: boolean;
   isStepAlt?: boolean;
-  hasDirectProductNeighbors?: boolean;
+  hasOutgoingProductNeighbors?: boolean;
   onBuildUp: () => void;
   onBuildDown: () => void;
   onBuildAlt?: () => void;
-  onInsertTransformation?: () => void;
+  onFetchTransformations?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -20,11 +20,11 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   y,
   isProduct,
   isStepAlt,
-  hasDirectProductNeighbors,
+  hasOutgoingProductNeighbors,
   onBuildUp,
   onBuildDown,
   onBuildAlt,
-  onInsertTransformation,
+  onFetchTransformations,
   onDelete,
   onClose,
 }) => {
@@ -105,10 +105,10 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
           <div className={styles.separator} />
         </>
       )}
-      {isProduct && hasDirectProductNeighbors && onInsertTransformation && (
+      {isProduct && hasOutgoingProductNeighbors && onFetchTransformations && (
         <>
-          <button className={styles.item} onClick={onInsertTransformation}>
-            Получить преобразование с соседом
+          <button className={styles.item} onClick={onFetchTransformations}>
+            Получить преобразования к соседним продуктам
           </button>
           <div className={styles.separator} />
         </>
