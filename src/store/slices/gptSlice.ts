@@ -640,6 +640,90 @@ const gptSlice = createSlice({
         ...normalizeEdges(newEdges.filter((e) => !existingIds.has(e.id))),
       );
     },
+
+    insertTransformationsForNeighbors: (
+      state,
+      action: PayloadAction<{
+        anchorNodeId: string;
+        groups: Array<{
+          name: string;
+          description?: string;
+          targetNodeIds: string[];
+          sourceEdgeIds: string[];
+        }>;
+      }>,
+    ) => {
+      const { anchorNodeId, groups } = action.payload;
+      const anchor = state.data.nodes.find((n) => n.id === anchorNodeId);
+      if (!anchor || !groups.length) return;
+
+      const edgesToRemove = new Set<string>();
+      for (const g of groups) {
+        for (const eid of g.sourceEdgeIds) edgesToRemove.add(eid);
+      }
+      if (edgesToRemove.size) {
+        state.data.edges = state.data.edges.filter(
+          (e) => !edgesToRemove.has(e.id),
+        );
+      }
+
+      const newNodes: CustomNode[] = [];
+      const newEdges: Edge[] = [];
+
+      groups.forEach((g, groupIdx) => {
+        const targets = g.targetNodeIds
+          .map((id) => state.data.nodes.find((n) => n.id === id))
+          .filter((n): n is CustomNode => !!n);
+        if (!targets.length) return;
+
+        const avgX =
+          targets.reduce((s, n) => s + n.position.x, 0) / targets.length;
+        const avgY =
+          targets.reduce((s, n) => s + n.position.y, 0) / targets.length;
+
+        const trId = `tr-between::${crypto.randomUUID()}`;
+        const trX = (anchor.position.x + avgX) / 2;
+        const trY = (anchor.position.y + avgY) / 2 + groupIdx * 24;
+
+        newNodes.push({
+          id: trId,
+          type: "transformation",
+          position: { x: trX, y: trY },
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
+          data: {
+            label: g.name,
+            description: g.description ?? "",
+          },
+        });
+
+        newEdges.push({
+          id: `${trId}::in::${anchorNodeId}`,
+          source: anchorNodeId,
+          target: trId,
+          sourceHandle: "bottom",
+          targetHandle: "top",
+          type: "straight",
+        });
+
+        for (const t of targets) {
+          newEdges.push({
+            id: `${trId}::out::${t.id}`,
+            source: trId,
+            target: t.id,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          });
+        }
+      });
+
+      state.data.nodes.push(...newNodes);
+      const existingIds = new Set(state.data.edges.map((e) => e.id));
+      state.data.edges.push(
+        ...normalizeEdges(newEdges.filter((e) => !existingIds.has(e.id))),
+      );
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -1066,5 +1150,6 @@ export const {
   acceptStepAlternative,
   clearAcceptedStepAlternatives,
   insertTransformationBetween,
+  insertTransformationsForNeighbors,
 } = gptSlice.actions;
 export default gptSlice.reducer;
