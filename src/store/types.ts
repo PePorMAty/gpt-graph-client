@@ -281,3 +281,23 @@ export type TransformationBetweenResponse = {
   transformation: TransformationBetweenPayload;
   error?: string;
 };
+
+// ===== TRANSFORMATIONS FOR NEIGHBORS (bulk) =====
+
+export type TransformationsForNeighborsRequest = {
+  fromProduct: string;
+  toProducts: string[];
+  customSystemPrompt?: string;
+};
+
+export type TransformationGroup = {
+  name: string;
+  description?: string;
+  produces: string[];
+};
+
+export type TransformationsForNeighborsResponse = {
+  success: boolean;
+  transformations: TransformationGroup[];
+  error?: string;
+};

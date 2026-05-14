@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, type FC } from "react";
 import styles from "./SelectNeighborModal.module.css";
 import type { DirectProductNeighbor } from "../../utils/getDirectProductNeighbors";
 
@@ -7,7 +7,7 @@ interface SelectNeighborModalProps {
   neighbors: DirectProductNeighbor[];
   loading?: boolean;
   error?: string | null;
-  onSelect: (neighbor: DirectProductNeighbor) => void;
+  onConfirm: () => void;
   onClose: () => void;
 }
 
@@ -16,71 +16,51 @@ export const SelectNeighborModal: FC<SelectNeighborModalProps> = ({
   neighbors,
   loading,
   error,
-  onSelect,
+  onConfirm,
   onClose,
 }) => {
-  const [query, setQuery] = useState("");
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !loading) onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, loading]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return neighbors;
-    return neighbors.filter((n) =>
-      (n.neighborLabel || "").toLowerCase().includes(q),
-    );
-  }, [query, neighbors]);
+  const isEmpty = neighbors.length === 0;
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <div
+      className={styles.overlay}
+      onClick={() => {
+        if (!loading) onClose();
+      }}
+    >
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <h3 className={styles.title}>Получить преобразование с соседом</h3>
+        <h3 className={styles.title}>
+          Получить преобразования к соседним продуктам
+        </h3>
         <p className={styles.subtitle}>
-          От «{productLabel}» — выберите смежный продукт.
+          От «{productLabel}» — будут запрошены преобразования ко всем прямым
+          соседним продуктам:
         </p>
 
-        <input
-          className={styles.search}
-          placeholder="Поиск..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          autoFocus
-        />
-
-        {neighbors.length === 0 ? (
+        {isEmpty ? (
           <div className={styles.empty}>
-            У этого продукта нет прямых product↔product соседей.
+            У этого продукта нет прямых исходящих продуктов-соседей.
           </div>
         ) : (
           <ul className={styles.list}>
-            {filtered.map((n) => (
-              <li
-                key={n.edgeId}
-                className={styles.item}
-                onClick={() => !loading && onSelect(n)}
-              >
+            {neighbors.map((n) => (
+              <li key={n.edgeId} className={styles.itemStatic}>
                 <span className={styles.label}>
                   {n.neighborLabel || n.neighborNodeId}
-                </span>
-                <span className={styles.role}>
-                  {n.role === "outgoing" ? "→ исходящий" : "← входящий"}
                 </span>
               </li>
             ))}
           </ul>
         )}
 
-        {loading && (
-          <div className={styles.subtitle} style={{ marginTop: 8 }}>
-            Получение преобразования...
-          </div>
-        )}
         {error && (
           <div
             className={styles.subtitle}
@@ -90,9 +70,26 @@ export const SelectNeighborModal: FC<SelectNeighborModalProps> = ({
           </div>
         )}
 
-        <button className={styles.close} onClick={onClose} disabled={loading}>
-          Закрыть
-        </button>
+        <div className={styles.actions}>
+          <button
+            className={styles.close}
+            onClick={onClose}
+            disabled={loading}
+          >
+            Отмена
+          </button>
+          <button
+            className={styles.primary}
+            onClick={onConfirm}
+            disabled={loading || isEmpty}
+          >
+            {loading
+              ? "Запрос…"
+              : error
+                ? "Повторить"
+                : "Получить преобразования"}
+          </button>
+        </div>
       </div>
     </div>
   );
