@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
   loadGraphFromFile,
   mergeGraphFromFile,
+  setGraphData,
 } from "../../store/slices/gptSlice";
 import { parseGraphJson } from "../../utils/parseGraphJson";
 import { applyAutoLayout } from "../../utils/applyAutoLayout";
@@ -196,6 +197,22 @@ export const UploadGraphTab = () => {
       await handleFile(file, mode);
     };
 
+  const handleRelayout = async () => {
+    if (!hasGraph) return;
+    setError(null);
+    setInfo(null);
+    setIsProcessing(true);
+    try {
+      const laid = await applyAutoLayout(data.nodes, data.edges);
+      dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
+      setInfo(`Layout пересчитан: ${laid.nodes.length} узлов.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось пересчитать layout");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className={styles.wrapper}>
       <input
@@ -236,6 +253,16 @@ export const UploadGraphTab = () => {
           ➕ Добавить граф
         </button>
       </div>
+
+      <button
+        type="button"
+        className={styles.relayoutButton}
+        onClick={handleRelayout}
+        disabled={!hasGraph || isProcessing}
+        title="Пересчитать раскладку узлов (полезно после ручных правок или слияний)"
+      >
+        🔄 Пересчитать раскладку
+      </button>
 
       <p className={styles.hint}>
         Поддерживаются ранее сохранённые графы и формат с полями{" "}

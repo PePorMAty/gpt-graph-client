@@ -108,6 +108,22 @@ export async function layoutTree(
     : true;
   const rankdir = hasIncoming ? "TB" : "BT";
 
+  // --- Пробуем ELK (layered) для сложных графов ---
+  // На объединённых графах общие узлы становятся хабами с десятками
+  // связей, dagre тогда даёт сильное наложение и пересечения рёбер.
+  // ELK с LAYER_SWEEP сильно лучше.
+  // Ленивая загрузка: ELK (~1.5MB) выносится из основного бандла.
+  const isComplex = nodes.length >= 30 || edges.length >= nodes.length * 1.2;
+  if (isComplex) {
+    try {
+      const { layoutWithElk } = await import("./layoutWithElk");
+      const result = await layoutWithElk(nodes, edges, rankdir);
+      return result;
+    } catch (e) {
+      console.warn("[layoutTree] ELK failed, fallback to dagre:", e);
+    }
+  }
+
   // --- Пробуем dagre ---
   const g = new dagre.graphlib.Graph();
   g.setGraph({
