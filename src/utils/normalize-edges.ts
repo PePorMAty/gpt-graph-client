@@ -48,11 +48,14 @@ export function normalizeEdges(edges: Edge[]): Edge[] {
 
 /**
  * Перевыставляет sourceHandle/targetHandle у edges, исходя из реальной
- * y-геометрии нод. Если source.y < target.y — поток идёт вниз
- * (bottom → top); если source.y > target.y — вверх (top-source →
- * bottom-target). Это нужно когда layout/server раскладывает граф
- * "снизу вверх" (root внизу), и захардкоженный bottom→top рисует линии
- * сквозь сам source-узел.
+ * геометрии нод.
+ *
+ * Сначала определяет преобладающую ось layout по разбросу координат:
+ *  - если разброс X заметно больше Y → horizontal (LR/RL), хэндлы left/right;
+ *  - иначе → vertical (TB/BT), хэндлы top/bottom (поведение по умолчанию).
+ *
+ * Затем для каждого ребра по знаку дельты выбирает конкретный хэндл,
+ * чтобы линия не «прорезала» сам source-узел.
  */
 export function applyHandlesByGeometry(
   nodes: CustomNode[],
@@ -60,10 +63,30 @@ export function applyHandlesByGeometry(
 ): Edge[] {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
+  let horizontal = false;
+  if (nodes.length > 1) {
+    const xs = nodes.map((n) => n.position?.x ?? 0);
+    const ys = nodes.map((n) => n.position?.y ?? 0);
+    const xRange = Math.max(...xs) - Math.min(...xs);
+    const yRange = Math.max(...ys) - Math.min(...ys);
+    horizontal = xRange > yRange * 1.5;
+  }
+
   return edges.map((e) => {
     const src = nodeMap.get(e.source);
     const tgt = nodeMap.get(e.target);
     if (!src || !tgt) return e;
+
+    if (horizontal) {
+      const sx = src.position?.x ?? 0;
+      const tx = tgt.position?.x ?? 0;
+      const isRight = tx >= sx;
+      return {
+        ...e,
+        sourceHandle: isRight ? "right" : "left-source",
+        targetHandle: isRight ? "left" : "right-target",
+      };
+    }
 
     const sy = src.position?.y ?? 0;
     const ty = tgt.position?.y ?? 0;

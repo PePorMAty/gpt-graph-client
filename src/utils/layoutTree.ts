@@ -7,10 +7,28 @@ const NODE_HEIGHT = 80;
 const RANK_SEP = 160;
 const NODE_SEP = 80;
 
+export type LayoutDirection = "TB" | "BT" | "LR" | "RL";
+
 export type LayoutTreeResult = {
   nodes: CustomNode[];
   edges: Edge[];
 };
+
+function positionsForDirection(direction: LayoutDirection): {
+  source: Position;
+  target: Position;
+} {
+  switch (direction) {
+    case "TB":
+      return { source: Position.Bottom, target: Position.Top };
+    case "BT":
+      return { source: Position.Top, target: Position.Bottom };
+    case "LR":
+      return { source: Position.Right, target: Position.Left };
+    case "RL":
+      return { source: Position.Left, target: Position.Right };
+  }
+}
 
 /**
  * Fallback layout: longest-path topological sort (Kahn's + DP).
@@ -19,7 +37,7 @@ export type LayoutTreeResult = {
 function hierarchicalLayout(
   nodes: CustomNode[],
   edges: Edge[],
-  rankdir: "TB" | "BT",
+  rankdir: LayoutDirection,
 ): CustomNode[] {
   const nodeSet = new Set(nodes.map((n) => n.id));
   const children = new Map<string, string[]>();
@@ -69,26 +87,39 @@ function hierarchicalLayout(
 
   const totalLevels = Math.max(...byLevel.keys());
   const posMap = new Map<string, { x: number; y: number }>();
+  const isHorizontal = rankdir === "LR" || rankdir === "RL";
 
   for (const [lvl, ids] of byLevel) {
     const n = ids.length;
-    const rowWidth = n * NODE_WIDTH + (n - 1) * NODE_SEP;
-    const startX = -rowWidth / 2 + NODE_WIDTH / 2;
-    const y =
-      rankdir === "TB"
-        ? lvl * (NODE_HEIGHT + RANK_SEP)
-        : (totalLevels - lvl) * (NODE_HEIGHT + RANK_SEP);
-
-    ids.forEach((id, i) => {
-      posMap.set(id, { x: startX + i * (NODE_WIDTH + NODE_SEP), y });
-    });
+    if (isHorizontal) {
+      const colHeight = n * NODE_HEIGHT + (n - 1) * NODE_SEP;
+      const startY = -colHeight / 2 + NODE_HEIGHT / 2;
+      const x =
+        rankdir === "LR"
+          ? lvl * (NODE_WIDTH + RANK_SEP)
+          : (totalLevels - lvl) * (NODE_WIDTH + RANK_SEP);
+      ids.forEach((id, i) => {
+        posMap.set(id, { x, y: startY + i * (NODE_HEIGHT + NODE_SEP) });
+      });
+    } else {
+      const rowWidth = n * NODE_WIDTH + (n - 1) * NODE_SEP;
+      const startX = -rowWidth / 2 + NODE_WIDTH / 2;
+      const y =
+        rankdir === "TB"
+          ? lvl * (NODE_HEIGHT + RANK_SEP)
+          : (totalLevels - lvl) * (NODE_HEIGHT + RANK_SEP);
+      ids.forEach((id, i) => {
+        posMap.set(id, { x: startX + i * (NODE_WIDTH + NODE_SEP), y });
+      });
+    }
   }
 
+  const { source, target } = positionsForDirection(rankdir);
   return nodes.map((node) => ({
     ...node,
     position: posMap.get(node.id) ?? node.position,
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    sourcePosition: source,
+    targetPosition: target,
   }));
 }
 
@@ -96,17 +127,23 @@ export async function layoutTree(
   nodes: CustomNode[],
   edges: Edge[],
   rootId?: string,
+  direction?: LayoutDirection,
 ): Promise<LayoutTreeResult> {
   if (!nodes.length) {
     return { nodes, edges };
   }
 
-  // Если у rootId нет входящих рёбер — он источник: rankdir BT ставит источник снизу.
-  // Если есть входящие — он sink: rankdir TB ставит sink снизу.
-  const hasIncoming = rootId
-    ? edges.some((e) => e.target === rootId)
-    : true;
-  const rankdir = hasIncoming ? "TB" : "BT";
+  // Если direction задан явно (из загруженного JSON) — используем его.
+  // Иначе: rootId с входящими — sink, rankdir TB; иначе источник — rankdir BT.
+  let rankdir: LayoutDirection;
+  if (direction) {
+    rankdir = direction;
+  } else {
+    const hasIncoming = rootId
+      ? edges.some((e) => e.target === rootId)
+      : true;
+    rankdir = hasIncoming ? "TB" : "BT";
+  }
 
   // --- Пробуем ELK (layered) для сложных графов ---
   // На объединённых графах общие узлы становятся хабами с десятками
@@ -166,11 +203,12 @@ export async function layoutTree(
     return { nodes: hierarchicalLayout(nodes, edges, rankdir), edges };
   }
 
+  const { source, target } = positionsForDirection(rankdir);
   const layoutedNodes: CustomNode[] = nodes.map((node, i) => ({
     ...node,
     position: dagrePositions[i]!,
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
+    sourcePosition: source,
+    targetPosition: target,
   }));
 
   return { nodes: layoutedNodes, edges };
