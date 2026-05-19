@@ -59,7 +59,6 @@ const initialState: InitialGraphStateI = {
   sourcesPool: {},
   acceptedStepAlternatives: {},
   presentationColors: {},
-  presentationOrientation: null,
 };
 
 export const sourcesPoolKey = (
@@ -210,8 +209,6 @@ const gptSlice = createSlice({
         originalPrompt: string | null;
         /** Реестр презентация → цвет. Если передан — сбрасывает текущий. */
         presentationColors?: Record<string, string>;
-        /** Ориентация полотна. Если передана — устанавливается; иначе сбрасывается. */
-        orientation?: "TB" | "BT" | "LR" | "RL" | null;
       }>,
     ) => {
       const normNodes = normalizeNodes(action.payload.nodes);
@@ -225,7 +222,6 @@ const gptSlice = createSlice({
       state.hasMore = action.payload.hasMore;
       state.originalPrompt = action.payload.originalPrompt;
       state.presentationColors = action.payload.presentationColors ?? {};
-      state.presentationOrientation = action.payload.orientation ?? null;
 
       state.source = "loaded";
 

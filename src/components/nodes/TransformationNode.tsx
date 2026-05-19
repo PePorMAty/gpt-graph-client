@@ -38,18 +38,6 @@ export const TransformationNode: React.FC<TransformationNodeProps> = ({
         position={Position.Top}
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
-      <Handle
-        id="left"
-        type="target"
-        position={Position.Left}
-        style={{ background: accentColor, width: 8, height: 8 }}
-      />
-      <Handle
-        id="left-source"
-        type="source"
-        position={Position.Left}
-        style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
-      />
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
       <Handle
         id="bottom"
@@ -61,18 +49,6 @@ export const TransformationNode: React.FC<TransformationNodeProps> = ({
         id="bottom-target"
         type="target"
         position={Position.Bottom}
-        style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
-      />
-      <Handle
-        id="right"
-        type="source"
-        position={Position.Right}
-        style={{ background: accentColor, width: 8, height: 8 }}
-      />
-      <Handle
-        id="right-target"
-        type="target"
-        position={Position.Right}
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
     </div>
