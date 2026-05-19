@@ -6,7 +6,13 @@ import type {
   TransformationBetweenResponse,
   TransformationGroup,
   TransformationsForNeighborsResponse,
+  ChainLink,
 } from "../types";
+import type {
+  ChainProductNode,
+  ChainTransformNode,
+} from "../../utils/chainToFlow";
+import { pickPid } from "../../utils/pickPid";
 
 export type FetchTransformationBetweenArgs = {
   fromNodeId: string;
@@ -69,8 +75,8 @@ export const fetchTransformationBetween = createAsyncThunk<
 
 export type FetchTransformationsForNeighborsArgs = {
   anchorNodeId: string;
-  fromProduct: string;
-  toProducts: string[];
+  chain: ChainProductNode[];
+  links: ChainLink[];
   customSystemPrompt?: string;
 };
 
@@ -88,8 +94,8 @@ export const fetchTransformationsForNeighbors = createAsyncThunk<
     const res = await axios.post<TransformationsForNeighborsResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/transformation-between`,
       {
-        fromProduct: args.fromProduct,
-        toProducts: args.toProducts,
+        "Цепочка": args.chain,
+        "Связи": args.links,
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
@@ -97,16 +103,39 @@ export const fetchTransformationsForNeighbors = createAsyncThunk<
       { headers: { "Content-Type": "application/json" } },
     );
 
-    if (!res.data?.success || !Array.isArray(res.data?.transformations)) {
+    const chain = res.data?.["Цепочка"];
+    if (!Array.isArray(chain)) {
       return thunkApi.rejectWithValue(
-        res.data?.error || "transformations-for-neighbors: success=false",
+        res.data?.error || "transformations-for-neighbors: пустой ответ",
       );
     }
 
-    return {
-      anchorNodeId: args.anchorNodeId,
-      transformations: res.data.transformations,
-    };
+    const transformations: TransformationGroup[] = chain
+      .filter(
+        (n): n is ChainTransformNode & { "Источники"?: string[] } =>
+          (n as { "Тип узла"?: string })?.["Тип узла"] === "Преобразование",
+      )
+      .map((t) => {
+        const inputNodeIds = (t["Входы"] ?? [])
+          .map((o) => pickPid(o))
+          .filter((x): x is string => !!x);
+        const outputNodeIds = (t["Выходы"] ?? [])
+          .map((o) => pickPid(o))
+          .filter((x): x is string => !!x);
+        const rawSources = (t as { "Источники"?: unknown })["Источники"];
+        const sources = Array.isArray(rawSources)
+          ? rawSources.filter((u): u is string => typeof u === "string")
+          : [];
+        return {
+          name: t["Название технологии"] || "Преобразование",
+          description: t["Описание технологии"],
+          sources,
+          inputNodeIds,
+          outputNodeIds,
+        };
+      });
+
+    return { anchorNodeId: args.anchorNodeId, transformations };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
       const errObj = e.response?.data?.error;

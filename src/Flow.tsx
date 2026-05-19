@@ -73,6 +73,8 @@ import {
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
 import { fetchTransformationsForNeighbors } from "./store/api/transformation-between-api";
+import type { ChainLink } from "./store/types";
+import type { ChainProductNode } from "./utils/chainToFlow";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -349,44 +351,86 @@ export const Flow = () => {
     const anchor = data.nodes.find((n) => n.id === anchorId);
     if (!anchor || !insertTrState.neighbors.length) return;
 
-    const labelToInfo = new Map<
-      string,
-      { id: string; edgeId: string }
-    >();
+    const anchorLabel = String(anchor.data?.label ?? "");
+    const anchorDesc = anchor.data?.description
+      ? String(anchor.data.description)
+      : undefined;
+
+    const chain: ChainProductNode[] = [
+      {
+        "Id узла": anchorId,
+        "Тип узла": "Продукт",
+        "Продукты": [anchorLabel],
+        "Название узла": anchorLabel,
+        ...(anchorDesc ? { "Описание продукта": anchorDesc } : {}),
+      },
+      ...insertTrState.neighbors.map((n) => {
+        const node = data.nodes.find((nd) => nd.id === n.neighborNodeId);
+        const desc = node?.data?.description
+          ? String(node.data.description)
+          : undefined;
+        return {
+          "Id узла": n.neighborNodeId,
+          "Тип узла": "Продукт" as const,
+          "Продукты": [n.neighborLabel],
+          "Название узла": n.neighborLabel,
+          ...(desc ? { "Описание продукта": desc } : {}),
+        };
+      }),
+    ];
+
+    const links: ChainLink[] = insertTrState.neighbors.map((n) => ({
+      "Откуда": anchorId,
+      "Куда": n.neighborNodeId,
+      "Источник": anchorLabel,
+      "Приемник": n.neighborLabel,
+      "Тип связи": "сырье -> продукт",
+    }));
+
+    const edgeIdByPair = new Map<string, string>();
     for (const n of insertTrState.neighbors) {
-      if (!labelToInfo.has(n.neighborLabel)) {
-        labelToInfo.set(n.neighborLabel, {
-          id: n.neighborNodeId,
-          edgeId: n.edgeId,
-        });
-      }
+      edgeIdByPair.set(`${anchorId}->${n.neighborNodeId}`, n.edgeId);
     }
+    const knownNodeIds = new Set<string>([
+      anchorId,
+      ...insertTrState.neighbors.map((n) => n.neighborNodeId),
+    ]);
 
     setInsertTrState((s) => (s ? { ...s, loading: true, error: null } : s));
     try {
       const result = await dispatch(
         fetchTransformationsForNeighbors({
           anchorNodeId: anchorId,
-          fromProduct: String(anchor.data?.label ?? ""),
-          toProducts: insertTrState.neighbors.map((n) => n.neighborLabel),
+          chain,
+          links,
         }),
       ).unwrap();
 
       const groups = result.transformations
         .map((t) => {
-          const matched = (t.produces ?? [])
-            .map((label) => labelToInfo.get(label))
-            .filter(
-              (x): x is { id: string; edgeId: string } => !!x,
-            );
+          const inputNodeIds = t.inputNodeIds.filter((id) =>
+            knownNodeIds.has(id),
+          );
+          const outputNodeIds = t.outputNodeIds.filter((id) =>
+            knownNodeIds.has(id),
+          );
+          const removeEdgeIds: string[] = [];
+          for (const inId of inputNodeIds) {
+            for (const outId of outputNodeIds) {
+              const eid = edgeIdByPair.get(`${inId}->${outId}`);
+              if (eid) removeEdgeIds.push(eid);
+            }
+          }
           return {
             name: t.name,
             description: t.description,
-            targetNodeIds: matched.map((m) => m.id),
-            sourceEdgeIds: matched.map((m) => m.edgeId),
+            sources: t.sources,
+            inputNodeIds,
+            outputNodeIds,
+            removeEdgeIds,
           };
         })
-        .filter((g) => g.targetNodeIds.length > 0);
+        .filter((g) => g.inputNodeIds.length > 0 && g.outputNodeIds.length > 0);
 
       if (!groups.length) {
         setInsertTrState((s) =>
@@ -401,12 +445,7 @@ export const Flow = () => {
         return;
       }
 
-      dispatch(
-        insertTransformationsForNeighbors({
-          anchorNodeId: anchorId,
-          groups,
-        }),
-      );
+      dispatch(insertTransformationsForNeighbors({ groups }));
       setInsertTrState(null);
     } catch (err) {
       const msg =
