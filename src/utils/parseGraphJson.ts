@@ -13,6 +13,10 @@ export type ParseResult = {
   payload: LoadGraphPayload;
   warnings: string[];
   needsLayout: boolean;
+  /** Список уникальных презентаций (в порядке появления) — заполняется только для русскоязычного формата с полем `Презентации` / `Из какой презентации`. */
+  presentations: string[];
+  /** Заголовок презентации из поля `Название презентации` — только для русскоязычного формата. */
+  presentationTitle: string | null;
 };
 
 type RawObject = Record<string, unknown>;
@@ -37,7 +41,12 @@ function asPosition(v: unknown): { x: number; y: number } | null {
   return { x, y };
 }
 
-function detectFormat(parsed: RawObject): "A" | "B" | "C" {
+function detectFormat(parsed: RawObject): "A" | "B" | "C" | "D" {
+  // Format D: русскоязычный иерархический граф презентаций
+  if (Array.isArray(parsed["Цепочка"]) && Array.isArray(parsed["Связи"])) {
+    return "D";
+  }
+
   const graph = parsed.graph;
   if (isObject(graph) && Array.isArray(graph.nodes)) return "A";
 
@@ -58,6 +67,129 @@ function detectFormat(parsed: RawObject): "A" | "B" | "C" {
   }
 
   return "C";
+}
+
+const RU_TYPE_MAP: Record<string, "product" | "transformation"> = {
+  Продукт: "product",
+  Преобразование: "transformation",
+};
+
+function parseRussianFormat(
+  parsed: RawObject,
+  warnings: string[],
+): {
+  nodes: CustomNode[];
+  edges: Edge[];
+  presentations: string[];
+  presentationTitle: string | null;
+} {
+  const rawNodes = Array.isArray(parsed["Цепочка"])
+    ? (parsed["Цепочка"] as unknown[])
+    : [];
+  const rawEdges = Array.isArray(parsed["Связи"])
+    ? (parsed["Связи"] as unknown[])
+    : [];
+  const presentationTitle = asString(parsed["Название презентации"]);
+
+  const seenPres = new Set<string>();
+  const presentations: string[] = [];
+  const recordPres = (p: string) => {
+    const trimmed = p.trim();
+    if (!trimmed) return;
+    if (seenPres.has(trimmed)) return;
+    seenPres.add(trimmed);
+    presentations.push(trimmed);
+  };
+
+  const nodes: CustomNode[] = [];
+  const usedIds = new Set<string>();
+  for (let i = 0; i < rawNodes.length; i++) {
+    const raw = rawNodes[i];
+    if (!isObject(raw)) {
+      warnings.push(`Узел #${i}: не объект — пропущен`);
+      continue;
+    }
+    const id = asString(raw["Id узла"]);
+    const label = asString(raw["Название узла"]);
+    if (!id) {
+      warnings.push(`Узел #${i}: нет 'Id узла' — пропущен`);
+      continue;
+    }
+    if (!label) {
+      warnings.push(`Узел id="${id}": нет 'Название узла' — пропущен`);
+      continue;
+    }
+    if (usedIds.has(id)) {
+      warnings.push(`Узел id="${id}": дубликат — пропущен`);
+      continue;
+    }
+
+    const typeRaw = asString(raw["Тип узла"]) ?? "";
+    const type: "product" | "transformation" =
+      RU_TYPE_MAP[typeRaw] ?? "product";
+
+    let nodePresentations: string[] = [];
+    const presArr = raw["Презентации"];
+    if (Array.isArray(presArr) && presArr.length > 0) {
+      nodePresentations = (presArr as unknown[])
+        .map((p) => (typeof p === "string" ? p.trim() : ""))
+        .filter((p): p is string => Boolean(p));
+    } else {
+      const presStr = asString(raw["Из какой презентации"]) ?? "";
+      nodePresentations = presStr
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    if (nodePresentations.length === 0 && presentationTitle) {
+      nodePresentations = [presentationTitle];
+    }
+    nodePresentations.forEach(recordPres);
+
+    usedIds.add(id);
+    nodes.push({
+      id,
+      type,
+      position: { x: 0, y: 0 },
+      data: {
+        label,
+        description: "",
+        presentations: nodePresentations,
+      },
+    } as CustomNode);
+  }
+
+  const nodeIdSet = new Set(nodes.map((n) => n.id));
+  const edges: Edge[] = [];
+  const seenEdgeIds = new Set<string>();
+  let droppedEdges = 0;
+  for (const raw of rawEdges) {
+    if (!isObject(raw)) {
+      droppedEdges++;
+      continue;
+    }
+    const source = asString(raw["Откуда"]);
+    const target = asString(raw["Куда"]);
+    if (!source || !target) {
+      droppedEdges++;
+      continue;
+    }
+    if (!nodeIdSet.has(source) || !nodeIdSet.has(target)) {
+      droppedEdges++;
+      continue;
+    }
+    let id = asString(raw["Id связи"]);
+    if (!id || seenEdgeIds.has(id)) id = crypto.randomUUID();
+    seenEdgeIds.add(id);
+    edges.push({ id, source, target, type: "straight" });
+  }
+  if (droppedEdges > 0) {
+    warnings.push(
+      `Отброшено ${droppedEdges} рёбер с битыми/несуществующими ссылками`,
+    );
+  }
+
+  return { nodes, edges, presentations, presentationTitle };
 }
 
 export function parseGraphJson(raw: string | unknown): ParseResult {
@@ -86,6 +218,34 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
   let originalPrompt: string | null = null;
   let leafNodes: string[] = [];
   let hasMore = false;
+  let presentations: string[] = [];
+  let presentationTitle: string | null = null;
+
+  if (format === "D") {
+    const ru = parseRussianFormat(parsed, warnings);
+    presentations = ru.presentations;
+    presentationTitle = ru.presentationTitle;
+
+    const positions = ru.nodes.map((n) => n.position);
+    const allZero =
+      positions.length > 0 &&
+      positions.every((p) => p.x === 0 && p.y === 0);
+    const needsLayout = ru.nodes.length > 0 && allZero;
+
+    return {
+      payload: {
+        nodes: ru.nodes,
+        edges: ru.edges,
+        leafNodes: [],
+        hasMore: false,
+        originalPrompt: presentationTitle,
+      },
+      warnings,
+      needsLayout,
+      presentations,
+      presentationTitle,
+    };
+  }
 
   if (format === "A") {
     const graph = parsed.graph as RawObject;
@@ -234,5 +394,7 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
     },
     warnings,
     needsLayout,
+    presentations,
+    presentationTitle,
   };
 }

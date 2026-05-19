@@ -58,6 +58,7 @@ const initialState: InitialGraphStateI = {
   stepChainSessions: {},
   sourcesPool: {},
   acceptedStepAlternatives: {},
+  presentationColors: {},
 };
 
 export const sourcesPoolKey = (
@@ -206,6 +207,8 @@ const gptSlice = createSlice({
         leafNodes: string[];
         hasMore: boolean;
         originalPrompt: string | null;
+        /** Реестр презентация → цвет. Если передан — сбрасывает текущий. */
+        presentationColors?: Record<string, string>;
       }>,
     ) => {
       const normNodes = normalizeNodes(action.payload.nodes);
@@ -218,6 +221,7 @@ const gptSlice = createSlice({
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
       state.originalPrompt = action.payload.originalPrompt;
+      state.presentationColors = action.payload.presentationColors ?? {};
 
       state.source = "loaded";
 
@@ -226,6 +230,31 @@ const gptSlice = createSlice({
           ? findRootNodeId(state.data.nodes, state.data.edges)
           : null;
 
+      state.isError = false;
+      state.error = null;
+    },
+    mergeGraphFromFile: (
+      state,
+      action: PayloadAction<{
+        nodes: CustomNode[];
+        edges: Edge[];
+        presentationColors: Record<string, string>;
+      }>,
+    ) => {
+      const normNodes = normalizeNodes(action.payload.nodes);
+      const normEdges = normalizeEdges(action.payload.edges);
+      state.data = {
+        nodes: normNodes,
+        edges: applyHandlesByGeometry(normNodes, normEdges),
+      };
+      state.presentationColors = action.payload.presentationColors;
+      // Маркируем как новый граф, чтобы Flow re-layout-нул слитую структуру
+      // (loaded-режим уважает существующие позиции, нам это не подходит).
+      state.source = "new";
+      state.rootId =
+        state.data.nodes.length > 0
+          ? findRootNodeId(state.data.nodes, state.data.edges)
+          : state.rootId;
       state.isError = false;
       state.error = null;
     },
@@ -1154,6 +1183,7 @@ export const {
   setGraphData,
   addNode,
   loadGraphFromFile,
+  mergeGraphFromFile,
   setProducerForPid,
   popQueueHead,
   initStepChainSession,

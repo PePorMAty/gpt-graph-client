@@ -27,6 +27,8 @@ export interface InitialGraphStateI {
   stepChainSessions: Record<string, StepChainSession>;
   sourcesPool: Record<string, SourcesPoolEntry>;
   acceptedStepAlternatives: Record<string, number[]>;
+  /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
+  presentationColors: Record<string, string>;
 }
 
 export interface SourcesPoolEntry {

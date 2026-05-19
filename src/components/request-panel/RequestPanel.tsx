@@ -8,6 +8,7 @@ import {
 
 import styles from "./RequsetPanel.module.css";
 import { SavedGraph } from "../saved-graph";
+import { UploadGraphTab } from "../upload-graph";
 
 export const RequestPanel = () => {
   const dispatch = useAppDispatch();
@@ -194,6 +195,9 @@ export const RequestPanel = () => {
           )}
         </div>
       )}
+
+      {/* COMBINE TAB */}
+      {activeTab === "combine" && <UploadGraphTab />}
     </div>
   );
 };
