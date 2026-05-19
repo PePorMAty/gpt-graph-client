@@ -30,7 +30,7 @@ import {
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   acceptStepAlternative,
-  insertTransformationBetween,
+  insertTransformationsForNeighbors,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -72,7 +72,7 @@ import {
   getDirectProductNeighbors,
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
-import { fetchTransformationBetween } from "./store/api/transformation-between-api";
+import { fetchTransformationsForNeighbors } from "./store/api/transformation-between-api";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -319,89 +319,115 @@ export const Flow = () => {
     setContextMenu(null);
   }, [contextMenu]);
 
-  // Из контекстного меню → открыть модалку выбора соседа
-  const handleContextInsertTransformation = useCallback(() => {
+  // Из контекстного меню → открыть модалку с подтверждением запроса
+  const handleContextFetchTransformations = useCallback(() => {
     if (!contextMenu) return;
     const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
     if (!node) return;
-    const neighbors = getDirectProductNeighbors(
+    const outgoing = getDirectProductNeighbors(
       contextMenu.nodeId,
       data.nodes,
       data.edges,
-    );
-    if (!neighbors.length) {
+    ).filter((n) => n.role === "outgoing");
+    if (!outgoing.length) {
       setContextMenu(null);
       return;
     }
     setInsertTrState({
       nodeId: contextMenu.nodeId,
       productLabel: String(node.data?.label ?? ""),
-      neighbors,
+      neighbors: outgoing,
       loading: false,
       error: null,
     });
     setContextMenu(null);
   }, [contextMenu, data.nodes, data.edges]);
 
-  const handleSelectNeighbor = useCallback(
-    async (neighbor: DirectProductNeighbor) => {
-      if (!insertTrState) return;
-      const fromId =
-        neighbor.role === "outgoing"
-          ? insertTrState.nodeId
-          : neighbor.neighborNodeId;
-      const toId =
-        neighbor.role === "outgoing"
-          ? neighbor.neighborNodeId
-          : insertTrState.nodeId;
+  const handleFetchTransformations = useCallback(async () => {
+    if (!insertTrState) return;
+    const anchorId = insertTrState.nodeId;
+    const anchor = data.nodes.find((n) => n.id === anchorId);
+    if (!anchor || !insertTrState.neighbors.length) return;
 
-      const fromNode = data.nodes.find((n) => n.id === fromId);
-      const toNode = data.nodes.find((n) => n.id === toId);
-      if (!fromNode || !toNode) return;
-
-      setInsertTrState((s) => (s ? { ...s, loading: true, error: null } : s));
-      try {
-        const result = await dispatch(
-          fetchTransformationBetween({
-            fromNodeId: fromId,
-            toNodeId: toId,
-            edgeId: neighbor.edgeId,
-            fromProduct: String(fromNode.data?.label ?? ""),
-            toProduct: String(toNode.data?.label ?? ""),
-          }),
-        ).unwrap();
-
-        dispatch(
-          insertTransformationBetween({
-            edgeId: result.edgeId,
-            fromNodeId: result.fromNodeId,
-            toNodeId: result.toNodeId,
-            transformation: result.transformation,
-          }),
-        );
-        setInsertTrState(null);
-      } catch (err) {
-        const msg =
-          typeof err === "string"
-            ? err
-            : (err as { message?: string })?.message ||
-              "Не удалось получить преобразование";
-        setInsertTrState((s) =>
-          s ? { ...s, loading: false, error: msg } : s,
-        );
+    const labelToInfo = new Map<
+      string,
+      { id: string; edgeId: string }
+    >();
+    for (const n of insertTrState.neighbors) {
+      if (!labelToInfo.has(n.neighborLabel)) {
+        labelToInfo.set(n.neighborLabel, {
+          id: n.neighborNodeId,
+          edgeId: n.edgeId,
+        });
       }
-    },
-    [dispatch, insertTrState, data.nodes],
-  );
+    }
 
-  // Соседи для пункта меню (для текущего contextMenu.nodeId)
-  const contextMenuNeighbors = useMemo(() => {
-    if (!contextMenu) return [];
+    setInsertTrState((s) => (s ? { ...s, loading: true, error: null } : s));
+    try {
+      const result = await dispatch(
+        fetchTransformationsForNeighbors({
+          anchorNodeId: anchorId,
+          fromProduct: String(anchor.data?.label ?? ""),
+          toProducts: insertTrState.neighbors.map((n) => n.neighborLabel),
+        }),
+      ).unwrap();
+
+      const groups = result.transformations
+        .map((t) => {
+          const matched = (t.produces ?? [])
+            .map((label) => labelToInfo.get(label))
+            .filter(
+              (x): x is { id: string; edgeId: string } => !!x,
+            );
+          return {
+            name: t.name,
+            description: t.description,
+            targetNodeIds: matched.map((m) => m.id),
+            sourceEdgeIds: matched.map((m) => m.edgeId),
+          };
+        })
+        .filter((g) => g.targetNodeIds.length > 0);
+
+      if (!groups.length) {
+        setInsertTrState((s) =>
+          s
+            ? {
+                ...s,
+                loading: false,
+                error: "Сервер не вернул применимых преобразований",
+              }
+            : s,
+        );
+        return;
+      }
+
+      dispatch(
+        insertTransformationsForNeighbors({
+          anchorNodeId: anchorId,
+          groups,
+        }),
+      );
+      setInsertTrState(null);
+    } catch (err) {
+      const msg =
+        typeof err === "string"
+          ? err
+          : (err as { message?: string })?.message ||
+            "Не удалось получить преобразования";
+      setInsertTrState((s) =>
+        s ? { ...s, loading: false, error: msg } : s,
+      );
+    }
+  }, [dispatch, insertTrState, data.nodes]);
+
+  // Outgoing-соседи для пункта меню (для текущего contextMenu.nodeId)
+  const contextMenuHasOutgoingNeighbors = useMemo(() => {
+    if (!contextMenu) return false;
     return getDirectProductNeighbors(
       contextMenu.nodeId,
       data.nodes,
       data.edges,
-    );
+    ).some((n) => n.role === "outgoing");
   }, [contextMenu, data.nodes, data.edges]);
 
   // Подтверждение удаления
@@ -1281,7 +1307,7 @@ export const Flow = () => {
             y={contextMenu.y}
             isProduct={ctxNode?.type === "product"}
             isStepAlt={ctxIsStepAlt}
-            hasDirectProductNeighbors={contextMenuNeighbors.length > 0}
+            hasOutgoingProductNeighbors={contextMenuHasOutgoingNeighbors}
             onBuildUp={() => handleContextBuild("up")}
             onBuildDown={() => handleContextBuild("down")}
             onBuildAlt={
@@ -1292,7 +1318,7 @@ export const Flow = () => {
                     )
                 : undefined
             }
-            onInsertTransformation={handleContextInsertTransformation}
+            onFetchTransformations={handleContextFetchTransformations}
             onDelete={handleContextDelete}
             onClose={() => setContextMenu(null)}
           />
@@ -1333,7 +1359,7 @@ export const Flow = () => {
           neighbors={insertTrState.neighbors}
           loading={insertTrState.loading}
           error={insertTrState.error}
-          onSelect={handleSelectNeighbor}
+          onConfirm={handleFetchTransformations}
           onClose={() =>
             !insertTrState.loading && setInsertTrState(null)
           }
