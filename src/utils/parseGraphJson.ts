@@ -41,7 +41,7 @@ function asPosition(v: unknown): { x: number; y: number } | null {
   return { x, y };
 }
 
-function detectFormat(parsed: RawObject): "A" | "B" | "C" | "D" {
+function detectFormat(parsed: RawObject): "A" | "B" | "C" | "D" | "E" {
   // Format D: русскоязычный иерархический граф презентаций
   if (Array.isArray(parsed["Цепочка"]) && Array.isArray(parsed["Связи"])) {
     return "D";
@@ -51,12 +51,21 @@ function detectFormat(parsed: RawObject): "A" | "B" | "C" | "D" {
   if (isObject(graph) && Array.isArray(graph.nodes)) return "A";
 
   if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+    // Format E: иерархический граф презентации с английскими ключами
+    // (presentationName в корне + presentation у узлов).
+    const hasPresentationName = typeof parsed.presentationName === "string";
+    const sample = (parsed.nodes as unknown[])[0];
+    const sampleHasPresentation =
+      isObject(sample) && typeof sample.presentation === "string";
+    if (hasPresentationName || sampleHasPresentation) {
+      return "E";
+    }
+
     const hasInternalKeys =
       typeof parsed.prompt === "string" ||
       Array.isArray(parsed.leaf_nodes) ||
       typeof parsed.has_more === "boolean";
 
-    const sample = (parsed.nodes as unknown[])[0];
     const sampleLooksInternal =
       isObject(sample) &&
       (isObject(sample.data) ||
@@ -272,6 +281,11 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       );
     }
     hasMore = parsed.has_more === true;
+  } else if (format === "E") {
+    rawNodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
+    rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
+    presentationTitle = asString(parsed.presentationName);
+    originalPrompt = presentationTitle;
   } else {
     rawNodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
     rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
@@ -328,6 +342,22 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       label,
       description,
     };
+
+    // Format E: вытаскиваем презентацию из поля node.presentation
+    // (фоллбэк — корневое presentationName из ParseResult.presentationTitle).
+    if (format === "E") {
+      const presentation =
+        asString(rn.presentation) ?? presentationTitle ?? null;
+      if (presentation) {
+        const trimmed = presentation.trim();
+        if (trimmed) {
+          mergedData.presentations = [trimmed];
+          if (!presentations.includes(trimmed)) {
+            presentations.push(trimmed);
+          }
+        }
+      }
+    }
 
     nodes.push({
       id,
