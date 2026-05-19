@@ -15,3 +15,4 @@ export {
   TRANSFORMATION_FIELDS,
   type FillCardField,
 } from "./fillCardPrompts";
+export { getDefaultTransformationsBetweenPrompt } from "./transformationsBetweenPrompt";

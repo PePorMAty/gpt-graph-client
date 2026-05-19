@@ -652,22 +652,22 @@ const gptSlice = createSlice({
     insertTransformationsForNeighbors: (
       state,
       action: PayloadAction<{
-        anchorNodeId: string;
         groups: Array<{
           name: string;
           description?: string;
-          targetNodeIds: string[];
-          sourceEdgeIds: string[];
+          sources?: string[];
+          inputNodeIds: string[];
+          outputNodeIds: string[];
+          removeEdgeIds: string[];
         }>;
       }>,
     ) => {
-      const { anchorNodeId, groups } = action.payload;
-      const anchor = state.data.nodes.find((n) => n.id === anchorNodeId);
-      if (!anchor || !groups.length) return;
+      const { groups } = action.payload;
+      if (!groups.length) return;
 
       const edgesToRemove = new Set<string>();
       for (const g of groups) {
-        for (const eid of g.sourceEdgeIds) edgesToRemove.add(eid);
+        for (const eid of g.removeEdgeIds) edgesToRemove.add(eid);
       }
       if (edgesToRemove.size) {
         state.data.edges = state.data.edges.filter(
@@ -679,46 +679,50 @@ const gptSlice = createSlice({
       const newEdges: Edge[] = [];
 
       groups.forEach((g, groupIdx) => {
-        const targets = g.targetNodeIds
+        const inputs = g.inputNodeIds
           .map((id) => state.data.nodes.find((n) => n.id === id))
           .filter((n): n is CustomNode => !!n);
-        if (!targets.length) return;
+        const outputs = g.outputNodeIds
+          .map((id) => state.data.nodes.find((n) => n.id === id))
+          .filter((n): n is CustomNode => !!n);
+        if (!inputs.length || !outputs.length) return;
 
-        const avgX =
-          targets.reduce((s, n) => s + n.position.x, 0) / targets.length;
-        const avgY =
-          targets.reduce((s, n) => s + n.position.y, 0) / targets.length;
+        const all = [...inputs, ...outputs];
+        const avgX = all.reduce((s, n) => s + n.position.x, 0) / all.length;
+        const avgY = all.reduce((s, n) => s + n.position.y, 0) / all.length;
 
         const trId = `tr-between::${crypto.randomUUID()}`;
-        const trX = (anchor.position.x + avgX) / 2;
-        const trY = (anchor.position.y + avgY) / 2 + groupIdx * 24;
 
         newNodes.push({
           id: trId,
           type: "transformation",
-          position: { x: trX, y: trY },
+          position: { x: avgX, y: avgY + groupIdx * 24 },
           sourcePosition: Position.Bottom,
           targetPosition: Position.Top,
           data: {
             label: g.name,
             description: g.description ?? "",
+            ...(g.sources && g.sources.length
+              ? { transformationSources: g.sources }
+              : {}),
           },
         });
 
-        newEdges.push({
-          id: `${trId}::in::${anchorNodeId}`,
-          source: anchorNodeId,
-          target: trId,
-          sourceHandle: "bottom",
-          targetHandle: "top",
-          type: "straight",
-        });
-
-        for (const t of targets) {
+        for (const inp of inputs) {
           newEdges.push({
-            id: `${trId}::out::${t.id}`,
+            id: `${trId}::in::${inp.id}`,
+            source: inp.id,
+            target: trId,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          });
+        }
+        for (const out of outputs) {
+          newEdges.push({
+            id: `${trId}::out::${out.id}`,
             source: trId,
-            target: t.id,
+            target: out.id,
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
