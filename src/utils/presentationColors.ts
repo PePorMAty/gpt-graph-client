@@ -1,4 +1,4 @@
-export const COMMON_PRESENTATION_COLOR = "#ffc107";
+export const COMMON_PRESENTATION_COLOR = "#6c757d";
 
 export const PRESENTATION_PALETTE: readonly string[] = [
   "#42a5f5",
@@ -6,11 +6,13 @@ export const PRESENTATION_PALETTE: readonly string[] = [
   "#ab47bc",
   "#ef5350",
   "#26a69a",
-  "#ffa726",
   "#5c6bc0",
   "#ec407a",
   "#8d6e63",
-  "#78909c",
+  "#29b6f6",
+  "#9ccc65",
+  "#7e57c2",
+  "#26c6da",
 ];
 
 const DEFAULT_PRODUCT_COLOR = PRESENTATION_PALETTE[0];
