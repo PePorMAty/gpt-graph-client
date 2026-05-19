@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ContinueGraphButton } from "../continue-graph-button";
+import { UploadGraphTab } from "../upload-graph";
 import {
   getGraphData,
   getPromptLayoutFromServer,
@@ -186,6 +187,9 @@ export const RequestPanel = () => {
           )}
         </div>
       )}
+
+      {/* COMBINE TAB */}
+      {activeTab === "combine" && <UploadGraphTab />}
     </div>
   );
 };

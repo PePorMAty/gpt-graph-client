@@ -14,6 +14,8 @@ export interface InitialGraphStateI {
   hasMore: boolean;
   leafNodes: string[];
   originalPrompt: string | null;
+  sourceRegistry: Record<string, string>;
+  layoutVersion: number;
 }
 export interface GraphApiResponse {
   success: boolean;

@@ -43,12 +43,13 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId } = useAppSelector(
+  const { data, isLoading, error, rootId, layoutVersion } = useAppSelector(
     (store) => store.graph
   );
   const { fitView, screenToFlowPosition } = useReactFlow();
   const hasFittedView = useRef(false);
   const isInitialLayout = useRef(true);
+  const lastLayoutVersion = useRef<number>(-1);
   const [isApplyingLayout, setIsApplyingLayout] = useState(false);
 
   const applyLayout = useCallback(async () => {
@@ -70,11 +71,16 @@ export const Flow = () => {
   }, [data.nodes, data.edges, dispatch, fitView]);
 
   useEffect(() => {
-    if (data.nodes.length > 0 && isInitialLayout.current) {
+    if (data.nodes.length === 0) return;
+    if (
+      isInitialLayout.current ||
+      lastLayoutVersion.current !== layoutVersion
+    ) {
       applyLayout();
-      isInitialLayout.current = false; // 🔑 ВАЖНО
+      isInitialLayout.current = false;
+      lastLayoutVersion.current = layoutVersion;
     }
-  }, [data.nodes.length, applyLayout]);
+  }, [data.nodes.length, layoutVersion, applyLayout]);
 
   const edgeReconnectSuccessful = useRef<boolean>(true);
 

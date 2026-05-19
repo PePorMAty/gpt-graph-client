@@ -6,6 +6,8 @@ import { type Node, type Edge, type NodeProps } from "@xyflow/react";
 export interface CustomNodeData {
   label: string;
   description?: string;
+  sources?: string[];
+  color?: string;
   [key: string]: unknown; // если GPT добавит что-то — не сломается
 }
 

@@ -14,9 +14,15 @@ import { normalizeEdges } from "../../utils/normalize-edges";
 import { normalizeNodes } from "../../utils/normalize-nodes";
 import { continueGraph, getGraphData } from "../api/graph-api";
 
-import type { CustomNode, CustomNodeData } from "../../types";
+import type { CustomEdge, CustomNode, CustomNodeData } from "../../types";
 import type { InitialGraphStateI } from "../types";
 import { layoutSubtree } from "../../utils/layoutSubtree";
+import type { ParseResult } from "../../utils/parseProductGraphJson";
+import {
+  assignColorsForPresentations,
+  colorForNode,
+} from "../../utils/sourceColorRegistry";
+import { mergeProductGraph } from "../../utils/mergeProductGraph";
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -30,7 +36,30 @@ const initialState: InitialGraphStateI = {
   hasMore: false,
   leafNodes: [],
   originalPrompt: null,
+  sourceRegistry: {},
+  layoutVersion: 0,
 };
+
+function buildNodeFromParsed(
+  parsedId: string,
+  parsedType: "product" | "transformation",
+  label: string,
+  sources: string[],
+  registry: Record<string, string>
+): CustomNode {
+  return {
+    id: parsedId,
+    type: parsedType,
+    position: { x: 0, y: 0 },
+    data: {
+      label,
+      sources,
+      color:
+        parsedType === "product" ? colorForNode(sources, registry) : undefined,
+    },
+    draggable: true,
+  };
+}
 
 const gptSlice = createSlice({
   name: "graph",
@@ -123,6 +152,96 @@ const gptSlice = createSlice({
       };
 
       state.data.nodes.push(newNode);
+    },
+    replaceGraphFromJson: (state, action: PayloadAction<ParseResult>) => {
+      const parsed = action.payload;
+      const nextVersion = state.layoutVersion + 1;
+      const namespace = `u${nextVersion}__`;
+
+      const registry = assignColorsForPresentations({}, parsed.presentations);
+
+      const nodes: CustomNode[] = parsed.nodes.map((n) =>
+        buildNodeFromParsed(
+          namespace + n.id,
+          n.type,
+          n.label,
+          n.sources,
+          registry
+        )
+      );
+
+      const rawEdges: CustomEdge[] = parsed.edges.map((e) => ({
+        id: namespace + e.id,
+        source: namespace + e.source,
+        target: namespace + e.target,
+        type: "straight",
+      }));
+
+      state.data = {
+        nodes,
+        edges: normalizeEdges(rawEdges),
+      };
+      state.sourceRegistry = registry;
+      state.rootId = nodes[0]?.id ?? null;
+      state.layoutVersion = nextVersion;
+      state.leafNodes = [];
+      state.originalPrompt = parsed.presentationTitle;
+      state.hasMore = false;
+      state.isError = false;
+      state.error = null;
+    },
+    mergeGraphFromJson: (state, action: PayloadAction<ParseResult>) => {
+      const parsed = action.payload;
+      const nextVersion = state.layoutVersion + 1;
+      const namespace = `u${nextVersion}__`;
+
+      const registry = assignColorsForPresentations(
+        state.sourceRegistry,
+        parsed.presentations
+      );
+
+      const namespacedParsed: ParseResult = {
+        ...parsed,
+        nodes: parsed.nodes.map((n) => ({ ...n, id: namespace + n.id })),
+        edges: parsed.edges.map((e) => ({
+          ...e,
+          id: namespace + e.id,
+          source: namespace + e.source,
+          target: namespace + e.target,
+        })),
+      };
+
+      const merged = mergeProductGraph({
+        existingNodes: state.data.nodes,
+        existingEdges: state.data.edges,
+        parsed: namespacedParsed,
+        registry,
+      });
+
+      // Пересчитать цвет всех product-узлов — у уже существующих могло
+      // появиться >1 источника, цвет должен стать общим.
+      const recolored: CustomNode[] = merged.nodes.map((n) => {
+        if (n.type !== "product") return n;
+        const sources = Array.isArray(n.data.sources)
+          ? (n.data.sources as string[])
+          : [];
+        return {
+          ...n,
+          data: { ...n.data, color: colorForNode(sources, registry) },
+        };
+      });
+
+      state.data = {
+        nodes: recolored,
+        edges: normalizeEdges(merged.edges),
+      };
+      state.sourceRegistry = registry;
+      state.layoutVersion = nextVersion;
+      if (!state.rootId && recolored.length > 0) {
+        state.rootId = recolored[0].id;
+      }
+      state.isError = false;
+      state.error = null;
     },
   },
   extraReducers: (builder) => {
@@ -224,5 +343,7 @@ export const {
   removeNode,
   setGraphData,
   addNode,
+  replaceGraphFromJson,
+  mergeGraphFromJson,
 } = gptSlice.actions;
 export default gptSlice.reducer;
