@@ -75,6 +75,7 @@ import {
 import { fetchTransformationsForNeighbors } from "./store/api/transformation-between-api";
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
+import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -185,7 +186,14 @@ export const Flow = () => {
     neighbors: DirectProductNeighbor[];
     loading: boolean;
     error: string | null;
+    customSystemPrompt: string;
+    isPromptDirty: boolean;
   } | null>(null);
+
+  const defaultTransformationsBetweenPrompt = useMemo(
+    () => getDefaultTransformationsBetweenPrompt(),
+    [],
+  );
 
   // Step-by-step chain
   const stepChainSessions = useAppSelector(
@@ -341,9 +349,11 @@ export const Flow = () => {
       neighbors: outgoing,
       loading: false,
       error: null,
+      customSystemPrompt: defaultTransformationsBetweenPrompt,
+      isPromptDirty: false,
     });
     setContextMenu(null);
-  }, [contextMenu, data.nodes, data.edges]);
+  }, [contextMenu, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
 
   const handleFetchTransformations = useCallback(async () => {
     if (!insertTrState) return;
@@ -403,6 +413,9 @@ export const Flow = () => {
           anchorNodeId: anchorId,
           chain,
           links,
+          ...(insertTrState.isPromptDirty
+            ? { customSystemPrompt: insertTrState.customSystemPrompt }
+            : {}),
         }),
       ).unwrap();
 
@@ -1398,6 +1411,31 @@ export const Flow = () => {
           neighbors={insertTrState.neighbors}
           loading={insertTrState.loading}
           error={insertTrState.error}
+          defaultSystemPrompt={defaultTransformationsBetweenPrompt}
+          customSystemPrompt={insertTrState.customSystemPrompt}
+          isPromptDirty={insertTrState.isPromptDirty}
+          onChangeCustomSystemPrompt={(value) =>
+            setInsertTrState((s) =>
+              s
+                ? {
+                    ...s,
+                    customSystemPrompt: value,
+                    isPromptDirty: value !== defaultTransformationsBetweenPrompt,
+                  }
+                : s,
+            )
+          }
+          onResetSystemPrompt={() =>
+            setInsertTrState((s) =>
+              s
+                ? {
+                    ...s,
+                    customSystemPrompt: defaultTransformationsBetweenPrompt,
+                    isPromptDirty: false,
+                  }
+                : s,
+            )
+          }
           onConfirm={handleFetchTransformations}
           onClose={() =>
             !insertTrState.loading && setInsertTrState(null)
