@@ -48,7 +48,10 @@ export const UploadGraphTab = () => {
     [presentationColors, hasCommonNodes],
   );
 
-  const colorizeNodes = (nodes: CustomNode[], registry: Record<string, string>) =>
+  const colorizeNodes = (
+    nodes: CustomNode[],
+    registry: Record<string, string>,
+  ) =>
     nodes.map((n) => {
       if (n.type !== "product") return n;
       const pres = Array.isArray(n.data?.presentations)
@@ -176,7 +179,9 @@ export const UploadGraphTab = () => {
     setIsProcessing(true);
     try {
       const { summary, warnings } =
-        mode === "replace" ? await handleReplace(file) : await handleMerge(file);
+        mode === "replace"
+          ? await handleReplace(file)
+          : await handleMerge(file);
       if (warnings.length) {
         setInfo(`${summary} Предупреждений: ${warnings.length}.`);
         console.warn("[UploadGraphTab] предупреждения парсера:", warnings);
@@ -208,7 +213,9 @@ export const UploadGraphTab = () => {
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
       setInfo(`Layout пересчитан: ${laid.nodes.length} узлов.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось пересчитать layout");
+      setError(
+        e instanceof Error ? e.message : "Не удалось пересчитать layout",
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -265,13 +272,6 @@ export const UploadGraphTab = () => {
         🔄 Пересчитать раскладку
       </button>
 
-      <p className={styles.hint}>
-        Поддерживаются ранее сохранённые графы и формат с полями{" "}
-        <code>Цепочка</code>, <code>Связи</code>, <code>Название презентации</code>.
-        Кнопка «Добавить» сливает узлы из JSON в текущий граф (совпадение по
-        нормализованному названию).
-      </p>
-
       {error && <div className={styles.error}>⚠️ {error}</div>}
       {info && !error && <div className={styles.info}>✅ {info}</div>}
 
@@ -279,7 +279,8 @@ export const UploadGraphTab = () => {
         <h4 className={styles.legendTitle}>Легенда</h4>
         {legendEntries.length === 0 ? (
           <p className={styles.legendEmpty}>
-            Загрузите граф с полем «Название презентации», чтобы увидеть источники.
+            Загрузите граф с полем «Название презентации», чтобы увидеть
+            источники.
           </p>
         ) : (
           <ul className={styles.legend}>
