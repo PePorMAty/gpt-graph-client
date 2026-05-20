@@ -15,8 +15,30 @@ import {
 } from "../../utils/presentationColors";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
 import type { CustomNode } from "../../types";
+import type { Edge } from "@xyflow/react";
 
 import styles from "./UploadGraphTab.module.css";
+
+// Раскладка для вкладки объединения: сырьё сверху, продукты снизу.
+// ELK (~1.5MB) подгружаем динамически — только когда пользователь
+// реально что-то делает на этой вкладке. При сбое — фолбэк на applyAutoLayout("TB").
+const layoutForMergeTab = async (
+  nodes: CustomNode[],
+  edges: Edge[],
+): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
+  try {
+    const { layoutMergedGraphElk } = await import(
+      "../../utils/layoutMergedGraphElk"
+    );
+    return await layoutMergedGraphElk(nodes, edges);
+  } catch (e) {
+    console.warn(
+      "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
+      e,
+    );
+    return applyAutoLayout(nodes, edges, "TB");
+  }
+};
 
 type UploadMode = "replace" | "merge";
 
@@ -79,7 +101,7 @@ export const UploadGraphTab = () => {
     let finalEdges = payload.edges;
     if (needsLayout) {
       // Загружаемые презентации укладываем сверху вниз: сырьё сверху, продукты снизу.
-      const laid = await applyAutoLayout(coloredNodes, payload.edges, "TB");
+      const laid = await layoutForMergeTab(coloredNodes, payload.edges);
       finalNodes = laid.nodes;
       finalEdges = laid.edges;
     }
@@ -156,8 +178,10 @@ export const UploadGraphTab = () => {
     });
 
     // Объединённый граф ре-лейаут-нём целиком: новые узлы без координат + старые
-    // могут «съезжать» при добавлении новых рёбер. Сохраняем TB-ориентацию.
-    const laid = await applyAutoLayout(recolored, merged.edges, "TB");
+    // могут «съезжать» при добавлении новых рёбер. Используем ELK с
+    // layerConstraint, чтобы сырьё прижалось к верхнему слою, а конечные
+    // продукты — к нижнему (сугияма-разделение для объединённых графов).
+    const laid = await layoutForMergeTab(recolored, merged.edges);
 
     dispatch(
       mergeGraphFromFile({
@@ -209,7 +233,7 @@ export const UploadGraphTab = () => {
     setInfo(null);
     setIsProcessing(true);
     try {
-      const laid = await applyAutoLayout(data.nodes, data.edges, "TB");
+      const laid = await layoutForMergeTab(data.nodes, data.edges);
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
       setInfo(`Layout пересчитан: ${laid.nodes.length} узлов.`);
     } catch (e) {
