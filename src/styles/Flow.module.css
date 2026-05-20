@@ -219,6 +219,26 @@
   stroke-width: 2px;
 }
 
+/* Подсветка цепочки по hover (только для объединённых графов). */
+:global(.react-flow__node.node--dimmed) {
+  opacity: 0.18;
+  transition: opacity 120ms ease;
+}
+:global(.react-flow__node.node--focused) {
+  z-index: 10;
+  transition: opacity 120ms ease;
+}
+:global(.react-flow__edge.edge--dimmed path) {
+  stroke-opacity: 0.08;
+  transition: stroke-opacity 120ms ease;
+}
+:global(.react-flow__edge.edge--focused path) {
+  stroke: #2563eb !important;
+  stroke-width: 2;
+  stroke-opacity: 1;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+
 /* Анимации */
 @keyframes spin {
   to {
