@@ -38,6 +38,7 @@ import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
 import { parseAlternatives } from "../../utils/parseAlternatives";
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
+import { reconstructPresentationColors } from "../../utils/presentationColors";
 import { sourcesKey } from "./sourcesSlice";
 
 const initialState: InitialGraphStateI = {
@@ -221,7 +222,12 @@ const gptSlice = createSlice({
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
       state.originalPrompt = action.payload.originalPrompt;
-      state.presentationColors = action.payload.presentationColors ?? {};
+      // Если presentationColors не передан явно (например, открытие
+      // сохранённого графа из «Сохранённые»), восстанавливаем реестр
+      // по узлам — у них в data сохранён presentationColor.
+      state.presentationColors =
+        action.payload.presentationColors ??
+        reconstructPresentationColors(state.data.nodes);
 
       state.source = "loaded";
 
