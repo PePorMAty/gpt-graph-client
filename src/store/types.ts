@@ -1,6 +1,10 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomEdge, CustomNode } from "../types";
-import type { TechChain } from "../utils/chainToFlow";
+import type {
+  ChainProductNode,
+  ChainTransformNode,
+  TechChain,
+} from "../utils/chainToFlow";
 
 export interface DataI {
   nodes: CustomNode[];
@@ -27,6 +31,8 @@ export interface InitialGraphStateI {
   stepChainSessions: Record<string, StepChainSession>;
   sourcesPool: Record<string, SourcesPoolEntry>;
   acceptedStepAlternatives: Record<string, number[]>;
+  /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
+  presentationColors: Record<string, string>;
 }
 
 export interface SourcesPoolEntry {
@@ -282,22 +288,36 @@ export type TransformationBetweenResponse = {
   error?: string;
 };
 
-// ===== TRANSFORMATIONS FOR NEIGHBORS (bulk) =====
+// ===== TRANSFORMATIONS FOR NEIGHBORS (bulk, subgraph protocol) =====
+
+export type ChainLink = {
+  "Откуда": string;
+  "Куда": string;
+  "Источник": string;
+  "Приемник": string;
+  "Тип связи": string;
+};
 
 export type TransformationsForNeighborsRequest = {
-  fromProduct: string;
-  toProducts: string[];
+  "Цепочка": ChainProductNode[];
+  "Связи": ChainLink[];
   customSystemPrompt?: string;
+};
+
+export type ChainTransformNodeWithSources = ChainTransformNode & {
+  "Источники"?: string[];
+};
+
+export type TransformationsForNeighborsResponse = {
+  success?: boolean;
+  "Цепочка"?: Array<ChainProductNode | ChainTransformNodeWithSources>;
+  error?: string;
 };
 
 export type TransformationGroup = {
   name: string;
   description?: string;
-  produces: string[];
-};
-
-export type TransformationsForNeighborsResponse = {
-  success: boolean;
-  transformations: TransformationGroup[];
-  error?: string;
+  sources: string[];
+  inputNodeIds: string[];
+  outputNodeIds: string[];
 };

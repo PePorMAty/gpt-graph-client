@@ -49,6 +49,10 @@ export interface CustomNodeData {
   stepChainSessionKey?: string;
   stepChainStepNumber?: number;
 
+  // --- multi-source upload (presentation tracking) ---
+  presentations?: string[];
+  presentationColor?: string;
+
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }

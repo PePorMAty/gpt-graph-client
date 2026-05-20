@@ -58,6 +58,7 @@ const initialState: InitialGraphStateI = {
   stepChainSessions: {},
   sourcesPool: {},
   acceptedStepAlternatives: {},
+  presentationColors: {},
 };
 
 export const sourcesPoolKey = (
@@ -206,6 +207,8 @@ const gptSlice = createSlice({
         leafNodes: string[];
         hasMore: boolean;
         originalPrompt: string | null;
+        /** Реестр презентация → цвет. Если передан — сбрасывает текущий. */
+        presentationColors?: Record<string, string>;
       }>,
     ) => {
       const normNodes = normalizeNodes(action.payload.nodes);
@@ -218,6 +221,7 @@ const gptSlice = createSlice({
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
       state.originalPrompt = action.payload.originalPrompt;
+      state.presentationColors = action.payload.presentationColors ?? {};
 
       state.source = "loaded";
 
@@ -226,6 +230,32 @@ const gptSlice = createSlice({
           ? findRootNodeId(state.data.nodes, state.data.edges)
           : null;
 
+      state.isError = false;
+      state.error = null;
+    },
+    mergeGraphFromFile: (
+      state,
+      action: PayloadAction<{
+        nodes: CustomNode[];
+        edges: Edge[];
+        presentationColors: Record<string, string>;
+      }>,
+    ) => {
+      const normNodes = normalizeNodes(action.payload.nodes);
+      const normEdges = normalizeEdges(action.payload.edges);
+      state.data = {
+        nodes: normNodes,
+        edges: applyHandlesByGeometry(normNodes, normEdges),
+      };
+      state.presentationColors = action.payload.presentationColors;
+      // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
+      // позиции корректны. Если поставить "new", Flow перезапустит свой
+      // applyLayout без direction и перевернёт граф обратно в BT.
+      state.source = "loaded";
+      state.rootId =
+        state.data.nodes.length > 0
+          ? findRootNodeId(state.data.nodes, state.data.edges)
+          : state.rootId;
       state.isError = false;
       state.error = null;
     },
@@ -652,22 +682,22 @@ const gptSlice = createSlice({
     insertTransformationsForNeighbors: (
       state,
       action: PayloadAction<{
-        anchorNodeId: string;
         groups: Array<{
           name: string;
           description?: string;
-          targetNodeIds: string[];
-          sourceEdgeIds: string[];
+          sources?: string[];
+          inputNodeIds: string[];
+          outputNodeIds: string[];
+          removeEdgeIds: string[];
         }>;
       }>,
     ) => {
-      const { anchorNodeId, groups } = action.payload;
-      const anchor = state.data.nodes.find((n) => n.id === anchorNodeId);
-      if (!anchor || !groups.length) return;
+      const { groups } = action.payload;
+      if (!groups.length) return;
 
       const edgesToRemove = new Set<string>();
       for (const g of groups) {
-        for (const eid of g.sourceEdgeIds) edgesToRemove.add(eid);
+        for (const eid of g.removeEdgeIds) edgesToRemove.add(eid);
       }
       if (edgesToRemove.size) {
         state.data.edges = state.data.edges.filter(
@@ -679,46 +709,50 @@ const gptSlice = createSlice({
       const newEdges: Edge[] = [];
 
       groups.forEach((g, groupIdx) => {
-        const targets = g.targetNodeIds
+        const inputs = g.inputNodeIds
           .map((id) => state.data.nodes.find((n) => n.id === id))
           .filter((n): n is CustomNode => !!n);
-        if (!targets.length) return;
+        const outputs = g.outputNodeIds
+          .map((id) => state.data.nodes.find((n) => n.id === id))
+          .filter((n): n is CustomNode => !!n);
+        if (!inputs.length || !outputs.length) return;
 
-        const avgX =
-          targets.reduce((s, n) => s + n.position.x, 0) / targets.length;
-        const avgY =
-          targets.reduce((s, n) => s + n.position.y, 0) / targets.length;
+        const all = [...inputs, ...outputs];
+        const avgX = all.reduce((s, n) => s + n.position.x, 0) / all.length;
+        const avgY = all.reduce((s, n) => s + n.position.y, 0) / all.length;
 
         const trId = `tr-between::${crypto.randomUUID()}`;
-        const trX = (anchor.position.x + avgX) / 2;
-        const trY = (anchor.position.y + avgY) / 2 + groupIdx * 24;
 
         newNodes.push({
           id: trId,
           type: "transformation",
-          position: { x: trX, y: trY },
+          position: { x: avgX, y: avgY + groupIdx * 24 },
           sourcePosition: Position.Bottom,
           targetPosition: Position.Top,
           data: {
             label: g.name,
             description: g.description ?? "",
+            ...(g.sources && g.sources.length
+              ? { transformationSources: g.sources }
+              : {}),
           },
         });
 
-        newEdges.push({
-          id: `${trId}::in::${anchorNodeId}`,
-          source: anchorNodeId,
-          target: trId,
-          sourceHandle: "bottom",
-          targetHandle: "top",
-          type: "straight",
-        });
-
-        for (const t of targets) {
+        for (const inp of inputs) {
           newEdges.push({
-            id: `${trId}::out::${t.id}`,
+            id: `${trId}::in::${inp.id}`,
+            source: inp.id,
+            target: trId,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          });
+        }
+        for (const out of outputs) {
+          newEdges.push({
+            id: `${trId}::out::${out.id}`,
             source: trId,
-            target: t.id,
+            target: out.id,
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
@@ -1154,6 +1188,7 @@ export const {
   setGraphData,
   addNode,
   loadGraphFromFile,
+  mergeGraphFromFile,
   setProducerForPid,
   popQueueHead,
   initStepChainSession,
