@@ -1,20 +1,21 @@
 import type { Edge } from "@xyflow/react";
 
 /**
- * Возвращает множество id всех узлов, достижимых из `centerId`
- * по рёбрам в обе стороны (предки + потомки + сам центр).
+ * Возвращает множество id узлов, достижимых из `centerId` по рёбрам
+ * в обе стороны в пределах `maxDepth` шагов (предки + потомки + сам центр).
  *
- * В отличие от {@link extractSubgraph} НЕ требует чередования
- * product → transformation → product и не ограничен глубиной —
- * подходит для произвольных DAG, какими получаются объединённые
- * графы во вкладке «Объединение графов» (там бывают прямые
- * рёбра product → product).
+ * `maxDepth = 1` (по умолчанию) — только прямые входящие и исходящие
+ * соседи: то, что чаще всего нужно для подсветки «с кем связан этот узел».
+ * Полный обход цепочки даёт слишком широкую подсветку — на больших
+ * объединённых графах это часто почти всё дерево.
  *
- * Используется для подсветки цепочки по hover.
+ * В отличие от {@link extractSubgraph} не требует чередования
+ * product → transformation → product — рассчитан на произвольные DAG.
  */
 export function findChainNodeIds(
   edges: Edge[],
   centerId: string,
+  maxDepth: number = 1,
 ): Set<string> {
   const outAdj = new Map<string, string[]>();
   const inAdj = new Map<string, string[]>();
@@ -28,15 +29,17 @@ export function findChainNodeIds(
   }
 
   const visited = new Set<string>([centerId]);
-  const stack: string[] = [centerId];
-  while (stack.length) {
-    const id = stack.pop()!;
-    const next = [...(outAdj.get(id) ?? []), ...(inAdj.get(id) ?? [])];
-    for (const n of next) {
-      if (visited.has(n)) continue;
-      visited.add(n);
-      stack.push(n);
+  let frontier: string[] = [centerId];
+  for (let depth = 0; depth < maxDepth && frontier.length; depth++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const n of [...(outAdj.get(id) ?? []), ...(inAdj.get(id) ?? [])]) {
+        if (visited.has(n)) continue;
+        visited.add(n);
+        next.push(n);
+      }
     }
+    frontier = next;
   }
   return visited;
 }

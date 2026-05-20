@@ -225,13 +225,11 @@ export const Flow = () => {
     () =>
       data.nodes.map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
-        const isFocused = chainSet?.has(n.id) ?? false;
-        const isDimmed = chainSet ? !isFocused : false;
+        const isDimmed = chainSet ? !chainSet.has(n.id) : false;
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
-          isFocused ? "node--focused" : "",
           isDimmed ? "node--dimmed" : "",
         ]
           .filter(Boolean)
@@ -246,13 +244,9 @@ export const Flow = () => {
     if (!chainSet) return data.edges;
     return data.edges.map((e) => {
       const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
+      if (bothIn) return e;
       const existing = e.className ?? "";
-      const cls = [
-        existing,
-        bothIn ? "edge--focused" : "edge--dimmed",
-      ]
-        .filter(Boolean)
-        .join(" ");
+      const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
       return { ...e, className: cls };
     });
   }, [data.edges, chainSet]);
