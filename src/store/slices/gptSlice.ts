@@ -248,9 +248,10 @@ const gptSlice = createSlice({
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
       state.presentationColors = action.payload.presentationColors;
-      // Маркируем как новый граф, чтобы Flow re-layout-нул слитую структуру
-      // (loaded-режим уважает существующие позиции, нам это не подходит).
-      state.source = "new";
+      // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
+      // позиции корректны. Если поставить "new", Flow перезапустит свой
+      // applyLayout без direction и перевернёт граф обратно в BT.
+      state.source = "loaded";
       state.rootId =
         state.data.nodes.length > 0
           ? findRootNodeId(state.data.nodes, state.data.edges)

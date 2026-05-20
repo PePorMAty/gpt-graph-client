@@ -75,7 +75,8 @@ export const UploadGraphTab = () => {
     let finalNodes = coloredNodes;
     let finalEdges = payload.edges;
     if (needsLayout) {
-      const laid = await applyAutoLayout(coloredNodes, payload.edges);
+      // Загружаемые презентации укладываем сверху вниз: сырьё сверху, продукты снизу.
+      const laid = await applyAutoLayout(coloredNodes, payload.edges, "TB");
       finalNodes = laid.nodes;
       finalEdges = laid.edges;
     }
@@ -152,8 +153,8 @@ export const UploadGraphTab = () => {
     });
 
     // Объединённый граф ре-лейаут-нём целиком: новые узлы без координат + старые
-    // могут «съезжать» при добавлении новых рёбер.
-    const laid = await applyAutoLayout(recolored, merged.edges);
+    // могут «съезжать» при добавлении новых рёбер. Сохраняем TB-ориентацию.
+    const laid = await applyAutoLayout(recolored, merged.edges, "TB");
 
     dispatch(
       mergeGraphFromFile({
@@ -203,7 +204,7 @@ export const UploadGraphTab = () => {
     setInfo(null);
     setIsProcessing(true);
     try {
-      const laid = await applyAutoLayout(data.nodes, data.edges);
+      const laid = await applyAutoLayout(data.nodes, data.edges, "TB");
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
       setInfo(`Layout пересчитан: ${laid.nodes.length} узлов.`);
     } catch (e) {

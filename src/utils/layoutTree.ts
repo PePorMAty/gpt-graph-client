@@ -96,17 +96,23 @@ export async function layoutTree(
   nodes: CustomNode[],
   edges: Edge[],
   rootId?: string,
+  direction?: "TB" | "BT",
 ): Promise<LayoutTreeResult> {
   if (!nodes.length) {
     return { nodes, edges };
   }
 
-  // Если у rootId нет входящих рёбер — он источник: rankdir BT ставит источник снизу.
-  // Если есть входящие — он sink: rankdir TB ставит sink снизу.
-  const hasIncoming = rootId
-    ? edges.some((e) => e.target === rootId)
-    : true;
-  const rankdir = hasIncoming ? "TB" : "BT";
+  // Если direction явно передан вызывающим — используем его.
+  // Иначе: rootId с входящими — sink, rankdir TB; иначе источник — rankdir BT.
+  let rankdir: "TB" | "BT";
+  if (direction) {
+    rankdir = direction;
+  } else {
+    const hasIncoming = rootId
+      ? edges.some((e) => e.target === rootId)
+      : true;
+    rankdir = hasIncoming ? "TB" : "BT";
+  }
 
   // --- Пробуем ELK (layered) для сложных графов ---
   // На объединённых графах общие узлы становятся хабами с десятками
