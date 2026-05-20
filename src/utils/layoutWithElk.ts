@@ -7,28 +7,9 @@ const NODE_HEIGHT = 80;
 
 const elk = new ELK();
 
-export type ElkDirection = "TB" | "BT" | "LR" | "RL";
-
 export type ElkLayoutResult = {
   nodes: CustomNode[];
   edges: Edge[];
-};
-
-const ELK_DIRECTION_MAP: Record<ElkDirection, string> = {
-  TB: "DOWN",
-  BT: "UP",
-  LR: "RIGHT",
-  RL: "LEFT",
-};
-
-const HANDLE_POSITIONS: Record<
-  ElkDirection,
-  { source: Position; target: Position }
-> = {
-  TB: { source: Position.Bottom, target: Position.Top },
-  BT: { source: Position.Top, target: Position.Bottom },
-  LR: { source: Position.Right, target: Position.Left },
-  RL: { source: Position.Left, target: Position.Right },
 };
 
 /**
@@ -41,11 +22,11 @@ const HANDLE_POSITIONS: Record<
 export async function layoutWithElk(
   nodes: CustomNode[],
   edges: Edge[],
-  rankdir: ElkDirection = "TB",
+  rankdir: "TB" | "BT" = "TB",
 ): Promise<ElkLayoutResult> {
   if (!nodes.length) return { nodes, edges };
 
-  const direction = ELK_DIRECTION_MAP[rankdir];
+  const direction = rankdir === "TB" ? "DOWN" : "UP";
 
   const nodeIdSet = new Set(nodes.map((n) => n.id));
   const validEdges = edges.filter(
@@ -99,12 +80,11 @@ export async function layoutWithElk(
     );
   }
 
-  const { source, target } = HANDLE_POSITIONS[rankdir];
   const layoutedNodes: CustomNode[] = nodes.map((n) => ({
     ...n,
     position: positions.get(n.id) ?? n.position,
-    sourcePosition: source,
-    targetPosition: target,
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
   }));
 
   return { nodes: layoutedNodes, edges };

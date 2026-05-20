@@ -33,8 +33,6 @@ export interface InitialGraphStateI {
   acceptedStepAlternatives: Record<string, number[]>;
   /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
   presentationColors: Record<string, string>;
-  /** Ориентация полотна, заданная при первой загрузке JSON во вкладке «Объединить графы». */
-  presentationOrientation: "TB" | "BT" | "LR" | "RL" | null;
 }
 
 export interface SourcesPoolEntry {

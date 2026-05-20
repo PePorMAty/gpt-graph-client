@@ -9,8 +9,6 @@ export type LoadGraphPayload = {
   originalPrompt: string | null;
 };
 
-export type GraphOrientation = "TB" | "BT" | "LR" | "RL";
-
 export type ParseResult = {
   payload: LoadGraphPayload;
   warnings: string[];
@@ -19,8 +17,6 @@ export type ParseResult = {
   presentations: string[];
   /** Заголовок презентации из поля `Название презентации` — только для русскоязычного формата. */
   presentationTitle: string | null;
-  /** Ориентация из «Настройки визуализации.Ориентация» (рус.) или visualizationSettings.orientation (англ.). */
-  orientation: GraphOrientation | null;
 };
 
 type RawObject = Record<string, unknown>;
@@ -233,28 +229,6 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
   let hasMore = false;
   let presentations: string[] = [];
   let presentationTitle: string | null = null;
-  let orientation: GraphOrientation | null = null;
-
-  const readOrientation = (raw: unknown): GraphOrientation | null => {
-    if (typeof raw !== "string") return null;
-    const up = raw.trim().toUpperCase();
-    return up === "TB" || up === "BT" || up === "LR" || up === "RL"
-      ? (up as GraphOrientation)
-      : null;
-  };
-
-  // Ориентация из русского формата.
-  if (isObject(parsed["Настройки визуализации"])) {
-    orientation = readOrientation(
-      (parsed["Настройки визуализации"] as RawObject)["Ориентация"],
-    );
-  }
-  // Ориентация из английского формата.
-  if (!orientation && isObject(parsed.visualizationSettings)) {
-    orientation = readOrientation(
-      (parsed.visualizationSettings as RawObject).orientation,
-    );
-  }
 
   if (format === "D") {
     const ru = parseRussianFormat(parsed, warnings);
@@ -279,7 +253,6 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       needsLayout,
       presentations,
       presentationTitle,
-      orientation,
     };
   }
 
@@ -453,6 +426,5 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
     needsLayout,
     presentations,
     presentationTitle,
-    orientation,
   };
 }

@@ -22,9 +22,7 @@ type UploadMode = "replace" | "merge";
 
 export const UploadGraphTab = () => {
   const dispatch = useAppDispatch();
-  const { data, presentationColors, presentationOrientation } = useAppSelector(
-    (state) => state.graph,
-  );
+  const { data, presentationColors } = useAppSelector((state) => state.graph);
 
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const mergeInputRef = useRef<HTMLInputElement | null>(null);
@@ -68,14 +66,8 @@ export const UploadGraphTab = () => {
   const handleReplace = async (file: File) => {
     const text = await file.text();
     const result = parseGraphJson(text);
-    const {
-      payload,
-      warnings,
-      needsLayout,
-      presentations,
-      presentationTitle,
-      orientation,
-    } = result;
+    const { payload, warnings, needsLayout, presentations, presentationTitle } =
+      result;
 
     const registry = assignColorsForPresentations({}, presentations);
     const coloredNodes = colorizeNodes(payload.nodes, registry);
@@ -83,11 +75,7 @@ export const UploadGraphTab = () => {
     let finalNodes = coloredNodes;
     let finalEdges = payload.edges;
     if (needsLayout) {
-      const laid = await applyAutoLayout(
-        coloredNodes,
-        payload.edges,
-        orientation ?? undefined,
-      );
+      const laid = await applyAutoLayout(coloredNodes, payload.edges);
       finalNodes = laid.nodes;
       finalEdges = laid.edges;
     }
@@ -105,7 +93,6 @@ export const UploadGraphTab = () => {
         hasMore: payload.hasMore,
         originalPrompt: promptFromFile,
         presentationColors: registry,
-        orientation,
       }),
     );
 
@@ -165,13 +152,8 @@ export const UploadGraphTab = () => {
     });
 
     // Объединённый граф ре-лейаут-нём целиком: новые узлы без координат + старые
-    // могут «съезжать» при добавлении новых рёбер. Уважаем ориентацию,
-    // зафиксированную при первой загрузке.
-    const laid = await applyAutoLayout(
-      recolored,
-      merged.edges,
-      presentationOrientation ?? undefined,
-    );
+    // могут «съезжать» при добавлении новых рёбер.
+    const laid = await applyAutoLayout(recolored, merged.edges);
 
     dispatch(
       mergeGraphFromFile({
@@ -221,11 +203,7 @@ export const UploadGraphTab = () => {
     setInfo(null);
     setIsProcessing(true);
     try {
-      const laid = await applyAutoLayout(
-        data.nodes,
-        data.edges,
-        presentationOrientation ?? undefined,
-      );
+      const laid = await applyAutoLayout(data.nodes, data.edges);
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
       setInfo(`Layout пересчитан: ${laid.nodes.length} узлов.`);
     } catch (e) {

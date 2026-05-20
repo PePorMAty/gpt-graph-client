@@ -84,8 +84,9 @@ const nodeTypes: NodeTypes = {
 
 export const Flow = () => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId, source, chainBuild, presentationOrientation } =
-    useAppSelector((store) => store.graph);
+  const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
+    (store) => store.graph,
+  );
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -120,20 +121,9 @@ export const Flow = () => {
 
     setIsApplyingLayout(true);
 
-    const { nodes, edges } = await layoutTree(
-      data.nodes,
-      data.edges,
-      rootId,
-      presentationOrientation ?? undefined,
-    );
+    const { nodes, edges } = await layoutTree(data.nodes, data.edges, rootId);
 
-    const isHorizontal =
-      presentationOrientation === "LR" || presentationOrientation === "RL";
-    const centeredNodes = centerTreeOnRoot(
-      nodes,
-      rootId,
-      isHorizontal ? "horizontal" : "vertical",
-    );
+    const centeredNodes = centerTreeOnRoot(nodes, rootId);
 
     dispatch(setGraphData({ nodes: centeredNodes, edges }));
 
@@ -142,7 +132,7 @@ export const Flow = () => {
       hasFittedView.current = true;
       setIsApplyingLayout(false);
     });
-  }, [data.nodes, data.edges, dispatch, fitView, rootId, presentationOrientation]);
+  }, [data.nodes, data.edges, dispatch, fitView]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
