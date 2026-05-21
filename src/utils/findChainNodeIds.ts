@@ -1,21 +1,25 @@
 import type { Edge } from "@xyflow/react";
 
 /**
- * Возвращает множество id узлов, достижимых из `centerId` по рёбрам
- * в обе стороны в пределах `maxDepth` шагов (предки + потомки + сам центр).
+ * Возвращает множество id узлов вокруг `centerId`:
+ *  • сам центр + его прямые входящие/исходящие соседи (depth 1);
+ *  • для каждого соседа-`transformation` дополнительно добавляются
+ *    его соседи — чтобы из продукта была видна не только сама
+ *    стрелка преобразования, но и продукт по ту сторону этой
+ *    стрелки. Прямые `product → product` рёбра ведут себя как
+ *    обычные соседи.
  *
- * `maxDepth = 1` (по умолчанию) — только прямые входящие и исходящие
- * соседи: то, что чаще всего нужно для подсветки «с кем связан этот узел».
- * Полный обход цепочки даёт слишком широкую подсветку — на больших
- * объединённых графах это часто почти всё дерево.
+ * `nodeTypeOf` опционально — если не задан, ведём себя как простой
+ * BFS глубины 1.
  *
- * В отличие от {@link extractSubgraph} не требует чередования
- * product → transformation → product — рассчитан на произвольные DAG.
+ * В отличие от {@link extractSubgraph} ничего не предполагает о
+ * чередовании типов и подходит для произвольных DAG из объединённой
+ * вкладки.
  */
 export function findChainNodeIds(
   edges: Edge[],
   centerId: string,
-  maxDepth: number = 1,
+  nodeTypeOf?: (id: string) => string | undefined,
 ): Set<string> {
   const outAdj = new Map<string, string[]>();
   const inAdj = new Map<string, string[]>();
@@ -28,18 +32,21 @@ export function findChainNodeIds(
     else inAdj.set(e.target, [e.source]);
   }
 
+  const neighborsOf = (id: string) => [
+    ...(outAdj.get(id) ?? []),
+    ...(inAdj.get(id) ?? []),
+  ];
+
   const visited = new Set<string>([centerId]);
-  let frontier: string[] = [centerId];
-  for (let depth = 0; depth < maxDepth && frontier.length; depth++) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const n of [...(outAdj.get(id) ?? []), ...(inAdj.get(id) ?? [])]) {
-        if (visited.has(n)) continue;
-        visited.add(n);
-        next.push(n);
-      }
+  const directNeighbors = neighborsOf(centerId);
+  for (const n of directNeighbors) visited.add(n);
+
+  if (nodeTypeOf) {
+    for (const id of directNeighbors) {
+      if (nodeTypeOf(id) !== "transformation") continue;
+      for (const n of neighborsOf(id)) visited.add(n);
     }
-    frontier = next;
   }
+
   return visited;
 }

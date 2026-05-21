@@ -173,10 +173,19 @@ export const Flow = () => {
   // выделяются он сам, все предки и потомки + рёбра между ними; остальное
   // затемняется.
   const [hoveredChainId, setHoveredChainId] = useState<string | null>(null);
+  const nodeTypeById = useMemo(() => {
+    const m = new Map<string, string | undefined>();
+    for (const n of data.nodes) m.set(n.id, n.type);
+    return m;
+  }, [data.nodes]);
   const chainSet = useMemo<Set<string> | null>(() => {
     if (source !== "loaded" || !hoveredChainId) return null;
-    return findChainNodeIds(data.edges, hoveredChainId);
-  }, [source, hoveredChainId, data.edges]);
+    return findChainNodeIds(
+      data.edges,
+      hoveredChainId,
+      (id) => nodeTypeById.get(id),
+    );
+  }, [source, hoveredChainId, data.edges, nodeTypeById]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
