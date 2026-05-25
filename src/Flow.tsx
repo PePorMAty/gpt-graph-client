@@ -39,6 +39,7 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 import { AddNodeModal } from "./components/add-node-modal";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
+import { findChainNodeIds } from "./utils/findChainNodeIds";
 import styles from "./styles/Flow.module.css";
 import { SearchToggle } from "./components/search-graph/SearchToggle";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -167,6 +168,25 @@ export const Flow = () => {
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
+  // Подсветка цепочки по hover — только для графов, загруженных через
+  // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
+  // выделяются он сам, все предки и потомки + рёбра между ними; остальное
+  // затемняется.
+  const [hoveredChainId, setHoveredChainId] = useState<string | null>(null);
+  const nodeTypeById = useMemo(() => {
+    const m = new Map<string, string | undefined>();
+    for (const n of data.nodes) m.set(n.id, n.type);
+    return m;
+  }, [data.nodes]);
+  const chainSet = useMemo<Set<string> | null>(() => {
+    if (source !== "loaded" || !hoveredChainId) return null;
+    return findChainNodeIds(
+      data.edges,
+      hoveredChainId,
+      (id) => nodeTypeById.get(id),
+    );
+  }, [source, hoveredChainId, data.edges, nodeTypeById]);
+
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
     nodeId: string;
@@ -214,18 +234,31 @@ export const Flow = () => {
     () =>
       data.nodes.map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
+        const isDimmed = chainSet ? !chainSet.has(n.id) : false;
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
+          isDimmed ? "node--dimmed" : "",
         ]
           .filter(Boolean)
           .join(" ");
 
         return { ...n, className: cls };
       }),
-    [data.nodes, highlightedId],
+    [data.nodes, highlightedId, chainSet],
   );
+
+  const flowEdges = useMemo(() => {
+    if (!chainSet) return data.edges;
+    return data.edges.map((e) => {
+      const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
+      if (bothIn) return e;
+      const existing = e.className ?? "";
+      const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
+      return { ...e, className: cls };
+    });
+  }, [data.edges, chainSet]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -293,6 +326,15 @@ export const Flow = () => {
     setPanelMode({ type: "card" });
     setIsPanelOpen(true);
     setContextMenu(null);
+  }, []);
+
+  // Hover-подсветка цепочки (только для загруженных графов;
+  // useMemo сам зануляет chainSet при source !== "loaded").
+  const onNodeMouseEnter = useCallback((_: unknown, node: Node) => {
+    setHoveredChainId(node.id);
+  }, []);
+  const onNodeMouseLeave = useCallback(() => {
+    setHoveredChainId(null);
   }, []);
 
   // Обработчик правого клика по узлу
@@ -1321,11 +1363,13 @@ export const Flow = () => {
 
       <ReactFlow
         nodes={flowNodes}
-        edges={data.edges}
+        edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         onNodeClick={onNodeClick}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={onNodeContextMenu}
         onPaneClick={onPaneClick}
         connectionLineType={ConnectionLineType.Straight}

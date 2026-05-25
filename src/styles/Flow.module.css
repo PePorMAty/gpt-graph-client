@@ -219,6 +219,18 @@
   stroke-width: 2px;
 }
 
+/* Подсветка ближайших соседей по hover (только для объединённых графов):
+   узел под курсором и его прямые входящие/исходящие остаются как есть,
+   всё остальное затемняется. */
+:global(.react-flow__node.node--dimmed) {
+  opacity: 0.15;
+  transition: opacity 120ms ease;
+}
+:global(.react-flow__edge.edge--dimmed path) {
+  stroke-opacity: 0.08;
+  transition: stroke-opacity 120ms ease;
+}
+
 /* Анимации */
 @keyframes spin {
   to {
