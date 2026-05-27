@@ -63,21 +63,17 @@ export async function layoutMergedGraphElk(
   }));
 
   if (hasLayerData) {
-    // Собираем слои и находим изолированные узлы
+    // Собираем все слои
     const layerSet = new Set<number>();
-    const isolatedByLayer = new Map<number, string[]>();
+    const nodesByLayer = new Map<number, string[]>();
 
     for (const n of nodes) {
       const layer = (n.data as Record<string, unknown>)?.layer;
       const layerNum = typeof layer === "number" ? layer : 0;
       layerSet.add(layerNum);
-
-      const deg = (inDeg.get(n.id) ?? 0) + (outDeg.get(n.id) ?? 0);
-      if (deg === 0) {
-        const list = isolatedByLayer.get(layerNum);
-        if (list) list.push(n.id);
-        else isolatedByLayer.set(layerNum, [n.id]);
-      }
+      const list = nodesByLayer.get(layerNum);
+      if (list) list.push(n.id);
+      else nodesByLayer.set(layerNum, [n.id]);
     }
 
     const sortedLayers = [...layerSet].sort((a, b) => a - b);
@@ -108,37 +104,32 @@ export async function layoutMergedGraphElk(
       });
     }
 
-    // Реальные узлы
+    // Реальные узлы + привязка КАЖДОГО к anchor предыдущего слоя.
+    // anchor_{L-1} → node заставляет node быть минимум на 1 слой
+    // после anchor_{L-1}, т.е. на слое L.
+    // Для layer 0 — layerConstraint: FIRST.
     for (const n of nodes) {
+      const layer = (n.data as Record<string, unknown>)?.layer;
+      const layerNum = typeof layer === "number" ? layer : 0;
+      const layerIdx = sortedLayers.indexOf(layerNum);
+
       elkChildren.push({
         id: n.id,
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
+        layoutOptions:
+          layerIdx <= 0
+            ? { "elk.layered.layering.layerConstraint": "FIRST" }
+            : undefined,
       });
-    }
 
-    // Изолированные узлы подвязываем к anchor предыдущего слоя.
-    // Ребро anchor_{L-1} → node ставит node на 1 слой после anchor_{L-1},
-    // т.е. ровно на слой L. Для layer 0 ставим layerConstraint: FIRST.
-    for (const [layerNum, ids] of isolatedByLayer) {
-      const layerIdx = sortedLayers.indexOf(layerNum);
-      for (const nodeId of ids) {
-        if (layerIdx <= 0) {
-          const child = elkChildren.find((c) => c.id === nodeId);
-          if (child) {
-            child.layoutOptions = {
-              ...child.layoutOptions,
-              "elk.layered.layering.layerConstraint": "FIRST",
-            };
-          }
-        } else {
-          const prevAnchorId = `${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`;
-          elkEdges.push({
-            id: `${ANCHOR_PREFIX}link_${nodeId}`,
-            sources: [prevAnchorId],
-            targets: [nodeId],
-          });
-        }
+      if (layerIdx > 0) {
+        const prevAnchorId = `${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`;
+        elkEdges.push({
+          id: `${ANCHOR_PREFIX}link_${n.id}`,
+          sources: [prevAnchorId],
+          targets: [n.id],
+        });
       }
     }
   } else {
