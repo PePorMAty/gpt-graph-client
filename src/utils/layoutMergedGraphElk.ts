@@ -108,30 +108,38 @@ export async function layoutMergedGraphElk(
       });
     }
 
-    // Изолированные узлы подвязываем к anchor своего слоя
-    for (const [layerNum, ids] of isolatedByLayer) {
-      const anchorId = `${ANCHOR_PREFIX}${layerNum}`;
-      for (const nodeId of ids) {
-        elkEdges.push({
-          id: `${ANCHOR_PREFIX}link_${nodeId}`,
-          sources: [anchorId],
-          targets: [nodeId],
-        });
-      }
-    }
-
-    // Реальные узлы — с layerId
+    // Реальные узлы
     for (const n of nodes) {
-      const layer = (n.data as Record<string, unknown>)?.layer;
-      const layerNum = typeof layer === "number" ? layer : 0;
       elkChildren.push({
         id: n.id,
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
-        layoutOptions: {
-          "elk.layered.layering.layerId": String(layerNum),
-        },
       });
+    }
+
+    // Изолированные узлы подвязываем к anchor предыдущего слоя.
+    // Ребро anchor_{L-1} → node ставит node на 1 слой после anchor_{L-1},
+    // т.е. ровно на слой L. Для layer 0 ставим layerConstraint: FIRST.
+    for (const [layerNum, ids] of isolatedByLayer) {
+      const layerIdx = sortedLayers.indexOf(layerNum);
+      for (const nodeId of ids) {
+        if (layerIdx <= 0) {
+          const child = elkChildren.find((c) => c.id === nodeId);
+          if (child) {
+            child.layoutOptions = {
+              ...child.layoutOptions,
+              "elk.layered.layering.layerConstraint": "FIRST",
+            };
+          }
+        } else {
+          const prevAnchorId = `${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`;
+          elkEdges.push({
+            id: `${ANCHOR_PREFIX}link_${nodeId}`,
+            sources: [prevAnchorId],
+            targets: [nodeId],
+          });
+        }
+      }
     }
   } else {
     // Без layer-данных: FIRST/LAST constraints
@@ -158,9 +166,7 @@ export async function layoutMergedGraphElk(
     layoutOptions: {
       "elk.algorithm": "layered",
       "elk.direction": "DOWN",
-      "elk.layered.layering.strategy": hasLayerData
-        ? "INTERACTIVE"
-        : "LONGEST_PATH",
+      "elk.layered.layering.strategy": "NETWORK_SIMPLEX",
       "elk.separateConnectedComponents": "false",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
