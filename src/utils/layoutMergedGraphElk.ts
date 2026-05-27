@@ -58,6 +58,7 @@ export async function layoutMergedGraphElk(
       "elk.layered.layering.strategy": hasLayerData
         ? "INTERACTIVE"
         : "LONGEST_PATH",
+      "elk.separateConnectedComponents": hasLayerData ? "false" : "true",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.cycleBreaking.strategy": "GREEDY",
