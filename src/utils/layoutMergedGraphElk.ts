@@ -15,15 +15,12 @@ export type MergedGraphLayoutResult = {
 /**
  * ELK layered layout специально для вкладки «Объединение графов».
  *
- * Отличие от общего layoutWithElk:
- *  - сырьё (узлы без входящих рёбер) принудительно прижимается к ВЕРХНЕМУ
- *    слою через `elk.layered.layering.layerConstraint = FIRST`;
- *  - конечные продукты (узлы без исходящих рёбер) — к НИЖНЕМУ через `LAST`.
+ * Если узлы содержат `data.layer` (число — номер слоя из JSON),
+ * используется стратегия `INTERACTIVE` c `layerId` — ELK раскладывает
+ * узлы строго по заданным слоям, а внутри слоя минимизирует пересечения.
  *
- * Без констрейнтов network-simplex стягивает «короткие» сырьевые узлы вниз,
- * к их потребителям, и сырьё в объединённом графе разъезжается по разным
- * рядам. С констрейнтами получается чёткое сугияма-разделение: сырьё —
- * сверху, продукты — снизу, преобразования — между.
+ * Если `layer` нет — фоллбэк на предыдущее поведение (`LONGEST_PATH`
+ * с `layerConstraint = FIRST` для сырья и `LAST` для конечных продуктов).
  */
 export async function layoutMergedGraphElk(
   nodes: CustomNode[],
@@ -36,15 +33,21 @@ export async function layoutMergedGraphElk(
     (e) => nodeIdSet.has(e.source) && nodeIdSet.has(e.target),
   );
 
+  const hasLayerData = nodes.some(
+    (n) => typeof (n.data as Record<string, unknown>)?.layer === "number",
+  );
+
   const inDeg = new Map<string, number>();
   const outDeg = new Map<string, number>();
-  for (const n of nodes) {
-    inDeg.set(n.id, 0);
-    outDeg.set(n.id, 0);
-  }
-  for (const e of validEdges) {
-    inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1);
-    outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
+  if (!hasLayerData) {
+    for (const n of nodes) {
+      inDeg.set(n.id, 0);
+      outDeg.set(n.id, 0);
+    }
+    for (const e of validEdges) {
+      inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1);
+      outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
+    }
   }
 
   const elkGraph: ElkNode = {
@@ -52,8 +55,9 @@ export async function layoutMergedGraphElk(
     layoutOptions: {
       "elk.algorithm": "layered",
       "elk.direction": "DOWN",
-      // longest-path: сырьё (in-deg=0) → слой 0; layerConstraint работает поверх.
-      "elk.layered.layering.strategy": "LONGEST_PATH",
+      "elk.layered.layering.strategy": hasLayerData
+        ? "INTERACTIVE"
+        : "LONGEST_PATH",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.cycleBreaking.strategy": "GREEDY",
@@ -66,14 +70,22 @@ export async function layoutMergedGraphElk(
       "elk.padding": "[top=20,left=20,bottom=20,right=20]",
     },
     children: nodes.map((n) => {
-      const isSource = (inDeg.get(n.id) ?? 0) === 0;
-      const isSink = (outDeg.get(n.id) ?? 0) === 0;
       const layoutOptions: Record<string, string> = {};
-      if (isSource) {
-        layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST";
-      } else if (isSink) {
-        layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";
+      const layer = (n.data as Record<string, unknown>)?.layer;
+
+      if (hasLayerData && typeof layer === "number") {
+        layoutOptions["org.eclipse.elk.layered.layering.layerId"] =
+          String(layer);
+      } else if (!hasLayerData) {
+        const isSource = (inDeg.get(n.id) ?? 0) === 0;
+        const isSink = (outDeg.get(n.id) ?? 0) === 0;
+        if (isSource) {
+          layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST";
+        } else if (isSink) {
+          layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";
+        }
       }
+
       return {
         id: n.id,
         width: NODE_WIDTH,

@@ -155,6 +155,9 @@ function parseRussianFormat(
     }
     nodePresentations.forEach(recordPres);
 
+    const layerRaw = raw["Слой"];
+    const layer = typeof layerRaw === "number" ? layerRaw : undefined;
+
     usedIds.add(id);
     nodes.push({
       id,
@@ -164,6 +167,7 @@ function parseRussianFormat(
         label,
         description: "",
         presentations: nodePresentations,
+        ...(layer !== undefined && { layer }),
       },
     } as CustomNode);
   }
