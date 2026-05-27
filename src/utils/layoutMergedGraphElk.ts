@@ -12,12 +12,16 @@ export type MergedGraphLayoutResult = {
   edges: Edge[];
 };
 
+const ANCHOR_PREFIX = "__layer_anchor__";
+
 /**
  * ELK layered layout специально для вкладки «Объединение графов».
  *
  * Если узлы содержат `data.layer` (число — номер слоя из JSON),
- * используется стратегия `INTERACTIVE` c `layerId` — ELK раскладывает
- * узлы строго по заданным слоям, а внутри слоя минимизирует пересечения.
+ * создаются невидимые anchor-узлы для каждого слоя, соединённые
+ * цепочкой (anchor_0 → anchor_1 → …). Изолированные узлы
+ * (без рёбер) подвязываются к anchor своего слоя, что гарантирует
+ * правильное послойное размещение даже для disconnected-нод.
  *
  * Если `layer` нет — фоллбэк на предыдущее поведение (`LONGEST_PATH`
  * с `layerConstraint = FIRST` для сырья и `LAST` для конечных продуктов).
@@ -39,14 +43,113 @@ export async function layoutMergedGraphElk(
 
   const inDeg = new Map<string, number>();
   const outDeg = new Map<string, number>();
-  if (!hasLayerData) {
+  for (const n of nodes) {
+    inDeg.set(n.id, 0);
+    outDeg.set(n.id, 0);
+  }
+  for (const e of validEdges) {
+    inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1);
+    outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
+  }
+
+  type ElkChild = NonNullable<ElkNode["children"]>[number];
+  type ElkEdge = NonNullable<ElkNode["edges"]>[number];
+
+  const elkChildren: ElkChild[] = [];
+  const elkEdges: ElkEdge[] = validEdges.map((e, i) => ({
+    id: typeof e.id === "string" && e.id ? e.id : `elk-edge-${i}`,
+    sources: [e.source],
+    targets: [e.target],
+  }));
+
+  if (hasLayerData) {
+    // Собираем слои и находим изолированные узлы
+    const layerSet = new Set<number>();
+    const isolatedByLayer = new Map<number, string[]>();
+
     for (const n of nodes) {
-      inDeg.set(n.id, 0);
-      outDeg.set(n.id, 0);
+      const layer = (n.data as Record<string, unknown>)?.layer;
+      const layerNum = typeof layer === "number" ? layer : 0;
+      layerSet.add(layerNum);
+
+      const deg = (inDeg.get(n.id) ?? 0) + (outDeg.get(n.id) ?? 0);
+      if (deg === 0) {
+        const list = isolatedByLayer.get(layerNum);
+        if (list) list.push(n.id);
+        else isolatedByLayer.set(layerNum, [n.id]);
+      }
     }
-    for (const e of validEdges) {
-      inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1);
-      outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
+
+    const sortedLayers = [...layerSet].sort((a, b) => a - b);
+
+    // Якорные узлы — один на слой, нулевого размера
+    for (const l of sortedLayers) {
+      elkChildren.push({
+        id: `${ANCHOR_PREFIX}${l}`,
+        width: 1,
+        height: 1,
+        layoutOptions: {
+          "elk.layered.layering.layerConstraint":
+            l === sortedLayers[0]
+              ? "FIRST"
+              : l === sortedLayers[sortedLayers.length - 1]
+                ? "LAST"
+                : "NONE",
+        },
+      });
+    }
+
+    // Цепочка anchor_0 → anchor_1 → … → anchor_N
+    for (let i = 0; i < sortedLayers.length - 1; i++) {
+      elkEdges.push({
+        id: `${ANCHOR_PREFIX}edge_${sortedLayers[i]}_${sortedLayers[i + 1]}`,
+        sources: [`${ANCHOR_PREFIX}${sortedLayers[i]}`],
+        targets: [`${ANCHOR_PREFIX}${sortedLayers[i + 1]}`],
+      });
+    }
+
+    // Изолированные узлы подвязываем к anchor своего слоя
+    for (const [layerNum, ids] of isolatedByLayer) {
+      const anchorId = `${ANCHOR_PREFIX}${layerNum}`;
+      for (const nodeId of ids) {
+        elkEdges.push({
+          id: `${ANCHOR_PREFIX}link_${nodeId}`,
+          sources: [anchorId],
+          targets: [nodeId],
+        });
+      }
+    }
+
+    // Реальные узлы — с layerId
+    for (const n of nodes) {
+      const layer = (n.data as Record<string, unknown>)?.layer;
+      const layerNum = typeof layer === "number" ? layer : 0;
+      elkChildren.push({
+        id: n.id,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        layoutOptions: {
+          "elk.layered.layering.layerId": String(layerNum),
+        },
+      });
+    }
+  } else {
+    // Без layer-данных: FIRST/LAST constraints
+    for (const n of nodes) {
+      const layoutOptions: Record<string, string> = {};
+      const isSource = (inDeg.get(n.id) ?? 0) === 0;
+      const isSink = (outDeg.get(n.id) ?? 0) === 0;
+      if (isSource) {
+        layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST";
+      } else if (isSink) {
+        layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";
+      }
+      elkChildren.push({
+        id: n.id,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        layoutOptions,
+      });
     }
   }
 
@@ -58,7 +161,7 @@ export async function layoutMergedGraphElk(
       "elk.layered.layering.strategy": hasLayerData
         ? "INTERACTIVE"
         : "LONGEST_PATH",
-      "elk.separateConnectedComponents": hasLayerData ? "false" : "true",
+      "elk.separateConnectedComponents": "false",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.cycleBreaking.strategy": "GREEDY",
@@ -70,40 +173,15 @@ export async function layoutMergedGraphElk(
       "elk.layered.thoroughness": "10",
       "elk.padding": "[top=20,left=20,bottom=20,right=20]",
     },
-    children: nodes.map((n) => {
-      const layoutOptions: Record<string, string> = {};
-      const layer = (n.data as Record<string, unknown>)?.layer;
-
-      if (hasLayerData && typeof layer === "number") {
-        layoutOptions["org.eclipse.elk.layered.layering.layerId"] =
-          String(layer);
-      } else if (!hasLayerData) {
-        const isSource = (inDeg.get(n.id) ?? 0) === 0;
-        const isSink = (outDeg.get(n.id) ?? 0) === 0;
-        if (isSource) {
-          layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST";
-        } else if (isSink) {
-          layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";
-        }
-      }
-
-      return {
-        id: n.id,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-        layoutOptions,
-      };
-    }),
-    edges: validEdges.map((e, i) => ({
-      id: typeof e.id === "string" && e.id ? e.id : `elk-edge-${i}`,
-      sources: [e.source],
-      targets: [e.target],
-    })),
+    children: elkChildren,
+    edges: elkEdges,
   };
 
   const laid = await elk.layout(elkGraph);
   const positions = new Map<string, { x: number; y: number }>();
   for (const child of laid.children ?? []) {
+    // Пропускаем anchor-узлы
+    if (child.id.startsWith(ANCHOR_PREFIX)) continue;
     if (
       typeof child.x === "number" &&
       typeof child.y === "number" &&
