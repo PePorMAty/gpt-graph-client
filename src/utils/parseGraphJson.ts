@@ -202,6 +202,19 @@ function parseRussianFormat(
     );
   }
 
+  // Фиктивная слоёвка: если все узлы на одном layer, убираем его
+  const ruLayerValues = new Set(
+    nodes
+      .map((n) => (n.data as Record<string, unknown>)?.layer)
+      .filter((v) => typeof v === "number"),
+  );
+  if (ruLayerValues.size <= 1 && nodes.length > 0) {
+    for (const n of nodes) {
+      const d = n.data as Record<string, unknown>;
+      if (d && "layer" in d) delete d.layer;
+    }
+  }
+
   return { nodes, edges, presentations, presentationTitle };
 }
 
@@ -422,6 +435,22 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       (p) => p.x === positions[0].x && p.y === positions[0].y,
     );
   const needsLayout = nodes.length > 0 && (allZero || allSame);
+
+  // Если все узлы имеют одинаковый layer — это фиктивная слоёвка
+  // (граф без реальных слоёв). Убираем layer, чтобы при merge
+  // эти узлы не получали anchor-ограничения и не ломали layout
+  // мультислойного графа.
+  const layerValues = new Set(
+    nodes
+      .map((n) => (n.data as Record<string, unknown>)?.layer)
+      .filter((v) => typeof v === "number"),
+  );
+  if (layerValues.size <= 1 && nodes.length > 0) {
+    for (const n of nodes) {
+      const d = n.data as Record<string, unknown>;
+      if (d && "layer" in d) delete d.layer;
+    }
+  }
 
   return {
     payload: {

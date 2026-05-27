@@ -63,17 +63,12 @@ export async function layoutMergedGraphElk(
   }));
 
   if (hasLayerData) {
-    // Собираем все слои
+    // Собираем все слои (только узлы с явным layer)
     const layerSet = new Set<number>();
-    const nodesByLayer = new Map<number, string[]>();
 
     for (const n of nodes) {
       const layer = (n.data as Record<string, unknown>)?.layer;
-      const layerNum = typeof layer === "number" ? layer : 0;
-      layerSet.add(layerNum);
-      const list = nodesByLayer.get(layerNum);
-      if (list) list.push(n.id);
-      else nodesByLayer.set(layerNum, [n.id]);
+      if (typeof layer === "number") layerSet.add(layer);
     }
 
     const sortedLayers = [...layerSet].sort((a, b) => a - b);
@@ -104,27 +99,29 @@ export async function layoutMergedGraphElk(
       });
     }
 
-    // Реальные узлы + привязка КАЖДОГО к якорям его слоя.
-    // anchor_{L-1} → node → anchor_L фиксирует node ровно на слое L:
-    //   — anchor_{L-1} → node: node не может быть выше слоя L
-    //   — node → anchor_L: node не может быть ниже слоя L
-    // Для layer 0 — layerConstraint: FIRST.
+    // Реальные узлы + привязка к якорям.
+    // Узлы с явным layer L > 0: sandwich anchor_{L-1} → node → anchor_L.
+    // Узлы с layer 0: layerConstraint FIRST.
+    // Узлы БЕЗ layer (из другого графа при merge): никаких ограничений —
+    // ELK размещает их свободно на основе рёбер.
     for (const n of nodes) {
       const layer = (n.data as Record<string, unknown>)?.layer;
-      const layerNum = typeof layer === "number" ? layer : 0;
-      const layerIdx = sortedLayers.indexOf(layerNum);
+      const hasExplicitLayer = typeof layer === "number";
+      const layerIdx = hasExplicitLayer
+        ? sortedLayers.indexOf(layer as number)
+        : -1;
 
       elkChildren.push({
         id: n.id,
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
         layoutOptions:
-          layerIdx <= 0
+          hasExplicitLayer && layerIdx === 0
             ? { "elk.layered.layering.layerConstraint": "FIRST" }
             : undefined,
       });
 
-      if (layerIdx > 0) {
+      if (hasExplicitLayer && layerIdx > 0) {
         elkEdges.push({
           id: `${ANCHOR_PREFIX}from_${n.id}`,
           sources: [`${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`],
