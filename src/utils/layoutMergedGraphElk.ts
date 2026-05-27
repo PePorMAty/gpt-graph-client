@@ -104,9 +104,10 @@ export async function layoutMergedGraphElk(
       });
     }
 
-    // Реальные узлы + привязка КАЖДОГО к anchor предыдущего слоя.
-    // anchor_{L-1} → node заставляет node быть минимум на 1 слой
-    // после anchor_{L-1}, т.е. на слое L.
+    // Реальные узлы + привязка КАЖДОГО к якорям его слоя.
+    // anchor_{L-1} → node → anchor_L фиксирует node ровно на слое L:
+    //   — anchor_{L-1} → node: node не может быть выше слоя L
+    //   — node → anchor_L: node не может быть ниже слоя L
     // Для layer 0 — layerConstraint: FIRST.
     for (const n of nodes) {
       const layer = (n.data as Record<string, unknown>)?.layer;
@@ -124,11 +125,15 @@ export async function layoutMergedGraphElk(
       });
 
       if (layerIdx > 0) {
-        const prevAnchorId = `${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`;
         elkEdges.push({
-          id: `${ANCHOR_PREFIX}link_${n.id}`,
-          sources: [prevAnchorId],
+          id: `${ANCHOR_PREFIX}from_${n.id}`,
+          sources: [`${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`],
           targets: [n.id],
+        });
+        elkEdges.push({
+          id: `${ANCHOR_PREFIX}to_${n.id}`,
+          sources: [n.id],
+          targets: [`${ANCHOR_PREFIX}${sortedLayers[layerIdx]}`],
         });
       }
     }
