@@ -347,6 +347,11 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       description,
     };
 
+    const layerValue = typeof rn.layer === "number" ? rn.layer : undefined;
+    if (layerValue !== undefined) {
+      mergedData.layer = layerValue;
+    }
+
     // Format E: вытаскиваем презентацию из поля node.presentation
     // (фоллбэк — корневое presentationName из ParseResult.presentationTitle).
     if (format === "E") {
