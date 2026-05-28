@@ -25,12 +25,15 @@ import styles from "./UploadGraphTab.module.css";
 const layoutForMergeTab = async (
   nodes: CustomNode[],
   edges: Edge[],
+  options: { useLayers?: boolean } = {},
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
   try {
     const { layoutMergedGraphElk } = await import(
       "../../utils/layoutMergedGraphElk"
     );
-    return await layoutMergedGraphElk(nodes, edges);
+    return await layoutMergedGraphElk(nodes, edges, {
+      useLayers: options.useLayers ?? true,
+    });
   } catch (e) {
     console.warn(
       "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
@@ -181,7 +184,12 @@ export const UploadGraphTab = () => {
     // могут «съезжать» при добавлении новых рёбер. Используем ELK с
     // layerConstraint, чтобы сырьё прижалось к верхнему слою, а конечные
     // продукты — к нижнему (сугияма-разделение для объединённых графов).
-    const laid = await layoutForMergeTab(recolored, merged.edges);
+    // При merge layer-aware подход даёт некрасивую раскладку из-за
+    // конфликтов слоёв между двумя графами — используем классический
+    // LONGEST_PATH + FIRST/LAST для consistency.
+    const laid = await layoutForMergeTab(recolored, merged.edges, {
+      useLayers: false,
+    });
 
     dispatch(
       mergeGraphFromFile({

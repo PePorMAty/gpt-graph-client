@@ -29,17 +29,22 @@ const ANCHOR_PREFIX = "__layer_anchor__";
 export async function layoutMergedGraphElk(
   nodes: CustomNode[],
   edges: Edge[],
+  options: { useLayers?: boolean } = {},
 ): Promise<MergedGraphLayoutResult> {
   if (!nodes.length) return { nodes, edges };
+
+  const useLayers = options.useLayers ?? true;
 
   const nodeIdSet = new Set(nodes.map((n) => n.id));
   const validEdges = edges.filter(
     (e) => nodeIdSet.has(e.source) && nodeIdSet.has(e.target),
   );
 
-  const hasLayerData = nodes.some(
-    (n) => typeof (n.data as Record<string, unknown>)?.layer === "number",
-  );
+  const hasLayerData =
+    useLayers &&
+    nodes.some(
+      (n) => typeof (n.data as Record<string, unknown>)?.layer === "number",
+    );
 
   const inDeg = new Map<string, number>();
   const outDeg = new Map<string, number>();
