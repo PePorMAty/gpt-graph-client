@@ -128,7 +128,7 @@ export const fetchTransformationsForNeighbors = createAsyncThunk<
           : [];
         return {
           name: t["Название технологии"] || "Преобразование",
-          description: t["Описание технологии"],
+          description: t["Описание преобразования"] ?? t["Описание технологии"],
           sources,
           inputNodeIds,
           outputNodeIds,

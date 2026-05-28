@@ -14,7 +14,8 @@ export type ChainTransformNode = {
   "Id узла": string;
   "Тип узла": "Преобразование";
   "Название технологии": string;
-  "Описание технологии"?: string; // ✅ NEW
+  "Описание технологии"?: string; // chain endpoint
+  "Описание преобразования"?: string; // transformation-between endpoint
   Входы: Array<Record<string, string>>;
   Выходы: Array<Record<string, string>>;
 };

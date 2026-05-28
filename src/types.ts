@@ -53,6 +53,9 @@ export interface CustomNodeData {
   presentations?: string[];
   presentationColor?: string;
 
+  // --- transformation node (transformation-between endpoint) ---
+  transformationSources?: string[];
+
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }

@@ -1428,6 +1428,9 @@ export const Flow = () => {
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
         nodeType={selectedNode?.type}
+        transformationSources={
+          selectedNode?.data?.transformationSources as string[] | undefined
+        }
         onBuildProductCard={handleBuildProductCard}
         productCardStatus={selectedNode?.data?.productCardStatus}
         productCardError={selectedNode?.data?.productCardError}
