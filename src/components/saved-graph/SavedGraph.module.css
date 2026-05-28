@@ -24,6 +24,12 @@
   gap: 4px;
 }
 
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .loadButton {
   background: #2196f3;
   color: white;
@@ -33,8 +39,40 @@
   cursor: pointer;
 }
 
-.loadButton:hover {
+.loadButton:hover:not(:disabled) {
   background: #1976d2;
+}
+
+.loadButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteButton {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #6c757d;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: #fdecea;
+  border-color: #f5c2c0;
+  color: #b71c1c;
+}
+
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .empty {

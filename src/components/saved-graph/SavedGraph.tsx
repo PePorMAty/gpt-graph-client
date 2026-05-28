@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import styles from "./SavedGraph.module.css";
 
 import {
+  deleteSavedGraphThunk,
   fetchSavedGraphsThunk,
   loadSavedGraphThunk,
 } from "../../store/slices/savedGraphSlice";
@@ -19,6 +20,7 @@ import { SelectDepthModal } from "../select-depth-modal/SelectDepthModal";
 import { getMaxDepth } from "../../utils/getMaxDepth";
 import { parseGraphJson } from "../../utils/parseGraphJson";
 import { applyAutoLayout } from "../../utils/applyAutoLayout";
+import { ConfirmDeleteModal } from "../confirm-delete-modal";
 
 export const SavedGraph = () => {
   const dispatch = useAppDispatch();
@@ -38,6 +40,11 @@ export const SavedGraph = () => {
   const [showSelectNode, setShowSelectNode] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showSelectDepth, setShowSelectDepth] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -262,15 +269,54 @@ export const SavedGraph = () => {
               <small>Leaf: {g.leafCount}</small>
             </div>
 
-            <button
-              className={styles.loadButton}
-              onClick={() => handleLoadGraph(g)}
-            >
-              Загрузить
-            </button>
+            <div className={styles.itemActions}>
+              <button
+                className={styles.loadButton}
+                onClick={() => handleLoadGraph(g)}
+                disabled={deletingId === g.id}
+              >
+                Загрузить
+              </button>
+              <button
+                type="button"
+                className={styles.deleteButton}
+                onClick={() => setDeleteCandidate({ id: g.id, name: g.name })}
+                disabled={deletingId === g.id}
+                title="Удалить граф"
+                aria-label={`Удалить граф «${g.name}»`}
+              >
+                {deletingId === g.id ? "…" : "🗑"}
+              </button>
+            </div>
           </li>
         ))}
       </ul>
+
+      {deleteCandidate && (
+        <ConfirmDeleteModal
+          nodeName={deleteCandidate.name}
+          title={
+            <>Удалить граф &laquo;{deleteCandidate.name}&raquo;?</>
+          }
+          description="Граф будет удалён без возможности восстановления."
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={async () => {
+            const { id } = deleteCandidate;
+            setDeleteCandidate(null);
+            setDeletingId(id);
+            try {
+              await dispatch(deleteSavedGraphThunk(id)).unwrap();
+            } catch (e) {
+              alert(
+                "Не удалось удалить граф: " +
+                  (e instanceof Error ? e.message : String(e)),
+              );
+            } finally {
+              setDeletingId(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

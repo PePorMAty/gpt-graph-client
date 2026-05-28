@@ -31,3 +31,7 @@ export async function loadSavedGraph(id: string): Promise<SavedGraphFile> {
   );
   return data;
 }
+
+export async function deleteSavedGraph(id: string): Promise<void> {
+  await axios.delete(`${import.meta.env.VITE_API_URL}/graph-files/${id}`);
+}
