@@ -100,10 +100,23 @@ export const UploadGraphTab = () => {
   const handleReplace = async (file: File) => {
     const text = await file.text();
     const result = parseGraphJson(text);
-    const { payload, warnings, needsLayout, presentations, presentationTitle } =
-      result;
+    const {
+      payload,
+      warnings,
+      needsLayout,
+      presentations,
+      presentationTitle,
+      presentationColors: parsedColors,
+    } = result;
 
-    const registry = assignColorsForPresentations({}, presentations);
+    // Если в JSON-узлах уже сохранены цвета (скачанный с сервера
+    // ранее объединённый граф) — переиспользуем их, чтобы раскраска
+    // и порядок презентаций совпали с исходным. Иначе строим свежий
+    // registry в порядке появления презентаций.
+    const registry =
+      parsedColors && Object.keys(parsedColors).length > 0
+        ? parsedColors
+        : assignColorsForPresentations({}, presentations);
     const coloredNodes = colorizeNodes(payload.nodes, registry);
 
     let finalNodes = coloredNodes;
