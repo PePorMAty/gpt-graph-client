@@ -167,6 +167,11 @@ function parseRussianFormat(
     const layerRaw = raw["Слой"];
     const layer = typeof layerRaw === "number" ? layerRaw : undefined;
 
+    // labelsByPresentation: один и тот же label для всех презентаций этого
+    // узла (в format D у каждого узла одно написание во всех его презентациях).
+    const labelsByPresentation: Record<string, string> = {};
+    for (const p of nodePresentations) labelsByPresentation[p] = label;
+
     usedIds.add(id);
     nodes.push({
       id,
@@ -176,6 +181,10 @@ function parseRussianFormat(
         label,
         description: "",
         presentations: nodePresentations,
+        ...(type === "product" &&
+        Object.keys(labelsByPresentation).length > 0
+          ? { labelsByPresentation }
+          : {}),
         ...(layer !== undefined && { layer }),
       },
     } as CustomNode);
@@ -500,6 +509,28 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       if (Array.isArray(d.presentations) && d.presentations.length > 0) continue;
       d.presentations = [presentationTitle];
     }
+  }
+
+  // labelsByPresentation: если узел его ещё не несёт (общий цикл A/B/C/E
+  // не заполнял его выше), сгенерируем по правилу «label одинаков для
+  // всех презентаций этого узла». Для скачанных с сервера merged-графов
+  // labelsByPresentation уже лежит в data.* — переиспользуем через спред.
+  for (const n of nodes) {
+    if (n.type !== "product") continue;
+    const d = n.data as Record<string, unknown>;
+    if (
+      isObject(d.labelsByPresentation) &&
+      Object.keys(d.labelsByPresentation as RawObject).length > 0
+    )
+      continue;
+    const pres = Array.isArray(d.presentations)
+      ? (d.presentations as string[])
+      : [];
+    const label = typeof d.label === "string" ? d.label : "";
+    if (pres.length === 0 || !label) continue;
+    const labelsByPresentation: Record<string, string> = {};
+    for (const p of pres) labelsByPresentation[p] = label;
+    d.labelsByPresentation = labelsByPresentation;
   }
 
   // Реконструкция реестра цветов из узлов: если у них в data есть

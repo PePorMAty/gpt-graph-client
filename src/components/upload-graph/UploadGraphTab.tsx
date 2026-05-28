@@ -206,7 +206,12 @@ export const UploadGraphTab = () => {
         : [];
       if (after.length > 1 && after.length > before.length) {
         const label = typeof n.data?.label === "string" ? n.data.label : n.id;
-        reportRows.push({ label, presentations: after });
+        const labelsByPresentation =
+          typeof n.data?.labelsByPresentation === "object" &&
+          n.data.labelsByPresentation
+            ? (n.data.labelsByPresentation as Record<string, string>)
+            : undefined;
+        reportRows.push({ label, presentations: after, labelsByPresentation });
       }
     }
     reportRows.sort((a, b) => a.label.localeCompare(b.label, "ru"));

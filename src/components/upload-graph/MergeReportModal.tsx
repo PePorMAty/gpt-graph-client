@@ -5,6 +5,9 @@ import styles from "./MergeReportModal.module.css";
 export interface MergeReportRow {
   label: string;
   presentations: string[];
+  /** Оригинальное написание этого продукта в каждой презентации
+   * (показывается в скобках рядом с именем презентации). */
+  labelsByPresentation?: Record<string, string>;
 }
 
 interface MergeReportModalProps {
@@ -66,14 +69,22 @@ export const MergeReportModal: React.FC<MergeReportModalProps> = ({
               Эти узлы стали общими с другими презентациями:
             </p>
             <ul className={styles.list}>
-              {commonNodes.map((row) => (
-                <li key={row.label} className={styles.item}>
-                  <span className={styles.label}>{row.label}</span>
-                  <span className={styles.pres}>
-                    {row.presentations.join(" + ")}
-                  </span>
-                </li>
-              ))}
+              {commonNodes.map((row) => {
+                const presText = row.presentations
+                  .map((p) => {
+                    const original = row.labelsByPresentation?.[p];
+                    return original && original !== row.label
+                      ? `${p} (${original})`
+                      : `${p} (${row.label})`;
+                  })
+                  .join(" + ");
+                return (
+                  <li key={row.label} className={styles.item}>
+                    <span className={styles.label}>{row.label}</span>
+                    <span className={styles.pres}>{presText}</span>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
