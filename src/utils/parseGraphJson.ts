@@ -155,6 +155,9 @@ function parseRussianFormat(
     }
     nodePresentations.forEach(recordPres);
 
+    const layerRaw = raw["Слой"];
+    const layer = typeof layerRaw === "number" ? layerRaw : undefined;
+
     usedIds.add(id);
     nodes.push({
       id,
@@ -164,6 +167,7 @@ function parseRussianFormat(
         label,
         description: "",
         presentations: nodePresentations,
+        ...(layer !== undefined && { layer }),
       },
     } as CustomNode);
   }
@@ -196,6 +200,19 @@ function parseRussianFormat(
     warnings.push(
       `Отброшено ${droppedEdges} рёбер с битыми/несуществующими ссылками`,
     );
+  }
+
+  // Фиктивная слоёвка: если все узлы на одном layer, убираем его
+  const ruLayerValues = new Set(
+    nodes
+      .map((n) => (n.data as Record<string, unknown>)?.layer)
+      .filter((v) => typeof v === "number"),
+  );
+  if (ruLayerValues.size <= 1 && nodes.length > 0) {
+    for (const n of nodes) {
+      const d = n.data as Record<string, unknown>;
+      if (d && "layer" in d) delete d.layer;
+    }
   }
 
   return { nodes, edges, presentations, presentationTitle };
@@ -343,6 +360,11 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       description,
     };
 
+    const layerValue = typeof rn.layer === "number" ? rn.layer : undefined;
+    if (layerValue !== undefined) {
+      mergedData.layer = layerValue;
+    }
+
     // Format E: вытаскиваем презентацию из поля node.presentation
     // (фоллбэк — корневое presentationName из ParseResult.presentationTitle).
     if (format === "E") {
@@ -413,6 +435,22 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       (p) => p.x === positions[0].x && p.y === positions[0].y,
     );
   const needsLayout = nodes.length > 0 && (allZero || allSame);
+
+  // Если все узлы имеют одинаковый layer — это фиктивная слоёвка
+  // (граф без реальных слоёв). Убираем layer, чтобы при merge
+  // эти узлы не получали anchor-ограничения и не ломали layout
+  // мультислойного графа.
+  const layerValues = new Set(
+    nodes
+      .map((n) => (n.data as Record<string, unknown>)?.layer)
+      .filter((v) => typeof v === "number"),
+  );
+  if (layerValues.size <= 1 && nodes.length > 0) {
+    for (const n of nodes) {
+      const d = n.data as Record<string, unknown>;
+      if (d && "layer" in d) delete d.layer;
+    }
+  }
 
   return {
     payload: {

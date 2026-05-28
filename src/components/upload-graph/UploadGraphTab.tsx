@@ -30,7 +30,7 @@ const layoutForMergeTab = async (
     const { layoutMergedGraphElk } = await import(
       "../../utils/layoutMergedGraphElk"
     );
-    return await layoutMergedGraphElk(nodes, edges);
+    return await layoutMergedGraphElk(nodes, edges, { useLayers: false });
   } catch (e) {
     console.warn(
       "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
