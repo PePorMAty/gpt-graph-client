@@ -52,6 +52,10 @@ export interface CustomNodeData {
   // --- multi-source upload (presentation tracking) ---
   presentations?: string[];
   presentationColor?: string;
+  /** Оригинальные написания продукта в каждой презентации (например,
+   * один узел может объединить «Ацетон» из одного графа и «Ацетоны»
+   * из другого — оба значения здесь сохраняются по имени презентации). */
+  labelsByPresentation?: Record<string, string>;
 
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;

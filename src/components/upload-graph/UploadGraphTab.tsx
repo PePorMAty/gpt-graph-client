@@ -18,6 +18,10 @@ import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
 
 import styles from "./UploadGraphTab.module.css";
+import {
+  MergeReportModal,
+  type MergeReportRow,
+} from "./MergeReportModal";
 
 // Раскладка для вкладки объединения: сырьё сверху, продукты снизу.
 // ELK (~1.5MB) подгружаем динамически — только когда пользователь
@@ -52,6 +56,11 @@ export const UploadGraphTab = () => {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [mergeReport, setMergeReport] = useState<{
+    presentationName: string | null;
+    commonNodes: MergeReportRow[];
+    addedCount: number;
+  } | null>(null);
 
   const hasGraph = data.nodes.length > 0;
 
@@ -91,10 +100,23 @@ export const UploadGraphTab = () => {
   const handleReplace = async (file: File) => {
     const text = await file.text();
     const result = parseGraphJson(text);
-    const { payload, warnings, needsLayout, presentations, presentationTitle } =
-      result;
+    const {
+      payload,
+      warnings,
+      needsLayout,
+      presentations,
+      presentationTitle,
+      presentationColors: parsedColors,
+    } = result;
 
-    const registry = assignColorsForPresentations({}, presentations);
+    // Если в JSON-узлах уже сохранены цвета (скачанный с сервера
+    // ранее объединённый граф) — переиспользуем их, чтобы раскраска
+    // и порядок презентаций совпали с исходным. Иначе строим свежий
+    // registry в порядке появления презентаций.
+    const registry =
+      parsedColors && Object.keys(parsedColors).length > 0
+        ? parsedColors
+        : assignColorsForPresentations({}, presentations);
     const coloredNodes = colorizeNodes(payload.nodes, registry);
 
     let finalNodes = coloredNodes;
@@ -131,13 +153,24 @@ export const UploadGraphTab = () => {
   const handleMerge = async (file: File) => {
     const text = await file.text();
     const result = parseGraphJson(text);
-    const { payload, warnings, presentations } = result;
+    const { payload, warnings, presentations, presentationTitle } = result;
 
     // Расширяем реестр новыми презентациями (старые цвета сохраняются).
     const registry = assignColorsForPresentations(
       presentationColors,
       presentations,
     );
+
+    // Слепок sources существующих product-узлов ДО merge — пригодится
+    // для отчёта «какие узлы стали общими в результате этого добавления».
+    const beforeSourcesById = new Map<string, string[]>();
+    for (const n of data.nodes) {
+      if (n.type !== "product") continue;
+      const pres = Array.isArray(n.data?.presentations)
+        ? (n.data.presentations as string[])
+        : [];
+      beforeSourcesById.set(n.id, pres);
+    }
 
     // Префикс id, чтобы избежать коллизий между файлами (например, у двух
     // графов может встретиться один и тот же 'Продукт_0001').
@@ -160,6 +193,30 @@ export const UploadGraphTab = () => {
       newEdges: namespacedEdges,
       registry,
     });
+
+    // Список узлов, у которых после merge источников стало больше, чем до.
+    // Это и есть «новые общие» / «получившие новый источник» узлы.
+    const reportRows: MergeReportRow[] = [];
+    for (const n of merged.nodes) {
+      if (n.type !== "product") continue;
+      const before = beforeSourcesById.get(n.id);
+      if (!before) continue; // новый узел из добавленного файла
+      const after = Array.isArray(n.data?.presentations)
+        ? (n.data.presentations as string[])
+        : [];
+      if (after.length > 1 && after.length > before.length) {
+        const label = typeof n.data?.label === "string" ? n.data.label : n.id;
+        const labelsByPresentation =
+          typeof n.data?.labelsByPresentation === "object" &&
+          n.data.labelsByPresentation
+            ? (n.data.labelsByPresentation as Record<string, string>)
+            : undefined;
+        reportRows.push({ label, presentations: after, labelsByPresentation });
+      }
+    }
+    reportRows.sort((a, b) => a.label.localeCompare(b.label, "ru"));
+
+    const addedCount = merged.nodes.length - data.nodes.length;
 
     // Пересчёт цвета всем product-узлам — у уже существующих узлов мог
     // расшириться список презентаций, цвет должен стать общим.
@@ -190,6 +247,12 @@ export const UploadGraphTab = () => {
         presentationColors: registry,
       }),
     );
+
+    setMergeReport({
+      presentationName: presentationTitle,
+      commonNodes: reportRows,
+      addedCount,
+    });
 
     return {
       summary: `Добавлено узлов из файла: ${payload.nodes.length}, рёбер: ${payload.edges.length}. Итого в графе: ${laid.nodes.length} / ${laid.edges.length}.`,
@@ -326,6 +389,15 @@ export const UploadGraphTab = () => {
           </ul>
         )}
       </div>
+
+      {mergeReport && (
+        <MergeReportModal
+          presentationName={mergeReport.presentationName}
+          commonNodes={mergeReport.commonNodes}
+          addedCount={mergeReport.addedCount}
+          onClose={() => setMergeReport(null)}
+        />
+      )}
     </div>
   );
 };

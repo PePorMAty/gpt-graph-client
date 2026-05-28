@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import { reconstructPresentationColors } from "./presentationColors";
 
 export type LoadGraphPayload = {
   nodes: CustomNode[];
@@ -13,10 +14,18 @@ export type ParseResult = {
   payload: LoadGraphPayload;
   warnings: string[];
   needsLayout: boolean;
-  /** Список уникальных презентаций (в порядке появления) — заполняется только для русскоязычного формата с полем `Презентации` / `Из какой презентации`. */
+  /** Список уникальных презентаций (в порядке появления) — собирается
+   * из массива `Презентации` (формат D), поля `presentation` (формат E)
+   * и из `node.data.presentations` (для сохранённых на сервер graph'ов,
+   * формат A/B/C — узлы несут эту информацию через data). */
   presentations: string[];
-  /** Заголовок презентации из поля `Название презентации` — только для русскоязычного формата. */
+  /** Заголовок презентации: «Название презентации» (D), `presentationName`
+   * (E), либо `meta.name` / `meta.prompt` (A). Используется как имя
+   * единственной презентации для старых graph'ов без `data.presentations`. */
   presentationTitle: string | null;
+  /** Реконструированный реестр «презентация → цвет» из узлов, если
+   * они несут `data.presentationColor`. Пуст если ничего не нашлось. */
+  presentationColors?: Record<string, string>;
 };
 
 type RawObject = Record<string, unknown>;
@@ -158,6 +167,11 @@ function parseRussianFormat(
     const layerRaw = raw["Слой"];
     const layer = typeof layerRaw === "number" ? layerRaw : undefined;
 
+    // labelsByPresentation: один и тот же label для всех презентаций этого
+    // узла (в format D у каждого узла одно написание во всех его презентациях).
+    const labelsByPresentation: Record<string, string> = {};
+    for (const p of nodePresentations) labelsByPresentation[p] = label;
+
     usedIds.add(id);
     nodes.push({
       id,
@@ -167,6 +181,10 @@ function parseRussianFormat(
         label,
         description: "",
         presentations: nodePresentations,
+        ...(type === "product" &&
+        Object.keys(labelsByPresentation).length > 0
+          ? { labelsByPresentation }
+          : {}),
         ...(layer !== undefined && { layer }),
       },
     } as CustomNode);
@@ -280,6 +298,13 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
 
     const meta = isObject(parsed.meta) ? parsed.meta : null;
     originalPrompt = meta ? asString(meta.prompt) : null;
+    // Заголовок презентации для скачанных с сервера сохранённых графов:
+    // приоритет на meta.name (заданное пользователем имя), fallback —
+    // meta.prompt. Используется как имя единственной презентации, если
+    // узлы не несут собственного data.presentations.
+    presentationTitle =
+      (meta ? asString(meta.name) : null) ??
+      (meta ? asString(meta.prompt) : null);
 
     const state = isObject(parsed.state) ? parsed.state : null;
     if (state && Array.isArray(state.leaf_nodes)) {
@@ -452,6 +477,69 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
     }
   }
 
+  // Сбор presentations из data.presentations узлов — нужно для
+  // форматов A/B/C, где парсер не собирает имена явно (в отличие от
+  // D и E). Это критично для скачанных с сервера объединённых графов:
+  // их узлы несут data.presentations, но без этого блока registry
+  // строился бы пустым.
+  const seenInData = new Set<string>(presentations);
+  for (const n of nodes) {
+    if (n.type !== "product") continue;
+    const pres = (n.data as Record<string, unknown>)?.presentations;
+    if (!Array.isArray(pres)) continue;
+    for (const p of pres) {
+      if (typeof p !== "string") continue;
+      const trimmed = p.trim();
+      if (!trimmed || seenInData.has(trimmed)) continue;
+      seenInData.add(trimmed);
+      presentations.push(trimmed);
+    }
+  }
+
+  // Fallback для старых graph'ов без data.presentations (GPT-generated
+  // или ранние сохранённые) — даём всем product-узлам единую презентацию,
+  // совпадающую с meta.name/meta.prompt (для format A) или
+  // presentationName (для format E). Без этого при последующем merge
+  // с другим скачанным графом цвета не различались бы.
+  if (presentations.length === 0 && presentationTitle) {
+    presentations.push(presentationTitle);
+    for (const n of nodes) {
+      if (n.type !== "product") continue;
+      const d = n.data as Record<string, unknown>;
+      if (Array.isArray(d.presentations) && d.presentations.length > 0) continue;
+      d.presentations = [presentationTitle];
+    }
+  }
+
+  // labelsByPresentation: если узел его ещё не несёт (общий цикл A/B/C/E
+  // не заполнял его выше), сгенерируем по правилу «label одинаков для
+  // всех презентаций этого узла». Для скачанных с сервера merged-графов
+  // labelsByPresentation уже лежит в data.* — переиспользуем через спред.
+  for (const n of nodes) {
+    if (n.type !== "product") continue;
+    const d = n.data as Record<string, unknown>;
+    if (
+      isObject(d.labelsByPresentation) &&
+      Object.keys(d.labelsByPresentation as RawObject).length > 0
+    )
+      continue;
+    const pres = Array.isArray(d.presentations)
+      ? (d.presentations as string[])
+      : [];
+    const label = typeof d.label === "string" ? d.label : "";
+    if (pres.length === 0 || !label) continue;
+    const labelsByPresentation: Record<string, string> = {};
+    for (const p of pres) labelsByPresentation[p] = label;
+    d.labelsByPresentation = labelsByPresentation;
+  }
+
+  // Реконструкция реестра цветов из узлов: если у них в data есть
+  // presentationColor, восстановим исходный mapping. Иначе вернётся {}
+  // и UploadGraphTab построит свежий через assignColorsForPresentations.
+  const reconstructed = reconstructPresentationColors(nodes);
+  const presentationColors =
+    Object.keys(reconstructed).length > 0 ? reconstructed : undefined;
+
   return {
     payload: {
       nodes,
@@ -464,5 +552,6 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
     needsLayout,
     presentations,
     presentationTitle,
+    presentationColors,
   };
 }
