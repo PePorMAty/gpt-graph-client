@@ -1,7 +1,7 @@
 # backend-patch: endpoint удаления сохранённого графа
 
-Эта папка — **временный патч для серверного репозитория**. После того как
-endpoint будет применён на сервере, папку нужно удалить из ветки клиента
+Эта папка — **временный патч для серверного репозитория**. После того
+как endpoint применён на сервере, папку нужно удалить из ветки клиента
 перед мерджем:
 
 ```bash
@@ -9,58 +9,55 @@ git rm -r backend-patch
 git commit -m "chore: убрать backend-patch после применения на сервере"
 ```
 
-## Что нужно сделать на сервере
+## Стек сервера
 
-Добавить новый маршрут:
+Из присланных файлов: Node.js + Express 5 (CommonJS), Sequelize/PG для
+основных моделей, но `routes/graph-files.js` использует **файловое
+хранилище** в `<repo>/data/saved-graphs/`. `id` графа — имя JSON-файла
+целиком (например, `my-graph_2024-01-01t12-00-00-000z.json`).
 
-```
-DELETE /graph-files/:id
-```
+## Что нужно сделать
 
-Поведение:
+В файл `routes/graph-files.js` добавить новый обработчик
+`router.delete("/:id", ...)` сразу после существующего `router.get("/:id", ...)`
+и перед `module.exports = router;`.
 
-- Найти сохранённый граф по `id`.
-- Удалить его из хранилища (файл / запись в БД).
-- Вернуть `204 No Content` при успехе.
-- Вернуть `404` если граф с таким `id` не существует.
-- Вернуть `400` если `id` невалидный (любые символы кроме безопасного
-  множества — например, для path-traversal вроде `../`).
-- Вернуть `500` при внутренних ошибках I/O.
+Готовый код — в `graph-files-delete.js` рядом. Скопировать блок и
+вставить как есть. Дополнительных require'ов не нужно: `fs/promises`
+и `path` уже импортированы в этом файле.
 
-Клиент в `src/store/api/saved-graph-api.ts:35-37` уже отправляет:
+Клиент в `src/store/api/saved-graph-api.ts` уже отправляет:
 
 ```ts
-export async function deleteSavedGraph(id: string): Promise<void> {
-  await axios.delete(`${import.meta.env.VITE_API_URL}/graph-files/${id}`);
-}
+await axios.delete(`${import.meta.env.VITE_API_URL}/graph-files/${id}`);
 ```
 
-То есть достаточно реализовать endpoint и убедиться, что он не возвращает
-ошибку — клиент игнорирует тело ответа. Однако вернуть `204 No Content`
-правильнее, чем 200 с пустым телом.
+где `id` — это имя файла, как возвращает `GET /api/graph-files`
+(поле `id` в каждом элементе).
 
-## Примеры реализации
+## Контракт ответов
 
-Сервер выбирает один из вариантов в зависимости от своего стека.
-Если он не из этого списка — взять ближайший как шаблон.
+- **204 No Content** — успех (граф удалён).
+- **404 Not Found** — файл с таким id не существует (ловим `ENOENT`).
+- **500 Internal Server Error** — прочие ошибки I/O.
 
-| Файл | Стек | Хранилище |
-|------|------|-----------|
-| `express-fs-route.ts` | Express + TypeScript | Файлы на диске (`<dir>/<id>.json`) |
-| `express-mongoose-route.ts` | Express + TypeScript | MongoDB через Mongoose |
-| `express-prisma-route.ts` | Express + TypeScript | PostgreSQL/MySQL через Prisma |
-| `fastify-fs-route.ts` | Fastify + TypeScript | Файлы на диске |
+Клиент игнорирует тело ответа, ему важен только статус 2xx.
 
-Все варианты подразумевают, что роут `/graph-files` уже зарегистрирован
-в приложении (т.к. POST `/save`, GET `/`, GET `/:id` уже работают).
-Достаточно добавить новый handler в тот же router/controller, где
-определены остальные методы — обычно это файл `routes/graph-files.*`
-или `controllers/graph-files.*`.
+## CORS
 
-## Чек-лист после применения
+В `server.js` CORS-заголовки от Express принудительно блокируются —
+значит, CORS обрабатывается на уровне reverse proxy / nginx.
+Если для других методов (POST/GET) на `/api/graph-files` запросы из
+браузера проходят — `DELETE` тоже должен пройти. Если фронт ловит
+preflight-ошибку, нужно убедиться, что nginx (или другой прокси)
+пропускает `DELETE` в `Access-Control-Allow-Methods`.
 
-- [ ] Endpoint отвечает 204 при удалении существующего графа.
-- [ ] Endpoint отвечает 404 при попытке удалить несуществующий граф.
-- [ ] CORS пропускает метод `DELETE` (если ещё не пропускает — добавить
-      `DELETE` в `Access-Control-Allow-Methods`).
-- [ ] Удалить эту папку из ветки клиента: `git rm -r backend-patch`.
+## Чек-лист
+
+- [ ] Скопировать блок из `graph-files-delete.js` в `routes/graph-files.js`.
+- [ ] Перезапустить сервер (`npm run dev` / `pm2 reload`).
+- [ ] Проверить вручную: `curl -i -X DELETE http://<host>/api/graph-files/<id>`
+      → 204 для существующего, 404 для несуществующего.
+- [ ] Проверить из UI: вкладка «Сохранённые» → 🗑 → подтвердить
+      → элемент исчезает из списка без перезагрузки страницы.
+- [ ] В ветке клиента: `git rm -r backend-patch`.
