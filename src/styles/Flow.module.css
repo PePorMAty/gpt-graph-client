@@ -231,10 +231,6 @@
   transition: stroke-opacity 120ms ease;
 }
 
-:global(.react-flow__controls-button svg) {
-  fill: unset;
-}
-
 /* Анимации */
 @keyframes spin {
   to {
