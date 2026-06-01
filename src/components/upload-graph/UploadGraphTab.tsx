@@ -22,6 +22,8 @@ import {
   MergeReportModal,
   type MergeReportRow,
 } from "./MergeReportModal";
+import { SourcePickerModal } from "./SourcePickerModal";
+import { loadSavedGraph } from "../../store/api/saved-graph-api";
 
 // Раскладка для вкладки объединения: сырьё сверху, продукты снизу.
 // ELK (~1.5MB) подгружаем динамически — только когда пользователь
@@ -61,6 +63,8 @@ export const UploadGraphTab = () => {
     commonNodes: MergeReportRow[];
     addedCount: number;
   } | null>(null);
+  const [sourcePickerMode, setSourcePickerMode] =
+    useState<UploadMode | null>(null);
 
   const hasGraph = data.nodes.length > 0;
 
@@ -97,9 +101,11 @@ export const UploadGraphTab = () => {
       };
     });
 
-  const handleReplace = async (file: File) => {
-    const text = await file.text();
-    const result = parseGraphJson(text);
+  const handleReplaceSource = async (
+    input: string | unknown,
+    fallbackName: string,
+  ) => {
+    const result = parseGraphJson(input);
     const {
       payload,
       warnings,
@@ -129,9 +135,7 @@ export const UploadGraphTab = () => {
     }
 
     const promptFromFile =
-      presentationTitle ??
-      payload.originalPrompt ??
-      file.name.replace(/\.[^.]+$/, "");
+      presentationTitle ?? payload.originalPrompt ?? fallbackName;
 
     dispatch(
       loadGraphFromFile({
@@ -150,9 +154,8 @@ export const UploadGraphTab = () => {
     };
   };
 
-  const handleMerge = async (file: File) => {
-    const text = await file.text();
-    const result = parseGraphJson(text);
+  const handleMergeSource = async (input: string | unknown) => {
+    const result = parseGraphJson(input);
     const { payload, warnings, presentations, presentationTitle } = result;
 
     // Расширяем реестр новыми презентациями (старые цвета сохраняются).
@@ -260,15 +263,14 @@ export const UploadGraphTab = () => {
     };
   };
 
-  const handleFile = async (file: File, mode: UploadMode) => {
+  const runWithStatus = async (
+    work: () => Promise<{ summary: string; warnings: string[] }>,
+  ) => {
     setError(null);
     setInfo(null);
     setIsProcessing(true);
     try {
-      const { summary, warnings } =
-        mode === "replace"
-          ? await handleReplace(file)
-          : await handleMerge(file);
+      const { summary, warnings } = await work();
       if (warnings.length) {
         setInfo(`${summary} Предупреждений: ${warnings.length}.`);
         console.warn("[UploadGraphTab] предупреждения парсера:", warnings);
@@ -280,6 +282,29 @@ export const UploadGraphTab = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleFile = async (file: File, mode: UploadMode) => {
+    const text = await file.text();
+    const fallbackName = file.name.replace(/\.[^.]+$/, "");
+    await runWithStatus(() =>
+      mode === "replace"
+        ? handleReplaceSource(text, fallbackName)
+        : handleMergeSource(text),
+    );
+  };
+
+  const handleSavedPick = async (
+    id: string,
+    name: string,
+    mode: UploadMode,
+  ) => {
+    await runWithStatus(async () => {
+      const file = await loadSavedGraph(id);
+      return mode === "replace"
+        ? handleReplaceSource(file, name)
+        : handleMergeSource(file);
+    });
   };
 
   const onChangeFactory =
@@ -329,7 +354,7 @@ export const UploadGraphTab = () => {
         <button
           type="button"
           className={styles.primaryButton}
-          onClick={() => replaceInputRef.current?.click()}
+          onClick={() => setSourcePickerMode("replace")}
           disabled={isProcessing}
         >
           {isProcessing ? "⏳ Обработка..." : "📂 Загрузить граф"}
@@ -337,7 +362,7 @@ export const UploadGraphTab = () => {
         <button
           type="button"
           className={styles.secondaryButton}
-          onClick={() => mergeInputRef.current?.click()}
+          onClick={() => setSourcePickerMode("merge")}
           disabled={!hasGraph || isProcessing}
           title={
             hasGraph
@@ -396,6 +421,29 @@ export const UploadGraphTab = () => {
           commonNodes={mergeReport.commonNodes}
           addedCount={mergeReport.addedCount}
           onClose={() => setMergeReport(null)}
+        />
+      )}
+
+      {sourcePickerMode && (
+        <SourcePickerModal
+          mode={sourcePickerMode}
+          onClose={() => setSourcePickerMode(null)}
+          onPickFile={() => {
+            const mode = sourcePickerMode;
+            setSourcePickerMode(null);
+            // requestAnimationFrame даёт модалке закрыться, прежде чем
+            // браузерный file picker украдёт фокус.
+            requestAnimationFrame(() => {
+              const ref =
+                mode === "replace" ? replaceInputRef : mergeInputRef;
+              ref.current?.click();
+            });
+          }}
+          onPickSaved={(id, name) => {
+            const mode = sourcePickerMode;
+            setSourcePickerMode(null);
+            handleSavedPick(id, name, mode);
+          }}
         />
       )}
     </div>
