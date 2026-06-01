@@ -71,6 +71,26 @@ export function mergeProductGraph({
           mergedPresentations,
           registry,
         );
+        // Слияние оригинальных написаний: за каждой презентацией нового
+        // узла закрепляем его собственный label (могут отличаться по
+        // регистру/окончанию — «Ацетон» vs «Ацетоны»).
+        const prevLabels =
+          typeof target.data.labelsByPresentation === "object" &&
+          target.data.labelsByPresentation
+            ? (target.data.labelsByPresentation as Record<string, string>)
+            : {};
+        const incomingLabels =
+          typeof incoming.data?.labelsByPresentation === "object" &&
+          incoming.data.labelsByPresentation
+            ? (incoming.data.labelsByPresentation as Record<string, string>)
+            : {};
+        const incomingLabel =
+          typeof incoming.data?.label === "string" ? incoming.data.label : "";
+        const merged: Record<string, string> = { ...prevLabels };
+        for (const p of next) {
+          merged[p] = incomingLabels[p] ?? incomingLabel ?? merged[p] ?? "";
+        }
+        target.data.labelsByPresentation = merged;
       }
       continue;
     }
@@ -79,6 +99,19 @@ export function mergeProductGraph({
     const presentations = Array.isArray(incoming.data?.presentations)
       ? (incoming.data.presentations as string[])
       : [];
+    const incomingLabel =
+      typeof incoming.data?.label === "string" ? incoming.data.label : "";
+    const incomingLabels =
+      typeof incoming.data?.labelsByPresentation === "object" &&
+      incoming.data.labelsByPresentation
+        ? (incoming.data.labelsByPresentation as Record<string, string>)
+        : null;
+    const labelsByPresentation: Record<string, string> = {};
+    if (incoming.type === "product") {
+      for (const p of presentations) {
+        labelsByPresentation[p] = incomingLabels?.[p] ?? incomingLabel;
+      }
+    }
     appended.push({
       ...incoming,
       data: {
@@ -88,6 +121,10 @@ export function mergeProductGraph({
           incoming.type === "product"
             ? colorForPresentations(presentations, registry)
             : undefined,
+        ...(incoming.type === "product" &&
+        Object.keys(labelsByPresentation).length > 0
+          ? { labelsByPresentation }
+          : {}),
       },
     });
     if (incoming.type === "product" && key) {
