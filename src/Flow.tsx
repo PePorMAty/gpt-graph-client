@@ -28,6 +28,7 @@ import {
   removeNode,
   addNode,
   setGraphData,
+  loadGraphFromFile,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   acceptStepAlternative,
@@ -101,7 +102,13 @@ export const Flow = () => {
       if (!raw) return;
       const { nodes, edges } = JSON.parse(raw);
       if (Array.isArray(nodes) && nodes.length) {
-        dispatch(setGraphData({ nodes, edges }));
+        dispatch(loadGraphFromFile({
+          nodes,
+          edges,
+          leafNodes: [],
+          hasMore: false,
+          originalPrompt: null,
+        }));
       }
     } catch { /* ignore corrupted data */ }
   }, []);
