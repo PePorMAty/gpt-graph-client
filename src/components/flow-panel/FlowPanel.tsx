@@ -652,6 +652,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onChangeDescription,
 
   nodeType,
+  transformationSources,
 
   onBuildProductCard,
   productCardStatus,
@@ -849,6 +850,44 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   placeholder="Введите описание узла"
                   rows={4}
                 />
+                {Array.isArray(transformationSources) &&
+                  transformationSources.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          opacity: 0.8,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Источники:
+                      </div>
+                      <ol
+                        style={{
+                          margin: 0,
+                          paddingLeft: 20,
+                          fontSize: 13,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {transformationSources.map((url, i) => (
+                          <li key={`${i}-${url}`}>
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                color: "#1565c0",
+                                wordBreak: "break-all",
+                              }}
+                            >
+                              {url}
+                            </a>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
               </div>
 
               {/* ── PRODUCT CARD ── */}

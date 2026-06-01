@@ -5,6 +5,7 @@ import {
   ReactFlow,
   ConnectionLineType,
   Controls,
+  ControlButton,
   type Node,
   type OnConnect,
   type OnReconnect,
@@ -41,7 +42,7 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import styles from "./styles/Flow.module.css";
-import { SearchToggle } from "./components/search-graph/SearchToggle";
+import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import {
@@ -93,6 +94,17 @@ export const Flow = () => {
   const { fitView, screenToFlowPosition } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("saved-graph");
+      if (!raw) return;
+      const { nodes, edges } = JSON.parse(raw);
+      if (Array.isArray(nodes) && nodes.length) {
+        dispatch(setGraphData({ nodes, edges }));
+      }
+    } catch { /* ignore corrupted data */ }
+  }, []);
 
   // --- keep a live ref so timeouts always see the latest nodes ---
   const nodesRef = useRef(data.nodes);
@@ -1324,20 +1336,27 @@ export const Flow = () => {
     [dispatch, selectedNodeId],
   );
 
+  const [saveFlash, setSaveFlash] = useState(false);
+  const handleSaveToLocalStorage = useCallback(() => {
+    localStorage.setItem(
+      "saved-graph",
+      JSON.stringify({ nodes: data.nodes, edges: data.edges }),
+    );
+    setSaveFlash(true);
+    setTimeout(() => setSaveFlash(false), 1500);
+  }, [data.nodes, data.edges]);
+
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleClearCanvas = useCallback(() => {
+    dispatch(setGraphData({ nodes: [], edges: [] }));
+    localStorage.removeItem("saved-graph");
+    setShowClearConfirm(false);
+  }, [dispatch]);
+
   return (
     <div className={styles.container}>
-      <SearchToggle />
-      <button
-        className={styles.addNodeButton}
-        onClick={() => setIsTypeSelectorOpen(true)}
-      >
-        + Узел
-      </button>
-      <AddNodeModal
-        isOpen={isTypeSelectorOpen}
-        onClose={() => setIsTypeSelectorOpen(false)}
-        onSelect={handleAddNode}
-      />
       {/* Индикатор загрузки */}
       {isLoading && (
         <div className={styles.loadingOverlay}>
@@ -1389,9 +1408,52 @@ export const Flow = () => {
           targetHandle: "top",
         }}
       >
-        <Controls position="bottom-left" style={{ bottom: "25%" }} />
+        <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
+          <ControlButton
+            onClick={handleSaveToLocalStorage}
+            title="Сохранить граф"
+            style={saveFlash ? { backgroundColor: "#4caf50", color: "#fff" } : undefined}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path fillRule="evenodd" clipRule="evenodd" d="M18.1716 1C18.702 1 19.2107 1.21071 19.5858 1.58579L22.4142 4.41421C22.7893 4.78929 23 5.29799 23 5.82843V20C23 21.6569 21.6569 23 20 23H4C2.34315 23 1 21.6569 1 20V4C1 2.34315 2.34315 1 4 1H18.1716ZM4 3C3.44772 3 3 3.44772 3 4V20C3 20.5523 3.44772 21 4 21L5 21L5 15C5 13.3431 6.34315 12 8 12L16 12C17.6569 12 19 13.3431 19 15V21H20C20.5523 21 21 20.5523 21 20V6.82843C21 6.29799 20.7893 5.78929 20.4142 5.41421L18.5858 3.58579C18.2107 3.21071 17.702 3 17.1716 3H17V5C17 6.65685 15.6569 8 14 8H10C8.34315 8 7 6.65685 7 5V3H4ZM17 21V15C17 14.4477 16.5523 14 16 14L8 14C7.44772 14 7 14.4477 7 15L7 21L17 21ZM9 3H15V5C15 5.55228 14.5523 6 14 6H10C9.44772 6 9 5.55228 9 5V3Z" />
+            </svg>
+          </ControlButton>
+          <ControlButton
+            onClick={() => setIsTypeSelectorOpen(true)}
+            title="Добавить узел"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M15 12L12 12M12 12L9 12M12 12L12 9M12 12L12 15" />
+              <path d="M22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C21.5093 4.43821 21.8356 5.80655 21.9449 8" />
+            </svg>
+          </ControlButton>
+          <ControlButton
+            onClick={() => setIsSearchOpen((v) => !v)}
+            title="Поиск по графу"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
+            </svg>
+          </ControlButton>
+          <ControlButton
+            onClick={() => setShowClearConfirm(true)}
+            title="Очистить полотно"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920" fill="currentColor">
+              <path d="M960 0v112.941c467.125 0 847.059 379.934 847.059 847.059 0 467.125-379.934 847.059-847.059 847.059-467.125 0-847.059-379.934-847.059-847.059 0-267.106 126.607-515.915 338.824-675.727v393.374h112.94V112.941H0v112.941h342.89C127.058 407.38 0 674.711 0 960c0 529.355 430.645 960 960 960s960-430.645 960-960S1489.355 0 960 0" fillRule="evenodd" />
+            </svg>
+          </ControlButton>
+        </Controls>
         <Background />
       </ReactFlow>
+      {isSearchOpen && (
+        <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
+      )}
+      <AddNodeModal
+        isOpen={isTypeSelectorOpen}
+        onClose={() => setIsTypeSelectorOpen(false)}
+        onSelect={handleAddNode}
+      />
       {contextMenu && (() => {
         const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
         const ctxIsStepAlt =
@@ -1428,6 +1490,9 @@ export const Flow = () => {
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
         nodeType={selectedNode?.type}
+        transformationSources={
+          selectedNode?.data?.transformationSources as string[] | undefined
+        }
         onBuildProductCard={handleBuildProductCard}
         productCardStatus={selectedNode?.data?.productCardStatus}
         productCardError={selectedNode?.data?.productCardError}
@@ -1447,6 +1512,16 @@ export const Flow = () => {
           }
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteConfirmNodeId(null)}
+        />
+      )}
+      {showClearConfirm && (
+        <ConfirmDeleteModal
+          nodeName=""
+          title="Очистить полотно?"
+          description="Все узлы и связи будут удалены. Это действие нельзя отменить."
+          confirmLabel="Очистить"
+          onConfirm={handleClearCanvas}
+          onCancel={() => setShowClearConfirm(false)}
         />
       )}
       {insertTrState && (

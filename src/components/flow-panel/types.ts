@@ -109,6 +109,9 @@ export interface FlowPanelProps {
   nodeId?: string | null;
   nodeType?: string;
 
+  // sources attached to a transformation node (transformation-between endpoint)
+  transformationSources?: string[];
+
   // fill card (Описание tab)
   onBuildProductCard?: (options?: FillCardOptions) => void;
   productCardStatus?: "idle" | "loading" | "succeeded" | "failed";
