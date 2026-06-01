@@ -1347,10 +1347,12 @@ export const Flow = () => {
   }, [data.nodes, data.edges]);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleClearCanvas = useCallback(() => {
     dispatch(setGraphData({ nodes: [], edges: [] }));
     localStorage.removeItem("saved-graph");
+    setShowClearConfirm(false);
   }, [dispatch]);
 
   return (
@@ -1420,7 +1422,7 @@ export const Flow = () => {
             onClick={() => setIsTypeSelectorOpen(true)}
             title="Добавить узел"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M15 12L12 12M12 12L9 12M12 12L12 9M12 12L12 15" />
               <path d="M22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C21.5093 4.43821 21.8356 5.80655 21.9449 8" />
             </svg>
@@ -1429,12 +1431,12 @@ export const Flow = () => {
             onClick={() => setIsSearchOpen((v) => !v)}
             title="Поиск по графу"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
             </svg>
           </ControlButton>
           <ControlButton
-            onClick={handleClearCanvas}
+            onClick={() => setShowClearConfirm(true)}
             title="Очистить полотно"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920" fill="currentColor">
@@ -1510,6 +1512,16 @@ export const Flow = () => {
           }
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteConfirmNodeId(null)}
+        />
+      )}
+      {showClearConfirm && (
+        <ConfirmDeleteModal
+          nodeName=""
+          title="Очистить полотно?"
+          description="Все узлы и связи будут удалены. Это действие нельзя отменить."
+          confirmLabel="Очистить"
+          onConfirm={handleClearCanvas}
+          onCancel={() => setShowClearConfirm(false)}
         />
       )}
       {insertTrState && (
