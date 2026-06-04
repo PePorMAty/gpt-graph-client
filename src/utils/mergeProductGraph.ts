@@ -19,8 +19,28 @@ export interface MergeOutput {
   idRemap: Record<string, string>;
 }
 
+// Различные дефисы/тире/минусы и soft hyphen: U+2010, U+2011, U+2012,
+// U+2013, U+2014, U+2015, U+2212, U+00AD.
+const HYPHENS = /[‐‑‒–—―−­]/g;
+// Разные апострофы: U+2019, U+02BC, U+02B9, U+00B4, U+0060.
+const APOSTROPHES = /[’ʼʹ´`]/g;
+// Zero-width символы: U+200B (ZWSP), U+200C (ZWNJ), U+200D (ZWJ), U+FEFF.
+const ZERO_WIDTH = /[​‌‍﻿]/g;
+// Неразрывный пробел U+00A0.
+const NBSP = / /g;
+
 function normalizeLabel(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
+  return s
+    .normalize("NFC")
+    .replace(HYPHENS, "-")
+    .replace(APOSTROPHES, "'")
+    .replace(ZERO_WIDTH, "")
+    .replace(NBSP, " ")
+    .replace(/ё/g, "е")
+    .replace(/Ё/g, "Е")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 export function mergeProductGraph({
@@ -141,9 +161,25 @@ export function mergeProductGraph({
     remappedNewEdges.push({ ...e, source, target });
   }
 
+  // 4) Защитный dedup по id: если из-за коллизий неймспейсов на вход
+  // пришли узлы с одинаковыми id, оставляем первый — React Flow
+  // ломается на дублях (узел может «пропадать» при клике). Заодно
+  // отфильтровываем рёбра, ссылки которых не разрешаются.
+  const seenIds = new Set<string>();
+  const dedupedNodes: CustomNode[] = [];
+  for (const n of [...mutated, ...appended]) {
+    if (seenIds.has(n.id)) continue;
+    seenIds.add(n.id);
+    dedupedNodes.push(n);
+  }
+  const validIds = new Set(dedupedNodes.map((n) => n.id));
+  const dedupedEdges = [...existingEdges, ...remappedNewEdges].filter(
+    (e) => validIds.has(e.source) && validIds.has(e.target),
+  );
+
   return {
-    nodes: [...mutated, ...appended],
-    edges: [...existingEdges, ...remappedNewEdges],
+    nodes: dedupedNodes,
+    edges: dedupedEdges,
     idRemap,
   };
 }
