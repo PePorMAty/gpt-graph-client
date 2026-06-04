@@ -125,4 +125,7 @@ export interface FlowPanelProps {
   // panel mode
   mode: "card" | "build";
   buildDirection?: BuildDirection;
+
+  /** Режим «только просмотр» (шар-ссылка): имя/описание read-only, без заполнения карточки. */
+  readOnly?: boolean;
 }
