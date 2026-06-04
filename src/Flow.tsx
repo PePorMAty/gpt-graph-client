@@ -1396,7 +1396,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={sharedView ? undefined : handleConnect}
-        onNodeClick={sharedView ? undefined : onNodeClick}
+        onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={sharedView ? undefined : onNodeContextMenu}
@@ -1533,6 +1533,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         buildDirection={
           panelMode.type === "build" ? panelMode.direction : undefined
         }
+        readOnly={sharedView}
       />
       {deleteConfirmNodeId && (
         <ConfirmDeleteModal
