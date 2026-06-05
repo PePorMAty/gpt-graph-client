@@ -19,9 +19,11 @@ export interface MergeOutput {
   idRemap: Record<string, string>;
 }
 
-// Различные дефисы/тире/минусы и soft hyphen: U+2010, U+2011, U+2012,
-// U+2013, U+2014, U+2015, U+2212, U+00AD.
-const HYPHENS = /[‐‑‒–—―−­]/g;
+// Дефис (обычный U+002D), различные дефисы/тире/минусы и soft hyphen:
+// U+2010, U+2011, U+2012, U+2013, U+2014, U+2015, U+2212, U+00AD.
+// В химических названиях дефис — разделитель локантов, эквивалентный
+// пробелу: «Синтез-газ» и «Синтез газ» — один продукт.
+const HYPHENS = /[-‐‑‒–—―−­]/g;
 // Разные апострофы: U+2019, U+02BC, U+02B9, U+00B4, U+0060.
 const APOSTROPHES = /[’ʼʹ´`]/g;
 // Zero-width символы: U+200B (ZWSP), U+200C (ZWNJ), U+200D (ZWJ), U+FEFF.
@@ -32,7 +34,7 @@ const NBSP = / /g;
 function normalizeLabel(s: string): string {
   return s
     .normalize("NFC")
-    .replace(HYPHENS, "-")
+    .replace(HYPHENS, " ")
     .replace(APOSTROPHES, "'")
     .replace(ZERO_WIDTH, "")
     .replace(NBSP, " ")

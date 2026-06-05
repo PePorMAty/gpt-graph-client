@@ -152,11 +152,12 @@ export const UploadGraphTab = () => {
       if (n.type === "product" && label) {
         const key = label
           .normalize("NFC")
-          .replace(/[‐‑‒–—―−­]/g, "-")
+          .replace(/[-‐‑‒–—―−­]/g, " ")
           .replace(/[’ʼʹ´`]/g, "'")
           .replace(/[​‌‍﻿]/g, "")
           .replace(/ /g, " ")
           .replace(/ё/g, "е")
+          .replace(/Ё/g, "Е")
           .trim()
           .toLowerCase()
           .replace(/\s+/g, " ");
