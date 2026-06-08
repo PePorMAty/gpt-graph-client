@@ -1405,9 +1405,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         nodesConnectable={!sharedView}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
-        onReconnect={handleReconnect}
-        onReconnectStart={onReconnectStart}
-        onReconnectEnd={onReconnectEnd}
+        onReconnect={sharedView ? undefined : handleReconnect}
+        onReconnectStart={sharedView ? undefined : onReconnectStart}
+        onReconnectEnd={sharedView ? undefined : onReconnectEnd}
+        deleteKeyCode={sharedView ? null : undefined}
         proOptions={{ hideAttribution: true }}
         nodeTypes={nodeTypes}
         edgesFocusable={false}
@@ -1477,7 +1478,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </Controls>
         <Background />
       </ReactFlow>
-      {sharedView && <GraphLegend />}
+      {sharedView && !isPanelOpen && <GraphLegend />}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
