@@ -39,6 +39,7 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
 import { ShareGraphModal } from "./components/share-graph-modal";
+import { GraphLegend } from "./components/graph-legend";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
@@ -1476,6 +1477,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </Controls>
         <Background />
       </ReactFlow>
+      {sharedView && <GraphLegend />}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
