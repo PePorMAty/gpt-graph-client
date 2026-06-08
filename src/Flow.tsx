@@ -1440,6 +1440,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               <path d="M22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C21.5093 4.43821 21.8356 5.80655 21.9449 8" />
             </svg>
           </ControlButton>
+            </>
+          )}
           <ControlButton
             onClick={() => setIsSearchOpen((v) => !v)}
             title="Поиск по графу"
@@ -1448,6 +1450,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
             </svg>
           </ControlButton>
+          {!sharedView && (
+            <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
             title="Очистить полотно"
