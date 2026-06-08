@@ -39,6 +39,7 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
 import { ShareGraphModal } from "./components/share-graph-modal";
+import { GraphLegend } from "./components/graph-legend";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
@@ -1404,9 +1405,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         nodesConnectable={!sharedView}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
-        onReconnect={handleReconnect}
-        onReconnectStart={onReconnectStart}
-        onReconnectEnd={onReconnectEnd}
+        onReconnect={sharedView ? undefined : handleReconnect}
+        onReconnectStart={sharedView ? undefined : onReconnectStart}
+        onReconnectEnd={sharedView ? undefined : onReconnectEnd}
+        deleteKeyCode={sharedView ? null : undefined}
         proOptions={{ hideAttribution: true }}
         nodeTypes={nodeTypes}
         edgesFocusable={false}
@@ -1476,6 +1478,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </Controls>
         <Background />
       </ReactFlow>
+      {sharedView && !isPanelOpen && <GraphLegend />}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
