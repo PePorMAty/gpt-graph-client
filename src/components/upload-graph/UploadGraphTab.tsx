@@ -123,13 +123,70 @@ export const UploadGraphTab = () => {
       parsedColors && Object.keys(parsedColors).length > 0
         ? parsedColors
         : assignColorsForPresentations({}, presentations);
-    const coloredNodes = colorizeNodes(payload.nodes, registry);
+
+    // Неймспейсим id входящего файла: это исключает коллизии при
+    // последующем merge того же файла или другого с пересекающимися id
+    // (например, скачанный с сервера merged-граф уже содержит id с
+    // префиксом `m...__` — после повторной загрузки они должны стать
+    // уникальными).
+    const namespace = `r${crypto.randomUUID()}__`;
+    const namespacedRawNodes = payload.nodes.map((n) => ({
+      ...n,
+      id: namespace + n.id,
+    }));
+    const namespacedRawEdges = payload.edges.map((e) => ({
+      ...e,
+      id: namespace + e.id,
+      source: namespace + e.source,
+      target: namespace + e.target,
+    }));
+
+    // Intra-file dedup: если в одном JSON оказались два product-узла с
+    // одинаковым нормализованным label — оставляем первый, второй
+    // схлопывается в первый (рёбра ремэппятся, self-loops дропаются).
+    const labelToId = new Map<string, string>();
+    const intraRemap: Record<string, string> = {};
+    const dedupedNodes: typeof namespacedRawNodes = [];
+    for (const n of namespacedRawNodes) {
+      const label = typeof n.data?.label === "string" ? n.data.label : "";
+      if (n.type === "product" && label) {
+        const key = label
+          .normalize("NFC")
+          .replace(/[-‐‑‒–—―−­]/g, " ")
+          .replace(/[’ʼʹ´`]/g, "'")
+          .replace(/[​‌‍﻿]/g, "")
+          .replace(/ /g, " ")
+          .replace(/ё/g, "е")
+          .replace(/Ё/g, "Е")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " ");
+        if (key) {
+          const firstId = labelToId.get(key);
+          if (firstId) {
+            intraRemap[n.id] = firstId;
+            continue;
+          }
+          labelToId.set(key, n.id);
+        }
+      }
+      dedupedNodes.push(n);
+    }
+    const dedupedEdges = namespacedRawEdges
+      .map((e) => ({
+        ...e,
+        source: intraRemap[e.source] ?? e.source,
+        target: intraRemap[e.target] ?? e.target,
+      }))
+      .filter((e) => e.source !== e.target);
+
+    const coloredNodes = colorizeNodes(dedupedNodes, registry);
 
     let finalNodes = coloredNodes;
-    let finalEdges = payload.edges;
+    let finalEdges = dedupedEdges;
     if (needsLayout) {
       // Загружаемые презентации укладываем сверху вниз: сырьё сверху, продукты снизу.
-      const laid = await layoutForMergeTab(coloredNodes, payload.edges);
+      const laid = await layoutForMergeTab(coloredNodes, dedupedEdges);
       finalNodes = laid.nodes;
       finalEdges = laid.edges;
     }
@@ -177,7 +234,10 @@ export const UploadGraphTab = () => {
 
     // Префикс id, чтобы избежать коллизий между файлами (например, у двух
     // графов может встретиться один и тот же 'Продукт_0001').
-    const namespace = `m${Date.now().toString(36)}__`;
+    // Гарантированно уникальный неймспейс — два быстрых клика на «Добавить
+    // граф» с Date.now() могут попасть в одну миллисекунду и дать коллизию
+    // node id с предыдущим merge, из-за чего React Flow «теряет» дубли.
+    const namespace = `m${crypto.randomUUID()}__`;
     const namespacedNodes: CustomNode[] = payload.nodes.map((n) => ({
       ...n,
       id: namespace + n.id,

@@ -664,6 +664,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   mode,
   buildDirection,
+  readOnly = false,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
@@ -812,7 +813,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               ? buildDirection === "down"
                 ? "Построить вниз"
                 : "Построить вверх"
-              : "Редактирование узла"}
+              : readOnly
+                ? "Просмотр узла"
+                : "Редактирование узла"}
           </h3>
           <button className={styles.closeButton} onClick={onClose}>
             ×
@@ -828,6 +831,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               onChange={onChangeValue}
               className={styles.formInput}
               placeholder="Введите название узла"
+              readOnly={readOnly}
             />
           </div>
 
@@ -849,6 +853,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   className={styles.formTextarea}
                   placeholder="Введите описание узла"
                   rows={4}
+                  readOnly={readOnly}
                 />
                 {Array.isArray(transformationSources) &&
                   transformationSources.length > 0 && (
@@ -890,7 +895,8 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   )}
               </div>
 
-              {/* ── PRODUCT CARD ── */}
+              {/* ── PRODUCT CARD (скрыто в режиме просмотра) ── */}
+              {!readOnly && (
               <div className={styles.formGroup}>
                 <button
                   type="button"
@@ -1068,6 +1074,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   </div>
                 )}
               </div>
+              )}
             </>
           )}
 

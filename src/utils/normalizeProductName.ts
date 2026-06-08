@@ -1,11 +1,25 @@
 // src/utils/normalizeProductName.ts
 
+// Должно совпадать с normalizeLabel из mergeProductGraph.ts, иначе при
+// сборке шага step-by-step v2 найдёт «совпадение» по другим правилам,
+// чем merge — и появится визуальный дубликат после объединения графов.
+const HYPHENS = /[-‐‑‒–—―−­]/g;
+const APOSTROPHES = /[’ʼʹ´`]/g;
+const ZERO_WIDTH = /[​‌‍﻿]/g;
+const NBSP = / /g;
+
 export function normalizeProductName(name: string): string {
   return name
-    .toLowerCase()
+    .normalize("NFC")
+    .replace(HYPHENS, " ")
+    .replace(APOSTROPHES, "'")
+    .replace(ZERO_WIDTH, "")
+    .replace(NBSP, " ")
+    .replace(/ё/g, "е")
+    .replace(/Ё/g, "Е")
     .trim()
-    .replace(/\s+/g, " ")
-    .replace(/ё/g, "е");
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 /**

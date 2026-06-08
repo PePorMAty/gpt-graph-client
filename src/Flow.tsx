@@ -38,6 +38,7 @@ import { FlowPanel } from "./components/flow-panel";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
+import { ShareGraphModal } from "./components/share-graph-modal";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
@@ -84,7 +85,12 @@ const nodeTypes: NodeTypes = {
   transformation: TransformationNode,
 };
 
-export const Flow = () => {
+interface FlowProps {
+  /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
+  sharedView?: boolean;
+}
+
+export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const dispatch = useAppDispatch();
   const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
     (store) => store.graph,
@@ -96,6 +102,9 @@ export const Flow = () => {
   const hasFittedView = useRef(false);
 
   useEffect(() => {
+    // В режиме просмотра по ссылке граф приходит с сервера — не перетираем его
+    // содержимым из localStorage.
+    if (sharedView) return;
     try {
       const raw = localStorage.getItem("saved-graph");
       if (!raw) return;
@@ -1348,6 +1357,7 @@ export const Flow = () => {
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const handleClearCanvas = useCallback(() => {
     dispatch(setGraphData({ nodes: [], edges: [] }));
@@ -1385,12 +1395,13 @@ export const Flow = () => {
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={handleConnect}
+        onConnect={sharedView ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={onNodeContextMenu}
+        onNodeContextMenu={sharedView ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
+        nodesConnectable={!sharedView}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         onReconnect={handleReconnect}
@@ -1409,6 +1420,8 @@ export const Flow = () => {
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
+          {!sharedView && (
+            <>
           <ControlButton
             onClick={handleSaveToLocalStorage}
             title="Сохранить граф"
@@ -1427,6 +1440,8 @@ export const Flow = () => {
               <path d="M22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C21.5093 4.43821 21.8356 5.80655 21.9449 8" />
             </svg>
           </ControlButton>
+            </>
+          )}
           <ControlButton
             onClick={() => setIsSearchOpen((v) => !v)}
             title="Поиск по графу"
@@ -1435,6 +1450,8 @@ export const Flow = () => {
               <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
             </svg>
           </ControlButton>
+          {!sharedView && (
+            <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
             title="Очистить полотно"
@@ -1443,6 +1460,19 @@ export const Flow = () => {
               <path d="M960 0v112.941c467.125 0 847.059 379.934 847.059 847.059 0 467.125-379.934 847.059-847.059 847.059-467.125 0-847.059-379.934-847.059-847.059 0-267.106 126.607-515.915 338.824-675.727v393.374h112.94V112.941H0v112.941h342.89C127.058 407.38 0 674.711 0 960c0 529.355 430.645 960 960 960s960-430.645 960-960S1489.355 0 960 0" fillRule="evenodd" />
             </svg>
           </ControlButton>
+          <ControlButton
+            onClick={() => setShowShareModal(true)}
+            title="Поделиться"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <path d="M8.59 13.51L15.42 17.49M15.41 6.51L8.59 10.49" />
+            </svg>
+          </ControlButton>
+            </>
+          )}
         </Controls>
         <Background />
       </ReactFlow>
@@ -1453,6 +1483,10 @@ export const Flow = () => {
         isOpen={isTypeSelectorOpen}
         onClose={() => setIsTypeSelectorOpen(false)}
         onSelect={handleAddNode}
+      />
+      <ShareGraphModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
       />
       {contextMenu && (() => {
         const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
@@ -1503,6 +1537,7 @@ export const Flow = () => {
         buildDirection={
           panelMode.type === "build" ? panelMode.direction : undefined
         }
+        readOnly={sharedView}
       />
       {deleteConfirmNodeId && (
         <ConfirmDeleteModal
