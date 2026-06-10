@@ -32,6 +32,7 @@ import {
   fetchStepSources,
 } from "../api/step-chain-api";
 import { stepToFlow } from "../../utils/stepToFlow";
+import { normalizeProductName } from "../../utils/normalizeProductName";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
@@ -65,12 +66,7 @@ const initialState: InitialGraphStateI = {
 export const sourcesPoolKey = (
   productName: string,
   direction: "up" | "down",
-) =>
-  `${productName
-    .toLowerCase()
-    .replace(/ё/g, "е")
-    .trim()
-    .replace(/\s+/g, " ")}::${direction}`;
+) => `${normalizeProductName(productName)}::${direction}`;
 
 const gptSlice = createSlice({
   name: "graph",
@@ -387,7 +383,7 @@ const gptSlice = createSlice({
         if (anchorPool && anchorPool.sources.length > 0) {
           const insufficient = new Set(
             (session.insufficientProducts ?? []).map((p: string) =>
-              p.toLowerCase().replace(/ё/g, "е").trim(),
+              normalizeProductName(p),
             ),
           );
           const allNewNodeIds = [
@@ -401,10 +397,7 @@ const gptSlice = createSlice({
               (newNode as unknown as { label?: string })?.label ||
               "";
             if (!newLabel) continue;
-            const normalized = newLabel
-              .toLowerCase()
-              .replace(/ё/g, "е")
-              .trim();
+            const normalized = normalizeProductName(newLabel);
             if (insufficient.has(normalized)) continue;
             const newKey = sourcesPoolKey(newLabel, session.direction);
             if (!state.sourcesPool[newKey]) {

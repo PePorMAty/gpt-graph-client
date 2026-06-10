@@ -120,10 +120,16 @@ export function stepToFlow(
   const startX = anchorX - rowWidth / 2;
 
   uniqueProducts.forEach(({ product }, idx) => {
-    // Check if existing product matches
-    const existingNodeId = product.isExisting
-      ? findExistingProductNode(product.name, existingNodes)
-      : null;
+    // Сверяем КАЖДЫЙ продукт с уже существующими узлами графа собственным
+    // надёжным normalizeProductName — НЕ полагаясь на серверный флаг isExisting.
+    // Сервер вычисляет isExisting более слабой нормализацией и при расхождении
+    // (дефисы/апострофы/регистр) присылает isExisting:false; иначе мы создали бы
+    // дубликат уже существующего продукта и замкнули цикл на 2–3 шаге.
+    const existingNodeId =
+      findExistingProductNode(product.name, existingNodes) ??
+      (product.existingNodeLabel
+        ? findExistingProductNode(product.existingNodeLabel, existingNodes)
+        : null);
 
     const x = startX + idx * spacingX;
 
