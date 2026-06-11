@@ -22,6 +22,7 @@ type StepByStepContentProps = Pick<
   | "stepSourcesStatus"
   | "stepSourcesError"
   | "stepSourcesOrigin"
+  | "stepSourcesExhausted"
   | "stepAggregatedText"
   | "stepAggregateStatus"
   | "stepAggregateError"
@@ -55,6 +56,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepSourcesStatus = "idle",
   stepSourcesError,
   stepSourcesOrigin,
+  stepSourcesExhausted = false,
   stepAggregatedText,
   stepAggregateStatus = "idle",
   stepAggregateError,
@@ -570,6 +572,12 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               Источники взяты у «{stepSourcesOrigin}». Если для «{productName}»
               они неактуальны — обновите их кнопкой «Найти источники заново»
               (добор), иначе возможна цикличность.
+            </div>
+          )}
+          {stepSourcesExhausted && (
+            <div className={styles.warningText}>
+              Источники закончились — повторный поиск не дал новых сверх уже
+              найденных.
             </div>
           )}
           {stepSources.map((s) => (

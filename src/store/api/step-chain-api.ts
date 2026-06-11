@@ -124,6 +124,7 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     sources: TechnologySource[];
     product: string;
     maxItems: number;
+    exhausted: boolean;
   },
   {
     nodeId: string;
@@ -158,13 +159,18 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       );
     }
 
-    thunkApi.dispatch(
-      addSourcesToPool({
-        productName: args.productName,
-        direction: args.direction,
-        sources: res.data.sources ?? [],
-      }),
-    );
+    const exhausted = !!res.data.exhausted;
+    // При исчерпании (новых источников нет) НЕ перезаписываем пул — сохраняем
+    // текущие источники и их происхождение (provenance).
+    if (!exhausted) {
+      thunkApi.dispatch(
+        addSourcesToPool({
+          productName: args.productName,
+          direction: args.direction,
+          sources: res.data.sources ?? [],
+        }),
+      );
+    }
 
     return {
       nodeId: args.nodeId,
@@ -172,6 +178,7 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       sources: res.data.sources,
       product: res.data.product,
       maxItems: res.data.maxItems,
+      exhausted,
     };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {

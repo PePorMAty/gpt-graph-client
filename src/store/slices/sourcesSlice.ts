@@ -38,6 +38,8 @@ type NodeSourcesState = {
 
   stepSourcesStatus: Status;
   stepSourcesError: string | null;
+  /** Источники закончились (повторный поиск не дал новых сверх уже найденных). */
+  stepSourcesExhausted: boolean;
 
   stepAggregateStatus: Status;
   stepAggregateError: string | null;
@@ -70,6 +72,7 @@ const makeNodeState = (): NodeSourcesState => ({
 
   stepSourcesStatus: "idle",
   stepSourcesError: null,
+  stepSourcesExhausted: false,
 
   stepAggregateStatus: "idle",
   stepAggregateError: null,
@@ -116,6 +119,7 @@ const sourcesSlice = createSlice({
       if (!s) return;
       s.stepSourcesStatus = "idle";
       s.stepSourcesError = null;
+      s.stepSourcesExhausted = false;
       s.stepAggregateStatus = "idle";
       s.stepAggregateError = null;
       s.stepAggregatedText = null;
@@ -204,13 +208,16 @@ const sourcesSlice = createSlice({
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "loading";
         state.byNodeId[key].stepSourcesError = null;
+        state.byNodeId[key].stepSourcesExhausted = false;
       })
       .addCase(fetchStepSourcesV2.fulfilled, (state, action) => {
-        const { nodeId, direction, product, maxItems } = action.payload;
+        const { nodeId, direction, product, maxItems, exhausted } =
+          action.payload;
         const key = sourcesKey(nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "succeeded";
         state.byNodeId[key].stepSourcesError = null;
+        state.byNodeId[key].stepSourcesExhausted = !!exhausted;
         if (product) state.byNodeId[key].product = product;
         if (typeof maxItems === "number")
           state.byNodeId[key].maxItems = maxItems;

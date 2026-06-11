@@ -79,6 +79,8 @@ export interface DirectionTabProps {
   stepSourcesError?: string | null;
   /** Если источники текущего продукта унаследованы — имя продукта-источника (иначе null). */
   stepSourcesOrigin?: string | null;
+  /** Источники закончились — повторный поиск не дал новых сверх уже найденных. */
+  stepSourcesExhausted?: boolean;
 
   stepAggregatedText?: string | null;
   stepAggregateStatus?: Status;

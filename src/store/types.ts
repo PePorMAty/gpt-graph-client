@@ -132,6 +132,8 @@ export type SourcesSearchResponse = {
   maxItems: number;
   blocks_preview: string[];
   sources: TechnologySource[];
+  /** true — поиск не дал источников сверх уже известных (источники закончились). */
+  exhausted?: boolean;
 };
 /* 
 export type ProductCard = {
