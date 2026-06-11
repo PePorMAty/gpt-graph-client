@@ -404,6 +404,9 @@ const gptSlice = createSlice({
               state.sourcesPool[newKey] = {
                 sources: [...anchorPool.sources],
                 product: newLabel,
+                // Источники взяты «взаймы» — сохраняем истинное происхождение
+                // (исходный продукт-предок, а не ребёнка).
+                originProduct: anchorPool.originProduct ?? anchorLabel,
                 lastFetchedAt: new Date().toISOString(),
               };
             }
@@ -478,6 +481,8 @@ const gptSlice = createSlice({
       state.sourcesPool[key] = {
         sources: [...sources],
         product: state.sourcesPool[key]?.product || productName,
+        // Свежий поиск — источники «родные» для этого продукта.
+        originProduct: productName,
         lastFetchedAt: new Date().toISOString(),
       };
     },

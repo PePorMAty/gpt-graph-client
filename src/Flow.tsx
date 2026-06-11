@@ -1167,6 +1167,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           sourcesPool[
             poolKey(String(selectedNode.data?.label ?? ""), direction)
           ]?.sources ?? [],
+        stepSourcesOrigin: (() => {
+          const lbl = String(selectedNode.data?.label ?? "");
+          const entry = sourcesPool[poolKey(lbl, direction)];
+          return entry?.originProduct &&
+            poolKey(entry.originProduct, direction) !== poolKey(lbl, direction)
+            ? entry.originProduct
+            : null;
+        })(),
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
 

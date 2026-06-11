@@ -77,6 +77,8 @@ export interface DirectionTabProps {
   stepSources?: TechnologySource[];
   stepSourcesStatus?: Status;
   stepSourcesError?: string | null;
+  /** Если источники текущего продукта унаследованы — имя продукта-источника (иначе null). */
+  stepSourcesOrigin?: string | null;
 
   stepAggregatedText?: string | null;
   stepAggregateStatus?: Status;

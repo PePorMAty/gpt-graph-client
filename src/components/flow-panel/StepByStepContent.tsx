@@ -21,6 +21,7 @@ type StepByStepContentProps = Pick<
   | "stepSources"
   | "stepSourcesStatus"
   | "stepSourcesError"
+  | "stepSourcesOrigin"
   | "stepAggregatedText"
   | "stepAggregateStatus"
   | "stepAggregateError"
@@ -53,6 +54,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepSources = [],
   stepSourcesStatus = "idle",
   stepSourcesError,
+  stepSourcesOrigin,
   stepAggregatedText,
   stepAggregateStatus = "idle",
   stepAggregateError,
@@ -75,6 +77,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 }) => {
   const productName = stepChainCurrentProductLabel || "";
   const hasSources = stepSources.length > 0;
+  const isBorrowedSources = !!stepSourcesOrigin;
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
@@ -562,6 +565,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           <div className={styles.sourcesTitle}>
             Источники ({stepSources.length})
           </div>
+          {isBorrowedSources && (
+            <div className={styles.warningText}>
+              Источники взяты у «{stepSourcesOrigin}». Если для «{productName}»
+              они неактуальны — обновите их кнопкой «Найти источники заново»
+              (добор), иначе возможна цикличность.
+            </div>
+          )}
           {stepSources.map((s) => (
             <details key={s.url} className={styles.sourceItem}>
               <summary className={styles.sourceSummary}>

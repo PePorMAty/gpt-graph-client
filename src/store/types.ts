@@ -38,6 +38,13 @@ export interface InitialGraphStateI {
 export interface SourcesPoolEntry {
   sources: TechnologySource[];
   product: string;
+  /**
+   * Продукт, для которого источники были РЕАЛЬНО найдены (происхождение).
+   * Для свежего поиска совпадает с `product`. При наследовании пула потомку
+   * сохраняет исходный продукт-источник — чтобы видеть, что источники взяты
+   * «взаймы» у предка, и при необходимости делать добор именно для потомка.
+   */
+  originProduct?: string;
   lastFetchedAt: string;
 }
 
