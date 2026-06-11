@@ -13,6 +13,7 @@ import type { TechChain } from "../../utils/chainToFlow";
 import {
   addSourcesToPool,
   clearAcceptedStepAlternatives,
+  sourcesPoolKey,
 } from "../slices/gptSlice";
 
 export const fetchChainStep = createAsyncThunk<
@@ -170,6 +171,31 @@ export const fetchStepSourcesV2 = createAsyncThunk<
           sources: res.data.sources ?? [],
         }),
       );
+    } else {
+      // #4: источники повторяются (добор не дал нового) → не ждём ручного
+      // клика «Обобщить» — сразу запускаем обобщение текущих источников.
+      const graph = thunkApi.getState().graph;
+      const poolSources =
+        graph.sourcesPool[sourcesPoolKey(args.productName, args.direction)]
+          ?.sources ?? [];
+      if (poolSources.length) {
+        const node = graph.data.nodes.find((n) => n.id === args.nodeId);
+        const nodeData = (node?.data ?? {}) as Record<string, unknown>;
+        const descField =
+          args.direction === "up" ? "upDescription" : "downDescription";
+        const existingChain = String(
+          nodeData[descField] ?? nodeData.description ?? "",
+        ).trim();
+        thunkApi.dispatch(
+          aggregateStepSources({
+            nodeId: args.nodeId,
+            productName: args.productName,
+            direction: args.direction,
+            sources: poolSources,
+            existingChain,
+          }),
+        );
+      }
     }
 
     return {
