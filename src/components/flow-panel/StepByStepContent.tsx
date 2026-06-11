@@ -434,13 +434,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Stage: needs more sources */}
       {stepNeedsSources && (
         <>
-          <div className={styles.warningText}>
-            Недостаточно источников
-            {stepInsufficientProducts && stepInsufficientProducts.length > 0
-              ? ` для: ${stepInsufficientProducts.join(", ")}`
-              : ""}
-            .
-          </div>
+          {stepInsufficientProducts && stepInsufficientProducts.length > 0 ? (
+            <div className={styles.warningText}>
+              Недостаточно источников для: {stepInsufficientProducts.join(", ")}.
+            </div>
+          ) : (
+            <div className={styles.warningText}>
+              Модель не собрала шаг из текущих источников и не указала, каким
+              продуктам их не хватает.{" "}
+              {stepSourcesExhausted
+                ? "Новых источников найти не удалось — попробуйте изменить промпт обобщения или строить в другом направлении."
+                : "Попробуйте добор источников или измените промпт обобщения."}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleFetchSources}

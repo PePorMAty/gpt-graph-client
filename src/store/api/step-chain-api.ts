@@ -175,10 +175,20 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       // #4: источники повторяются (добор не дал нового) → не ждём ручного
       // клика «Обобщить» — сразу запускаем обобщение текущих источников.
       const graph = thunkApi.getState().graph;
+      const srcState =
+        thunkApi.getState().sources.byNodeId[
+          `${args.nodeId}::${args.direction}`
+        ];
+      // Не зацикливаемся: если продукт уже в needs-sources (прошлое обобщение
+      // не сложилось) или обобщение уже идёт — не запускаем авто-ретрай
+      // тяжёлого вызова (иначе петля и «зависание»).
+      const blocked =
+        srcState?.stepAggregateStatus === "loading" ||
+        !!srcState?.stepNeedsSources;
       const poolSources =
         graph.sourcesPool[sourcesPoolKey(args.productName, args.direction)]
           ?.sources ?? [];
-      if (poolSources.length) {
+      if (poolSources.length && !blocked) {
         const node = graph.data.nodes.find((n) => n.id === args.nodeId);
         const nodeData = (node?.data ?? {}) as Record<string, unknown>;
         const descField =
