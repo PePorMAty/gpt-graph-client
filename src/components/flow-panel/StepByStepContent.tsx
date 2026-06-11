@@ -361,33 +361,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Унаследованные источники → сначала свежий поиск именно для этого
-          продукта: обобщение по чужим источникам обычно замыкает цикл. */}
-      {hasSources &&
-        !hasValidAggregate &&
-        !stepNeedsSources &&
-        isBorrowedSources && (
-          <>
-            <div className={styles.warningText}>
-              Источники для «{productName}» унаследованы у «{stepSourcesOrigin}».
-              Обобщение по ним обычно замыкает цикл — найдите свежие источники
-              именно для этого продукта.
-            </div>
-            <button
-              type="button"
-              onClick={handleFetchSources}
-              disabled={sourcesLoading}
-              className={styles.findSourcesButton}
-            >
-              {sourcesLoading
-                ? "Поиск..."
-                : `Найти свежие источники для «${productName}»`}
-            </button>
-          </>
-        )}
-
-      {/* Aggregate / re-fetch buttons — only when NATIVE sources exist and aggregate not yet */}
-      {hasSources && !hasValidAggregate && !stepNeedsSources && !isBorrowedSources && (
+      {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
+      {hasSources && !hasValidAggregate && !stepNeedsSources && (
         <>
           {/* Aggregate prompt editor */}
           <button
