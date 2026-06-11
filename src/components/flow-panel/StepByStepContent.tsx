@@ -275,6 +275,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Stage 1: fetch sources button (when no sources yet) */}
       {!hasSources && (
         <>
+          {stepSourcesExhausted && (
+            <div className={styles.warningText}>
+              Источники для «{productName}» закончились — поиск не дал
+              результатов. Можно попробовать ещё раз, изменить промпт поиска или
+              строить шаг в другом направлении.
+            </div>
+          )}
           <div className={styles.maxItemsRow}>
             <label className={styles.formLabel}>Количество источников:</label>
             <input
@@ -354,8 +361,33 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
-      {hasSources && !hasValidAggregate && !stepNeedsSources && (
+      {/* Унаследованные источники → сначала свежий поиск именно для этого
+          продукта: обобщение по чужим источникам обычно замыкает цикл. */}
+      {hasSources &&
+        !hasValidAggregate &&
+        !stepNeedsSources &&
+        isBorrowedSources && (
+          <>
+            <div className={styles.warningText}>
+              Источники для «{productName}» унаследованы у «{stepSourcesOrigin}».
+              Обобщение по ним обычно замыкает цикл — найдите свежие источники
+              именно для этого продукта.
+            </div>
+            <button
+              type="button"
+              onClick={handleFetchSources}
+              disabled={sourcesLoading}
+              className={styles.findSourcesButton}
+            >
+              {sourcesLoading
+                ? "Поиск..."
+                : `Найти свежие источники для «${productName}»`}
+            </button>
+          </>
+        )}
+
+      {/* Aggregate / re-fetch buttons — only when NATIVE sources exist and aggregate not yet */}
+      {hasSources && !hasValidAggregate && !stepNeedsSources && !isBorrowedSources && (
         <>
           {/* Aggregate prompt editor */}
           <button

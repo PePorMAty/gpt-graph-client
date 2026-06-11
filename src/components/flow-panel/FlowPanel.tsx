@@ -62,6 +62,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepSources,
   stepSourcesStatus,
   stepSourcesError,
+  stepSourcesOrigin,
+  stepSourcesExhausted,
   stepAggregatedText,
   stepAggregateStatus,
   stepAggregateError,
@@ -197,6 +199,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepSources={stepSources}
           stepSourcesStatus={stepSourcesStatus}
           stepSourcesError={stepSourcesError}
+          stepSourcesOrigin={stepSourcesOrigin}
+          stepSourcesExhausted={stepSourcesExhausted}
           stepAggregatedText={stepAggregatedText}
           stepAggregateStatus={stepAggregateStatus}
           stepAggregateError={stepAggregateError}
