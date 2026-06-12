@@ -1174,27 +1174,18 @@ const gptSlice = createSlice({
         }
       })
       .addCase(buildStep.fulfilled, (state, action) => {
-        const { sessionKey, step, sourcesStatus, insufficientProducts } =
-          action.payload;
+        const { sessionKey, step, insufficientProducts } = action.payload;
         const session = state.stepChainSessions[sessionKey];
         if (!session) return;
 
-        // Шаг сохраняем всегда — пользователь сможет принять его явно
-        // («построить всё равно»). При нехватке источников показываем
-        // предупреждение, но НЕ блокируем построение намертво (иначе у
-        // конечных/рециклинговых продуктов получается вечная петля «найди
-        // источники», которую свежий поиск не снимает).
+        // Шаг родителя ВСЕГДА валиден (он построил детей) — показываем превью,
+        // не блокируем. insufficientProducts здесь — это ДЕТИ без forward-
+        // источников: используются в acceptPendingStep для маркеров «нужны
+        // свежие источники», но построение шага родителя не блокируют.
         session.pendingStep = step;
-
-        if (sourcesStatus === "insufficient") {
-          session.status = "needs-sources";
-          session.insufficientProducts = insufficientProducts;
-          return;
-        }
-
+        session.insufficientProducts = insufficientProducts;
         session.status = "preview";
         session.error = null;
-        session.insufficientProducts = [];
       })
       .addCase(buildStep.rejected, (state, action) => {
         const session = state.stepChainSessions[action.meta.arg.sessionKey];

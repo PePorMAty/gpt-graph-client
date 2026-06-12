@@ -97,6 +97,8 @@ export interface DirectionTabProps {
   onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
   onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
   onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
+  /** Достаточный ребёнок: обобщить унаследованные источники и сразу построить шаг. */
+  onBuildFromInherited?: () => void;
   onClearStepState?: () => void;
   /** Открыть превью шага, построенного при insufficient («построить всё равно»). */
   onForceStepPreview?: () => void;

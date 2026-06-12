@@ -37,6 +37,7 @@ type StepByStepContentProps = Pick<
   | "onFetchStepSources"
   | "onAggregateStepSources"
   | "onBuildStep"
+  | "onBuildFromInherited"
   | "onClearStepState"
   | "onAcceptStep"
   | "onRejectStep"
@@ -72,6 +73,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onFetchStepSources,
   onAggregateStepSources,
   onBuildStep,
+  onBuildFromInherited,
   onClearStepState,
   onForceStepPreview,
   onAcceptStep,
@@ -379,8 +381,50 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
-      {hasSources && !hasValidAggregate && !stepNeedsSources && (
+      {/* Достаточный ребёнок: источники унаследованы у родителя → одной кнопкой
+          обобщаем и сразу строим (без ручного поиска/обобщения). */}
+      {hasSources &&
+        !hasValidAggregate &&
+        !stepNeedsSources &&
+        isBorrowedSources && (
+          <>
+            <div className={styles.sourcesTitle}>
+              Источники унаследованы у «{stepSourcesOrigin}» — обобщение и
+              построение одной кнопкой.
+            </div>
+            {(aggregateLoading || buildLoading) && (
+              <div className={styles.tabLoader}>
+                <div className={styles.tabSpinner} />
+                <span>
+                  {aggregateLoading ? "Обобщение..." : "Построение шага..."}
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => onBuildFromInherited?.()}
+              disabled={aggregateLoading || buildLoading}
+              className={styles.findSourcesButton}
+            >
+              Построить шаг
+            </button>
+            <button
+              type="button"
+              onClick={handleFetchSources}
+              disabled={sourcesLoading}
+              className={styles.findSourcesButton}
+              style={{ marginTop: 4 }}
+            >
+              {sourcesLoading ? "Поиск..." : "Найти свои источники заново"}
+            </button>
+          </>
+        )}
+
+      {/* Aggregate / re-fetch buttons — NATIVE sources (нашли сами): ручное обобщение */}
+      {hasSources &&
+        !hasValidAggregate &&
+        !stepNeedsSources &&
+        !isBorrowedSources && (
         <>
           {/* Aggregate prompt editor */}
           <button
