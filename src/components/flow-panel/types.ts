@@ -81,6 +81,8 @@ export interface DirectionTabProps {
   stepSourcesOrigin?: string | null;
   /** Источники закончились — повторный поиск не дал новых сверх уже найденных. */
   stepSourcesExhausted?: boolean;
+  /** Маркер с build родителя: источников для этого продукта не хватает — нужен свежий поиск. */
+  stepNeedsFreshSources?: { fromProduct: string } | null;
 
   stepAggregatedText?: string | null;
   stepAggregateStatus?: Status;
@@ -96,6 +98,8 @@ export interface DirectionTabProps {
   onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
   onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
   onClearStepState?: () => void;
+  /** Открыть превью шага, построенного при insufficient («построить всё равно»). */
+  onForceStepPreview?: () => void;
 
   // --- alternative node (step-by-step flow) ---
   isAlternativeNode?: boolean;

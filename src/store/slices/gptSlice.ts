@@ -59,6 +59,7 @@ const initialState: InitialGraphStateI = {
   chainSessions: {},
   stepChainSessions: {},
   sourcesPool: {},
+  needsFreshSources: {},
   acceptedStepAlternatives: {},
   presentationColors: {},
 };
@@ -380,36 +381,44 @@ const gptSlice = createSlice({
       if (anchorLabel) {
         const anchorPoolKey = sourcesPoolKey(anchorLabel, session.direction);
         const anchorPool = state.sourcesPool[anchorPoolKey];
-        if (anchorPool && anchorPool.sources.length > 0) {
-          const insufficient = new Set(
-            (session.insufficientProducts ?? []).map((p: string) =>
-              normalizeProductName(p),
-            ),
-          );
-          const allNewNodeIds = [
-            ...stepRecord.newProductNodeIds,
-            ...stepRecord.mergedProductNodeIds,
-          ];
-          for (const nid of allNewNodeIds) {
-            const newNode = state.data.nodes.find((n) => n.id === nid);
-            const newLabel =
-              newNode?.data?.label ||
-              (newNode as unknown as { label?: string })?.label ||
-              "";
-            if (!newLabel) continue;
-            const normalized = normalizeProductName(newLabel);
-            if (insufficient.has(normalized)) continue;
-            const newKey = sourcesPoolKey(newLabel, session.direction);
-            if (!state.sourcesPool[newKey]) {
-              state.sourcesPool[newKey] = {
-                sources: [...anchorPool.sources],
-                product: newLabel,
-                // Источники взяты «взаймы» — сохраняем истинное происхождение
-                // (исходный продукт-предок, а не ребёнка).
-                originProduct: anchorPool.originProduct ?? anchorLabel,
-                lastFetchedAt: new Date().toISOString(),
-              };
-            }
+        const insufficient = new Set(
+          (session.insufficientProducts ?? []).map((p: string) =>
+            normalizeProductName(p),
+          ),
+        );
+        const allNewNodeIds = [
+          ...stepRecord.newProductNodeIds,
+          ...stepRecord.mergedProductNodeIds,
+        ];
+        for (const nid of allNewNodeIds) {
+          const newNode = state.data.nodes.find((n) => n.id === nid);
+          const newLabel =
+            newNode?.data?.label ||
+            (newNode as unknown as { label?: string })?.label ||
+            "";
+          if (!newLabel) continue;
+          const normalized = normalizeProductName(newLabel);
+          const newKey = sourcesPoolKey(newLabel, session.direction);
+          if (insufficient.has(normalized)) {
+            // Сервер на build родителя пометил: источников для этого ребёнка
+            // не хватает. Пул не наследуем + ставим маркер, чтобы панель
+            // ребёнка показала плашку «нужен свежий поиск».
+            state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
+            continue;
+          }
+          if (
+            anchorPool &&
+            anchorPool.sources.length > 0 &&
+            !state.sourcesPool[newKey]
+          ) {
+            state.sourcesPool[newKey] = {
+              sources: [...anchorPool.sources],
+              product: newLabel,
+              // Источники взяты «взаймы» — сохраняем истинное происхождение
+              // (исходный продукт-предок, а не ребёнка).
+              originProduct: anchorPool.originProduct ?? anchorLabel,
+              lastFetchedAt: new Date().toISOString(),
+            };
           }
         }
       }
@@ -429,6 +438,15 @@ const gptSlice = createSlice({
       if (!session) return;
       session.pendingStep = null;
       session.status = "idle";
+    },
+
+    // Принудительно открыть превью шага, построенного при insufficient
+    // (конечный/рециклинговый продукт): пользователь решает сам — принять,
+    // отфильтровать или отклонить через штатную модалку.
+    forceStepPreview: (state, action: PayloadAction<string>) => {
+      const session = state.stepChainSessions[action.payload];
+      if (!session || !session.pendingStep) return;
+      session.status = "preview";
     },
 
     undoLastStep: (state, action: PayloadAction<string>) => {
@@ -485,6 +503,8 @@ const gptSlice = createSlice({
         originProduct: productName,
         lastFetchedAt: new Date().toISOString(),
       };
+      // Свежий поиск снимает маркер «нужны свежие источники».
+      delete state.needsFreshSources[key];
     },
 
     clearSourcesPool: (
@@ -499,6 +519,7 @@ const gptSlice = createSlice({
         action.payload.direction,
       );
       delete state.sourcesPool[key];
+      delete state.needsFreshSources[key];
     },
 
     createStepAlternativeNodes: (
@@ -1188,6 +1209,7 @@ const gptSlice = createSlice({
 
 export const {
   updateNodeData,
+  forceStepPreview,
   onNodesChange,
   onEdgesChange,
   onConnect,

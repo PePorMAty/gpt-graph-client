@@ -64,8 +64,10 @@ import {
   initStepChainSession,
   acceptPendingStep,
   rejectPendingStep,
+  forceStepPreview,
   undoLastStep,
   setStepChainContinueProduct,
+  sourcesPoolKey,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
 import { parseAlternatives } from "./utils/parseAlternatives";
@@ -242,14 +244,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     (s) => s.graph.stepChainSessions,
   );
   const sourcesPool = useAppSelector((s) => s.graph.sourcesPool);
+  const needsFreshSources = useAppSelector((s) => s.graph.needsFreshSources);
   const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
     `step::${nodeId}::${dir}`;
-  const poolKey = (productName: string, dir: BuildDirection) =>
-    `${productName
-      .toLowerCase()
-      .replace(/ё/g, "е")
-      .trim()
-      .replace(/\s+/g, " ")}::${dir}`;
+  // Ключ пула ОБЯЗАН совпадать с sourcesPoolKey (запись пула в gptSlice).
+  // Локальная копия со слабой нормализацией расходилась с записью на именах
+  // с дефисами («Олефин-богатый…») — источники «не клались» в продукт.
+  const poolKey = sourcesPoolKey;
 
   // Flow.tsx
   const flowNodes = useMemo(
@@ -1146,6 +1147,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         onAcceptStep: handleAcceptStep(direction),
         onRejectStep: () => dispatch(rejectPendingStep(sKeyStep)),
+        onForceStepPreview: () => dispatch(forceStepPreview(sKeyStep)),
         onRetryStep: handleBuildStep(direction),
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
@@ -1163,10 +1165,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // --- step v2 flow (sources from graph-level pool) ---
         // Always read pool for the panel's own product — panel actions target
         // the selected node, not the chain tip.
-        stepSources:
-          sourcesPool[
-            poolKey(String(selectedNode.data?.label ?? ""), direction)
-          ]?.sources ?? [],
+        stepSources: (() => {
+          const lbl = String(selectedNode.data?.label ?? "");
+          const poolSrcs = sourcesPool[poolKey(lbl, direction)]?.sources;
+          // Fallback на резервное хранилище по nodeId (sourcesSlice) — на
+          // случай рассинхрона ключа пула.
+          return poolSrcs?.length ? poolSrcs : (sliceState?.sources ?? []);
+        })(),
         stepSourcesOrigin: (() => {
           const lbl = String(selectedNode.data?.label ?? "");
           const entry = sourcesPool[poolKey(lbl, direction)];
@@ -1175,6 +1180,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             ? entry.originProduct
             : null;
         })(),
+        stepNeedsFreshSources:
+          needsFreshSources[
+            poolKey(String(selectedNode.data?.label ?? ""), direction)
+          ] ?? null,
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
         stepSourcesExhausted: sliceState?.stepSourcesExhausted ?? false,
@@ -1312,6 +1321,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       chainSessions,
       chainBuild,
       sourcesPool,
+      needsFreshSources,
       handleFindSources,
       handleAggregateSources,
       handleInitChain,

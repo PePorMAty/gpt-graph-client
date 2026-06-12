@@ -23,6 +23,8 @@ type StepByStepContentProps = Pick<
   | "stepSourcesError"
   | "stepSourcesOrigin"
   | "stepSourcesExhausted"
+  | "stepNeedsFreshSources"
+  | "onForceStepPreview"
   | "stepAggregatedText"
   | "stepAggregateStatus"
   | "stepAggregateError"
@@ -57,6 +59,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepSourcesError,
   stepSourcesOrigin,
   stepSourcesExhausted = false,
+  stepNeedsFreshSources = null,
   stepAggregatedText,
   stepAggregateStatus = "idle",
   stepAggregateError,
@@ -70,6 +73,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onAggregateStepSources,
   onBuildStep,
   onClearStepState,
+  onForceStepPreview,
   onAcceptStep,
   onRejectStep,
   onRetryStep,
@@ -273,6 +277,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
 
+      {/* Маркер с build родителя: этому продукту нужны свежие источники */}
+      {stepNeedsFreshSources && (
+        <div className={styles.warningText}>
+          По результатам построения шага от «{stepNeedsFreshSources.fromProduct}
+          » источников для «{productName}» не хватает — найдите свежие источники.
+        </div>
+      )}
+
       {/* Stage 1: fetch sources button (when no sources yet) */}
       {!hasSources && (
         <>
@@ -341,7 +353,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
-              <span>Поиск источников для «{productName}»...</span>
+              <span>
+                Поиск источников для «{productName}»… Может занять несколько
+                минут — не перезагружайте страницу.
+              </span>
             </div>
           )}
           <button
@@ -354,7 +369,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               ? "Поиск..."
               : isSrcPromptDirty
                 ? "Найти источники (свой промпт)"
-                : "Найти источники (шаг)"}
+                : stepNeedsFreshSources
+                  ? "Найти свежие источники"
+                  : "Найти источники (шаг)"}
           </button>
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
@@ -589,7 +606,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             {pendingStep && (
               <button
                 type="button"
-                onClick={() => onAcceptStep?.()}
+                onClick={() => onForceStepPreview?.()}
                 className={styles.findSourcesButton}
                 style={{ marginTop: 4 }}
               >

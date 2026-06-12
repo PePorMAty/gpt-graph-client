@@ -30,6 +30,13 @@ export interface InitialGraphStateI {
   chainSessions: Record<string, ChainSessionData>;
   stepChainSessions: Record<string, StepChainSession>;
   sourcesPool: Record<string, SourcesPoolEntry>;
+  /**
+   * Продукты, которым по оценке на build РОДИТЕЛЯ не хватило источников для
+   * следующего шага. Ключ — sourcesPoolKey(label, direction); fromProduct —
+   * родитель, при построении от которого продукт был помечен. Маркер
+   * снимается свежим поиском источников для этого продукта.
+   */
+  needsFreshSources: Record<string, { fromProduct: string }>;
   acceptedStepAlternatives: Record<string, number[]>;
   /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
   presentationColors: Record<string, string>;

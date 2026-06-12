@@ -211,13 +211,15 @@ const sourcesSlice = createSlice({
         state.byNodeId[key].stepSourcesExhausted = false;
       })
       .addCase(fetchStepSourcesV2.fulfilled, (state, action) => {
-        const { nodeId, direction, product, maxItems, exhausted } =
+        const { nodeId, direction, product, maxItems, exhausted, sources } =
           action.payload;
         const key = sourcesKey(nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "succeeded";
         state.byNodeId[key].stepSourcesError = null;
         state.byNodeId[key].stepSourcesExhausted = !!exhausted;
+        // Резервное хранилище по nodeId — страховка от рассинхрона ключа пула.
+        state.byNodeId[key].sources = sources ?? [];
         if (product) state.byNodeId[key].product = product;
         if (typeof maxItems === "number")
           state.byNodeId[key].maxItems = maxItems;
