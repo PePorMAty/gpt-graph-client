@@ -86,7 +86,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
-  const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
+  const showPreview =
+    !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
 
   // ── Sources prompt state ──
   const [maxItems, setMaxItems] = useState(5);
@@ -569,11 +570,33 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {buildNeedsSources &&
         stepChainInsufficientProducts &&
         stepChainInsufficientProducts.length > 0 && (
-          <div className={styles.warningText}>
-            Для продолжения цепочки нужны дополнительные источники
-            {` для: ${stepChainInsufficientProducts.join(", ")}`}. Откройте
-            панель этих продуктов и выполните поиск источников.
-          </div>
+          <>
+            <div className={styles.warningText}>
+              Источников не хватило для нового шага
+              {` (${stepChainInsufficientProducts.join(", ")})`}. Добери свежие
+              источники — либо, если это конечный продукт, построй шаг всё равно.
+            </div>
+            <button
+              type="button"
+              onClick={handleFetchSources}
+              disabled={sourcesLoading}
+              className={styles.findSourcesButton}
+            >
+              {sourcesLoading
+                ? "Поиск..."
+                : `Найти свежие источники для «${productName}»`}
+            </button>
+            {pendingStep && (
+              <button
+                type="button"
+                onClick={() => onAcceptStep?.()}
+                className={styles.findSourcesButton}
+                style={{ marginTop: 4 }}
+              >
+                Построить шаг всё равно
+              </button>
+            )}
+          </>
         )}
 
       {/* Sources list — always visible BELOW description when any sources exist */}
