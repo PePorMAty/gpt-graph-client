@@ -443,7 +443,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         <>
           {stepInsufficientProducts && stepInsufficientProducts.length > 0 ? (
             <div className={styles.warningText}>
-              Недостаточно источников для: {stepInsufficientProducts.join(", ")}.
+              Источников для «{stepInsufficientProducts.join(", ")}» не хватило,
+              чтобы построить новый шаг — нужно добрать свежие источники (кнопка
+              ниже).
             </div>
           ) : (
             <div className={styles.warningText}>
@@ -582,9 +584,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </div>
           {isBorrowedSources && (
             <div className={styles.warningText}>
-              Источники взяты у «{stepSourcesOrigin}». Если для «{productName}»
-              они неактуальны — обновите их кнопкой «Найти источники заново»
-              (добор), иначе возможна цикличность.
+              Источники взяты у «{stepSourcesOrigin}».
             </div>
           )}
           {stepSourcesExhausted && (

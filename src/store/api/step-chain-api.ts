@@ -161,19 +161,18 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     }
 
     const exhausted = !!res.data.exhausted;
-    // При исчерпании (новых источников нет) НЕ перезаписываем пул — сохраняем
-    // текущие источники и их происхождение (provenance).
-    if (!exhausted) {
-      thunkApi.dispatch(
-        addSourcesToPool({
-          productName: args.productName,
-          direction: args.direction,
-          sources: res.data.sources ?? [],
-        }),
-      );
-    } else {
-      // #4: источники повторяются (добор не дал нового) → не ждём ручного
-      // клика «Обобщить» — сразу запускаем обобщение текущих источников.
+    // Явный поиск ВСЕГДА присваивает источники продукту (делает их «родными»),
+    // даже если нового не нашлось — иначе свежие источники «не кладутся» в продукт.
+    thunkApi.dispatch(
+      addSourcesToPool({
+        productName: args.productName,
+        direction: args.direction,
+        sources: res.data.sources ?? [],
+      }),
+    );
+    if (exhausted) {
+      // #4: источники повторяются (добор не дал нового) → не ждём ручного клика
+      // «Обобщить». НО не зацикливаемся (см. blocked ниже).
       const graph = thunkApi.getState().graph;
       const srcState =
         thunkApi.getState().sources.byNodeId[

@@ -1158,14 +1158,16 @@ const gptSlice = createSlice({
         const session = state.stepChainSessions[sessionKey];
         if (!session) return;
 
-        session.pendingStep = step;
-
         if (sourcesStatus === "insufficient") {
+          // Источников не хватило (часто шаг вырожденный: вход=выход=сам
+          // продукт). НЕ предлагаем строить такой шаг — просим свежие источники.
+          session.pendingStep = null;
           session.status = "needs-sources";
           session.insufficientProducts = insufficientProducts;
           return;
         }
 
+        session.pendingStep = step;
         session.status = "preview";
         session.error = null;
         session.insufficientProducts = [];
