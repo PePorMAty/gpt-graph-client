@@ -85,6 +85,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 }) => {
   const productName = stepChainCurrentProductLabel || "";
   const hasSources = stepSources.length > 0;
+  // Маркер «нужны свежие источники» делает текущие (часто унаследованные)
+  // источники непригодными: ведём ТОЛЬКО к поиску свежих, как при их отсутствии.
+  // Прячем наследование/ручную сборку/список/сброс, чтобы не было противоречия
+  // «источников не хватает, но вот кнопка Построить шаг».
+  const sourcesUsable = hasSources && !stepNeedsFreshSources;
   const isBorrowedSources = !!stepSourcesOrigin;
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
@@ -303,8 +308,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </div>
       )}
 
-      {/* Stage 1: fetch sources button (when no sources yet) */}
-      {!hasSources && (
+      {/* Stage 1: поиск источников — когда их нет ИЛИ нужны свежие (маркер) */}
+      {!sourcesUsable && (
         <>
           {stepSourcesExhausted && (
             <div className={styles.warningText}>
@@ -398,8 +403,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {/* Достаточный ребёнок: источники унаследованы у родителя → одной кнопкой
-          обобщаем и сразу строим (без ручного поиска/обобщения). */}
-      {hasSources &&
+          обобщаем и сразу строим (без ручного поиска/обобщения).
+          При маркере «нужны свежие» (sourcesUsable=false) НЕ показываем —
+          строить от непригодных источников нельзя. */}
+      {sourcesUsable &&
         !hasValidAggregate &&
         !stepNeedsSources &&
         isBorrowedSources && (
@@ -437,7 +444,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         )}
 
       {/* Aggregate / re-fetch buttons — NATIVE sources (нашли сами): ручное обобщение */}
-      {hasSources &&
+      {sourcesUsable &&
         !hasValidAggregate &&
         !stepNeedsSources &&
         !isBorrowedSources && (
@@ -676,8 +683,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </>
         )}
 
-      {/* Sources list — always visible BELOW description when any sources exist */}
-      {hasSources && (
+      {/* Список источников — скрыт при маркере «нужны свежие» (показывать
+          непригодные/унаследованные источники незачем — ведём к поиску). */}
+      {sourcesUsable && (
         <div className={styles.sourcesBox}>
           <div className={styles.sourcesTitle}>
             Источники ({stepSources.length})
@@ -717,7 +725,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {/* Reset */}
-      {(hasSources || hasValidAggregate) && (
+      {(sourcesUsable || hasValidAggregate) && (
         <button
           type="button"
           onClick={onClearStepState}
