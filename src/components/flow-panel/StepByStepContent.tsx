@@ -90,6 +90,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   // Прячем наследование/ручную сборку/список/сброс, чтобы не было противоречия
   // «источников не хватает, но вот кнопка Построить шаг».
   const sourcesUsable = hasSources && !stepNeedsFreshSources;
+  // Тупиковый/рециклинговый продукт: продолжение замыкает петлю И повторный
+  // поиск исчерпан — звать «искать свежие» бессмысленно, честно говорим о тупике.
+  const isTerminalRecycle =
+    stepNeedsFreshSources?.reason === "cycle" && stepSourcesExhausted;
   const isBorrowedSources = !!stepSourcesOrigin;
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
@@ -288,16 +292,31 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {stepNeedsFreshSources && (
         <div className={styles.warningText}>
           {stepNeedsFreshSources.reason === "cycle" ? (
-            <>
-              Следующий шаг от «{productName}» по текущим источникам только
-              замкнул бы петлю
-              {stepNeedsFreshSources.loopOn &&
-              stepNeedsFreshSources.loopOn.length > 0
-                ? ` на «${stepNeedsFreshSources.loopOn.join(", ")}»`
-                : ""}{" "}
-              — соединение не создано. Найдите свежие источники, чтобы продолжить
-              в новом направлении.
-            </>
+            isTerminalRecycle ? (
+              <>
+                Следующий шаг от «{productName}» по текущим источникам только
+                замыкает петлю
+                {stepNeedsFreshSources.loopOn &&
+                stepNeedsFreshSources.loopOn.length > 0
+                  ? ` на «${stepNeedsFreshSources.loopOn.join(", ")}»`
+                  : ""}
+                , а повторный поиск новых источников уже не дал — в доступном
+                корпусе нет не-петлевого продолжения. Похоже, это конечный или
+                рециклинговый продукт. Остановитесь здесь или стройте цепочку в
+                другом направлении.
+              </>
+            ) : (
+              <>
+                Следующий шаг от «{productName}» по текущим источникам только
+                замкнул бы петлю
+                {stepNeedsFreshSources.loopOn &&
+                stepNeedsFreshSources.loopOn.length > 0
+                  ? ` на «${stepNeedsFreshSources.loopOn.join(", ")}»`
+                  : ""}{" "}
+                — соединение не создано. Найдите свежие источники, чтобы
+                продолжить в новом направлении.
+              </>
+            )
           ) : (
             <>
               По результатам построения шага от «
@@ -311,7 +330,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Stage 1: поиск источников — когда их нет ИЛИ нужны свежие (маркер) */}
       {!sourcesUsable && (
         <>
-          {stepSourcesExhausted && (
+          {stepSourcesExhausted && !isTerminalRecycle && (
             <div className={styles.warningText}>
               Источники для «{productName}» закончились — поиск не дал
               результатов. Можно попробовать ещё раз, изменить промпт поиска или
@@ -392,9 +411,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               ? "Поиск..."
               : isSrcPromptDirty
                 ? "Найти источники (свой промпт)"
-                : stepNeedsFreshSources
-                  ? "Найти свежие источники"
-                  : "Найти источники (шаг)"}
+                : isTerminalRecycle
+                  ? "Всё равно искать источники заново"
+                  : stepNeedsFreshSources
+                    ? "Найти свежие источники"
+                    : "Найти источники (шаг)"}
           </button>
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>

@@ -265,6 +265,23 @@ export const aggregateStepSources = createAsyncThunk<
       .map((n) => String(n.data?.label || "").trim())
       .filter(Boolean);
 
+    // Родословная раскрываемого продукта (предки по цепочке + он сам) — чтобы
+    // обобщение НЕ выбрало следующим продуктом предка (это замкнуло бы петлю).
+    const ancestorProducts = Array.from(
+      new Set(
+        [
+          args.productName,
+          ...getAncestorProductLabels(
+            args.nodeId,
+            state.data.nodes,
+            state.data.edges,
+          ),
+        ]
+          .map((s) => String(s || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
     const res = await axios.post<StepAggregateApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/step/aggregate`,
       {
@@ -273,6 +290,7 @@ export const aggregateStepSources = createAsyncThunk<
         sources: args.sources,
         existingChain: args.existingChain,
         existingProducts,
+        ancestorProducts,
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
