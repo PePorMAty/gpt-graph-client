@@ -59,3 +59,46 @@ export function wouldCreateCycle(
   if (!existingNodeId || existingNodeId === anchorNodeId) return false;
   return canReachNode(existingNodeId, anchorNodeId, edges);
 }
+
+/**
+ * Метки продуктов-предков узла `nodeId` (вся родословная ВЫШЕ по построению,
+ * от корня до родителя). Идём по рёбрам в обратную сторону target → source
+ * через узлы-трансформации, собираем только product-узлы.
+ *
+ * Нужна серверной проверке достаточности: следующий передел дочернего продукта
+ * не должен вести ОБРАТНО к предку (это замкнуло бы цикл).
+ */
+export function getAncestorProductLabels(
+  nodeId: string,
+  nodes: ReadonlyArray<{ id: string; type?: string; data?: { label?: string } }>,
+  edges: ReadonlyArray<Edge>,
+): string[] {
+  const incoming = new Map<string, string[]>();
+  for (const e of edges) {
+    const arr = incoming.get(e.target);
+    if (arr) arr.push(e.source);
+    else incoming.set(e.target, [e.source]);
+  }
+
+  const info = new Map<string, { label: string; type?: string }>();
+  for (const n of nodes) {
+    info.set(n.id, { label: String(n.data?.label || "").trim(), type: n.type });
+  }
+
+  const visited = new Set<string>([nodeId]);
+  const stack: string[] = [nodeId];
+  const labels: string[] = [];
+  while (stack.length) {
+    const cur = stack.pop() as string;
+    const parents = incoming.get(cur);
+    if (!parents) continue;
+    for (const p of parents) {
+      if (visited.has(p)) continue;
+      visited.add(p);
+      stack.push(p);
+      const meta = info.get(p);
+      if (meta?.type === "product" && meta.label) labels.push(meta.label);
+    }
+  }
+  return labels;
+}

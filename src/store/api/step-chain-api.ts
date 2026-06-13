@@ -15,6 +15,7 @@ import {
   clearAcceptedStepAlternatives,
   sourcesPoolKey,
 } from "../slices/gptSlice";
+import { getAncestorProductLabels } from "../../utils/graphReachability";
 
 export const fetchChainStep = createAsyncThunk<
   { sessionKey: string; response: StepChainApiResponse },
@@ -365,6 +366,25 @@ export const buildStep = createAsyncThunk<
       .map((n) => String(n.data?.label || "").trim())
       .filter(Boolean);
 
+    // Родословная раскрываемого продукта (предки по цепочке + он сам). Сервер
+    // использует её в проверке достаточности: следующий передел нового ребёнка
+    // не должен вести ОБРАТНО к предку (иначе это замкнёт цикл, и ребёнку нужны
+    // свежие источники для НОВОГО направления).
+    const ancestorProducts = Array.from(
+      new Set(
+        [
+          args.productName,
+          ...getAncestorProductLabels(
+            args.nodeId,
+            state.data.nodes,
+            state.data.edges,
+          ),
+        ]
+          .map((s) => String(s || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
     const res = await axios.post<StepBuildApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/step/build`,
       {
@@ -372,6 +392,7 @@ export const buildStep = createAsyncThunk<
         direction: args.direction,
         techText: args.techText,
         existingProducts,
+        ancestorProducts,
         ...(args.existingSources?.length
           ? { existingSources: args.existingSources }
           : {}),
