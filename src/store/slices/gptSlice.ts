@@ -347,7 +347,31 @@ const gptSlice = createSlice({
         anchorY: anchor.position.y,
         stepNumber,
         existingNodes: state.data.nodes,
+        existingEdges: state.data.edges,
       });
+
+      // Тупик: шаг свёлся бы только к петле(ям) на предка → граф НЕ трогаем,
+      // помечаем продукт «нужны свежие источники» (тот же канал, что и
+      // серверный insufficientProducts) и закрываем превью.
+      if (stepRecord.isDeadEnd) {
+        const deadEndLabel =
+          anchor.data?.label ||
+          (anchor as unknown as { label?: string }).label ||
+          "";
+        if (deadEndLabel) {
+          state.needsFreshSources[
+            sourcesPoolKey(deadEndLabel, session.direction)
+          ] = {
+            fromProduct: deadEndLabel,
+            reason: "cycle",
+            loopOn: stepRecord.cycleProductNames ?? [],
+          };
+        }
+        session.pendingStep = null;
+        session.status = "idle";
+        session.accumulatedSources = [];
+        return;
+      }
 
       // Add nodes (dedup by id)
       const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));

@@ -82,7 +82,11 @@ export interface DirectionTabProps {
   /** Источники закончились — повторный поиск не дал новых сверх уже найденных. */
   stepSourcesExhausted?: boolean;
   /** Маркер с build родителя: источников для этого продукта не хватает — нужен свежий поиск. */
-  stepNeedsFreshSources?: { fromProduct: string } | null;
+  stepNeedsFreshSources?: {
+    fromProduct: string;
+    reason?: "insufficient" | "cycle";
+    loopOn?: string[];
+  } | null;
 
   stepAggregatedText?: string | null;
   stepAggregateStatus?: Status;

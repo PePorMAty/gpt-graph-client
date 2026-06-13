@@ -36,7 +36,17 @@ export interface InitialGraphStateI {
    * родитель, при построении от которого продукт был помечен. Маркер
    * снимается свежим поиском источников для этого продукта.
    */
-  needsFreshSources: Record<string, { fromProduct: string }>;
+  needsFreshSources: Record<
+    string,
+    {
+      fromProduct: string;
+      // 'insufficient' — сервер на build родителя счёл источники недостаточными;
+      // 'cycle' — следующий шаг по текущим источникам только замыкает петлю.
+      reason?: "insufficient" | "cycle";
+      // Продукты-предки, на которые замкнулась бы петля (для текста плашки).
+      loopOn?: string[];
+    }
+  >;
   acceptedStepAlternatives: Record<string, number[]>;
   /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
   presentationColors: Record<string, string>;
@@ -268,6 +278,10 @@ export interface StepRecord {
   newProductNodeIds: string[];
   mergedProductNodeIds: string[];
   addedEdgeIds: string[];
+  // Выходы, которые замкнули бы петлю на предка — НЕ нарисованы (см. stepToFlow).
+  cycleProductNames?: string[];
+  // Тупик: после исключения петель соединять нечего, граф не менялся.
+  isDeadEnd?: boolean;
 }
 
 export type StepChainStatus =

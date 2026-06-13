@@ -282,8 +282,24 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Маркер с build родителя: этому продукту нужны свежие источники */}
       {stepNeedsFreshSources && (
         <div className={styles.warningText}>
-          По результатам построения шага от «{stepNeedsFreshSources.fromProduct}
-          » источников для «{productName}» не хватает — найдите свежие источники.
+          {stepNeedsFreshSources.reason === "cycle" ? (
+            <>
+              Следующий шаг от «{productName}» по текущим источникам только
+              замкнул бы петлю
+              {stepNeedsFreshSources.loopOn &&
+              stepNeedsFreshSources.loopOn.length > 0
+                ? ` на «${stepNeedsFreshSources.loopOn.join(", ")}»`
+                : ""}{" "}
+              — соединение не создано. Найдите свежие источники, чтобы продолжить
+              в новом направлении.
+            </>
+          ) : (
+            <>
+              По результатам построения шага от «
+              {stepNeedsFreshSources.fromProduct}» источников для «{productName}»
+              не хватает — найдите свежие источники.
+            </>
+          )}
         </div>
       )}
 
