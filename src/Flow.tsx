@@ -961,68 +961,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Достаточный ребёнок: источники унаследованы от родителя → обобщаем их и
   // СРАЗУ строим шаг (без ручного поиска/обобщения). Решение «достаточно»
   // принято на build родителя; запрос на обобщение идёт только сейчас.
-  const handleBuildFromInherited = useCallback(
-    (direction: BuildDirection) => async () => {
-      if (!selectedNodeId) return;
-      ensureStepSession(direction);
-      const sKey = stepSessionKey(selectedNodeId, direction);
-      const productName = String(selectedNode?.data?.label || "").trim();
-      if (!productName) return;
-
-      dispatch(
-        setStepChainContinueProduct({
-          sessionKey: sKey,
-          productNodeId: selectedNodeId,
-        }),
-      );
-
-      const poolSources =
-        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
-      if (!poolSources.length) return;
-
-      const descField =
-        direction === "up" ? "upDescription" : "downDescription";
-      const existingChain = String(
-        selectedNode?.data?.[descField] ||
-          selectedNode?.data?.description ||
-          "",
-      ).trim();
-
-      try {
-        const aggRes = await dispatch(
-          aggregateStepSources({
-            nodeId: selectedNodeId,
-            productName,
-            direction,
-            sources: poolSources,
-            existingChain,
-          }),
-        ).unwrap();
-
-        if (
-          aggRes.aggregatedText &&
-          aggRes.aggregatedText !== "needs-sources"
-        ) {
-          dispatch(
-            buildStep({
-              sessionKey: sKey,
-              nodeId: selectedNodeId,
-              productName,
-              direction,
-              techText: aggRes.aggregatedText,
-              existingSources: poolSources,
-            }),
-          );
-        }
-        // Иначе обобщение вернуло needs-sources → слайс выставил
-        // stepNeedsSources, панель предложит свежий поиск.
-      } catch {
-        // ошибка обобщения уже отражена в слайсе (rejected)
-      }
-    },
-    [dispatch, selectedNodeId, selectedNode, sourcesPool, ensureStepSession],
-  );
-
   const handleClearStepState = useCallback(
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
@@ -1262,11 +1200,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         stepBuildResult: sliceState?.stepBuildResult ?? null,
         stepBuildStatus: sliceState?.stepBuildStatus ?? "idle",
         stepBuildError: sliceState?.stepBuildError ?? null,
+        stepBuiltFromAggregate: sliceState?.stepBuiltFromAggregate ?? false,
 
         onFetchStepSources: handleFetchStepSourcesV2(direction),
         onAggregateStepSources: handleAggregateStepSources(direction),
         onBuildStep: handleBuildStep(direction),
-        onBuildFromInherited: handleBuildFromInherited(direction),
         onClearStepState: handleClearStepState(direction),
       };
 
@@ -1397,7 +1335,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       handleFetchStepSourcesV2,
       handleAggregateStepSources,
       handleBuildStep,
-      handleBuildFromInherited,
       handleClearStepState,
       data.nodes,
       dispatch,

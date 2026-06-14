@@ -50,6 +50,10 @@ type NodeSourcesState = {
   stepBuildStatus: Status;
   stepBuildError: string | null;
   stepBuildResult: TechChain | null;
+  /** Шаг уже построен+принят из ТЕКУЩЕГО обобщения — прячем кнопку «Построить
+   *  шаг», пока пользователь не переобобщит/не найдёт источники заново (тогда
+   *  снова false). Защита от повторного построения одного и того же шага. */
+  stepBuiltFromAggregate: boolean;
 };
 
 type SourcesState = {
@@ -83,6 +87,7 @@ const makeNodeState = (): NodeSourcesState => ({
   stepBuildStatus: "idle",
   stepBuildError: null,
   stepBuildResult: null,
+  stepBuiltFromAggregate: false,
 });
 
 const initialState: SourcesState = {
@@ -128,6 +133,7 @@ const sourcesSlice = createSlice({
       s.stepBuildStatus = "idle";
       s.stepBuildError = null;
       s.stepBuildResult = null;
+      s.stepBuiltFromAggregate = false;
     },
     resetStepBuild: (
       state,
@@ -140,6 +146,8 @@ const sourcesSlice = createSlice({
       s.stepBuildStatus = "idle";
       s.stepBuildError = null;
       s.stepBuildResult = null;
+      // Шаг построен+принят из текущего обобщения — прячем кнопку до переобобщения.
+      s.stepBuiltFromAggregate = true;
     },
   },
   extraReducers: (builder) => {
@@ -260,6 +268,8 @@ const sourcesSlice = createSlice({
           : aggregatedText;
         state.byNodeId[key].stepInsufficientProducts =
           insufficientProducts ?? [];
+        // Свежее обобщение → снова показываем кнопку «Построить шаг».
+        state.byNodeId[key].stepBuiltFromAggregate = false;
       })
       .addCase(aggregateStepSources.rejected, (state, action) => {
         const { nodeId, direction } = action.meta.arg;

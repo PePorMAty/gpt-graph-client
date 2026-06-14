@@ -37,7 +37,7 @@ type StepByStepContentProps = Pick<
   | "onFetchStepSources"
   | "onAggregateStepSources"
   | "onBuildStep"
-  | "onBuildFromInherited"
+  | "stepBuiltFromAggregate"
   | "onClearStepState"
   | "onAcceptStep"
   | "onRejectStep"
@@ -70,10 +70,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepBuildError,
   pendingStep,
 
+  stepBuiltFromAggregate = false,
+
   onFetchStepSources,
   onAggregateStepSources,
   onBuildStep,
-  onBuildFromInherited,
   onClearStepState,
   onForceStepPreview,
   onAcceptStep,
@@ -423,52 +424,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Достаточный ребёнок: источники унаследованы у родителя → одной кнопкой
-          обобщаем и сразу строим (без ручного поиска/обобщения).
-          При маркере «нужны свежие» (sourcesUsable=false) НЕ показываем —
-          строить от непригодных источников нельзя. */}
-      {sourcesUsable &&
-        !hasValidAggregate &&
-        !stepNeedsSources &&
-        isBorrowedSources && (
-          <>
-            <div className={styles.sourcesTitle}>
-              Источники унаследованы у «{stepSourcesOrigin}» — обобщение и
-              построение одной кнопкой.
-            </div>
-            {(aggregateLoading || buildLoading) && (
-              <div className={styles.tabLoader}>
-                <div className={styles.tabSpinner} />
-                <span>
-                  {aggregateLoading ? "Обобщение..." : "Построение шага..."}
-                </span>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => onBuildFromInherited?.()}
-              disabled={aggregateLoading || buildLoading}
-              className={styles.findSourcesButton}
-            >
-              Построить шаг
-            </button>
-            <button
-              type="button"
-              onClick={handleFetchSources}
-              disabled={sourcesLoading}
-              className={styles.findSourcesButton}
-              style={{ marginTop: 4 }}
-            >
-              {sourcesLoading ? "Поиск..." : "Найти свои источники заново"}
-            </button>
-          </>
-        )}
-
-      {/* Aggregate / re-fetch buttons — NATIVE sources (нашли сами): ручное обобщение */}
-      {sourcesUsable &&
-        !hasValidAggregate &&
-        !stepNeedsSources &&
-        !isBorrowedSources && (
+      {/* Источники есть (унаследованные ИЛИ найденные сами) → ручное обобщение,
+          затем ручное построение. Унаследованные обобщаем сразу, без поиска. */}
+      {sourcesUsable && !hasValidAggregate && !stepNeedsSources && (
         <>
           {/* Aggregate prompt editor */}
           <button
@@ -635,18 +593,26 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               <span>Построение шага...</span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => handleBuild()}
-            disabled={buildLoading || isBuildPromptEmpty}
-            className={styles.findSourcesButton}
-          >
-            {buildLoading
-              ? "Построение..."
-              : isBuildPromptDirty
-                ? "Построить шаг (свой промпт)"
-                : "Построить шаг"}
-          </button>
+          {sourcesUsable &&
+            (stepBuiltFromAggregate ? (
+              <div className={styles.warningText}>
+                Шаг из этого обобщения уже построен. Чтобы построить ещё раз —
+                переобобщите (или найдите источники заново и обобщите).
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleBuild()}
+                disabled={buildLoading || isBuildPromptEmpty}
+                className={styles.findSourcesButton}
+              >
+                {buildLoading
+                  ? "Построение..."
+                  : isBuildPromptDirty
+                    ? "Построить шаг (свой промпт)"
+                    : "Построить шаг"}
+              </button>
+            ))}
           <button
             type="button"
             onClick={handleAggregate}

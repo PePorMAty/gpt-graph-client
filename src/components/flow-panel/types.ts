@@ -97,12 +97,12 @@ export interface DirectionTabProps {
   stepBuildResult?: TechChain | null;
   stepBuildStatus?: Status;
   stepBuildError?: string | null;
+  /** Шаг уже построен из текущего обобщения — кнопка «Построить шаг» скрыта до переобобщения. */
+  stepBuiltFromAggregate?: boolean;
 
   onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
   onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
   onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
-  /** Достаточный ребёнок: обобщить унаследованные источники и сразу построить шаг. */
-  onBuildFromInherited?: () => void;
   onClearStepState?: () => void;
   /** Открыть превью шага, построенного при insufficient («построить всё равно»). */
   onForceStepPreview?: () => void;
