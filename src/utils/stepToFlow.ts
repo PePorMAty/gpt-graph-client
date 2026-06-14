@@ -110,10 +110,19 @@ export function stepToFlow(
     renderProducts.push({ product, existingNodeId });
   }
 
-  // --- 3) тупик: после исключения петель соединять нечего ---
+  // --- 3) тупик: соединять нечего, ИЛИ вырожденный «дрейф к предку» ---
   // Не создаём висящий узел-трансформацию. Вызывающая сторона по isDeadEnd
   // пометит продукт «нужны свежие источники» и не будет мутировать граф.
-  if (renderProducts.length === 0) {
+  //
+  // Вырожденный дрейф: ни одного ГЕНУИННО НОВОГО продукта, но в шаг втянут
+  // предок (cycleProductNames) — модель раскрыла предка/синоним вместо якоря и
+  // лишь пере-derive'ит существующее (напр. «Топливо» → существующий «Синтез-газ»
+  // через вход-предок «Чар»). Рисовать ребро к соседу не нужно — это возврат к
+  // предку, а не схождение. (Законное схождение: newCount===0, НО предков нет —
+  // cycleProductNames пуст — тогда ребро рисуем.)
+  const newCount = renderProducts.filter((r) => !r.existingNodeId).length;
+  const degenerateAncestorLoop = newCount === 0 && cycleProductNames.length > 0;
+  if (renderProducts.length === 0 || degenerateAncestorLoop) {
     return {
       nodes: [],
       edges: [],

@@ -295,16 +295,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {stepNeedsFreshSources.reason === "cycle" ? (
             isTerminalRecycle ? (
               <>
-                Следующий шаг от «{productName}» по текущим источникам только
-                замыкает петлю
+                По текущим источникам новый передел для «{productName}» не
+                найден — шаг лишь возвращается
                 {stepNeedsFreshSources.loopOn &&
                 stepNeedsFreshSources.loopOn.length > 0
-                  ? ` на «${stepNeedsFreshSources.loopOn.join(", ")}»`
-                  : ""}
-                , а повторный поиск новых источников уже не дал — в доступном
-                корпусе нет не-петлевого продолжения. Похоже, это конечный или
-                рециклинговый продукт. Остановитесь здесь или стройте цепочку в
-                другом направлении.
+                  ? ` к «${stepNeedsFreshSources.loopOn.join(", ")}»`
+                  : " к уже существующему продукту"}
+                . Поищите источники о том, что производят ИЗ «{productName}»,
+                либо стройте цепочку в другом направлении.
               </>
             ) : (
               <>
