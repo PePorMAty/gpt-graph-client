@@ -534,7 +534,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {/* Stage: aggregated ready → build */}
-      {hasValidAggregate && (
+      {sourcesUsable && hasValidAggregate && (
         <>
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>

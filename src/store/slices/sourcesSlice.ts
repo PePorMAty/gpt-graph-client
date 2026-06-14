@@ -237,6 +237,11 @@ const sourcesSlice = createSlice({
         state.byNodeId[key].stepInsufficientProducts = [];
         state.byNodeId[key].stepAggregateStatus = "idle";
         state.byNodeId[key].stepAggregateError = null;
+        // Свежие источники делают ПРЕЖНЕЕ обобщение неактуальным: чистим его и
+        // флаг «построено», чтобы пользователь не построил шаг из устаревшего
+        // обобщения, а заново нажал «Обобщить» уже на новых источниках.
+        state.byNodeId[key].stepAggregatedText = null;
+        state.byNodeId[key].stepBuiltFromAggregate = false;
       })
       .addCase(fetchStepSourcesV2.rejected, (state, action) => {
         const { nodeId, direction } = action.meta.arg;
