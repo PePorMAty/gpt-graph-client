@@ -25,7 +25,7 @@ import {
   onConnect,
   onReconnect,
   removeEdge,
-  removeNode,
+  removeNodes,
   addNode,
   setGraphData,
   createStepAlternativeNodes,
@@ -245,7 +245,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [panelMode, setPanelMode] = useState<
     { type: "card" } | { type: "build"; direction: BuildDirection }
   >({ type: "card" });
-  const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(
+  // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
   );
 
@@ -369,7 +370,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   }, [selectedNodeId, isPanelOpen, selectedNode]);
 
   // Обработчик клика по узлу
-  const onNodeClick = useCallback((_: unknown, node: Node) => {
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
+    // панель редактирования — пользователь выделяет несколько нод.
+    if (event.shiftKey || event.ctrlKey || event.metaKey) return;
     setSelectedNodeId(node.id);
     setPanelMode({ type: "card" });
     setIsPanelOpen(true);
@@ -385,13 +389,34 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setHoveredChainId(null);
   }, []);
 
+  // Выделенные узлы (групповое выделение через Shift+рамку / Ctrl+клик).
+  const selectedNodes = useMemo(
+    () => data.nodes.filter((n) => n.selected),
+    [data.nodes],
+  );
+
   // Обработчик правого клика по узлу
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      // Вариант 1: ПКМ по ноде вне текущего выделения сбрасывает выделение
+      // до этой одной ноды, чтобы подсветка совпадала с целью меню.
+      const currentlySelected = data.nodes.filter((n) => n.selected);
+      const isNodeSelected = currentlySelected.some((n) => n.id === node.id);
+      if (!isNodeSelected) {
+        const changes: NodeChange[] = [
+          ...currentlySelected.map((n) => ({
+            id: n.id,
+            type: "select" as const,
+            selected: false,
+          })),
+          { id: node.id, type: "select" as const, selected: true },
+        ];
+        dispatch(onNodesChange(changes));
+      }
       setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
     },
-    [],
+    [data.nodes, dispatch],
   );
 
   // Клик по пустому пространству — закрыть контекстное меню
@@ -412,12 +437,21 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [contextMenu],
   );
 
-  // Из контекстного меню → показать модалку подтверждения удаления
+  // Из контекстного меню → показать модалку подтверждения удаления.
+  // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
+  // всю группу, иначе только одну ноду.
   const handleContextDelete = useCallback(() => {
     if (!contextMenu) return;
-    setDeleteConfirmNodeId(contextMenu.nodeId);
+    const selectedIds = data.nodes
+      .filter((n) => n.selected)
+      .map((n) => n.id);
+    const ids =
+      selectedIds.length > 1 && selectedIds.includes(contextMenu.nodeId)
+        ? selectedIds
+        : [contextMenu.nodeId];
+    setPendingDeleteIds(ids);
     setContextMenu(null);
-  }, [contextMenu]);
+  }, [contextMenu, data.nodes]);
 
   // Из контекстного меню → открыть модалку с подтверждением запроса
   const handleContextFetchTransformations = useCallback(() => {
@@ -572,20 +606,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     ).some((n) => n.role === "outgoing");
   }, [contextMenu, data.nodes, data.edges]);
 
-  // Подтверждение удаления
+  // Подтверждение удаления (одна нода или группа выделенных)
   const handleConfirmDelete = useCallback(() => {
-    if (!deleteConfirmNodeId) return;
+    if (!pendingDeleteIds || pendingDeleteIds.length === 0) return;
 
-    for (const dir of ["down", "up"] as const) {
-      dispatch(
-        clearStepState({ nodeId: deleteConfirmNodeId, direction: dir }),
-      );
+    for (const id of pendingDeleteIds) {
+      for (const dir of ["down", "up"] as const) {
+        dispatch(clearStepState({ nodeId: id, direction: dir }));
+      }
     }
 
-    dispatch(removeNode(deleteConfirmNodeId));
-    setDeleteConfirmNodeId(null);
+    dispatch(removeNodes(pendingDeleteIds));
 
-    if (deleteConfirmNodeId === selectedNodeId) {
+    const removedSelected =
+      selectedNodeId !== null && pendingDeleteIds.includes(selectedNodeId);
+    setPendingDeleteIds(null);
+
+    if (removedSelected) {
       setIsPanelOpen(false);
       setTimeout(() => {
         setSelectedNodeId(null);
@@ -595,7 +632,31 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         setInitialDescription("");
       }, 300);
     }
-  }, [deleteConfirmNodeId, selectedNodeId, dispatch]);
+  }, [pendingDeleteIds, selectedNodeId, dispatch]);
+
+  // Удаление выделенных нод клавишей Delete/Backspace (с подтверждением).
+  // Игнорируем нажатия в полях ввода, чтобы не удалять ноды при правке текста.
+  useEffect(() => {
+    if (sharedView) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const ids = data.nodes.filter((n) => n.selected).map((n) => n.id);
+      if (ids.length === 0) return;
+      e.preventDefault();
+      setPendingDeleteIds(ids);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sharedView, data.nodes]);
 
   // Сохранение изменённых полей узла (имя/описание).
   // Возвращает true, если что-то действительно было сохранено.
@@ -1429,7 +1490,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const handleSaveToLocalStorage = useCallback(() => {
     localStorage.setItem(
       "saved-graph",
-      JSON.stringify({ nodes: data.nodes, edges: data.edges }),
+      JSON.stringify({
+        // не сохраняем флаг выделения, чтобы граф не открывался «предвыделенным»
+        nodes: data.nodes.map((n) => {
+          const copy = { ...n };
+          delete copy.selected;
+          return copy;
+        }),
+        edges: data.edges,
+      }),
     );
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
@@ -1484,10 +1553,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         nodesConnectable={!sharedView}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
+        // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
+        // Левая кнопка по-прежнему панорамирует полотно (selectionOnDrag=false).
+        selectionKeyCode={sharedView ? null : "Shift"}
+        multiSelectionKeyCode={sharedView ? null : ["Meta", "Control"]}
+        selectionOnDrag={false}
         onReconnect={sharedView ? undefined : handleReconnect}
         onReconnectStart={sharedView ? undefined : onReconnectStart}
         onReconnectEnd={sharedView ? undefined : onReconnectEnd}
-        deleteKeyCode={sharedView ? null : undefined}
+        // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
+        deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
         nodeTypes={nodeTypes}
         edgesFocusable={false}
@@ -1594,6 +1669,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             }
             onFetchTransformations={handleContextFetchTransformations}
             onDelete={handleContextDelete}
+            selectedCount={selectedNodes.length}
             onClose={() => setContextMenu(null)}
           />
         );
@@ -1628,16 +1704,26 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         isVisible={isSavedToastVisible}
       />
 
-      {deleteConfirmNodeId && (
-        <ConfirmDeleteModal
-          nodeName={
-            data.nodes.find((n) => n.id === deleteConfirmNodeId)?.data?.label ||
-            ""
-          }
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setDeleteConfirmNodeId(null)}
-        />
-      )}
+      {pendingDeleteIds &&
+        pendingDeleteIds.length > 0 &&
+        (pendingDeleteIds.length === 1 ? (
+          <ConfirmDeleteModal
+            nodeName={
+              data.nodes.find((n) => n.id === pendingDeleteIds[0])?.data
+                ?.label || ""
+            }
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setPendingDeleteIds(null)}
+          />
+        ) : (
+          <ConfirmDeleteModal
+            nodeName=""
+            title={`Удалить выбранные узлы (${pendingDeleteIds.length})?`}
+            description="Все выбранные узлы и связанные с ними связи будут удалены. Это действие нельзя отменить."
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setPendingDeleteIds(null)}
+          />
+        ))}
       {showClearConfirm && (
         <ConfirmDeleteModal
           nodeName=""
