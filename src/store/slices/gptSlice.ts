@@ -109,6 +109,38 @@ const gptSlice = createSlice({
         }
       }
     },
+    // Батч-удаление нескольких узлов (групповое выделение). Удаляет сами узлы,
+    // связанные с ними рёбра и чистит step-сессии — так же, как removeNode.
+    removeNodes: (state, action: PayloadAction<string[]>) => {
+      const ids = new Set(action.payload);
+      if (ids.size === 0) return;
+
+      state.data.nodes = state.data.nodes.filter((node) => !ids.has(node.id));
+      state.data.edges = state.data.edges.filter(
+        (edge) => !ids.has(edge.source) && !ids.has(edge.target),
+      );
+
+      for (const nodeId of ids) {
+        for (const [sKey, session] of Object.entries(
+          state.stepChainSessions,
+        )) {
+          if (!session) continue;
+          if (session.currentProductNodeId === nodeId) {
+            session.currentProductNodeId = session.rootNodeId;
+            session.pendingStep = null;
+            session.status = "idle";
+            session.steps = session.steps.filter(
+              (s) =>
+                !s.newProductNodeIds.includes(nodeId) &&
+                s.transformationNodeId !== nodeId,
+            );
+          }
+          if (session.rootNodeId === nodeId) {
+            delete state.stepChainSessions[sKey];
+          }
+        }
+      }
+    },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
         action.payload,
@@ -1231,6 +1263,7 @@ export const {
   onReconnect,
   removeEdge,
   removeNode,
+  removeNodes,
   setGraphData,
   addNode,
   loadGraphFromFile,

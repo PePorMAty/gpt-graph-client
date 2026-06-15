@@ -231,6 +231,16 @@
   transition: stroke-opacity 120ms ease;
 }
 
+/* Групповое выделение нод (Shift+рамка / Ctrl+клик). React Flow сам вешает
+   класс .selected; целим во внутренний div ноды, добавляя обводку с отступом
+   и мягкое кольцо-свечение. Цвет — sky #0ea5e9: не конфликтует с синей рамкой
+   продуктов, оранжевой подсветкой поиска и фиолетовыми альтернативами. */
+:global(.react-flow__node.selected > *) {
+  outline: 2.5px solid #0ea5e9;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.2) !important;
+}
+
 /* Анимации */
 @keyframes spin {
   to {
