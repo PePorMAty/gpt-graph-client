@@ -32,6 +32,8 @@ export interface DirectionTabProps {
   hasAggregated?: boolean;
   aggregatedDescription?: string | null;
   onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  /** Правка обобщённого описания шага (step-by-step flow). */
+  onChangeStepAggregatedText?: (text: string) => void;
 
   productName?: string;
 
@@ -119,6 +121,7 @@ export interface FlowPanelProps {
   onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
   descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onFieldBlur?: () => void; // Сохранение при потере фокуса поля имени/описания
 
   nodeId?: string | null;
   nodeType?: string;

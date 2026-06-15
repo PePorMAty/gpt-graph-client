@@ -35,6 +35,7 @@ import {
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
+import { Notification } from "./components/notification";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
@@ -52,6 +53,7 @@ import {
   setBuildMode,
   clearStepState,
   resetStepBuild,
+  setStepAggregatedText,
 } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { fetchProductCard } from "./store/api/product-card-api";
@@ -191,6 +193,29 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  // Всплывающая подсказка о сохранении
+  const [isSavedToastVisible, setIsSavedToastVisible] = useState(false);
+  const savedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showSavedNotification = useCallback(() => {
+    setIsSavedToastVisible(true);
+    if (savedToastTimerRef.current) {
+      clearTimeout(savedToastTimerRef.current);
+    }
+    savedToastTimerRef.current = setTimeout(() => {
+      setIsSavedToastVisible(false);
+    }, 2000);
+  }, []);
+
+  // Очистка таймера подсказки при размонтировании
+  useEffect(() => {
+    return () => {
+      if (savedToastTimerRef.current) {
+        clearTimeout(savedToastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Подсветка цепочки по hover — только для графов, загруженных через
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
@@ -572,28 +597,55 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     }
   }, [deleteConfirmNodeId, selectedNodeId, dispatch]);
 
-  // Закрытие панели с сохранением изменений
-  const closePanel = useCallback(() => {
-    if (selectedNodeId) {
-      const updatedData: { label?: string; description?: string } = {};
+  // Сохранение изменённых полей узла (имя/описание).
+  // Возвращает true, если что-то действительно было сохранено.
+  const saveChanges = useCallback(() => {
+    if (!selectedNodeId) return false;
 
-      if (tempNodeLabel !== initialLabel) {
-        updatedData.label = tempNodeLabel;
-      }
+    const updatedData: { label?: string; description?: string } = {};
 
-      if (tempNodeDescription !== initialDescription) {
-        updatedData.description = tempNodeDescription;
-      }
-
-      if (Object.keys(updatedData).length > 0) {
-        dispatch(
-          updateNodeData({
-            nodeId: selectedNodeId,
-            data: updatedData,
-          }),
-        );
-      }
+    if (tempNodeLabel !== initialLabel) {
+      updatedData.label = tempNodeLabel;
     }
+
+    if (tempNodeDescription !== initialDescription) {
+      updatedData.description = tempNodeDescription;
+    }
+
+    if (Object.keys(updatedData).length === 0) return false;
+
+    dispatch(
+      updateNodeData({
+        nodeId: selectedNodeId,
+        data: updatedData,
+      }),
+    );
+
+    // Обновляем "исходные" значения, чтобы повторный blur/закрытие
+    // не сохраняли одно и то же ещё раз.
+    setInitialLabel(tempNodeLabel);
+    setInitialDescription(tempNodeDescription);
+
+    return true;
+  }, [
+    selectedNodeId,
+    tempNodeLabel,
+    tempNodeDescription,
+    initialLabel,
+    initialDescription,
+    dispatch,
+  ]);
+
+  // Сохранение при потере фокуса поля имени/описания + всплывающая подсказка
+  const handleFieldBlur = useCallback(() => {
+    if (saveChanges()) {
+      showSavedNotification();
+    }
+  }, [saveChanges, showSavedNotification]);
+
+  // Закрытие панели с сохранением изменений (на случай, если blur не сработал)
+  const closePanel = useCallback(() => {
+    saveChanges();
 
     setIsPanelOpen(false);
     setPanelMode({ type: "card" });
@@ -604,14 +656,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setInitialLabel("");
       setInitialDescription("");
     }, 300);
-  }, [
-    selectedNodeId,
-    tempNodeLabel,
-    tempNodeDescription,
-    initialLabel,
-    initialDescription,
-    dispatch,
-  ]);
+  }, [saveChanges]);
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
@@ -1115,6 +1160,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             }),
           );
         },
+        onChangeStepAggregatedText: (text) => {
+          if (!selectedNodeId) return;
+          dispatch(
+            setStepAggregatedText({
+              nodeId: selectedNodeId,
+              direction,
+              text,
+            }),
+          );
+        },
 
         productName: String(selectedNode.data?.label || "").trim(),
 
@@ -1549,6 +1604,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onChangeValue={handleNodeNameChange}
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
+        onFieldBlur={handleFieldBlur}
         nodeType={selectedNode?.type}
         transformationSources={
           selectedNode?.data?.transformationSources as string[] | undefined
@@ -1565,6 +1621,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }
         readOnly={sharedView}
       />
+
+      <Notification
+        message="Изменения сохранены"
+        isVisible={isSavedToastVisible}
+      />
+
       {deleteConfirmNodeId && (
         <ConfirmDeleteModal
           nodeName={
