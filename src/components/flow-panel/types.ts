@@ -32,6 +32,8 @@ export interface DirectionTabProps {
   hasAggregated?: boolean;
   aggregatedDescription?: string | null;
   onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  /** Правка обобщённого описания шага (step-by-step flow). */
+  onChangeStepAggregatedText?: (text: string) => void;
 
   productName?: string;
 

@@ -1,6 +1,7 @@
-import { useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
+import { MarkdownEditor } from "../markdown-editor";
 import { getDefaultStepSourcesPrompt } from "../../prompts/sourcesPrompt";
 import {
   getDefaultStepAggregateFullPrompt,
@@ -42,6 +43,7 @@ type StepByStepContentProps = Pick<
   | "onAcceptStep"
   | "onRejectStep"
   | "onRetryStep"
+  | "onChangeStepAggregatedText"
   | "isAlternativeNode"
   | "altDescription"
 >;
@@ -80,6 +82,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onAcceptStep,
   onRejectStep,
   onRetryStep,
+  onChangeStepAggregatedText,
 
   isAlternativeNode = false,
   altDescription,
@@ -144,6 +147,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const isBuildPromptDirty = manualBuildPrompt !== null;
   const isBuildPromptEmpty = displayedBuildPrompt.trim() === "";
 
+  // ── Editable alt description (alt node has no Redux-backed aggregated text;
+  //    keep a local copy and feed it into the build). ──
+  const [editedAltDesc, setEditedAltDesc] = useState(altDescription ?? "");
+  useEffect(() => {
+    setEditedAltDesc(altDescription ?? "");
+  }, [altDescription]);
+
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
     onFetchStepSources?.({
@@ -181,11 +191,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
         <div className={styles.formGroup}>
           <label className={styles.formLabel}>Описание альтернативы:</label>
-          <textarea
-            readOnly
-            value={altDescription ?? ""}
-            className={styles.directionTextarea}
-            rows={6}
+          <MarkdownEditor
+            value={editedAltDesc}
+            onChange={setEditedAltDesc}
           />
         </div>
 
@@ -236,7 +244,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         )}
         <button
           type="button"
-          onClick={() => handleBuild(altDescription)}
+          onClick={() => handleBuild(editedAltDesc)}
           disabled={buildLoading || isBuildPromptEmpty}
           className={styles.findSourcesButton}
         >
@@ -538,11 +546,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             <label className={styles.formLabel}>
               Обобщённое описание шага:
             </label>
-            <textarea
-              readOnly
+            <MarkdownEditor
               value={stepAggregatedText ?? ""}
-              className={styles.directionTextarea}
-              rows={6}
+              onChange={onChangeStepAggregatedText}
             />
           </div>
 

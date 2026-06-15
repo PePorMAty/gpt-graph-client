@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { StepByStepContent } from "./StepByStepContent";
+import { MarkdownEditor } from "../markdown-editor";
 import {
   getDefaultFillCardSystemPrompt,
   getFieldsForNodeType,
@@ -30,6 +31,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   hasAggregated,
   aggregatedDescription,
   onChangeAggregatedDescription,
+  onChangeStepAggregatedText,
 
   productName,
 
@@ -88,12 +90,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
   altDescription,
 }) => {
   const hasSources = Array.isArray(sources) && sources.length > 0;
-
-  // Local state for textarea to avoid Redux dispatch on every keystroke
-  const [localDesc, setLocalDesc] = useState(aggregatedDescription ?? "");
-  useEffect(() => {
-    setLocalDesc(aggregatedDescription ?? "");
-  }, [aggregatedDescription]);
 
   // ── sources prompt + maxItems editor state ──
   const [maxItems, setMaxItems] = useState(5);
@@ -223,6 +219,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
           onRetryStep={onRetryStep}
+          onChangeStepAggregatedText={onChangeStepAggregatedText}
           isAlternativeNode={isAlternativeNode}
           altDescription={altDescription}
         />
@@ -244,22 +241,17 @@ const DirectionContent: FC<DirectionTabProps> = ({
         </div>
       )}
 
-      {/* aggregated description textarea */}
+      {/* aggregated description — markdown render + edit */}
       {hasAggregated && aggregatedDescription && (
         <div className={styles.formGroup}>
           <label className={styles.formLabel}>Обобщённое описание:</label>
-          <textarea
-            value={localDesc}
-            onChange={(e) => setLocalDesc(e.target.value)}
-            onBlur={() => {
-              if (localDesc !== (aggregatedDescription ?? "")) {
-                onChangeAggregatedDescription?.({
-                  target: { value: localDesc },
-                } as React.ChangeEvent<HTMLTextAreaElement>);
-              }
-            }}
-            className={styles.directionTextarea}
-            rows={4}
+          <MarkdownEditor
+            value={aggregatedDescription ?? ""}
+            onChange={(v) =>
+              onChangeAggregatedDescription?.({
+                target: { value: v },
+              } as React.ChangeEvent<HTMLTextAreaElement>)
+            }
           />
         </div>
       )}

@@ -53,6 +53,7 @@ import {
   setBuildMode,
   clearStepState,
   resetStepBuild,
+  setStepAggregatedText,
 } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { fetchProductCard } from "./store/api/product-card-api";
@@ -1156,6 +1157,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             updateNodeData({
               nodeId: selectedNodeId,
               data: { [descField]: e.target.value },
+            }),
+          );
+        },
+        onChangeStepAggregatedText: (text) => {
+          if (!selectedNodeId) return;
+          dispatch(
+            setStepAggregatedText({
+              nodeId: selectedNodeId,
+              direction,
+              text,
             }),
           );
         },
