@@ -1291,6 +1291,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 sessionKey: sKey,
                 selectedContinueProductNodeId,
                 filteredStep,
+                isAlternativeFirstStep: true,
               }),
             );
             dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));

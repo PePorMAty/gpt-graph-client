@@ -84,7 +84,7 @@ export interface DirectionTabProps {
   /** Маркер с build родителя: источников для этого продукта не хватает — нужен свежий поиск. */
   stepNeedsFreshSources?: {
     fromProduct: string;
-    reason?: "insufficient" | "cycle";
+    reason?: "insufficient" | "cycle" | "alternative";
     loopOn?: string[];
   } | null;
 

@@ -321,10 +321,19 @@ const gptSlice = createSlice({
         sessionKey: string;
         selectedContinueProductNodeId?: string;
         filteredStep?: StepChainApiStep;
+        // Принимается ПЕРВЫЙ шаг альтернативы: его новые продукты НЕ наследуют
+        // пул корня, а помечаются «нужны свежие источники» (reason: alternative),
+        // чтобы альтернатива не реюзала источники основного пути и не сходилась
+        // к его продуктам.
+        isAlternativeFirstStep?: boolean;
       }>,
     ) => {
-      const { sessionKey, selectedContinueProductNodeId, filteredStep } =
-        action.payload;
+      const {
+        sessionKey,
+        selectedContinueProductNodeId,
+        filteredStep,
+        isAlternativeFirstStep,
+      } = action.payload;
       const session = state.stepChainSessions[sessionKey];
       if (!session || !session.pendingStep) return;
       if (filteredStep) {
@@ -428,6 +437,21 @@ const gptSlice = createSlice({
             // не хватает. Пул не наследуем + ставим маркер, чтобы панель
             // ребёнка показала плашку «нужен свежий поиск».
             state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
+            continue;
+          }
+          if (
+            isAlternativeFirstStep &&
+            stepRecord.newProductNodeIds.includes(nid)
+          ) {
+            // Первый шаг альтернативы: НЕ наследуем источники основного пути в
+            // новые продукты — иначе альтернатива обобщала бы по тем же
+            // источникам и сходилась к маршруту основного шага. Просим свежие.
+            // (Слитые/существующие продукты — mergedProductNodeIds — не трогаем:
+            // у них уже свой пул.)
+            state.needsFreshSources[newKey] = {
+              fromProduct: anchorLabel,
+              reason: "alternative",
+            };
             continue;
           }
           if (
