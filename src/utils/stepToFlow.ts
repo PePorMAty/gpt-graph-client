@@ -7,6 +7,7 @@ import {
   normalizeProductName,
 } from "./normalizeProductName";
 import { computeShiftX } from "./resolveChainOverlap";
+import { wouldCreateCycle } from "./graphReachability";
 
 export interface StepToFlowOpts {
   sessionKey: string;
@@ -17,6 +18,8 @@ export interface StepToFlowOpts {
   anchorY: number;
   stepNumber: number;
   existingNodes: CustomNode[];
+  // Рёбра текущего графа — нужны для детекта петель (предок ли existing-выход).
+  existingEdges?: Edge[];
   spacingX?: number;
   stepY1?: number;
   stepY2?: number;
@@ -35,6 +38,7 @@ export function stepToFlow(
     anchorY,
     stepNumber,
     existingNodes,
+    existingEdges = [],
     spacingX = 260,
     stepY1 = 180,
     stepY2 = 220,
@@ -43,14 +47,105 @@ export function stepToFlow(
   const isDown = direction === "down";
   const sign = direction === "down" ? 1 : -1;
 
+  // --- 1) собрать продукты (исключая якорь) ---
+  const anchorNode = existingNodes.find((n) => n.id === anchorNodeId);
+  const anchorLabel = anchorNode?.data?.label || "";
+  const anchorNorm = normalizeProductName(anchorLabel);
+
+  const allProducts: Array<{
+    product: (typeof step.inputProducts)[0];
+    role: "input" | "output";
+  }> = [
+    ...step.inputProducts.map((p) => ({ product: p, role: "input" as const })),
+    ...step.outputProducts.map((p) => ({
+      product: p,
+      role: "output" as const,
+    })),
+  ];
+
+  // Убрать сам якорь (продукт, от которого строим)
+  const productsToProcess = allProducts.filter(
+    ({ product }) => normalizeProductName(product.name) !== anchorNorm,
+  );
+
+  // Дедуп по нормализованному имени внутри шага
+  const seenNorm = new Set<string>();
+  const uniqueProducts = productsToProcess.filter(({ product }) => {
+    const norm = normalizeProductName(product.name);
+    if (seenNorm.has(norm)) return false;
+    seenNorm.add(norm);
+    return true;
+  });
+
+  // --- 2) классификация: новый / существующий (схождение) / петля ---
+  // Сверяем КАЖДЫЙ продукт с уже существующими узлами собственным надёжным
+  // normalizeProductName — НЕ полагаясь на серверный флаг isExisting (он считает
+  // слабее и при расхождении дефис/апостроф/регистр прислал бы isExisting:false,
+  // из-за чего мы создали бы дубликат или замкнули цикл).
+  //
+  // Петля ≠ «узел уже есть». При построении вниз сырьё законно питает несколько
+  // потомков (схождение DAG). Настоящая петля — только если существующий узел
+  // уже ДОСТИЖИМ до якоря (его предок): тогда ребро anchor → tr → O замкнёт
+  // направленный контур. Такие выходы НЕ рисуем и копим в cycleProductNames.
+  const cycleProductNames: string[] = [];
+  const renderProducts: Array<{
+    product: (typeof step.inputProducts)[0];
+    existingNodeId: string | null;
+  }> = [];
+
+  for (const { product } of uniqueProducts) {
+    const existingNodeId =
+      findExistingProductNode(product.name, existingNodes) ??
+      (product.existingNodeLabel
+        ? findExistingProductNode(product.existingNodeLabel, existingNodes)
+        : null);
+
+    if (
+      existingNodeId &&
+      wouldCreateCycle(existingNodeId, anchorNodeId, existingEdges)
+    ) {
+      cycleProductNames.push(product.name);
+      continue;
+    }
+    renderProducts.push({ product, existingNodeId });
+  }
+
+  // --- 3) тупик: соединять нечего, ИЛИ вырожденный «дрейф к предку» ---
+  // Не создаём висящий узел-трансформацию. Вызывающая сторона по isDeadEnd
+  // пометит продукт «нужны свежие источники» и не будет мутировать граф.
+  //
+  // Вырожденный дрейф: ни одного ГЕНУИННО НОВОГО продукта, но в шаг втянут
+  // предок (cycleProductNames) — модель раскрыла предка/синоним вместо якоря и
+  // лишь пере-derive'ит существующее (напр. «Топливо» → существующий «Синтез-газ»
+  // через вход-предок «Чар»). Рисовать ребро к соседу не нужно — это возврат к
+  // предку, а не схождение. (Законное схождение: newCount===0, НО предков нет —
+  // cycleProductNames пуст — тогда ребро рисуем.)
+  const newCount = renderProducts.filter((r) => !r.existingNodeId).length;
+  const degenerateAncestorLoop = newCount === 0 && cycleProductNames.length > 0;
+  if (renderProducts.length === 0 || degenerateAncestorLoop) {
+    return {
+      nodes: [],
+      edges: [],
+      stepRecord: {
+        stepNumber,
+        fromProductNodeId: anchorNodeId,
+        transformationNodeId: "",
+        newProductNodeIds: [],
+        mergedProductNodeIds: [],
+        addedEdgeIds: [],
+        cycleProductNames,
+        isDeadEnd: true,
+      },
+    };
+  }
+
   const nodes: CustomNode[] = [];
   const edges: Edge[] = [];
-
   const newProductNodeIds: string[] = [];
   const mergedProductNodeIds: string[] = [];
   const addedEdgeIds: string[] = [];
 
-  // --- 1) transformation node ---
+  // --- 4) узел-трансформация ---
   const trId = step.transformation.id || String(stepNumber);
   const trFlowId = `step::${sessionKey}::tr::${stepNumber}::${trId}`;
   const trY = anchorY + sign * stepY1;
@@ -71,7 +166,7 @@ export function stepToFlow(
     },
   });
 
-  // --- 2) edge: anchor → transformation ---
+  // --- 5) ребро: anchor → transformation ---
   const anchorToTrEdgeId = `step::${sessionKey}::e::${anchorNodeId}::${trFlowId}`;
   edges.push({
     id: anchorToTrEdgeId,
@@ -83,52 +178,17 @@ export function stepToFlow(
   });
   addedEdgeIds.push(anchorToTrEdgeId);
 
-  // --- 3) product nodes (inputs + outputs, excluding anchor product) ---
-  const anchorNode = existingNodes.find((n) => n.id === anchorNodeId);
-  const anchorLabel = anchorNode?.data?.label || "";
-  const anchorNorm = normalizeProductName(anchorLabel);
-
-  // Collect all products, tag with their role
-  const allProducts: Array<{
-    product: (typeof step.inputProducts)[0];
-    role: "input" | "output";
-  }> = [
-    ...step.inputProducts.map((p) => ({ product: p, role: "input" as const })),
-    ...step.outputProducts.map((p) => ({
-      product: p,
-      role: "output" as const,
-    })),
-  ];
-
-  // Skip the anchor product (the one we're building from)
-  const productsToProcess = allProducts.filter(
-    ({ product }) => normalizeProductName(product.name) !== anchorNorm,
-  );
-
-  // Deduplicate by normalized name within step
-  const seenNorm = new Set<string>();
-  const uniqueProducts = productsToProcess.filter(({ product }) => {
-    const norm = normalizeProductName(product.name);
-    if (seenNorm.has(norm)) return false;
-    seenNorm.add(norm);
-    return true;
-  });
-
-  const productCount = uniqueProducts.length;
+  // --- 6) узлы-продукты ---
+  const productCount = renderProducts.length;
   const productsY = trY + sign * stepY2;
   const rowWidth = productCount > 1 ? (productCount - 1) * spacingX : 0;
   const startX = anchorX - rowWidth / 2;
 
-  uniqueProducts.forEach(({ product }, idx) => {
-    // Check if existing product matches
-    const existingNodeId = product.isExisting
-      ? findExistingProductNode(product.name, existingNodes)
-      : null;
-
+  renderProducts.forEach(({ product, existingNodeId }, idx) => {
     const x = startX + idx * spacingX;
 
     if (existingNodeId) {
-      // Existing product — edge only, no new node
+      // Существующий продукт (законное схождение) — только ребро, без узла
       mergedProductNodeIds.push(existingNodeId);
 
       const edgeId = `step::${sessionKey}::e::${trFlowId}::${existingNodeId}`;
@@ -142,7 +202,7 @@ export function stepToFlow(
       });
       addedEdgeIds.push(edgeId);
     } else {
-      // New product — create node + edge
+      // Новый продукт — узел + ребро
       const sanitizedName = normalizeProductName(product.name).replace(
         /\s+/g,
         "_",
@@ -179,7 +239,7 @@ export function stepToFlow(
     }
   });
 
-  // --- 4) collision avoidance ---
+  // --- 7) развод коллизий ---
   const existingForCollision = existingNodes.filter(
     (n) => !nodes.some((newN) => newN.id === n.id),
   );
@@ -197,6 +257,8 @@ export function stepToFlow(
     newProductNodeIds,
     mergedProductNodeIds,
     addedEdgeIds,
+    cycleProductNames,
+    isDeadEnd: false,
   };
 
   return { nodes, edges, stepRecord };

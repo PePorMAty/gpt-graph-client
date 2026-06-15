@@ -38,6 +38,8 @@ type NodeSourcesState = {
 
   stepSourcesStatus: Status;
   stepSourcesError: string | null;
+  /** Источники закончились (повторный поиск не дал новых сверх уже найденных). */
+  stepSourcesExhausted: boolean;
 
   stepAggregateStatus: Status;
   stepAggregateError: string | null;
@@ -48,6 +50,10 @@ type NodeSourcesState = {
   stepBuildStatus: Status;
   stepBuildError: string | null;
   stepBuildResult: TechChain | null;
+  /** Шаг уже построен+принят из ТЕКУЩЕГО обобщения — прячем кнопку «Построить
+   *  шаг», пока пользователь не переобобщит/не найдёт источники заново (тогда
+   *  снова false). Защита от повторного построения одного и того же шага. */
+  stepBuiltFromAggregate: boolean;
 };
 
 type SourcesState = {
@@ -70,6 +76,7 @@ const makeNodeState = (): NodeSourcesState => ({
 
   stepSourcesStatus: "idle",
   stepSourcesError: null,
+  stepSourcesExhausted: false,
 
   stepAggregateStatus: "idle",
   stepAggregateError: null,
@@ -80,6 +87,7 @@ const makeNodeState = (): NodeSourcesState => ({
   stepBuildStatus: "idle",
   stepBuildError: null,
   stepBuildResult: null,
+  stepBuiltFromAggregate: false,
 });
 
 const initialState: SourcesState = {
@@ -116,6 +124,7 @@ const sourcesSlice = createSlice({
       if (!s) return;
       s.stepSourcesStatus = "idle";
       s.stepSourcesError = null;
+      s.stepSourcesExhausted = false;
       s.stepAggregateStatus = "idle";
       s.stepAggregateError = null;
       s.stepAggregatedText = null;
@@ -124,6 +133,7 @@ const sourcesSlice = createSlice({
       s.stepBuildStatus = "idle";
       s.stepBuildError = null;
       s.stepBuildResult = null;
+      s.stepBuiltFromAggregate = false;
     },
     resetStepBuild: (
       state,
@@ -136,6 +146,24 @@ const sourcesSlice = createSlice({
       s.stepBuildStatus = "idle";
       s.stepBuildError = null;
       s.stepBuildResult = null;
+      // Шаг построен+принят из текущего обобщения — прячем кнопку до переобобщения.
+      s.stepBuiltFromAggregate = true;
+    },
+    /** Ручное редактирование обобщённого описания шага (правка markdown перед
+     *  построением). handleBuild() читает stepAggregatedText из Redux, поэтому
+     *  правка попадает в построение шага. */
+    setStepAggregatedText: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: BuildDirection;
+        text: string;
+      }>,
+    ) => {
+      const { nodeId, direction, text } = action.payload;
+      const key = sourcesKey(nodeId, direction);
+      state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+      state.byNodeId[key].stepAggregatedText = text;
     },
   },
   extraReducers: (builder) => {
@@ -204,13 +232,18 @@ const sourcesSlice = createSlice({
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "loading";
         state.byNodeId[key].stepSourcesError = null;
+        state.byNodeId[key].stepSourcesExhausted = false;
       })
       .addCase(fetchStepSourcesV2.fulfilled, (state, action) => {
-        const { nodeId, direction, product, maxItems } = action.payload;
+        const { nodeId, direction, product, maxItems, exhausted, sources } =
+          action.payload;
         const key = sourcesKey(nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "succeeded";
         state.byNodeId[key].stepSourcesError = null;
+        state.byNodeId[key].stepSourcesExhausted = !!exhausted;
+        // Резервное хранилище по nodeId — страховка от рассинхрона ключа пула.
+        state.byNodeId[key].sources = sources ?? [];
         if (product) state.byNodeId[key].product = product;
         if (typeof maxItems === "number")
           state.byNodeId[key].maxItems = maxItems;
@@ -220,6 +253,11 @@ const sourcesSlice = createSlice({
         state.byNodeId[key].stepInsufficientProducts = [];
         state.byNodeId[key].stepAggregateStatus = "idle";
         state.byNodeId[key].stepAggregateError = null;
+        // Свежие источники делают ПРЕЖНЕЕ обобщение неактуальным: чистим его и
+        // флаг «построено», чтобы пользователь не построил шаг из устаревшего
+        // обобщения, а заново нажал «Обобщить» уже на новых источниках.
+        state.byNodeId[key].stepAggregatedText = null;
+        state.byNodeId[key].stepBuiltFromAggregate = false;
       })
       .addCase(fetchStepSourcesV2.rejected, (state, action) => {
         const { nodeId, direction } = action.meta.arg;
@@ -251,6 +289,8 @@ const sourcesSlice = createSlice({
           : aggregatedText;
         state.byNodeId[key].stepInsufficientProducts =
           insufficientProducts ?? [];
+        // Свежее обобщение → снова показываем кнопку «Построить шаг».
+        state.byNodeId[key].stepBuiltFromAggregate = false;
       })
       .addCase(aggregateStepSources.rejected, (state, action) => {
         const { nodeId, direction } = action.meta.arg;
@@ -287,6 +327,11 @@ const sourcesSlice = createSlice({
   },
 });
 
-export const { clearNodeSources, setBuildMode, clearStepState, resetStepBuild } =
-  sourcesSlice.actions;
+export const {
+  clearNodeSources,
+  setBuildMode,
+  clearStepState,
+  resetStepBuild,
+  setStepAggregatedText,
+} = sourcesSlice.actions;
 export default sourcesSlice.reducer;

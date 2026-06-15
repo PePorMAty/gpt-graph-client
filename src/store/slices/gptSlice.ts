@@ -32,6 +32,7 @@ import {
   fetchStepSources,
 } from "../api/step-chain-api";
 import { stepToFlow } from "../../utils/stepToFlow";
+import { normalizeProductName } from "../../utils/normalizeProductName";
 
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
@@ -58,6 +59,7 @@ const initialState: InitialGraphStateI = {
   chainSessions: {},
   stepChainSessions: {},
   sourcesPool: {},
+  needsFreshSources: {},
   acceptedStepAlternatives: {},
   presentationColors: {},
 };
@@ -65,12 +67,7 @@ const initialState: InitialGraphStateI = {
 export const sourcesPoolKey = (
   productName: string,
   direction: "up" | "down",
-) =>
-  `${productName
-    .toLowerCase()
-    .replace(/ё/g, "е")
-    .trim()
-    .replace(/\s+/g, " ")}::${direction}`;
+) => `${normalizeProductName(productName)}::${direction}`;
 
 const gptSlice = createSlice({
   name: "graph",
@@ -350,7 +347,31 @@ const gptSlice = createSlice({
         anchorY: anchor.position.y,
         stepNumber,
         existingNodes: state.data.nodes,
+        existingEdges: state.data.edges,
       });
+
+      // Тупик: шаг свёлся бы только к петле(ям) на предка → граф НЕ трогаем,
+      // помечаем продукт «нужны свежие источники» (тот же канал, что и
+      // серверный insufficientProducts) и закрываем превью.
+      if (stepRecord.isDeadEnd) {
+        const deadEndLabel =
+          anchor.data?.label ||
+          (anchor as unknown as { label?: string }).label ||
+          "";
+        if (deadEndLabel) {
+          state.needsFreshSources[
+            sourcesPoolKey(deadEndLabel, session.direction)
+          ] = {
+            fromProduct: deadEndLabel,
+            reason: "cycle",
+            loopOn: stepRecord.cycleProductNames ?? [],
+          };
+        }
+        session.pendingStep = null;
+        session.status = "idle";
+        session.accumulatedSources = [];
+        return;
+      }
 
       // Add nodes (dedup by id)
       const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
@@ -384,36 +405,44 @@ const gptSlice = createSlice({
       if (anchorLabel) {
         const anchorPoolKey = sourcesPoolKey(anchorLabel, session.direction);
         const anchorPool = state.sourcesPool[anchorPoolKey];
-        if (anchorPool && anchorPool.sources.length > 0) {
-          const insufficient = new Set(
-            (session.insufficientProducts ?? []).map((p: string) =>
-              p.toLowerCase().replace(/ё/g, "е").trim(),
-            ),
-          );
-          const allNewNodeIds = [
-            ...stepRecord.newProductNodeIds,
-            ...stepRecord.mergedProductNodeIds,
-          ];
-          for (const nid of allNewNodeIds) {
-            const newNode = state.data.nodes.find((n) => n.id === nid);
-            const newLabel =
-              newNode?.data?.label ||
-              (newNode as unknown as { label?: string })?.label ||
-              "";
-            if (!newLabel) continue;
-            const normalized = newLabel
-              .toLowerCase()
-              .replace(/ё/g, "е")
-              .trim();
-            if (insufficient.has(normalized)) continue;
-            const newKey = sourcesPoolKey(newLabel, session.direction);
-            if (!state.sourcesPool[newKey]) {
-              state.sourcesPool[newKey] = {
-                sources: [...anchorPool.sources],
-                product: newLabel,
-                lastFetchedAt: new Date().toISOString(),
-              };
-            }
+        const insufficient = new Set(
+          (session.insufficientProducts ?? []).map((p: string) =>
+            normalizeProductName(p),
+          ),
+        );
+        const allNewNodeIds = [
+          ...stepRecord.newProductNodeIds,
+          ...stepRecord.mergedProductNodeIds,
+        ];
+        for (const nid of allNewNodeIds) {
+          const newNode = state.data.nodes.find((n) => n.id === nid);
+          const newLabel =
+            newNode?.data?.label ||
+            (newNode as unknown as { label?: string })?.label ||
+            "";
+          if (!newLabel) continue;
+          const normalized = normalizeProductName(newLabel);
+          const newKey = sourcesPoolKey(newLabel, session.direction);
+          if (insufficient.has(normalized)) {
+            // Сервер на build родителя пометил: источников для этого ребёнка
+            // не хватает. Пул не наследуем + ставим маркер, чтобы панель
+            // ребёнка показала плашку «нужен свежий поиск».
+            state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
+            continue;
+          }
+          if (
+            anchorPool &&
+            anchorPool.sources.length > 0 &&
+            !state.sourcesPool[newKey]
+          ) {
+            state.sourcesPool[newKey] = {
+              sources: [...anchorPool.sources],
+              product: newLabel,
+              // Источники взяты «взаймы» — сохраняем истинное происхождение
+              // (исходный продукт-предок, а не ребёнка).
+              originProduct: anchorPool.originProduct ?? anchorLabel,
+              lastFetchedAt: new Date().toISOString(),
+            };
           }
         }
       }
@@ -433,6 +462,15 @@ const gptSlice = createSlice({
       if (!session) return;
       session.pendingStep = null;
       session.status = "idle";
+    },
+
+    // Принудительно открыть превью шага, построенного при insufficient
+    // (конечный/рециклинговый продукт): пользователь решает сам — принять,
+    // отфильтровать или отклонить через штатную модалку.
+    forceStepPreview: (state, action: PayloadAction<string>) => {
+      const session = state.stepChainSessions[action.payload];
+      if (!session || !session.pendingStep) return;
+      session.status = "preview";
     },
 
     undoLastStep: (state, action: PayloadAction<string>) => {
@@ -485,8 +523,12 @@ const gptSlice = createSlice({
       state.sourcesPool[key] = {
         sources: [...sources],
         product: state.sourcesPool[key]?.product || productName,
+        // Свежий поиск — источники «родные» для этого продукта.
+        originProduct: productName,
         lastFetchedAt: new Date().toISOString(),
       };
+      // Свежий поиск снимает маркер «нужны свежие источники».
+      delete state.needsFreshSources[key];
     },
 
     clearSourcesPool: (
@@ -501,6 +543,7 @@ const gptSlice = createSlice({
         action.payload.direction,
       );
       delete state.sourcesPool[key];
+      delete state.needsFreshSources[key];
     },
 
     createStepAlternativeNodes: (
@@ -1155,22 +1198,18 @@ const gptSlice = createSlice({
         }
       })
       .addCase(buildStep.fulfilled, (state, action) => {
-        const { sessionKey, step, sourcesStatus, insufficientProducts } =
-          action.payload;
+        const { sessionKey, step, insufficientProducts } = action.payload;
         const session = state.stepChainSessions[sessionKey];
         if (!session) return;
 
+        // Шаг родителя ВСЕГДА валиден (он построил детей) — показываем превью,
+        // не блокируем. insufficientProducts здесь — это ДЕТИ без forward-
+        // источников: используются в acceptPendingStep для маркеров «нужны
+        // свежие источники», но построение шага родителя не блокируют.
         session.pendingStep = step;
-
-        if (sourcesStatus === "insufficient") {
-          session.status = "needs-sources";
-          session.insufficientProducts = insufficientProducts;
-          return;
-        }
-
+        session.insufficientProducts = insufficientProducts;
         session.status = "preview";
         session.error = null;
-        session.insufficientProducts = [];
       })
       .addCase(buildStep.rejected, (state, action) => {
         const session = state.stepChainSessions[action.meta.arg.sessionKey];
@@ -1185,6 +1224,7 @@ const gptSlice = createSlice({
 
 export const {
   updateNodeData,
+  forceStepPreview,
   onNodesChange,
   onEdgesChange,
   onConnect,

@@ -32,6 +32,8 @@ export interface DirectionTabProps {
   hasAggregated?: boolean;
   aggregatedDescription?: string | null;
   onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  /** Правка обобщённого описания шага (step-by-step flow). */
+  onChangeStepAggregatedText?: (text: string) => void;
 
   productName?: string;
 
@@ -77,6 +79,16 @@ export interface DirectionTabProps {
   stepSources?: TechnologySource[];
   stepSourcesStatus?: Status;
   stepSourcesError?: string | null;
+  /** Если источники текущего продукта унаследованы — имя продукта-источника (иначе null). */
+  stepSourcesOrigin?: string | null;
+  /** Источники закончились — повторный поиск не дал новых сверх уже найденных. */
+  stepSourcesExhausted?: boolean;
+  /** Маркер с build родителя: источников для этого продукта не хватает — нужен свежий поиск. */
+  stepNeedsFreshSources?: {
+    fromProduct: string;
+    reason?: "insufficient" | "cycle";
+    loopOn?: string[];
+  } | null;
 
   stepAggregatedText?: string | null;
   stepAggregateStatus?: Status;
@@ -87,11 +99,15 @@ export interface DirectionTabProps {
   stepBuildResult?: TechChain | null;
   stepBuildStatus?: Status;
   stepBuildError?: string | null;
+  /** Шаг уже построен из текущего обобщения — кнопка «Построить шаг» скрыта до переобобщения. */
+  stepBuiltFromAggregate?: boolean;
 
   onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
   onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
   onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
   onClearStepState?: () => void;
+  /** Открыть превью шага, построенного при insufficient («построить всё равно»). */
+  onForceStepPreview?: () => void;
 
   // --- alternative node (step-by-step flow) ---
   isAlternativeNode?: boolean;
@@ -105,6 +121,7 @@ export interface FlowPanelProps {
   onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
   descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onFieldBlur?: () => void; // Сохранение при потере фокуса поля имени/описания
 
   nodeId?: string | null;
   nodeType?: string;

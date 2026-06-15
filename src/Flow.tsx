@@ -35,6 +35,7 @@ import {
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
+import { Notification } from "./components/notification";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
@@ -52,6 +53,7 @@ import {
   setBuildMode,
   clearStepState,
   resetStepBuild,
+  setStepAggregatedText,
 } from "./store/slices/sourcesSlice";
 import { buildChainLevel1, expandNextInQueue } from "./store/api/graph-api";
 import { fetchProductCard } from "./store/api/product-card-api";
@@ -64,8 +66,10 @@ import {
   initStepChainSession,
   acceptPendingStep,
   rejectPendingStep,
+  forceStepPreview,
   undoLastStep,
   setStepChainContinueProduct,
+  sourcesPoolKey,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
 import { parseAlternatives } from "./utils/parseAlternatives";
@@ -190,6 +194,29 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
+  // Всплывающая подсказка о сохранении
+  const [isSavedToastVisible, setIsSavedToastVisible] = useState(false);
+  const savedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showSavedNotification = useCallback(() => {
+    setIsSavedToastVisible(true);
+    if (savedToastTimerRef.current) {
+      clearTimeout(savedToastTimerRef.current);
+    }
+    savedToastTimerRef.current = setTimeout(() => {
+      setIsSavedToastVisible(false);
+    }, 2000);
+  }, []);
+
+  // Очистка таймера подсказки при размонтировании
+  useEffect(() => {
+    return () => {
+      if (savedToastTimerRef.current) {
+        clearTimeout(savedToastTimerRef.current);
+      }
+    };
+  }, []);
+
   // Подсветка цепочки по hover — только для графов, загруженных через
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
   // выделяются он сам, все предки и потомки + рёбра между ними; остальное
@@ -242,14 +269,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     (s) => s.graph.stepChainSessions,
   );
   const sourcesPool = useAppSelector((s) => s.graph.sourcesPool);
+  const needsFreshSources = useAppSelector((s) => s.graph.needsFreshSources);
   const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
     `step::${nodeId}::${dir}`;
-  const poolKey = (productName: string, dir: BuildDirection) =>
-    `${productName
-      .toLowerCase()
-      .replace(/ё/g, "е")
-      .trim()
-      .replace(/\s+/g, " ")}::${dir}`;
+  // Ключ пула ОБЯЗАН совпадать с sourcesPoolKey (запись пула в gptSlice).
+  // Локальная копия со слабой нормализацией расходилась с записью на именах
+  // с дефисами («Олефин-богатый…») — источники «не клались» в продукт.
+  const poolKey = sourcesPoolKey;
 
   // Flow.tsx
   const flowNodes = useMemo(
@@ -571,28 +597,55 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     }
   }, [deleteConfirmNodeId, selectedNodeId, dispatch]);
 
-  // Закрытие панели с сохранением изменений
-  const closePanel = useCallback(() => {
-    if (selectedNodeId) {
-      const updatedData: { label?: string; description?: string } = {};
+  // Сохранение изменённых полей узла (имя/описание).
+  // Возвращает true, если что-то действительно было сохранено.
+  const saveChanges = useCallback(() => {
+    if (!selectedNodeId) return false;
 
-      if (tempNodeLabel !== initialLabel) {
-        updatedData.label = tempNodeLabel;
-      }
+    const updatedData: { label?: string; description?: string } = {};
 
-      if (tempNodeDescription !== initialDescription) {
-        updatedData.description = tempNodeDescription;
-      }
-
-      if (Object.keys(updatedData).length > 0) {
-        dispatch(
-          updateNodeData({
-            nodeId: selectedNodeId,
-            data: updatedData,
-          }),
-        );
-      }
+    if (tempNodeLabel !== initialLabel) {
+      updatedData.label = tempNodeLabel;
     }
+
+    if (tempNodeDescription !== initialDescription) {
+      updatedData.description = tempNodeDescription;
+    }
+
+    if (Object.keys(updatedData).length === 0) return false;
+
+    dispatch(
+      updateNodeData({
+        nodeId: selectedNodeId,
+        data: updatedData,
+      }),
+    );
+
+    // Обновляем "исходные" значения, чтобы повторный blur/закрытие
+    // не сохраняли одно и то же ещё раз.
+    setInitialLabel(tempNodeLabel);
+    setInitialDescription(tempNodeDescription);
+
+    return true;
+  }, [
+    selectedNodeId,
+    tempNodeLabel,
+    tempNodeDescription,
+    initialLabel,
+    initialDescription,
+    dispatch,
+  ]);
+
+  // Сохранение при потере фокуса поля имени/описания + всплывающая подсказка
+  const handleFieldBlur = useCallback(() => {
+    if (saveChanges()) {
+      showSavedNotification();
+    }
+  }, [saveChanges, showSavedNotification]);
+
+  // Закрытие панели с сохранением изменений (на случай, если blur не сработал)
+  const closePanel = useCallback(() => {
+    saveChanges();
 
     setIsPanelOpen(false);
     setPanelMode({ type: "card" });
@@ -603,14 +656,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setInitialLabel("");
       setInitialDescription("");
     }, 300);
-  }, [
-    selectedNodeId,
-    tempNodeLabel,
-    tempNodeDescription,
-    initialLabel,
-    initialDescription,
-    dispatch,
-  ]);
+  }, [saveChanges]);
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
@@ -957,6 +1003,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     ],
   );
 
+  // Достаточный ребёнок: источники унаследованы от родителя → обобщаем их и
+  // СРАЗУ строим шаг (без ручного поиска/обобщения). Решение «достаточно»
+  // принято на build родителя; запрос на обобщение идёт только сейчас.
   const handleClearStepState = useCallback(
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
@@ -1111,6 +1160,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             }),
           );
         },
+        onChangeStepAggregatedText: (text) => {
+          if (!selectedNodeId) return;
+          dispatch(
+            setStepAggregatedText({
+              nodeId: selectedNodeId,
+              direction,
+              text,
+            }),
+          );
+        },
 
         productName: String(selectedNode.data?.label || "").trim(),
 
@@ -1146,6 +1205,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         onAcceptStep: handleAcceptStep(direction),
         onRejectStep: () => dispatch(rejectPendingStep(sKeyStep)),
+        onForceStepPreview: () => dispatch(forceStepPreview(sKeyStep)),
         onRetryStep: handleBuildStep(direction),
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
@@ -1163,12 +1223,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // --- step v2 flow (sources from graph-level pool) ---
         // Always read pool for the panel's own product — panel actions target
         // the selected node, not the chain tip.
-        stepSources:
-          sourcesPool[
+        stepSources: (() => {
+          const lbl = String(selectedNode.data?.label ?? "");
+          const poolSrcs = sourcesPool[poolKey(lbl, direction)]?.sources;
+          // Fallback на резервное хранилище по nodeId (sourcesSlice) — на
+          // случай рассинхрона ключа пула.
+          return poolSrcs?.length ? poolSrcs : (sliceState?.sources ?? []);
+        })(),
+        stepSourcesOrigin: (() => {
+          const lbl = String(selectedNode.data?.label ?? "");
+          const entry = sourcesPool[poolKey(lbl, direction)];
+          return entry?.originProduct &&
+            poolKey(entry.originProduct, direction) !== poolKey(lbl, direction)
+            ? entry.originProduct
+            : null;
+        })(),
+        stepNeedsFreshSources:
+          needsFreshSources[
             poolKey(String(selectedNode.data?.label ?? ""), direction)
-          ]?.sources ?? [],
+          ] ?? null,
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
+        stepSourcesExhausted: sliceState?.stepSourcesExhausted ?? false,
 
         stepAggregatedText: sliceState?.stepAggregatedText ?? null,
         stepAggregateStatus: sliceState?.stepAggregateStatus ?? "idle",
@@ -1179,6 +1255,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         stepBuildResult: sliceState?.stepBuildResult ?? null,
         stepBuildStatus: sliceState?.stepBuildStatus ?? "idle",
         stepBuildError: sliceState?.stepBuildError ?? null,
+        stepBuiltFromAggregate: sliceState?.stepBuiltFromAggregate ?? false,
 
         onFetchStepSources: handleFetchStepSourcesV2(direction),
         onAggregateStepSources: handleAggregateStepSources(direction),
@@ -1303,6 +1380,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       chainSessions,
       chainBuild,
       sourcesPool,
+      needsFreshSources,
       handleFindSources,
       handleAggregateSources,
       handleInitChain,
@@ -1526,6 +1604,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onChangeValue={handleNodeNameChange}
         descriptionValue={tempNodeDescription}
         onChangeDescription={handleNodeDescriptionChange}
+        onFieldBlur={handleFieldBlur}
         nodeType={selectedNode?.type}
         transformationSources={
           selectedNode?.data?.transformationSources as string[] | undefined
@@ -1542,6 +1621,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }
         readOnly={sharedView}
       />
+
+      <Notification
+        message="Изменения сохранены"
+        isVisible={isSavedToastVisible}
+      />
+
       {deleteConfirmNodeId && (
         <ConfirmDeleteModal
           nodeName={
