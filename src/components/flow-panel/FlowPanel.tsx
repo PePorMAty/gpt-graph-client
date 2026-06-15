@@ -660,6 +660,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onChangeValue,
   descriptionValue,
   onChangeDescription,
+  onFieldBlur,
 
   nodeType,
   transformationSources,
@@ -839,6 +840,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             <input
               value={value}
               onChange={onChangeValue}
+              onBlur={onFieldBlur}
               className={styles.formInput}
               placeholder="Введите название узла"
               readOnly={readOnly}
@@ -860,6 +862,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 <textarea
                   value={descriptionValue}
                   onChange={onChangeDescription}
+                  onBlur={onFieldBlur}
                   className={styles.formTextarea}
                   placeholder="Введите описание узла"
                   rows={4}

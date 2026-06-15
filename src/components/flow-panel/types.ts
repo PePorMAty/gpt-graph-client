@@ -119,6 +119,7 @@ export interface FlowPanelProps {
   onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
   descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onFieldBlur?: () => void; // Сохранение при потере фокуса поля имени/описания
 
   nodeId?: string | null;
   nodeType?: string;
