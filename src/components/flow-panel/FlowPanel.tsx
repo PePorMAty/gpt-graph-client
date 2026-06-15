@@ -62,6 +62,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepSources,
   stepSourcesStatus,
   stepSourcesError,
+  stepSourcesOrigin,
+  stepSourcesExhausted,
+  stepNeedsFreshSources,
   stepAggregatedText,
   stepAggregateStatus,
   stepAggregateError,
@@ -70,11 +73,13 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepBuildResult,
   stepBuildStatus,
   stepBuildError,
+  stepBuiltFromAggregate,
   pendingStep,
   onFetchStepSources,
   onAggregateStepSources,
   onBuildStep,
   onClearStepState,
+  onForceStepPreview,
   onAcceptStep,
   onRejectStep,
   onRetryStep,
@@ -197,6 +202,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepSources={stepSources}
           stepSourcesStatus={stepSourcesStatus}
           stepSourcesError={stepSourcesError}
+          stepSourcesOrigin={stepSourcesOrigin}
+          stepSourcesExhausted={stepSourcesExhausted}
+          stepNeedsFreshSources={stepNeedsFreshSources}
           stepAggregatedText={stepAggregatedText}
           stepAggregateStatus={stepAggregateStatus}
           stepAggregateError={stepAggregateError}
@@ -205,11 +213,13 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepBuildResult={stepBuildResult}
           stepBuildStatus={stepBuildStatus}
           stepBuildError={stepBuildError}
+          stepBuiltFromAggregate={stepBuiltFromAggregate}
           pendingStep={pendingStep}
           onFetchStepSources={onFetchStepSources}
           onAggregateStepSources={onAggregateStepSources}
           onBuildStep={onBuildStep}
           onClearStepState={onClearStepState}
+          onForceStepPreview={onForceStepPreview}
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
           onRetryStep={onRetryStep}

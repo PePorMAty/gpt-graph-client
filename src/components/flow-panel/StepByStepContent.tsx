@@ -21,6 +21,10 @@ type StepByStepContentProps = Pick<
   | "stepSources"
   | "stepSourcesStatus"
   | "stepSourcesError"
+  | "stepSourcesOrigin"
+  | "stepSourcesExhausted"
+  | "stepNeedsFreshSources"
+  | "onForceStepPreview"
   | "stepAggregatedText"
   | "stepAggregateStatus"
   | "stepAggregateError"
@@ -33,6 +37,7 @@ type StepByStepContentProps = Pick<
   | "onFetchStepSources"
   | "onAggregateStepSources"
   | "onBuildStep"
+  | "stepBuiltFromAggregate"
   | "onClearStepState"
   | "onAcceptStep"
   | "onRejectStep"
@@ -53,6 +58,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepSources = [],
   stepSourcesStatus = "idle",
   stepSourcesError,
+  stepSourcesOrigin,
+  stepSourcesExhausted = false,
+  stepNeedsFreshSources = null,
   stepAggregatedText,
   stepAggregateStatus = "idle",
   stepAggregateError,
@@ -62,10 +70,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepBuildError,
   pendingStep,
 
+  stepBuiltFromAggregate = false,
+
   onFetchStepSources,
   onAggregateStepSources,
   onBuildStep,
   onClearStepState,
+  onForceStepPreview,
   onAcceptStep,
   onRejectStep,
   onRetryStep,
@@ -75,13 +86,24 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 }) => {
   const productName = stepChainCurrentProductLabel || "";
   const hasSources = stepSources.length > 0;
+  // Маркер «нужны свежие источники» делает текущие (часто унаследованные)
+  // источники непригодными: ведём ТОЛЬКО к поиску свежих, как при их отсутствии.
+  // Прячем наследование/ручную сборку/список/сброс, чтобы не было противоречия
+  // «источников не хватает, но вот кнопка Построить шаг».
+  const sourcesUsable = hasSources && !stepNeedsFreshSources;
+  // Тупиковый/рециклинговый продукт: продолжение замыкает петлю И повторный
+  // поиск исчерпан — звать «искать свежие» бессмысленно, честно говорим о тупике.
+  const isTerminalRecycle =
+    stepNeedsFreshSources?.reason === "cycle" && stepSourcesExhausted;
+  const isBorrowedSources = !!stepSourcesOrigin;
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
-  const showPreview = !!pendingStep && stepBuildStatus === "succeeded";
+  const showPreview =
+    !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
 
   // ── Sources prompt state ──
   const [maxItems, setMaxItems] = useState(5);
@@ -267,9 +289,53 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
 
-      {/* Stage 1: fetch sources button (when no sources yet) */}
-      {!hasSources && (
+      {/* Маркер с build родителя: этому продукту нужны свежие источники */}
+      {stepNeedsFreshSources && (
+        <div className={styles.warningText}>
+          {stepNeedsFreshSources.reason === "cycle" ? (
+            isTerminalRecycle ? (
+              <>
+                По текущим источникам новый передел для «{productName}» не
+                найден — шаг лишь возвращается
+                {stepNeedsFreshSources.loopOn &&
+                stepNeedsFreshSources.loopOn.length > 0
+                  ? ` к «${stepNeedsFreshSources.loopOn.join(", ")}»`
+                  : " к уже существующему продукту"}
+                . Поищите источники о том, что производят ИЗ «{productName}»,
+                либо стройте цепочку в другом направлении.
+              </>
+            ) : (
+              <>
+                Следующий шаг от «{productName}» по текущим источникам только
+                замкнул бы петлю
+                {stepNeedsFreshSources.loopOn &&
+                stepNeedsFreshSources.loopOn.length > 0
+                  ? ` на «${stepNeedsFreshSources.loopOn.join(", ")}»`
+                  : ""}{" "}
+                — соединение не создано. Найдите свежие источники, чтобы
+                продолжить в новом направлении.
+              </>
+            )
+          ) : (
+            <>
+              По результатам построения шага от «
+              {stepNeedsFreshSources.fromProduct}» источников для «{productName}»
+              не хватает — найдите свежие источники.
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Stage 1: поиск источников — когда их нет ИЛИ нужны свежие (маркер) */}
+      {!sourcesUsable && (
         <>
+          {stepSourcesExhausted && !isTerminalRecycle && (
+            <div className={styles.warningText}>
+              Источники для «{productName}» закончились — поиск не дал
+              результатов. Можно попробовать ещё раз, изменить промпт поиска или
+              строить шаг в другом направлении.
+            </div>
+          )}
           <div className={styles.maxItemsRow}>
             <label className={styles.formLabel}>Количество источников:</label>
             <input
@@ -328,7 +394,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
-              <span>Поиск источников для «{productName}»...</span>
+              <span>
+                Поиск источников для «{productName}»… Может занять несколько
+                минут — не перезагружайте страницу.
+              </span>
             </div>
           )}
           <button
@@ -341,7 +410,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               ? "Поиск..."
               : isSrcPromptDirty
                 ? "Найти источники (свой промпт)"
-                : "Найти источники (шаг)"}
+                : isTerminalRecycle
+                  ? "Всё равно искать источники заново"
+                  : stepNeedsFreshSources
+                    ? "Найти свежие источники"
+                    : "Найти источники (шаг)"}
           </button>
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
@@ -349,8 +422,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Aggregate / re-fetch buttons — only when sources exist and aggregate not yet */}
-      {hasSources && !hasValidAggregate && !stepNeedsSources && (
+      {/* Источники есть (унаследованные ИЛИ найденные сами) → ручное обобщение,
+          затем ручное построение. Унаследованные обобщаем сразу, без поиска. */}
+      {sourcesUsable && !hasValidAggregate && !stepNeedsSources && (
         <>
           {/* Aggregate prompt editor */}
           <button
@@ -429,13 +503,21 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Stage: needs more sources */}
       {stepNeedsSources && (
         <>
-          <div className={styles.warningText}>
-            Недостаточно источников
-            {stepInsufficientProducts && stepInsufficientProducts.length > 0
-              ? ` для: ${stepInsufficientProducts.join(", ")}`
-              : ""}
-            .
-          </div>
+          {stepInsufficientProducts && stepInsufficientProducts.length > 0 ? (
+            <div className={styles.warningText}>
+              Источников для «{stepInsufficientProducts.join(", ")}» не хватило,
+              чтобы построить новый шаг — нужно добрать свежие источники (кнопка
+              ниже).
+            </div>
+          ) : (
+            <div className={styles.warningText}>
+              Модель не собрала шаг из текущих источников и не указала, каким
+              продуктам их не хватает.{" "}
+              {stepSourcesExhausted
+                ? "Новых источников найти не удалось — попробуйте изменить промпт обобщения или строить в другом направлении."
+                : "Попробуйте добор источников или измените промпт обобщения."}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleFetchSources}
@@ -450,7 +532,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {/* Stage: aggregated ready → build */}
-      {hasValidAggregate && (
+      {sourcesUsable && hasValidAggregate && (
         <>
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>
@@ -509,18 +591,26 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               <span>Построение шага...</span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => handleBuild()}
-            disabled={buildLoading || isBuildPromptEmpty}
-            className={styles.findSourcesButton}
-          >
-            {buildLoading
-              ? "Построение..."
-              : isBuildPromptDirty
-                ? "Построить шаг (свой промпт)"
-                : "Построить шаг"}
-          </button>
+          {sourcesUsable &&
+            (stepBuiltFromAggregate ? (
+              <div className={styles.warningText}>
+                Шаг из этого обобщения уже построен. Чтобы построить ещё раз —
+                переобобщите (или найдите источники заново и обобщите).
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleBuild()}
+                disabled={buildLoading || isBuildPromptEmpty}
+                className={styles.findSourcesButton}
+              >
+                {buildLoading
+                  ? "Построение..."
+                  : isBuildPromptDirty
+                    ? "Построить шаг (свой промпт)"
+                    : "Построить шаг"}
+              </button>
+            ))}
           <button
             type="button"
             onClick={handleAggregate}
@@ -549,19 +639,53 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {buildNeedsSources &&
         stepChainInsufficientProducts &&
         stepChainInsufficientProducts.length > 0 && (
-          <div className={styles.warningText}>
-            Для продолжения цепочки нужны дополнительные источники
-            {` для: ${stepChainInsufficientProducts.join(", ")}`}. Откройте
-            панель этих продуктов и выполните поиск источников.
-          </div>
+          <>
+            <div className={styles.warningText}>
+              Источников не хватило для нового шага
+              {` (${stepChainInsufficientProducts.join(", ")})`}. Добери свежие
+              источники — либо, если это конечный продукт, построй шаг всё равно.
+            </div>
+            <button
+              type="button"
+              onClick={handleFetchSources}
+              disabled={sourcesLoading}
+              className={styles.findSourcesButton}
+            >
+              {sourcesLoading
+                ? "Поиск..."
+                : `Найти свежие источники для «${productName}»`}
+            </button>
+            {pendingStep && (
+              <button
+                type="button"
+                onClick={() => onForceStepPreview?.()}
+                className={styles.findSourcesButton}
+                style={{ marginTop: 4 }}
+              >
+                Построить шаг всё равно
+              </button>
+            )}
+          </>
         )}
 
-      {/* Sources list — always visible BELOW description when any sources exist */}
-      {hasSources && (
+      {/* Список источников — скрыт при маркере «нужны свежие» (показывать
+          непригодные/унаследованные источники незачем — ведём к поиску). */}
+      {sourcesUsable && (
         <div className={styles.sourcesBox}>
           <div className={styles.sourcesTitle}>
             Источники ({stepSources.length})
           </div>
+          {isBorrowedSources && (
+            <div className={styles.warningText}>
+              Источники взяты у «{stepSourcesOrigin}».
+            </div>
+          )}
+          {stepSourcesExhausted && (
+            <div className={styles.warningText}>
+              Источники закончились — повторный поиск не дал новых сверх уже
+              найденных.
+            </div>
+          )}
           {stepSources.map((s) => (
             <details key={s.url} className={styles.sourceItem}>
               <summary className={styles.sourceSummary}>
@@ -586,7 +710,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {/* Reset */}
-      {(hasSources || hasValidAggregate) && (
+      {(sourcesUsable || hasValidAggregate) && (
         <button
           type="button"
           onClick={onClearStepState}

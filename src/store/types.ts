@@ -30,6 +30,23 @@ export interface InitialGraphStateI {
   chainSessions: Record<string, ChainSessionData>;
   stepChainSessions: Record<string, StepChainSession>;
   sourcesPool: Record<string, SourcesPoolEntry>;
+  /**
+   * Продукты, которым по оценке на build РОДИТЕЛЯ не хватило источников для
+   * следующего шага. Ключ — sourcesPoolKey(label, direction); fromProduct —
+   * родитель, при построении от которого продукт был помечен. Маркер
+   * снимается свежим поиском источников для этого продукта.
+   */
+  needsFreshSources: Record<
+    string,
+    {
+      fromProduct: string;
+      // 'insufficient' — сервер на build родителя счёл источники недостаточными;
+      // 'cycle' — следующий шаг по текущим источникам только замыкает петлю.
+      reason?: "insufficient" | "cycle";
+      // Продукты-предки, на которые замкнулась бы петля (для текста плашки).
+      loopOn?: string[];
+    }
+  >;
   acceptedStepAlternatives: Record<string, number[]>;
   /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
   presentationColors: Record<string, string>;
@@ -38,6 +55,13 @@ export interface InitialGraphStateI {
 export interface SourcesPoolEntry {
   sources: TechnologySource[];
   product: string;
+  /**
+   * Продукт, для которого источники были РЕАЛЬНО найдены (происхождение).
+   * Для свежего поиска совпадает с `product`. При наследовании пула потомку
+   * сохраняет исходный продукт-источник — чтобы видеть, что источники взяты
+   * «взаймы» у предка, и при необходимости делать добор именно для потомка.
+   */
+  originProduct?: string;
   lastFetchedAt: string;
 }
 
@@ -125,6 +149,8 @@ export type SourcesSearchResponse = {
   maxItems: number;
   blocks_preview: string[];
   sources: TechnologySource[];
+  /** true — поиск не дал источников сверх уже известных (источники закончились). */
+  exhausted?: boolean;
 };
 /* 
 export type ProductCard = {
@@ -252,6 +278,10 @@ export interface StepRecord {
   newProductNodeIds: string[];
   mergedProductNodeIds: string[];
   addedEdgeIds: string[];
+  // Выходы, которые замкнули бы петлю на предка — НЕ нарисованы (см. stepToFlow).
+  cycleProductNames?: string[];
+  // Тупик: после исключения петель соединять нечего, граф не менялся.
+  isDeadEnd?: boolean;
 }
 
 export type StepChainStatus =

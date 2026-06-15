@@ -13,7 +13,9 @@ import type { TechChain } from "../../utils/chainToFlow";
 import {
   addSourcesToPool,
   clearAcceptedStepAlternatives,
+  sourcesPoolKey,
 } from "../slices/gptSlice";
+import { getAncestorProductLabels } from "../../utils/graphReachability";
 
 export const fetchChainStep = createAsyncThunk<
   { sessionKey: string; response: StepChainApiResponse },
@@ -124,6 +126,7 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     sources: TechnologySource[];
     product: string;
     maxItems: number;
+    exhausted: boolean;
   },
   {
     nodeId: string;
@@ -158,6 +161,9 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       );
     }
 
+    const exhausted = !!res.data.exhausted;
+    // Явный поиск ВСЕГДА присваивает источники продукту (делает их «родными»),
+    // даже если нового не нашлось — иначе свежие источники «не кладутся» в продукт.
     thunkApi.dispatch(
       addSourcesToPool({
         productName: args.productName,
@@ -165,6 +171,42 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         sources: res.data.sources ?? [],
       }),
     );
+    if (exhausted) {
+      // #4: источники повторяются (добор не дал нового) → не ждём ручного клика
+      // «Обобщить». НО не зацикливаемся (см. blocked ниже).
+      const graph = thunkApi.getState().graph;
+      const srcState =
+        thunkApi.getState().sources.byNodeId[
+          `${args.nodeId}::${args.direction}`
+        ];
+      // Не зацикливаемся: если продукт уже в needs-sources (прошлое обобщение
+      // не сложилось) или обобщение уже идёт — не запускаем авто-ретрай
+      // тяжёлого вызова (иначе петля и «зависание»).
+      const blocked =
+        srcState?.stepAggregateStatus === "loading" ||
+        !!srcState?.stepNeedsSources;
+      const poolSources =
+        graph.sourcesPool[sourcesPoolKey(args.productName, args.direction)]
+          ?.sources ?? [];
+      if (poolSources.length && !blocked) {
+        const node = graph.data.nodes.find((n) => n.id === args.nodeId);
+        const nodeData = (node?.data ?? {}) as Record<string, unknown>;
+        const descField =
+          args.direction === "up" ? "upDescription" : "downDescription";
+        const existingChain = String(
+          nodeData[descField] ?? nodeData.description ?? "",
+        ).trim();
+        thunkApi.dispatch(
+          aggregateStepSources({
+            nodeId: args.nodeId,
+            productName: args.productName,
+            direction: args.direction,
+            sources: poolSources,
+            existingChain,
+          }),
+        );
+      }
+    }
 
     return {
       nodeId: args.nodeId,
@@ -172,6 +214,7 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       sources: res.data.sources,
       product: res.data.product,
       maxItems: res.data.maxItems,
+      exhausted,
     };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
@@ -222,6 +265,23 @@ export const aggregateStepSources = createAsyncThunk<
       .map((n) => String(n.data?.label || "").trim())
       .filter(Boolean);
 
+    // Родословная раскрываемого продукта (предки по цепочке + он сам) — чтобы
+    // обобщение НЕ выбрало следующим продуктом предка (это замкнуло бы петлю).
+    const ancestorProducts = Array.from(
+      new Set(
+        [
+          args.productName,
+          ...getAncestorProductLabels(
+            args.nodeId,
+            state.data.nodes,
+            state.data.edges,
+          ),
+        ]
+          .map((s) => String(s || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
     const res = await axios.post<StepAggregateApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/step/aggregate`,
       {
@@ -230,6 +290,7 @@ export const aggregateStepSources = createAsyncThunk<
         sources: args.sources,
         existingChain: args.existingChain,
         existingProducts,
+        ancestorProducts,
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
@@ -323,6 +384,25 @@ export const buildStep = createAsyncThunk<
       .map((n) => String(n.data?.label || "").trim())
       .filter(Boolean);
 
+    // Родословная раскрываемого продукта (предки по цепочке + он сам). Сервер
+    // использует её в проверке достаточности: следующий передел нового ребёнка
+    // не должен вести ОБРАТНО к предку (иначе это замкнёт цикл, и ребёнку нужны
+    // свежие источники для НОВОГО направления).
+    const ancestorProducts = Array.from(
+      new Set(
+        [
+          args.productName,
+          ...getAncestorProductLabels(
+            args.nodeId,
+            state.data.nodes,
+            state.data.edges,
+          ),
+        ]
+          .map((s) => String(s || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
     const res = await axios.post<StepBuildApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/step/build`,
       {
@@ -330,6 +410,7 @@ export const buildStep = createAsyncThunk<
         direction: args.direction,
         techText: args.techText,
         existingProducts,
+        ancestorProducts,
         ...(args.existingSources?.length
           ? { existingSources: args.existingSources }
           : {}),
