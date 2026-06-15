@@ -243,7 +243,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           type="button"
           onClick={() => handleBuild(editedAltDesc)}
           disabled={buildLoading || isBuildPromptEmpty}
-          className={styles.findSourcesButton}
+          className={`${styles.findSourcesButton} ${styles.primaryButton}`}
         >
           {buildLoading
             ? "Построение..."
@@ -602,7 +602,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 type="button"
                 onClick={() => handleBuild()}
                 disabled={buildLoading || isBuildPromptEmpty}
-                className={styles.findSourcesButton}
+                className={`${styles.findSourcesButton} ${styles.primaryButton}`}
               >
                 {buildLoading
                   ? "Построение..."
