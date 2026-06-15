@@ -185,9 +185,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         <div className={styles.sourcesTitle}>
           Альтернатива для: <b>{productName || "—"}</b>
         </div>
-        <div className={styles.sourcesTitle}>
-          Шагов выполнено: <b>{stepChainStepCount}</b>
-        </div>
 
         <div className={styles.formGroup}>
           <label className={styles.formLabel}>Описание альтернативы:</label>
@@ -292,9 +289,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     <div className={styles.formGroup}>
       <div className={styles.sourcesTitle}>
         Текущий продукт: <b>{productName || "—"}</b>
-      </div>
-      <div className={styles.sourcesTitle}>
-        Шагов выполнено: <b>{stepChainStepCount}</b>
       </div>
 
       {/* Маркер с build родителя: этому продукту нужны свежие источники */}
