@@ -192,6 +192,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
+  // Режим просмотра на главной странице: тот же read-only, что и шар-ссылка,
+  // но переключается кнопкой-глазом в тулбаре (без отдельного роута/ссылки).
+  const [viewMode, setViewMode] = useState(false);
+  // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра.
+  const readOnly = sharedView || viewMode;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -637,7 +642,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Удаление выделенных нод клавишей Delete/Backspace (с подтверждением).
   // Игнорируем нажатия в полях ввода, чтобы не удалять ноды при правке текста.
   useEffect(() => {
-    if (sharedView) return;
+    if (readOnly) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const target = e.target as HTMLElement | null;
@@ -656,7 +661,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sharedView, data.nodes]);
+  }, [readOnly, data.nodes]);
 
   // Сохранение изменённых полей узла (имя/описание).
   // Возвращает true, если что-то действительно было сохранено.
@@ -1544,23 +1549,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={sharedView ? undefined : handleConnect}
+        onConnect={readOnly ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={sharedView ? undefined : onNodeContextMenu}
+        onNodeContextMenu={readOnly ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
-        nodesConnectable={!sharedView}
+        nodesConnectable={!readOnly}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
         // Левая кнопка по-прежнему панорамирует полотно (selectionOnDrag=false).
-        selectionKeyCode={sharedView ? null : "Shift"}
-        multiSelectionKeyCode={sharedView ? null : ["Meta", "Control"]}
+        selectionKeyCode={readOnly ? null : "Shift"}
+        multiSelectionKeyCode={readOnly ? null : ["Meta", "Control"]}
         selectionOnDrag={false}
-        onReconnect={sharedView ? undefined : handleReconnect}
-        onReconnectStart={sharedView ? undefined : onReconnectStart}
-        onReconnectEnd={sharedView ? undefined : onReconnectEnd}
+        onReconnect={readOnly ? undefined : handleReconnect}
+        onReconnectStart={readOnly ? undefined : onReconnectStart}
+        onReconnectEnd={readOnly ? undefined : onReconnectEnd}
         // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
@@ -1576,7 +1581,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
-          {!sharedView && (
+          {!readOnly && (
             <>
           <ControlButton
             onClick={handleSaveToLocalStorage}
@@ -1606,7 +1611,33 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
             </svg>
           </ControlButton>
+          {/* Тумблер режима просмотра/редактирования (только на главной, не на шар-странице). */}
           {!sharedView && (
+            <ControlButton
+              onClick={() => setViewMode((v) => !v)}
+              title={viewMode ? "Режим редактирования" : "Режим просмотра"}
+              style={
+                viewMode
+                  ? { backgroundColor: "#2563eb", color: "#fff" }
+                  : undefined
+              }
+            >
+              {viewMode ? (
+                // Открытый глаз — сейчас режим просмотра.
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              ) : (
+                // Перечёркнутый глаз — сейчас режим редактирования.
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <path d="M1 1l22 22" />
+                </svg>
+              )}
+            </ControlButton>
+          )}
+          {!readOnly && (
             <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
@@ -1632,7 +1663,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </Controls>
         <Background />
       </ReactFlow>
-      {sharedView && !isPanelOpen && <GraphLegend />}
+      {readOnly && !isPanelOpen && <GraphLegend />}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
@@ -1696,7 +1727,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         buildDirection={
           panelMode.type === "build" ? panelMode.direction : undefined
         }
-        readOnly={sharedView}
+        readOnly={readOnly}
       />
 
       <Notification
