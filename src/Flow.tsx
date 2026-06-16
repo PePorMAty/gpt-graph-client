@@ -25,7 +25,7 @@ import {
   onConnect,
   onReconnect,
   removeEdge,
-  removeNode,
+  removeNodes,
   addNode,
   setGraphData,
   createStepAlternativeNodes,
@@ -93,9 +93,17 @@ const nodeTypes: NodeTypes = {
 interface FlowProps {
   /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
   sharedView?: boolean;
+  /** Режим просмотра на главной странице (управляется извне кнопкой-глазом). */
+  viewMode?: boolean;
+  /** Переключение режима просмотра/редактирования на главной странице. */
+  onToggleViewMode?: () => void;
 }
 
-export const Flow = ({ sharedView = false }: FlowProps = {}) => {
+export const Flow = ({
+  sharedView = false,
+  viewMode = false,
+  onToggleViewMode,
+}: FlowProps = {}) => {
   const dispatch = useAppDispatch();
   const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
     (store) => store.graph,
@@ -161,6 +169,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
+  // При входе/выходе из режима просмотра размер холста меняется (разворот на
+  // весь экран и обратно) — переавтоцентрируем граф. Первый рендер пропускаем.
+  const viewModeFirstRun = useRef(true);
+  useEffect(() => {
+    if (viewModeFirstRun.current) {
+      viewModeFirstRun.current = false;
+      return;
+    }
+    const id = requestAnimationFrame(() =>
+      fitView({ padding: 0.2, duration: 300 }),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [viewMode, fitView]);
+
   useEffect(() => {
     if (!data.nodes.length) return;
     if (!rootId) return;
@@ -192,6 +214,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
+  // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
+  // (viewMode приходит пропсом и управляется кнопкой-глазом из FullApp).
+  const readOnly = sharedView || viewMode;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -245,7 +270,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [panelMode, setPanelMode] = useState<
     { type: "card" } | { type: "build"; direction: BuildDirection }
   >({ type: "card" });
-  const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(
+  // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
   );
 
@@ -369,7 +395,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   }, [selectedNodeId, isPanelOpen, selectedNode]);
 
   // Обработчик клика по узлу
-  const onNodeClick = useCallback((_: unknown, node: Node) => {
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
+    // панель редактирования — пользователь выделяет несколько нод.
+    if (event.shiftKey || event.ctrlKey || event.metaKey) return;
     setSelectedNodeId(node.id);
     setPanelMode({ type: "card" });
     setIsPanelOpen(true);
@@ -385,13 +414,34 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setHoveredChainId(null);
   }, []);
 
+  // Выделенные узлы (групповое выделение через Shift+рамку / Ctrl+клик).
+  const selectedNodes = useMemo(
+    () => data.nodes.filter((n) => n.selected),
+    [data.nodes],
+  );
+
   // Обработчик правого клика по узлу
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      // Вариант 1: ПКМ по ноде вне текущего выделения сбрасывает выделение
+      // до этой одной ноды, чтобы подсветка совпадала с целью меню.
+      const currentlySelected = data.nodes.filter((n) => n.selected);
+      const isNodeSelected = currentlySelected.some((n) => n.id === node.id);
+      if (!isNodeSelected) {
+        const changes: NodeChange[] = [
+          ...currentlySelected.map((n) => ({
+            id: n.id,
+            type: "select" as const,
+            selected: false,
+          })),
+          { id: node.id, type: "select" as const, selected: true },
+        ];
+        dispatch(onNodesChange(changes));
+      }
       setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
     },
-    [],
+    [data.nodes, dispatch],
   );
 
   // Клик по пустому пространству — закрыть контекстное меню
@@ -412,12 +462,21 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [contextMenu],
   );
 
-  // Из контекстного меню → показать модалку подтверждения удаления
+  // Из контекстного меню → показать модалку подтверждения удаления.
+  // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
+  // всю группу, иначе только одну ноду.
   const handleContextDelete = useCallback(() => {
     if (!contextMenu) return;
-    setDeleteConfirmNodeId(contextMenu.nodeId);
+    const selectedIds = data.nodes
+      .filter((n) => n.selected)
+      .map((n) => n.id);
+    const ids =
+      selectedIds.length > 1 && selectedIds.includes(contextMenu.nodeId)
+        ? selectedIds
+        : [contextMenu.nodeId];
+    setPendingDeleteIds(ids);
     setContextMenu(null);
-  }, [contextMenu]);
+  }, [contextMenu, data.nodes]);
 
   // Из контекстного меню → открыть модалку с подтверждением запроса
   const handleContextFetchTransformations = useCallback(() => {
@@ -572,20 +631,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     ).some((n) => n.role === "outgoing");
   }, [contextMenu, data.nodes, data.edges]);
 
-  // Подтверждение удаления
+  // Подтверждение удаления (одна нода или группа выделенных)
   const handleConfirmDelete = useCallback(() => {
-    if (!deleteConfirmNodeId) return;
+    if (!pendingDeleteIds || pendingDeleteIds.length === 0) return;
 
-    for (const dir of ["down", "up"] as const) {
-      dispatch(
-        clearStepState({ nodeId: deleteConfirmNodeId, direction: dir }),
-      );
+    for (const id of pendingDeleteIds) {
+      for (const dir of ["down", "up"] as const) {
+        dispatch(clearStepState({ nodeId: id, direction: dir }));
+      }
     }
 
-    dispatch(removeNode(deleteConfirmNodeId));
-    setDeleteConfirmNodeId(null);
+    dispatch(removeNodes(pendingDeleteIds));
 
-    if (deleteConfirmNodeId === selectedNodeId) {
+    const removedSelected =
+      selectedNodeId !== null && pendingDeleteIds.includes(selectedNodeId);
+    setPendingDeleteIds(null);
+
+    if (removedSelected) {
       setIsPanelOpen(false);
       setTimeout(() => {
         setSelectedNodeId(null);
@@ -595,7 +657,31 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         setInitialDescription("");
       }, 300);
     }
-  }, [deleteConfirmNodeId, selectedNodeId, dispatch]);
+  }, [pendingDeleteIds, selectedNodeId, dispatch]);
+
+  // Удаление выделенных нод клавишей Delete/Backspace (с подтверждением).
+  // Игнорируем нажатия в полях ввода, чтобы не удалять ноды при правке текста.
+  useEffect(() => {
+    if (readOnly) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const ids = data.nodes.filter((n) => n.selected).map((n) => n.id);
+      if (ids.length === 0) return;
+      e.preventDefault();
+      setPendingDeleteIds(ids);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [readOnly, data.nodes]);
 
   // Сохранение изменённых полей узла (имя/описание).
   // Возвращает true, если что-то действительно было сохранено.
@@ -1346,6 +1432,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 sessionKey: sKey,
                 selectedContinueProductNodeId,
                 filteredStep,
+                isAlternativeFirstStep: true,
               }),
             );
             dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
@@ -1428,7 +1515,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const handleSaveToLocalStorage = useCallback(() => {
     localStorage.setItem(
       "saved-graph",
-      JSON.stringify({ nodes: data.nodes, edges: data.edges }),
+      JSON.stringify({
+        // не сохраняем флаг выделения, чтобы граф не открывался «предвыделенным»
+        nodes: data.nodes.map((n) => {
+          const copy = { ...n };
+          delete copy.selected;
+          return copy;
+        }),
+        edges: data.edges,
+      }),
     );
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
@@ -1474,19 +1569,25 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={sharedView ? undefined : handleConnect}
+        onConnect={readOnly ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={sharedView ? undefined : onNodeContextMenu}
+        onNodeContextMenu={readOnly ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
-        nodesConnectable={!sharedView}
+        nodesConnectable={!readOnly}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
-        onReconnect={sharedView ? undefined : handleReconnect}
-        onReconnectStart={sharedView ? undefined : onReconnectStart}
-        onReconnectEnd={sharedView ? undefined : onReconnectEnd}
-        deleteKeyCode={sharedView ? null : undefined}
+        // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
+        // Левая кнопка по-прежнему панорамирует полотно (selectionOnDrag=false).
+        selectionKeyCode={readOnly ? null : "Shift"}
+        multiSelectionKeyCode={readOnly ? null : ["Meta", "Control"]}
+        selectionOnDrag={false}
+        onReconnect={readOnly ? undefined : handleReconnect}
+        onReconnectStart={readOnly ? undefined : onReconnectStart}
+        onReconnectEnd={readOnly ? undefined : onReconnectEnd}
+        // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
+        deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
         nodeTypes={nodeTypes}
         edgesFocusable={false}
@@ -1500,7 +1601,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
-          {!sharedView && (
+          {!readOnly && (
             <>
           <ControlButton
             onClick={handleSaveToLocalStorage}
@@ -1530,7 +1631,33 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
             </svg>
           </ControlButton>
+          {/* Тумблер режима просмотра/редактирования (только на главной, не на шар-странице). */}
           {!sharedView && (
+            <ControlButton
+              onClick={() => onToggleViewMode?.()}
+              title={viewMode ? "Режим редактирования" : "Режим просмотра"}
+              style={
+                viewMode
+                  ? { backgroundColor: "#2563eb", color: "#fff" }
+                  : undefined
+              }
+            >
+              {viewMode ? (
+                // Открытый глаз — сейчас режим просмотра.
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              ) : (
+                // Перечёркнутый глаз — сейчас режим редактирования.
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <path d="M1 1l22 22" />
+                </svg>
+              )}
+            </ControlButton>
+          )}
+          {!readOnly && (
             <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
@@ -1556,7 +1683,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </Controls>
         <Background />
       </ReactFlow>
-      {sharedView && !isPanelOpen && <GraphLegend />}
+      {readOnly && !isPanelOpen && <GraphLegend />}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
@@ -1593,6 +1720,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             }
             onFetchTransformations={handleContextFetchTransformations}
             onDelete={handleContextDelete}
+            selectedCount={selectedNodes.length}
             onClose={() => setContextMenu(null)}
           />
         );
@@ -1619,7 +1747,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         buildDirection={
           panelMode.type === "build" ? panelMode.direction : undefined
         }
-        readOnly={sharedView}
+        readOnly={readOnly}
       />
 
       <Notification
@@ -1627,16 +1755,26 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         isVisible={isSavedToastVisible}
       />
 
-      {deleteConfirmNodeId && (
-        <ConfirmDeleteModal
-          nodeName={
-            data.nodes.find((n) => n.id === deleteConfirmNodeId)?.data?.label ||
-            ""
-          }
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setDeleteConfirmNodeId(null)}
-        />
-      )}
+      {pendingDeleteIds &&
+        pendingDeleteIds.length > 0 &&
+        (pendingDeleteIds.length === 1 ? (
+          <ConfirmDeleteModal
+            nodeName={
+              data.nodes.find((n) => n.id === pendingDeleteIds[0])?.data
+                ?.label || ""
+            }
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setPendingDeleteIds(null)}
+          />
+        ) : (
+          <ConfirmDeleteModal
+            nodeName=""
+            title={`Удалить выбранные узлы (${pendingDeleteIds.length})?`}
+            description="Все выбранные узлы и связанные с ними связи будут удалены. Это действие нельзя отменить."
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setPendingDeleteIds(null)}
+          />
+        ))}
       {showClearConfirm && (
         <ConfirmDeleteModal
           nodeName=""

@@ -109,6 +109,38 @@ const gptSlice = createSlice({
         }
       }
     },
+    // Батч-удаление нескольких узлов (групповое выделение). Удаляет сами узлы,
+    // связанные с ними рёбра и чистит step-сессии — так же, как removeNode.
+    removeNodes: (state, action: PayloadAction<string[]>) => {
+      const ids = new Set(action.payload);
+      if (ids.size === 0) return;
+
+      state.data.nodes = state.data.nodes.filter((node) => !ids.has(node.id));
+      state.data.edges = state.data.edges.filter(
+        (edge) => !ids.has(edge.source) && !ids.has(edge.target),
+      );
+
+      for (const nodeId of ids) {
+        for (const [sKey, session] of Object.entries(
+          state.stepChainSessions,
+        )) {
+          if (!session) continue;
+          if (session.currentProductNodeId === nodeId) {
+            session.currentProductNodeId = session.rootNodeId;
+            session.pendingStep = null;
+            session.status = "idle";
+            session.steps = session.steps.filter(
+              (s) =>
+                !s.newProductNodeIds.includes(nodeId) &&
+                s.transformationNodeId !== nodeId,
+            );
+          }
+          if (session.rootNodeId === nodeId) {
+            delete state.stepChainSessions[sKey];
+          }
+        }
+      }
+    },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
         action.payload,
@@ -321,10 +353,19 @@ const gptSlice = createSlice({
         sessionKey: string;
         selectedContinueProductNodeId?: string;
         filteredStep?: StepChainApiStep;
+        // Принимается ПЕРВЫЙ шаг альтернативы: его новые продукты НЕ наследуют
+        // пул корня, а помечаются «нужны свежие источники» (reason: alternative),
+        // чтобы альтернатива не реюзала источники основного пути и не сходилась
+        // к его продуктам.
+        isAlternativeFirstStep?: boolean;
       }>,
     ) => {
-      const { sessionKey, selectedContinueProductNodeId, filteredStep } =
-        action.payload;
+      const {
+        sessionKey,
+        selectedContinueProductNodeId,
+        filteredStep,
+        isAlternativeFirstStep,
+      } = action.payload;
       const session = state.stepChainSessions[sessionKey];
       if (!session || !session.pendingStep) return;
       if (filteredStep) {
@@ -428,6 +469,21 @@ const gptSlice = createSlice({
             // не хватает. Пул не наследуем + ставим маркер, чтобы панель
             // ребёнка показала плашку «нужен свежий поиск».
             state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
+            continue;
+          }
+          if (
+            isAlternativeFirstStep &&
+            stepRecord.newProductNodeIds.includes(nid)
+          ) {
+            // Первый шаг альтернативы: НЕ наследуем источники основного пути в
+            // новые продукты — иначе альтернатива обобщала бы по тем же
+            // источникам и сходилась к маршруту основного шага. Просим свежие.
+            // (Слитые/существующие продукты — mergedProductNodeIds — не трогаем:
+            // у них уже свой пул.)
+            state.needsFreshSources[newKey] = {
+              fromProduct: anchorLabel,
+              reason: "alternative",
+            };
             continue;
           }
           if (
@@ -1231,6 +1287,7 @@ export const {
   onReconnect,
   removeEdge,
   removeNode,
+  removeNodes,
   setGraphData,
   addNode,
   loadGraphFromFile,
