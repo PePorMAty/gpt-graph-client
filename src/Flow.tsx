@@ -93,9 +93,17 @@ const nodeTypes: NodeTypes = {
 interface FlowProps {
   /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
   sharedView?: boolean;
+  /** Режим просмотра на главной странице (управляется извне кнопкой-глазом). */
+  viewMode?: boolean;
+  /** Переключение режима просмотра/редактирования на главной странице. */
+  onToggleViewMode?: () => void;
 }
 
-export const Flow = ({ sharedView = false }: FlowProps = {}) => {
+export const Flow = ({
+  sharedView = false,
+  viewMode = false,
+  onToggleViewMode,
+}: FlowProps = {}) => {
   const dispatch = useAppDispatch();
   const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
     (store) => store.graph,
@@ -161,6 +169,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
+  // При входе/выходе из режима просмотра размер холста меняется (разворот на
+  // весь экран и обратно) — переавтоцентрируем граф. Первый рендер пропускаем.
+  const viewModeFirstRun = useRef(true);
+  useEffect(() => {
+    if (viewModeFirstRun.current) {
+      viewModeFirstRun.current = false;
+      return;
+    }
+    const id = requestAnimationFrame(() =>
+      fitView({ padding: 0.2, duration: 300 }),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [viewMode, fitView]);
+
   useEffect(() => {
     if (!data.nodes.length) return;
     if (!rootId) return;
@@ -192,10 +214,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
-  // Режим просмотра на главной странице: тот же read-only, что и шар-ссылка,
-  // но переключается кнопкой-глазом в тулбаре (без отдельного роута/ссылки).
-  const [viewMode, setViewMode] = useState(false);
-  // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра.
+  // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
+  // (viewMode приходит пропсом и управляется кнопкой-глазом из FullApp).
   const readOnly = sharedView || viewMode;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
@@ -1614,7 +1634,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           {/* Тумблер режима просмотра/редактирования (только на главной, не на шар-странице). */}
           {!sharedView && (
             <ControlButton
-              onClick={() => setViewMode((v) => !v)}
+              onClick={() => onToggleViewMode?.()}
               title={viewMode ? "Режим редактирования" : "Режим просмотра"}
               style={
                 viewMode
