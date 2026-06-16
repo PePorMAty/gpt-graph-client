@@ -149,6 +149,22 @@ const sourcesSlice = createSlice({
       // Шаг построен+принят из текущего обобщения — прячем кнопку до переобобщения.
       s.stepBuiltFromAggregate = true;
     },
+    /** Ручное редактирование обобщённого описания шага (правка markdown перед
+     *  построением). handleBuild() читает stepAggregatedText из Redux, поэтому
+     *  правка попадает в построение шага. */
+    setStepAggregatedText: (
+      state,
+      action: PayloadAction<{
+        nodeId: string;
+        direction: BuildDirection;
+        text: string;
+      }>,
+    ) => {
+      const { nodeId, direction, text } = action.payload;
+      const key = sourcesKey(nodeId, direction);
+      state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+      state.byNodeId[key].stepAggregatedText = text;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -311,6 +327,11 @@ const sourcesSlice = createSlice({
   },
 });
 
-export const { clearNodeSources, setBuildMode, clearStepState, resetStepBuild } =
-  sourcesSlice.actions;
+export const {
+  clearNodeSources,
+  setBuildMode,
+  clearStepState,
+  resetStepBuild,
+  setStepAggregatedText,
+} = sourcesSlice.actions;
 export default sourcesSlice.reducer;

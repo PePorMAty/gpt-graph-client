@@ -269,6 +269,30 @@
   transform: translateY(-50%) translateX(0);
 }
 
+/* Групповое выделение нод (Shift+рамка / Ctrl+клик). React Flow сам вешает
+   класс .selected; целим во внутренний div ноды, добавляя обводку с отступом
+   и мягкое кольцо-свечение. Цвет — sky #0ea5e9: не конфликтует с синей рамкой
+   продуктов, оранжевой подсветкой поиска и фиолетовыми альтернативами. */
+:global(.react-flow__node.selected > *) {
+  outline: 2.5px solid #0ea5e9;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.2) !important;
+}
+
+/* После выделения рамкой React Flow рисует bounding-box группы
+   (.react-flow__nodesselection-rect): он тонирован и с pointer-events:all,
+   из-за чего поверх нод остаётся «квадрат» и перехватывается правый клик
+   (его onContextMenu = onSelectionContextMenu, который мы не используем).
+   Делаем box невидимым и сквозным: визуально как при Ctrl+клике, а ПКМ
+   доходит до ноды и открывает меню. Группу двигаем, схватив любую
+   выделенную ноду. Рамку-резинку во время протяжки (.react-flow__selection)
+   не трогаем — она нужна как фидбек. */
+:global(.react-flow__nodesselection-rect) {
+  pointer-events: none;
+  background: transparent;
+  border: none;
+}
+
 /* Анимации */
 @keyframes spin {
   to {

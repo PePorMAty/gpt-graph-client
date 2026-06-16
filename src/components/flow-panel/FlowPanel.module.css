@@ -179,6 +179,25 @@
   cursor: pointer;
 }
 
+/* Главное действие (Построить шаг/альтернативу) — выделено синим, чтобы
+   отличаться от соседних серых кнопок. */
+.primaryButton {
+  background: #007bff;
+  border: 1px solid #007bff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.primaryButton:not(:disabled):hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.primaryButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .sourcesBox {
   margin-top: 10px;
   padding: 10px;

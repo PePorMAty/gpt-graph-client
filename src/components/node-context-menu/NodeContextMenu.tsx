@@ -12,6 +12,8 @@ interface NodeContextMenuProps {
   onBuildAlt?: () => void;
   onFetchTransformations?: () => void;
   onDelete: () => void;
+  /** Кол-во выделенных нод. Если > 1 — меню показывает групповое удаление. */
+  selectedCount?: number;
   onClose: () => void;
 }
 
@@ -26,8 +28,10 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   onBuildAlt,
   onFetchTransformations,
   onDelete,
+  selectedCount,
   onClose,
 }) => {
+  const isMultiSelection = !!selectedCount && selectedCount > 1;
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Viewport boundary adjustment
@@ -86,36 +90,59 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
       className={styles.menu}
       style={{ top: y, left: x }}
     >
-      {isProduct && (
+      {isMultiSelection ? (
         <>
-          <button className={styles.item} onClick={onBuildUp}>
-            Построить вверх
-          </button>
-          <button className={styles.item} onClick={onBuildDown}>
-            Построить вниз
-          </button>
+          <div className={styles.header}>Выделено нод: {selectedCount}</div>
           <div className={styles.separator} />
+          <button
+            className={`${styles.item} ${styles.itemDanger}`}
+            onClick={onDelete}
+          >
+            Удалить выбранные ({selectedCount})
+          </button>
+        </>
+      ) : (
+        <>
+          {isProduct && (
+            <>
+              <button className={styles.item} onClick={onBuildUp}>
+                Построить вверх
+              </button>
+              <button className={styles.item} onClick={onBuildDown}>
+                Построить вниз
+              </button>
+              <div className={styles.separator} />
+            </>
+          )}
+          {isStepAlt && onBuildAlt && (
+            <>
+              <button className={styles.item} onClick={onBuildAlt}>
+                Построить альтернативу
+              </button>
+              <div className={styles.separator} />
+            </>
+          )}
+          {isProduct &&
+            hasOutgoingProductNeighbors &&
+            onFetchTransformations && (
+              <>
+                <button
+                  className={styles.item}
+                  onClick={onFetchTransformations}
+                >
+                  Получить преобразования к соседним продуктам
+                </button>
+                <div className={styles.separator} />
+              </>
+            )}
+          <button
+            className={`${styles.item} ${styles.itemDanger}`}
+            onClick={onDelete}
+          >
+            Удалить
+          </button>
         </>
       )}
-      {isStepAlt && onBuildAlt && (
-        <>
-          <button className={styles.item} onClick={onBuildAlt}>
-            Построить альтернативу
-          </button>
-          <div className={styles.separator} />
-        </>
-      )}
-      {isProduct && hasOutgoingProductNeighbors && onFetchTransformations && (
-        <>
-          <button className={styles.item} onClick={onFetchTransformations}>
-            Получить преобразования к соседним продуктам
-          </button>
-          <div className={styles.separator} />
-        </>
-      )}
-      <button className={`${styles.item} ${styles.itemDanger}`} onClick={onDelete}>
-        Удалить
-      </button>
     </div>
   );
 };
