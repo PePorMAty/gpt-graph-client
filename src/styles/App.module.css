@@ -27,3 +27,23 @@ body {
   overflow: hidden;
   background-color: white;
 }
+
+/* Режим просмотра: холст на весь видимый экран, без отступов и рамки. */
+.app_container.fullscreen {
+  position: fixed;
+  inset: 0;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+}
+.app_container.fullscreen .flow_container {
+  height: 100%;
+  padding: 0;
+}
+.app_container.fullscreen .flow_border {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
