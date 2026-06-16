@@ -1605,7 +1605,8 @@ export const Flow = ({
             <>
           <ControlButton
             onClick={handleSaveToLocalStorage}
-            title="Сохранить граф"
+            data-tooltip="Сохранить граф"
+            aria-label="Сохранить граф"
             style={saveFlash ? { backgroundColor: "#4caf50", color: "#fff" } : undefined}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -1614,7 +1615,8 @@ export const Flow = ({
           </ControlButton>
           <ControlButton
             onClick={() => setIsTypeSelectorOpen(true)}
-            title="Добавить узел"
+            data-tooltip="Добавить узел"
+            aria-label="Добавить узел"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M15 12L12 12M12 12L9 12M12 12L12 9M12 12L12 15" />
@@ -1625,7 +1627,8 @@ export const Flow = ({
           )}
           <ControlButton
             onClick={() => setIsSearchOpen((v) => !v)}
-            title="Поиск по графу"
+            data-tooltip="Поиск по графу"
+            aria-label="Поиск по графу"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
@@ -1635,7 +1638,8 @@ export const Flow = ({
           {!sharedView && (
             <ControlButton
               onClick={() => onToggleViewMode?.()}
-              title={viewMode ? "Режим редактирования" : "Режим просмотра"}
+              data-tooltip={viewMode ? "Режим редактирования" : "Режим просмотра"}
+              aria-label={viewMode ? "Режим редактирования" : "Режим просмотра"}
               style={
                 viewMode
                   ? { backgroundColor: "#2563eb", color: "#fff" }
@@ -1661,7 +1665,8 @@ export const Flow = ({
             <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
-            title="Очистить полотно"
+            data-tooltip="Очистить полотно"
+            aria-label="Очистить полотно"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920" fill="currentColor">
               <path d="M960 0v112.941c467.125 0 847.059 379.934 847.059 847.059 0 467.125-379.934 847.059-847.059 847.059-467.125 0-847.059-379.934-847.059-847.059 0-267.106 126.607-515.915 338.824-675.727v393.374h112.94V112.941H0v112.941h342.89C127.058 407.38 0 674.711 0 960c0 529.355 430.645 960 960 960s960-430.645 960-960S1489.355 0 960 0" fillRule="evenodd" />
@@ -1669,7 +1674,8 @@ export const Flow = ({
           </ControlButton>
           <ControlButton
             onClick={() => setShowShareModal(true)}
-            title="Поделиться"
+            data-tooltip="Поделиться"
+            aria-label="Поделиться"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="18" cy="5" r="3" />
