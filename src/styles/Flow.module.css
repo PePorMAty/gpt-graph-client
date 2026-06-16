@@ -231,6 +231,44 @@
   transition: stroke-opacity 120ms ease;
 }
 
+/* ===== Кастомные тултипы кнопок панели Controls =====
+   Нативный HTML-атрибут title ненадёжен: на macOS он часто не показывается
+   (известный баг Chromium, капризное поведение Safari). Рисуем свою подсказку
+   через data-tooltip + ::after — одинаково на всех ОС, показ на :hover и
+   :focus-visible (клавиатурный фокус/доступность). Бренд-стиль, не системный. */
+:global(.react-flow__controls-button[data-tooltip]) {
+  position: relative;
+  overflow: visible;
+}
+
+:global(.react-flow__controls-button[data-tooltip])::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  padding: 5px 9px;
+  background: rgba(33, 33, 33, 0.95);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 1000;
+}
+
+:global(.react-flow__controls-button[data-tooltip]:hover)::after,
+:global(.react-flow__controls-button[data-tooltip]:focus-visible)::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
 /* Анимации */
 @keyframes spin {
   to {
