@@ -60,6 +60,7 @@ const initialState: InitialGraphStateI = {
   stepChainSessions: {},
   sourcesPool: {},
   needsFreshSources: {},
+  sourcesSeqCounter: { up: 0, down: 0 },
   acceptedStepAlternatives: {},
   presentationColors: {},
 };
@@ -68,6 +69,23 @@ export const sourcesPoolKey = (
   productName: string,
   direction: "up" | "down",
 ) => `${normalizeProductName(productName)}::${direction}`;
+
+/** Восстанавливает сквозные счётчики номера поиска из node.data (whole-режим
+ *  персистится). Для нового/пустого графа — нули. Step-номера (пул) не
+ *  персистятся, поэтому в восстановлении не участвуют. */
+const reconstructSourcesSeqCounter = (
+  nodes: ReadonlyArray<CustomNode>,
+): { up: number; down: number } => {
+  let up = 0;
+  let down = 0;
+  for (const n of nodes) {
+    const u = n.data?.sourcesSeqUp;
+    const d = n.data?.sourcesSeqDown;
+    if (typeof u === "number" && u > up) up = u;
+    if (typeof d === "number" && d > down) down = d;
+  }
+  return { up, down };
+};
 
 const gptSlice = createSlice({
   name: "graph",
@@ -201,6 +219,7 @@ const gptSlice = createSlice({
         nodes,
         edges: applyHandlesByGeometry(nodes, edges),
       };
+      state.sourcesSeqCounter = reconstructSourcesSeqCounter(nodes);
     },
     addNode: (
       state,
@@ -247,6 +266,7 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
+      state.sourcesSeqCounter = reconstructSourcesSeqCounter(normNodes);
 
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
@@ -282,6 +302,7 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
+      state.sourcesSeqCounter = reconstructSourcesSeqCounter(normNodes);
       state.presentationColors = action.payload.presentationColors;
       // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
       // позиции корректны. Если поставить "new", Flow перезапустит свой
@@ -455,16 +476,6 @@ const gptSlice = createSlice({
           ...stepRecord.newProductNodeIds,
           ...stepRecord.mergedProductNodeIds,
         ];
-        // Набор продуктов-источников родителя — чтобы при свежем поиске у
-        // «недостаточного» потомка (пул не наследуется) счётчик бейджа стартовал
-        // от числа родителя и дал «родитель +1», а не начинался с 1.
-        const anchorOrigins =
-          anchorPool && anchorPool.sources.length > 0
-            ? (anchorPool.originProducts ??
-              (anchorPool.originProduct
-                ? [anchorPool.originProduct]
-                : [anchorLabel]))
-            : [];
         for (const nid of allNewNodeIds) {
           const newNode = state.data.nodes.find((n) => n.id === nid);
           const newLabel =
@@ -477,12 +488,9 @@ const gptSlice = createSlice({
           if (insufficient.has(normalized)) {
             // Сервер на build родителя пометил: источников для этого ребёнка
             // не хватает. Пул не наследуем + ставим маркер, чтобы панель
-            // ребёнка показала плашку «нужен свежий поиск». Число родителя
-            // протаскиваем, чтобы свежий поиск дал «родитель +1».
-            state.needsFreshSources[newKey] = {
-              fromProduct: anchorLabel,
-              inheritedOrigins: [...anchorOrigins],
-            };
+            // ребёнка показала плашку «нужен свежий поиск». Свежий поиск
+            // получит следующий глобальный номер.
+            state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
             continue;
           }
           if (
@@ -497,7 +505,6 @@ const gptSlice = createSlice({
             state.needsFreshSources[newKey] = {
               fromProduct: anchorLabel,
               reason: "alternative",
-              inheritedOrigins: [...anchorOrigins],
             };
             continue;
           }
@@ -512,14 +519,9 @@ const gptSlice = createSlice({
               // Источники взяты «взаймы» — сохраняем истинное происхождение
               // (исходный продукт-предок, а не ребёнка).
               originProduct: anchorPool.originProduct ?? anchorLabel,
-              // Наследуем ВЕСЬ набор продуктов-источников предка — счётчик
-              // бейджа потомка совпадает с предком (без своего добора).
-              originProducts: [
-                ...(anchorPool.originProducts ??
-                  (anchorPool.originProduct
-                    ? [anchorPool.originProduct]
-                    : [anchorLabel])),
-              ],
+              // Номер бейджа наследуется от предка (счётчик не трогаем) —
+              // унаследованный продукт показывает номер своего источника.
+              seq: anchorPool.seq,
               lastFetchedAt: new Date().toISOString(),
             };
           }
@@ -600,35 +602,49 @@ const gptSlice = createSlice({
       const { productName, direction, sources } = action.payload;
       const key = sourcesPoolKey(productName, direction);
       const prev = state.sourcesPool[key];
-      // Набор продуктов-источников = базовый ∪ текущий продукт. Дедуп по
-      // normalizeProductName: повторный поиск того же продукта не увеличивает
-      // число. Базовый набор:
-      //  • если есть свой пул (добор) — его originProducts;
-      //  • иначе (свежий поиск у «недостаточного» потомка, пул не унаследован) —
-      //    число родителя из маркера needsFreshSources.inheritedOrigins.
-      // Так свежий поиск у потомка тоже даёт «родитель +1», а не стартует с 1.
-      const prevOrigins = prev
-        ? (prev.originProducts ??
-          (prev.originProduct ? [prev.originProduct] : []))
-        : (state.needsFreshSources[key]?.inheritedOrigins ?? []);
-      const originProducts: string[] = [];
-      const seenOrigins = new Set<string>();
-      for (const name of [...prevOrigins, productName]) {
-        const norm = normalizeProductName(String(name ?? ""));
-        if (!norm || seenOrigins.has(norm)) continue;
-        seenOrigins.add(norm);
-        originProducts.push(name);
+      // Номер бейджа — глобальный сквозной (per-direction). Присваивается при
+      // ПЕРВОМ собственном поиске продукта; повторный поиск/добор того же
+      // продукта (у него уже свой номер) номер НЕ меняет. Унаследованный пул
+      // (originProduct ≠ продукт) своим не считается — первый поиск такого
+      // продукта получает следующий номер.
+      const owned =
+        prev?.seq != null &&
+        normalizeProductName(prev.originProduct ?? "") ===
+          normalizeProductName(productName);
+      // По умолчанию сохраняем прежний номер. Новый номер выдаём только если
+      // источники реально найдены и это не «своё» (иначе пустой/повторный поиск
+      // съедал бы номер и создавал дыры в нумерации).
+      let seq = prev?.seq;
+      if (sources.length > 0 && !owned) {
+        state.sourcesSeqCounter[direction] += 1;
+        seq = state.sourcesSeqCounter[direction];
       }
       state.sourcesPool[key] = {
         sources: [...sources],
         product: prev?.product || productName,
         // Свежий поиск — источники «родные» для этого продукта.
         originProduct: productName,
-        originProducts,
+        seq,
         lastFetchedAt: new Date().toISOString(),
       };
       // Свежий поиск снимает маркер «нужны свежие источники».
       delete state.needsFreshSources[key];
+    },
+
+    /** whole-режим: присвоить продукту глобальный сквозной номер поиска и
+     *  записать в node.data (персистится). Если у продукта в этом направлении
+     *  номер уже есть — не трогаем (повторный поиск не меняет номер). */
+    assignWholeSourcesSeq: (
+      state,
+      action: PayloadAction<{ nodeId: string; direction: "up" | "down" }>,
+    ) => {
+      const { nodeId, direction } = action.payload;
+      const node = state.data.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      const field = direction === "up" ? "sourcesSeqUp" : "sourcesSeqDown";
+      if (typeof node.data[field] === "number") return;
+      state.sourcesSeqCounter[direction] += 1;
+      node.data[field] = state.sourcesSeqCounter[direction];
     },
 
     clearSourcesPool: (
@@ -1344,6 +1360,7 @@ export const {
   undoLastStep,
   setStepChainContinueProduct,
   addSourcesToPool,
+  assignWholeSourcesSeq,
   clearSourcesPool,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,

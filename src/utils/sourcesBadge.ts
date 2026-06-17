@@ -1,53 +1,39 @@
 // src/utils/sourcesBadge.ts
-import { normalizeProductName } from "./normalizeProductName";
 import type { CustomNodeData } from "../types";
 import type { SourcesPoolEntry, TechnologySource } from "../store/types";
 
 export type SourcesBadgeCounts = { up: number; down: number };
 
 /**
- * Числа разных продуктов-источников для бейджей узла ПО НАПРАВЛЕНИЯМ
- * (`↑ 📖 N` вверх / `↓ 📖 N` вниз). Источники вверх и вниз ищутся отдельно
- * (разные пулы и поля node.data), поэтому считаются независимо.
+ * Номера источников для бейджей узла ПО НАПРАВЛЕНИЯМ («↑ 📖 N» / «↓ 📖 N»).
  *
- * Для каждого направления число = размер множества продуктов, для которых
- * реально делался запрос источников и чьи источники накоплены в узле в этом
- * направлении, дедуп по normalizeProductName:
- *   • пошаговый режим — набор originProducts из пула направления (если есть
- *     источники), с учётом наследования/добора по шагам;
- *   • whole-режим — сам узел как источник, если есть persisted-источники
- *     node.data.sourcesUp / sourcesDown соответствующего направления.
+ * Номер — глобальный сквозной порядковый номер поиска (per-direction), а не
+ * количество источников: каждый новый поиск по графу получает следующий номер,
+ * унаследованные продукты показывают номер своего продукта-источника.
  *
- * Если в направлении источников нет — там 0 (бейдж не показывается).
+ * Для направления номер берётся:
+ *   • пошаговый режим — `seq` из пула направления (если есть источники);
+ *   • whole-режим — `node.data.sourcesSeqUp/Down` (если есть persisted-источники);
+ *     для старых графов без номера — запасное 1.
+ * Если источников в направлении нет — 0 (бейдж не показывается).
  */
 export function countProductSourcesByDirection(
   nodeData: CustomNodeData,
   poolDown: SourcesPoolEntry | undefined,
   poolUp: SourcesPoolEntry | undefined,
 ): SourcesBadgeCounts {
-  const selfKey = normalizeProductName(String(nodeData.label ?? ""));
-
-  const countDir = (
+  const seqForDir = (
     entry: SourcesPoolEntry | undefined,
     wholeSources: TechnologySource[] | undefined,
+    wholeSeq: number | undefined,
   ): number => {
-    const seen = new Set<string>();
-    if (entry && entry.sources.length > 0) {
-      const origins =
-        entry.originProducts ??
-        (entry.originProduct ? [entry.originProduct] : [entry.product]);
-      for (const o of origins) {
-        const key = normalizeProductName(String(o ?? ""));
-        if (key) seen.add(key);
-      }
-    }
-    // whole-режим: собственные persisted-источники узла → он сам как origin.
-    if (selfKey && (wholeSources?.length ?? 0) > 0) seen.add(selfKey);
-    return seen.size;
+    if (entry && entry.sources.length > 0) return entry.seq ?? 1;
+    if ((wholeSources?.length ?? 0) > 0) return wholeSeq ?? 1;
+    return 0;
   };
 
   return {
-    up: countDir(poolUp, nodeData.sourcesUp),
-    down: countDir(poolDown, nodeData.sourcesDown),
+    up: seqForDir(poolUp, nodeData.sourcesUp, nodeData.sourcesSeqUp),
+    down: seqForDir(poolDown, nodeData.sourcesDown, nodeData.sourcesSeqDown),
   };
 }
