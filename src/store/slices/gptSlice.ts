@@ -455,6 +455,16 @@ const gptSlice = createSlice({
           ...stepRecord.newProductNodeIds,
           ...stepRecord.mergedProductNodeIds,
         ];
+        // Набор продуктов-источников родителя — чтобы при свежем поиске у
+        // «недостаточного» потомка (пул не наследуется) счётчик бейджа стартовал
+        // от числа родителя и дал «родитель +1», а не начинался с 1.
+        const anchorOrigins =
+          anchorPool && anchorPool.sources.length > 0
+            ? (anchorPool.originProducts ??
+              (anchorPool.originProduct
+                ? [anchorPool.originProduct]
+                : [anchorLabel]))
+            : [];
         for (const nid of allNewNodeIds) {
           const newNode = state.data.nodes.find((n) => n.id === nid);
           const newLabel =
@@ -467,8 +477,12 @@ const gptSlice = createSlice({
           if (insufficient.has(normalized)) {
             // Сервер на build родителя пометил: источников для этого ребёнка
             // не хватает. Пул не наследуем + ставим маркер, чтобы панель
-            // ребёнка показала плашку «нужен свежий поиск».
-            state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
+            // ребёнка показала плашку «нужен свежий поиск». Число родителя
+            // протаскиваем, чтобы свежий поиск дал «родитель +1».
+            state.needsFreshSources[newKey] = {
+              fromProduct: anchorLabel,
+              inheritedOrigins: [...anchorOrigins],
+            };
             continue;
           }
           if (
@@ -483,6 +497,7 @@ const gptSlice = createSlice({
             state.needsFreshSources[newKey] = {
               fromProduct: anchorLabel,
               reason: "alternative",
+              inheritedOrigins: [...anchorOrigins],
             };
             continue;
           }
@@ -585,12 +600,17 @@ const gptSlice = createSlice({
       const { productName, direction, sources } = action.payload;
       const key = sourcesPoolKey(productName, direction);
       const prev = state.sourcesPool[key];
-      // Набор продуктов-источников = прежний (унаследованный/добранный) ∪ текущий
-      // продукт. Дедуп по normalizeProductName: повторный поиск того же продукта
-      // не увеличивает число на бейдже. Так добор у потомка даёт +1 к предку.
-      const prevOrigins =
-        prev?.originProducts ??
-        (prev?.originProduct ? [prev.originProduct] : []);
+      // Набор продуктов-источников = базовый ∪ текущий продукт. Дедуп по
+      // normalizeProductName: повторный поиск того же продукта не увеличивает
+      // число. Базовый набор:
+      //  • если есть свой пул (добор) — его originProducts;
+      //  • иначе (свежий поиск у «недостаточного» потомка, пул не унаследован) —
+      //    число родителя из маркера needsFreshSources.inheritedOrigins.
+      // Так свежий поиск у потомка тоже даёт «родитель +1», а не стартует с 1.
+      const prevOrigins = prev
+        ? (prev.originProducts ??
+          (prev.originProduct ? [prev.originProduct] : []))
+        : (state.needsFreshSources[key]?.inheritedOrigins ?? []);
       const originProducts: string[] = [];
       const seenOrigins = new Set<string>();
       for (const name of [...prevOrigins, productName]) {

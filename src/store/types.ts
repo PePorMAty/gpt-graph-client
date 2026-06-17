@@ -48,6 +48,10 @@ export interface InitialGraphStateI {
       reason?: "insufficient" | "cycle" | "alternative";
       // Продукты-предки, на которые замкнулась бы петля (для текста плашки).
       loopOn?: string[];
+      // Набор продуктов-источников родителя (его originProducts) на момент
+      // пометки. Пул в потомка НЕ унаследован, но при свежем поиске источников
+      // у потомка счётчик бейджа должен стартовать от числа родителя (+1).
+      inheritedOrigins?: string[];
     }
   >;
   acceptedStepAlternatives: Record<string, number[]>;

@@ -44,7 +44,7 @@ import { GraphLegend } from "./components/graph-legend";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
-import { countProductSources } from "./utils/sourcesBadge";
+import { countProductSourcesByDirection } from "./utils/sourcesBadge";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -319,12 +319,12 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
-        // Бейдж «📖 N»: сколько разных продуктов-источников держит узел-продукт
-        // (пул шагового режима по обоим направлениям + persisted-источники
+        // Бейджи «↑ 📖 N / ↓ 📖 N»: сколько разных продуктов-источников держит
+        // узел-продукт по направлениям (пул шагового режима + persisted-источники
         // whole-режима). Кладём только в копию data для рендера — стор не мутируем.
         if (n.type === "product") {
           const lbl = String(n.data?.label ?? "");
-          const badge = countProductSources(
+          const badge = countProductSourcesByDirection(
             n.data,
             sourcesPool[poolKey(lbl, "down")],
             sourcesPool[poolKey(lbl, "up")],
@@ -332,7 +332,10 @@ export const Flow = ({
           return {
             ...n,
             className: cls,
-            data: badge > 0 ? { ...n.data, sourcesBadgeCount: badge } : n.data,
+            data:
+              badge.up > 0 || badge.down > 0
+                ? { ...n.data, sourcesBadge: badge }
+                : n.data,
           };
         }
 
