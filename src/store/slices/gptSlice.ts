@@ -497,6 +497,14 @@ const gptSlice = createSlice({
               // Источники взяты «взаймы» — сохраняем истинное происхождение
               // (исходный продукт-предок, а не ребёнка).
               originProduct: anchorPool.originProduct ?? anchorLabel,
+              // Наследуем ВЕСЬ набор продуктов-источников предка — счётчик
+              // бейджа потомка совпадает с предком (без своего добора).
+              originProducts: [
+                ...(anchorPool.originProducts ??
+                  (anchorPool.originProduct
+                    ? [anchorPool.originProduct]
+                    : [anchorLabel])),
+              ],
               lastFetchedAt: new Date().toISOString(),
             };
           }
@@ -576,11 +584,27 @@ const gptSlice = createSlice({
       // потомков не трогается — у них другие ключи.
       const { productName, direction, sources } = action.payload;
       const key = sourcesPoolKey(productName, direction);
+      const prev = state.sourcesPool[key];
+      // Набор продуктов-источников = прежний (унаследованный/добранный) ∪ текущий
+      // продукт. Дедуп по normalizeProductName: повторный поиск того же продукта
+      // не увеличивает число на бейдже. Так добор у потомка даёт +1 к предку.
+      const prevOrigins =
+        prev?.originProducts ??
+        (prev?.originProduct ? [prev.originProduct] : []);
+      const originProducts: string[] = [];
+      const seenOrigins = new Set<string>();
+      for (const name of [...prevOrigins, productName]) {
+        const norm = normalizeProductName(String(name ?? ""));
+        if (!norm || seenOrigins.has(norm)) continue;
+        seenOrigins.add(norm);
+        originProducts.push(name);
+      }
       state.sourcesPool[key] = {
         sources: [...sources],
-        product: state.sourcesPool[key]?.product || productName,
+        product: prev?.product || productName,
         // Свежий поиск — источники «родные» для этого продукта.
         originProduct: productName,
+        originProducts,
         lastFetchedAt: new Date().toISOString(),
       };
       // Свежий поиск снимает маркер «нужны свежие источники».
