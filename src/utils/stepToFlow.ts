@@ -191,13 +191,23 @@ export function stepToFlow(
       // Существующий продукт (законное схождение) — только ребро, без узла
       mergedProductNodeIds.push(existingNodeId);
 
+      // Handle'ы по РЕАЛЬНОЙ геометрии, а не по направлению построения:
+      // существующий узел может стоять где угодно. Напр. при схождении ВВЕРХ
+      // сосед-якоря (Этилен) стоит НИЖЕ трансформации, а не над ней — и UP-handle'ы
+      // («top-source»→«bottom-target») увели бы ребро «низ узла → верх
+      // трансформации» с заворотом. Берём ту же логику, что applyHandlesByGeometry:
+      // трансформация выше/на уровне узла → поток вниз (bottom→top), иначе вверх.
+      const existingNode = existingNodes.find((n) => n.id === existingNodeId);
+      const existingY = existingNode?.position?.y ?? productsY;
+      const flowDown = existingY >= trY;
+
       const edgeId = `step::${sessionKey}::e::${trFlowId}::${existingNodeId}`;
       edges.push({
         id: edgeId,
         source: trFlowId,
         target: existingNodeId,
-        sourceHandle: isDown ? "bottom" : "top-source",
-        targetHandle: isDown ? "top" : "bottom-target",
+        sourceHandle: flowDown ? "bottom" : "top-source",
+        targetHandle: flowDown ? "top" : "bottom-target",
         type: "straight",
       });
       addedEdgeIds.push(edgeId);
