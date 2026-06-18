@@ -1,7 +1,7 @@
 import axios from "axios";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 
-import { assignWholeSourcesSeq, updateNodeData } from "../slices/gptSlice";
+import { updateNodeData } from "../slices/gptSlice";
 import { sourcesKey } from "../slices/sourcesSlice";
 import type {
   BuildDirection,
@@ -58,17 +58,6 @@ export const fetchSources = createAsyncThunk<
         },
       }),
     );
-
-    // whole-режим: присвоить продукту глобальный сквозной номер поиска (для
-    // бейджа «📖 N»), только если источники реально найдены.
-    if (res.data.sources?.length) {
-      thunkApi.dispatch(
-        assignWholeSourcesSeq({
-          nodeId: payload.nodeId,
-          direction: payload.direction,
-        }),
-      );
-    }
 
     // возвращаем составной ключ для sourcesSlice
     return {

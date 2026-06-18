@@ -319,13 +319,12 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
-        // Бейджи «↑ 📖 N / ↓ 📖 N»: сколько разных продуктов-источников держит
-        // узел-продукт по направлениям (пул шагового режима + persisted-источники
-        // whole-режима). Кладём только в копию data для рендера — стор не мутируем.
+        // Бейджи «↑ 📖 N / ↓ 📖 N» — ТОЛЬКО для пошагового режима (источники в
+        // sourcesPool). Для полной цепочки (whole-режим) бейдж не выводим, чтобы
+        // не перегружать ноду. Кладём только в копию data для рендера.
         if (n.type === "product") {
           const lbl = String(n.data?.label ?? "");
           const badge = countProductSourcesByDirection(
-            n.data,
             sourcesPool[poolKey(lbl, "down")],
             sourcesPool[poolKey(lbl, "up")],
           );

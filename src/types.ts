@@ -38,10 +38,6 @@ export interface CustomNodeData {
   sourcesAggregatedUp?: boolean;
   downDescription?: string;
   upDescription?: string;
-  /** Глобальный сквозной номер поиска источников (для бейджа «📖 N»),
-   *  whole-режим. Персистится в node.data, в отличие от step-режима (пул). */
-  sourcesSeqDown?: number;
-  sourcesSeqUp?: number;
 
   // --- direction (legacy, kept for migration) ---
   buildDirection?: BuildDirection;

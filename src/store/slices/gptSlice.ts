@@ -70,23 +70,6 @@ export const sourcesPoolKey = (
   direction: "up" | "down",
 ) => `${normalizeProductName(productName)}::${direction}`;
 
-/** Восстанавливает сквозные счётчики номера поиска из node.data (whole-режим
- *  персистится). Для нового/пустого графа — нули. Step-номера (пул) не
- *  персистятся, поэтому в восстановлении не участвуют. */
-const reconstructSourcesSeqCounter = (
-  nodes: ReadonlyArray<CustomNode>,
-): { up: number; down: number } => {
-  let up = 0;
-  let down = 0;
-  for (const n of nodes) {
-    const u = n.data?.sourcesSeqUp;
-    const d = n.data?.sourcesSeqDown;
-    if (typeof u === "number" && u > up) up = u;
-    if (typeof d === "number" && d > down) down = d;
-  }
-  return { up, down };
-};
-
 const gptSlice = createSlice({
   name: "graph",
   initialState,
@@ -219,7 +202,8 @@ const gptSlice = createSlice({
         nodes,
         edges: applyHandlesByGeometry(nodes, edges),
       };
-      state.sourcesSeqCounter = reconstructSourcesSeqCounter(nodes);
+      // Новый граф — нумерация пошаговых источников начинается заново.
+      state.sourcesSeqCounter = { up: 0, down: 0 };
     },
     addNode: (
       state,
@@ -266,7 +250,9 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
-      state.sourcesSeqCounter = reconstructSourcesSeqCounter(normNodes);
+      // Загруженный граф — нумерация пошаговых источников начинается заново
+      // (step-пул не персистится).
+      state.sourcesSeqCounter = { up: 0, down: 0 };
 
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
@@ -302,7 +288,8 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
-      state.sourcesSeqCounter = reconstructSourcesSeqCounter(normNodes);
+      // Слитый граф — нумерация пошаговых источников начинается заново.
+      state.sourcesSeqCounter = { up: 0, down: 0 };
       state.presentationColors = action.payload.presentationColors;
       // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
       // позиции корректны. Если поставить "new", Flow перезапустит свой
@@ -629,22 +616,6 @@ const gptSlice = createSlice({
       };
       // Свежий поиск снимает маркер «нужны свежие источники».
       delete state.needsFreshSources[key];
-    },
-
-    /** whole-режим: присвоить продукту глобальный сквозной номер поиска и
-     *  записать в node.data (персистится). Если у продукта в этом направлении
-     *  номер уже есть — не трогаем (повторный поиск не меняет номер). */
-    assignWholeSourcesSeq: (
-      state,
-      action: PayloadAction<{ nodeId: string; direction: "up" | "down" }>,
-    ) => {
-      const { nodeId, direction } = action.payload;
-      const node = state.data.nodes.find((n) => n.id === nodeId);
-      if (!node) return;
-      const field = direction === "up" ? "sourcesSeqUp" : "sourcesSeqDown";
-      if (typeof node.data[field] === "number") return;
-      state.sourcesSeqCounter[direction] += 1;
-      node.data[field] = state.sourcesSeqCounter[direction];
     },
 
     clearSourcesPool: (
@@ -1360,7 +1331,6 @@ export const {
   undoLastStep,
   setStepChainContinueProduct,
   addSourcesToPool,
-  assignWholeSourcesSeq,
   clearSourcesPool,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
