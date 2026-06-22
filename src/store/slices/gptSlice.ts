@@ -60,6 +60,7 @@ const initialState: InitialGraphStateI = {
   stepChainSessions: {},
   sourcesPool: {},
   needsFreshSources: {},
+  sourcesSeqCounter: { up: 0, down: 0 },
   acceptedStepAlternatives: {},
   presentationColors: {},
 };
@@ -201,6 +202,8 @@ const gptSlice = createSlice({
         nodes,
         edges: applyHandlesByGeometry(nodes, edges),
       };
+      // Новый граф — нумерация пошаговых источников начинается заново.
+      state.sourcesSeqCounter = { up: 0, down: 0 };
     },
     addNode: (
       state,
@@ -247,6 +250,9 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
+      // Загруженный граф — нумерация пошаговых источников начинается заново
+      // (step-пул не персистится).
+      state.sourcesSeqCounter = { up: 0, down: 0 };
 
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
@@ -282,6 +288,8 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
+      // Слитый граф — нумерация пошаговых источников начинается заново.
+      state.sourcesSeqCounter = { up: 0, down: 0 };
       state.presentationColors = action.payload.presentationColors;
       // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
       // позиции корректны. Если поставить "new", Flow перезапустит свой
@@ -467,7 +475,8 @@ const gptSlice = createSlice({
           if (insufficient.has(normalized)) {
             // Сервер на build родителя пометил: источников для этого ребёнка
             // не хватает. Пул не наследуем + ставим маркер, чтобы панель
-            // ребёнка показала плашку «нужен свежий поиск».
+            // ребёнка показала плашку «нужен свежий поиск». Свежий поиск
+            // получит следующий глобальный номер.
             state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
             continue;
           }
@@ -497,6 +506,9 @@ const gptSlice = createSlice({
               // Источники взяты «взаймы» — сохраняем истинное происхождение
               // (исходный продукт-предок, а не ребёнка).
               originProduct: anchorPool.originProduct ?? anchorLabel,
+              // Номер бейджа наследуется от предка (счётчик не трогаем) —
+              // унаследованный продукт показывает номер своего источника.
+              seq: anchorPool.seq,
               lastFetchedAt: new Date().toISOString(),
             };
           }
@@ -576,11 +588,30 @@ const gptSlice = createSlice({
       // потомков не трогается — у них другие ключи.
       const { productName, direction, sources } = action.payload;
       const key = sourcesPoolKey(productName, direction);
+      const prev = state.sourcesPool[key];
+      // Номер бейджа — глобальный сквозной (per-direction). Присваивается при
+      // ПЕРВОМ собственном поиске продукта; повторный поиск/добор того же
+      // продукта (у него уже свой номер) номер НЕ меняет. Унаследованный пул
+      // (originProduct ≠ продукт) своим не считается — первый поиск такого
+      // продукта получает следующий номер.
+      const owned =
+        prev?.seq != null &&
+        normalizeProductName(prev.originProduct ?? "") ===
+          normalizeProductName(productName);
+      // По умолчанию сохраняем прежний номер. Новый номер выдаём только если
+      // источники реально найдены и это не «своё» (иначе пустой/повторный поиск
+      // съедал бы номер и создавал дыры в нумерации).
+      let seq = prev?.seq;
+      if (sources.length > 0 && !owned) {
+        state.sourcesSeqCounter[direction] += 1;
+        seq = state.sourcesSeqCounter[direction];
+      }
       state.sourcesPool[key] = {
         sources: [...sources],
-        product: state.sourcesPool[key]?.product || productName,
+        product: prev?.product || productName,
         // Свежий поиск — источники «родные» для этого продукта.
         originProduct: productName,
+        seq,
         lastFetchedAt: new Date().toISOString(),
       };
       // Свежий поиск снимает маркер «нужны свежие источники».

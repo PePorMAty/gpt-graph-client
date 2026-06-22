@@ -50,6 +50,10 @@ export interface InitialGraphStateI {
       loopOn?: string[];
     }
   >;
+  /** Глобальные сквозные счётчики порядкового номера поиска источников,
+   *  раздельные для построения вверх/вниз. Инкрементируются при КАЖДОМ новом
+   *  поиске для продукта, у которого ещё нет своего номера в этом направлении. */
+  sourcesSeqCounter: { up: number; down: number };
   acceptedStepAlternatives: Record<string, number[]>;
   /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
   presentationColors: Record<string, string>;
@@ -65,6 +69,12 @@ export interface SourcesPoolEntry {
    * «взаймы» у предка, и при необходимости делать добор именно для потомка.
    */
   originProduct?: string;
+  /**
+   * Глобальный сквозной порядковый номер поиска (per-direction) для бейджа
+   * «📖 N». Присваивается при первом собственном поиске продукта; при
+   * наследовании пула копируется от предка (без инкремента счётчика).
+   */
+  seq?: number;
   lastFetchedAt: string;
 }
 

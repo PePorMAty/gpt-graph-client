@@ -60,6 +60,13 @@ export interface CustomNodeData {
   // --- transformation node (transformation-between endpoint) ---
   transformationSources?: string[];
 
+  // --- sources badge (производное, НЕ персистится) ---
+  /** Числа продуктов-источников для бейджей «📖 N» на узле по направлениям
+   *  (↑ вверх / ↓ вниз). Вычисляется в Flow.tsx (flowNodes) из sourcesPool +
+   *  node.data и кладётся только в копию данных для рендера, в стор/файл графа
+   *  не попадает. */
+  sourcesBadge?: { up: number; down: number };
+
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }

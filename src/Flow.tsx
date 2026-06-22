@@ -44,6 +44,7 @@ import { GraphLegend } from "./components/graph-legend";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
+import { countProductSourcesByDirection } from "./utils/sourcesBadge";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -318,9 +319,28 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
+        // Бейджи «↑ 📖 N / ↓ 📖 N» — ТОЛЬКО для пошагового режима (источники в
+        // sourcesPool). Для полной цепочки (whole-режим) бейдж не выводим, чтобы
+        // не перегружать ноду. Кладём только в копию data для рендера.
+        if (n.type === "product") {
+          const lbl = String(n.data?.label ?? "");
+          const badge = countProductSourcesByDirection(
+            sourcesPool[poolKey(lbl, "down")],
+            sourcesPool[poolKey(lbl, "up")],
+          );
+          return {
+            ...n,
+            className: cls,
+            data:
+              badge.up > 0 || badge.down > 0
+                ? { ...n.data, sourcesBadge: badge }
+                : n.data,
+          };
+        }
+
         return { ...n, className: cls };
       }),
-    [data.nodes, highlightedId, chainSet],
+    [data.nodes, highlightedId, chainSet, sourcesPool],
   );
 
   const flowEdges = useMemo(() => {
