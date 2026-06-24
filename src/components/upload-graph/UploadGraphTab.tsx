@@ -15,6 +15,8 @@ import {
   ensureProductPresentations,
 } from "../../utils/presentationColors";
 import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
+import { orientByBuildDirection } from "../../utils/orientByBuildDirection";
+import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
@@ -31,26 +33,43 @@ import { loadSavedGraph } from "../../store/api/saved-graph-api";
 // ELK (~1.5MB) подгружаем динамически — только когда пользователь
 // реально что-то делает на этой вкладке. При сбое — фолбэк на applyAutoLayout("TB").
 //
-// Слои синтезируем по фактической топологии объединённого графа
-// (assignTopologicalLayers) — это даёт чистое послойное размещение и для
-// продуктовых, и для построенных по шагам графов (у последних нет поля
-// «Слой»), включая узлы-преобразования и изолированные ноды.
+// Шаги:
+// 1. orientByBuildDirection — приводим рёбра к канону «сырьё → продукт»,
+//    разворачивая части, построенные «вниз» (у них якорь — конечный продукт,
+//    и без разворота сырьё уходило бы вниз). Идемпотентно (флаг на ребре).
+// 2. Слои синтезируем по фактической топологии (assignTopologicalLayers) уже
+//    по канонической ориентации — чистое послойное размещение и для
+//    продуктовых, и для step-графов (у последних нет поля «Слой»), включая
+//    узлы-преобразования и изолированные ноды.
+// 3. После раскладки applyHandlesByGeometry перевыставляет хэндлы рёбер по
+//    фактическим Y-координатам — в т.ч. у развёрнутых на шаге 1 рёбер.
 const layoutForMergeTab = async (
   nodes: CustomNode[],
   edges: Edge[],
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
-  const layeredNodes = assignTopologicalLayers(nodes, edges);
+  const oriented = orientByBuildDirection(nodes, edges);
+  const layeredNodes = assignTopologicalLayers(nodes, oriented);
   try {
     const { layoutMergedGraphElk } = await import(
       "../../utils/layoutMergedGraphElk"
     );
-    return await layoutMergedGraphElk(layeredNodes, edges, { useLayers: true });
+    const laid = await layoutMergedGraphElk(layeredNodes, oriented, {
+      useLayers: true,
+    });
+    return {
+      nodes: laid.nodes,
+      edges: applyHandlesByGeometry(laid.nodes, laid.edges),
+    };
   } catch (e) {
     console.warn(
       "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
       e,
     );
-    return applyAutoLayout(layeredNodes, edges, "TB");
+    const laid = await applyAutoLayout(layeredNodes, oriented, "TB");
+    return {
+      nodes: laid.nodes,
+      edges: applyHandlesByGeometry(laid.nodes, laid.edges),
+    };
   }
 };
 
