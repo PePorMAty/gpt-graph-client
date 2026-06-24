@@ -12,7 +12,9 @@ import {
   assignColorsForPresentations,
   buildLegend,
   colorForPresentations,
+  ensureProductPresentations,
 } from "../../utils/presentationColors";
+import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
@@ -28,21 +30,27 @@ import { loadSavedGraph } from "../../store/api/saved-graph-api";
 // Раскладка для вкладки объединения: сырьё сверху, продукты снизу.
 // ELK (~1.5MB) подгружаем динамически — только когда пользователь
 // реально что-то делает на этой вкладке. При сбое — фолбэк на applyAutoLayout("TB").
+//
+// Слои синтезируем по фактической топологии объединённого графа
+// (assignTopologicalLayers) — это даёт чистое послойное размещение и для
+// продуктовых, и для построенных по шагам графов (у последних нет поля
+// «Слой»), включая узлы-преобразования и изолированные ноды.
 const layoutForMergeTab = async (
   nodes: CustomNode[],
   edges: Edge[],
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
+  const layeredNodes = assignTopologicalLayers(nodes, edges);
   try {
     const { layoutMergedGraphElk } = await import(
       "../../utils/layoutMergedGraphElk"
     );
-    return await layoutMergedGraphElk(nodes, edges, { useLayers: false });
+    return await layoutMergedGraphElk(layeredNodes, edges, { useLayers: true });
   } catch (e) {
     console.warn(
       "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
       e,
     );
-    return applyAutoLayout(nodes, edges, "TB");
+    return applyAutoLayout(layeredNodes, edges, "TB");
   }
 };
 
@@ -50,7 +58,9 @@ type UploadMode = "replace" | "merge";
 
 export const UploadGraphTab = () => {
   const dispatch = useAppDispatch();
-  const { data, presentationColors } = useAppSelector((state) => state.graph);
+  const { data, presentationColors, originalPrompt } = useAppSelector(
+    (state) => state.graph,
+  );
 
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const mergeInputRef = useRef<HTMLInputElement | null>(null);
@@ -119,7 +129,7 @@ export const UploadGraphTab = () => {
     // ранее объединённый граф) — переиспользуем их, чтобы раскраска
     // и порядок презентаций совпали с исходным. Иначе строим свежий
     // registry в порядке появления презентаций.
-    const registry =
+    let registry =
       parsedColors && Object.keys(parsedColors).length > 0
         ? parsedColors
         : assignColorsForPresentations({}, presentations);
@@ -180,7 +190,20 @@ export const UploadGraphTab = () => {
       }))
       .filter((e) => e.source !== e.target);
 
-    const coloredNodes = colorizeNodes(dedupedNodes, registry);
+    // Бэкфилл презентаций: графы, построенные по шагам, не несут
+    // data.presentations у узлов. Считаем весь загружаемый граф одним
+    // источником по его имени (presentationTitle → имя файла), чтобы
+    // заработали раскраска и легенда. Узлы с уже имеющимися презентациями
+    // (presentation-граф / скачанный merged) не трогаются.
+    const sourceName = presentationTitle ?? fallbackName;
+    const backfilled = ensureProductPresentations(
+      dedupedNodes,
+      sourceName,
+      registry,
+    );
+    registry = backfilled.registry;
+
+    const coloredNodes = colorizeNodes(backfilled.nodes, registry);
 
     let finalNodes = coloredNodes;
     let finalEdges = dedupedEdges;
@@ -211,20 +234,35 @@ export const UploadGraphTab = () => {
     };
   };
 
-  const handleMergeSource = async (input: string | unknown) => {
+  const handleMergeSource = async (
+    input: string | unknown,
+    fallbackName: string,
+  ) => {
     const result = parseGraphJson(input);
     const { payload, warnings, presentations, presentationTitle } = result;
 
-    // Расширяем реестр новыми презентациями (старые цвета сохраняются).
-    const registry = assignColorsForPresentations(
+    // Существующий граф мог быть построен по шагам (узлы без data.presentations) —
+    // считаем его одним источником по имени текущего графа и бэкфиллим, иначе
+    // при объединении он остался бы дефолтно-синим и выпал из легенды.
+    const existingSourceName =
+      (originalPrompt && originalPrompt.trim()) || "Текущий граф";
+    const existingBackfill = ensureProductPresentations(
+      data.nodes,
+      existingSourceName,
       presentationColors,
+    );
+    const existingNodes = existingBackfill.nodes;
+
+    // Расширяем реестр презентациями добавляемого графа (старые цвета целы).
+    let registry = assignColorsForPresentations(
+      existingBackfill.registry,
       presentations,
     );
 
-    // Слепок sources существующих product-узлов ДО merge — пригодится
-    // для отчёта «какие узлы стали общими в результате этого добавления».
+    // Слепок sources существующих product-узлов ДО merge (уже с бэкфиллом) —
+    // пригодится для отчёта «какие узлы стали общими в результате добавления».
     const beforeSourcesById = new Map<string, string[]>();
-    for (const n of data.nodes) {
+    for (const n of existingNodes) {
       if (n.type !== "product") continue;
       const pres = Array.isArray(n.data?.presentations)
         ? (n.data.presentations as string[])
@@ -249,10 +287,20 @@ export const UploadGraphTab = () => {
       target: namespace + e.target,
     }));
 
+    // Бэкфилл добавляемого графа: step-граф без presentations считаем одним
+    // источником по его имени (presentationTitle → имя файла/сохранённого графа).
+    const incomingSourceName = presentationTitle ?? fallbackName;
+    const incomingBackfill = ensureProductPresentations(
+      namespacedNodes,
+      incomingSourceName,
+      registry,
+    );
+    registry = incomingBackfill.registry;
+
     const merged = mergeProductGraph({
-      existingNodes: data.nodes,
+      existingNodes,
       existingEdges: data.edges,
-      newNodes: namespacedNodes,
+      newNodes: incomingBackfill.nodes,
       newEdges: namespacedEdges,
       registry,
     });
@@ -350,7 +398,7 @@ export const UploadGraphTab = () => {
     await runWithStatus(() =>
       mode === "replace"
         ? handleReplaceSource(text, fallbackName)
-        : handleMergeSource(text),
+        : handleMergeSource(text, fallbackName),
     );
   };
 
@@ -363,7 +411,7 @@ export const UploadGraphTab = () => {
       const file = await loadSavedGraph(id);
       return mode === "replace"
         ? handleReplaceSource(file, name)
-        : handleMergeSource(file);
+        : handleMergeSource(file, name);
     });
   };
 

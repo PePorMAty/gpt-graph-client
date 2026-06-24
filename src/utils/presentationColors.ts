@@ -1,3 +1,5 @@
+import type { CustomNode } from "../types";
+
 export const COMMON_PRESENTATION_COLOR = "#6c757d";
 
 export const PRESENTATION_PALETTE: readonly string[] = [
@@ -91,6 +93,58 @@ export function reconstructPresentationColors(
   return missing.length > 0
     ? assignColorsForPresentations(registry, missing)
     : registry;
+}
+
+/**
+ * Гарантирует, что у каждого product-узла есть презентация (источник).
+ *
+ * Нужно для вкладки «Объединение графов»: графы, построенные по шагам
+ * (`stepToFlow` / `levelToFlow` / `chainToFlow`), не несут `data.presentations`,
+ * поэтому без бэкфилла их узлы рисуются дефолтным цветом и выпадают из легенды.
+ * Каждый «пустой» product-узел получает единый `sourceName` как свою
+ * презентацию (весь граф = один источник), цвет пересчитывается из реестра.
+ *
+ * Идемпотентна: узлы, у которых презентации уже есть, не трогаются — это
+ * сохраняет смешанный случай (часть узлов из presentation-JSON, часть step).
+ * Реестр расширяется новым источником (старые цвета сохраняются).
+ */
+export function ensureProductPresentations(
+  nodes: CustomNode[],
+  sourceName: string,
+  registry: Record<string, string>,
+): { nodes: CustomNode[]; registry: Record<string, string> } {
+  const trimmed = sourceName.trim();
+  if (!trimmed) return { nodes, registry };
+
+  const needsBackfill = nodes.some((n) => {
+    if (n.type !== "product") return false;
+    const pres = n.data?.presentations;
+    return !(Array.isArray(pres) && pres.length > 0);
+  });
+  if (!needsBackfill) return { nodes, registry };
+
+  const nextRegistry = assignColorsForPresentations(registry, [trimmed]);
+
+  const outNodes = nodes.map((n) => {
+    if (n.type !== "product") return n;
+    const pres = Array.isArray(n.data?.presentations)
+      ? (n.data.presentations as string[])
+      : [];
+    if (pres.length > 0) return n;
+
+    const label = typeof n.data?.label === "string" ? n.data.label : "";
+    return {
+      ...n,
+      data: {
+        ...n.data,
+        presentations: [trimmed],
+        presentationColor: colorForPresentations([trimmed], nextRegistry),
+        ...(label ? { labelsByPresentation: { [trimmed]: label } } : {}),
+      },
+    };
+  });
+
+  return { nodes: outNodes, registry: nextRegistry };
 }
 
 export interface LegendEntry {
