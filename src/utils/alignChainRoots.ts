@@ -10,18 +10,24 @@ import type { CustomNode } from "../types";
  * Истоки компоненты:
  *  1) узлы с `data.chainBuiltRoot === true` (их проставляет `markChainRoots`);
  *  2) если ни одного — эвристика: product с in-degree 0 (исток построения; ничего в
- *     него не входит) и максимальным `y`; если таких нет — product с максимальным `y`.
+ *     него не входит). Если таких нет — компоненту не трогаем.
  *
- * `targetY = max(y по всем истокам)` → истоки опускаются вниз на общий нижний ряд
- * (ориентация merge-вкладки — «сырьё сверху, продукты снизу»).
+ * НАПРАВЛЕНИЕ важно: ориентацию merge-вкладки можно перевернуть («🔁 Перевернуть»),
+ * поэтому истоки могут быть как СВЕРХУ (root-on-top: сосед-метод ниже истока), так и
+ * снизу. Определяем направление по знаку Σ(y соседа − y истока) и выравниваем к
+ * истоковому КРАЮ (минимальный `y`, если истоки сверху; иначе максимальный).
+ *
+ * Почему это не накладывает истоки на промежуточные узлы: каждый не-исток лежит строго
+ * по эту сторону от своего истока (ниже истока при root-on-top), значит на крайнем
+ * истоковом ряду `targetY` промежуточных узлов нет — ряд гарантированно свободен.
+ * Раньше выравнивание шло В ОБРАТНУЮ сторону (к `max y`) и задвигало исток внутрь
+ * собственной цепочки, пряча его за соседними нодами.
  *
  * Применение (гибрид, чтобы не плодить длинные рёбра там, где не нужно):
- *  - в каждой компоненте берём primary = исток с максимальным `y` и сдвигаем ВСЮ
+ *  - в каждой компоненте берём primary = исток на истоковом крае и сдвигаем ВСЮ
  *    компоненту на `dy = targetY − primaryY` — её внутренняя раскладка сохраняется, а
  *    компонента с одним истоком (напр. отдельный граф) встаёт ровно, без длинных рёбер;
- *  - остальные истоки этой компоненты (когда их ≥2) доводим индивидуально на `targetY`
- *    — они отрываются вниз к общему ряду (их ребро до последнего метода удлиняется),
- *    т.к. свести несколько истоков разной глубины в ряд сдвигом всей компоненты нельзя.
+ *  - остальные истоки этой компоненты (когда их ≥2) доводим индивидуально на `targetY`.
  *
  * Идемпотентна: повторный вызов даёт тот же `targetY`, `dy` primary = 0, доводка — no-op.
  */
@@ -70,8 +76,6 @@ export function alignChainRoots(
   }
 
   const yOf = (id: string) => nodeById.get(id)!.position.y;
-  const maxByY = (ids: string[]) =>
-    ids.reduce((a, b) => (yOf(b) > yOf(a) ? b : a));
 
   // Истоки компоненты: помеченные флагом; иначе эвристика in-degree 0.
   const rootsOfComp = (comp: string[]): string[] => {
@@ -80,16 +84,27 @@ export function alignChainRoots(
     );
     if (flagged.length > 0) return flagged;
     const products = comp.filter((id) => nodeById.get(id)!.type === "product");
-    if (products.length === 0) return [];
-    const sources = products.filter((id) => (inDeg.get(id) ?? 0) === 0);
-    return [maxByY(sources.length > 0 ? sources : products)];
+    return products.filter((id) => (inDeg.get(id) ?? 0) === 0);
   };
 
-  // Истоки всех компонент + общий targetY.
   const compRoots: string[][] = components.map(rootsOfComp);
   const allRoots = compRoots.flat();
   if (allRoots.length === 0) return nodes; // ни одного истока — выравнивать нечего
-  const targetY = allRoots.reduce((m, id) => Math.max(m, yOf(id)), -Infinity);
+
+  // Направление: истоки сверху (соседи-методы ниже) или снизу?
+  let dirSum = 0;
+  for (const r of allRoots) {
+    for (const nb of adj.get(r) ?? []) dirSum += yOf(nb) - yOf(r);
+  }
+  const rootsOnTop = dirSum >= 0;
+
+  // Крайний исток в истоковом направлении (min y сверху / max y снизу).
+  const extreme = (ids: string[]) =>
+    ids.reduce((a, b) =>
+      rootsOnTop ? (yOf(b) < yOf(a) ? b : a) : (yOf(b) > yOf(a) ? b : a),
+    );
+
+  const targetY = yOf(extreme(allRoots));
 
   // Сдвиг компоненты по primary + индивидуальная доводка остальных истоков.
   const dyByComp = new Map<number, number>();
@@ -97,7 +112,7 @@ export function alignChainRoots(
   components.forEach((comp, ci) => {
     const roots = compRoots[ci];
     if (roots.length === 0) return;
-    const primary = maxByY(roots);
+    const primary = extreme(roots);
     dyByComp.set(ci, targetY - yOf(primary));
     for (const r of roots) {
       if (r !== primary) snapToTarget.add(r);
