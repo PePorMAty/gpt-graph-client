@@ -104,40 +104,25 @@ export async function layoutMergedGraphElk(
       });
     }
 
-    // Реальные узлы + привязка к якорям.
-    // Узлы с явным layer L > 0: sandwich anchor_{L-1} → node → anchor_L.
-    // Узлы с layer 0: layerConstraint FIRST.
-    // Узлы БЕЗ layer (из другого графа при merge): никаких ограничений —
-    // ELK размещает их свободно на основе рёбер.
+    // Реальные узлы.
+    // СВЯЗНЫЕ узлы НЕ подвязываем к якорям и не ограничиваем слоем: иначе якорь
+    // слоя становится хабом высокой степени и перебивает реальные рёбра
+    // родитель→ребёнок — ребёнок уезжает по горизонтали, хотя под родителем
+    // есть место. Пусть ELK раскладывает их нативно по реальным рёбрам
+    // (сырьё-исток при direction:DOWN всё равно уходит в верхние слои).
+    // ИЗОЛИРОВАННЫЕ узлы (без рёбер) — всегда слой 0; прижимаем их к верхнему
+    // слою через layerConstraint FIRST (рёбер для размещения у них нет).
     for (const n of nodes) {
-      const layer = (n.data as Record<string, unknown>)?.layer;
-      const hasExplicitLayer = typeof layer === "number";
-      const layerIdx = hasExplicitLayer
-        ? sortedLayers.indexOf(layer as number)
-        : -1;
-
+      const isolated =
+        (inDeg.get(n.id) ?? 0) === 0 && (outDeg.get(n.id) ?? 0) === 0;
       elkChildren.push({
         id: n.id,
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
-        layoutOptions:
-          hasExplicitLayer && layerIdx === 0
-            ? { "elk.layered.layering.layerConstraint": "FIRST" }
-            : undefined,
+        layoutOptions: isolated
+          ? { "elk.layered.layering.layerConstraint": "FIRST" }
+          : undefined,
       });
-
-      if (hasExplicitLayer && layerIdx > 0) {
-        elkEdges.push({
-          id: `${ANCHOR_PREFIX}from_${n.id}`,
-          sources: [`${ANCHOR_PREFIX}${sortedLayers[layerIdx - 1]}`],
-          targets: [n.id],
-        });
-        elkEdges.push({
-          id: `${ANCHOR_PREFIX}to_${n.id}`,
-          sources: [n.id],
-          targets: [`${ANCHOR_PREFIX}${sortedLayers[layerIdx]}`],
-        });
-      }
     }
   } else {
     // Без layer-данных: FIRST/LAST constraints
