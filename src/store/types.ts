@@ -78,6 +78,17 @@ export interface SourcesPoolEntry {
   lastFetchedAt: string;
 }
 
+/**
+ * Блок источников, сохраняемый в файл графа и переносимый при объединении:
+ * пул источников (ключ — sourcesPoolKey(label, direction)) + сквозные счётчики
+ * номеров бейджа по направлениям. Понодовые источники (data.sourcesUp/Down) и так
+ * лежат в узлах; этот блок хранит ИМЕННО нумерацию бейджа «📖 N».
+ */
+export interface SavedSourcesBlock {
+  pool: Record<string, SourcesPoolEntry>;
+  seqCounter: { up: number; down: number };
+}
+
 export interface ChainSessionData {
   rawChain: TechChain | null;
   mainTrIds: string[];
@@ -125,6 +136,8 @@ export interface SaveGraphPayload {
   edges: Edge[];
   leaf_nodes: string[];
   has_more: boolean;
+  /** Пул источников + сквозные счётчики номеров бейджа (если в графе есть источники). */
+  sources?: SavedSourcesBlock;
 }
 
 export interface SavedGraphFile {
@@ -140,6 +153,8 @@ export interface SavedGraphFile {
   state: {
     leaf_nodes: string[];
     has_more: boolean;
+    /** Пул источников + счётчики номеров бейджа. Может отсутствовать у старых сейвов. */
+    sources?: SavedSourcesBlock;
   };
 }
 

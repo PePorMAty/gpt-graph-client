@@ -27,9 +27,8 @@ export const SavedGraph = () => {
 
   const { list, isLoading } = useAppSelector((state) => state.savedGraphs);
 
-  const { data, leafNodes, hasMore, originalPrompt } = useAppSelector(
-    (state) => state.graph,
-  );
+  const { data, leafNodes, hasMore, originalPrompt, sourcesPool, sourcesSeqCounter } =
+    useAppSelector((state) => state.graph);
 
   const selectedGraph = useAppSelector(
     (state) => state.savedGraphs.selectedGraph,
@@ -59,6 +58,8 @@ export const SavedGraph = () => {
         leafNodes: selectedGraph.state.leaf_nodes,
         hasMore: selectedGraph.state.has_more,
         originalPrompt: selectedGraph.meta.prompt ?? null,
+        sourcesPool: selectedGraph.state.sources?.pool,
+        sourcesSeqCounter: selectedGraph.state.sources?.seqCounter,
       }),
     );
 
@@ -124,6 +125,8 @@ export const SavedGraph = () => {
         edges: data.edges,
         leaf_nodes: leafNodes,
         has_more: hasMore,
+        // Сохраняем нумерацию бейджа источников (понодовые источники и так в узлах).
+        sources: { pool: sourcesPool, seqCounter: sourcesSeqCounter },
       });
 
       setShowSaveModal(false);
@@ -150,12 +153,17 @@ export const SavedGraph = () => {
     setIsUploading(true);
     try {
       const text = await file.text();
-      const { payload, warnings, needsLayout } = parseGraphJson(text);
+      const { payload, warnings, needsLayout, sources } = parseGraphJson(text);
 
       const promptFromFile =
         payload.originalPrompt ?? file.name.replace(/\.[^.]+$/, "");
 
-      let finalPayload = { ...payload, originalPrompt: promptFromFile };
+      let finalPayload = {
+        ...payload,
+        originalPrompt: promptFromFile,
+        sourcesPool: sources?.pool,
+        sourcesSeqCounter: sources?.seqCounter,
+      };
       if (needsLayout) {
         const laid = await applyAutoLayout(payload.nodes, payload.edges);
         finalPayload = { ...finalPayload, nodes: laid.nodes, edges: laid.edges };

@@ -23,6 +23,8 @@ export function LoadGraphEffect() {
         leafNodes: savedGraph.state.leaf_nodes,
         hasMore: savedGraph.state.has_more,
         originalPrompt: savedGraph.meta.prompt ?? null,
+        sourcesPool: savedGraph.state.sources?.pool,
+        sourcesSeqCounter: savedGraph.state.sources?.seqCounter,
       })
     );
 

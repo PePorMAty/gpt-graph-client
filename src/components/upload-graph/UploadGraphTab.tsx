@@ -20,6 +20,8 @@ import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
 import { markChainRoots } from "../../utils/markChainRoots";
 import { alignChainRoots } from "../../utils/alignChainRoots";
+import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
+import { mergeSourcesPools } from "../../utils/mergeSourcesPools";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
 
@@ -86,9 +88,8 @@ type UploadMode = "replace" | "merge";
 
 export const UploadGraphTab = () => {
   const dispatch = useAppDispatch();
-  const { data, presentationColors, originalPrompt } = useAppSelector(
-    (state) => state.graph,
-  );
+  const { data, presentationColors, originalPrompt, sourcesPool, sourcesSeqCounter } =
+    useAppSelector((state) => state.graph);
 
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const mergeInputRef = useRef<HTMLInputElement | null>(null);
@@ -151,7 +152,12 @@ export const UploadGraphTab = () => {
       presentations,
       presentationTitle,
       presentationColors: parsedColors,
+      sources: parsedSources,
     } = result;
+
+    // Источники графа: блок из файла (новые сейвы) либо реконструкция из узлов.
+    const incomingSources =
+      parsedSources ?? reconstructSourcesPool(payload.nodes);
 
     // Если в JSON-узлах уже сохранены цвета (скачанный с сервера
     // ранее объединённый граф) — переиспользуем их, чтобы раскраска
@@ -257,6 +263,8 @@ export const UploadGraphTab = () => {
         hasMore: payload.hasMore,
         originalPrompt: promptFromFile,
         presentationColors: registry,
+        sourcesPool: incomingSources.pool,
+        sourcesSeqCounter: incomingSources.seqCounter,
       }),
     );
 
@@ -271,7 +279,8 @@ export const UploadGraphTab = () => {
     fallbackName: string,
   ) => {
     const result = parseGraphJson(input);
-    const { payload, warnings, presentations, presentationTitle } = result;
+    const { payload, warnings, presentations, presentationTitle, sources: parsedSources } =
+      result;
 
     // Существующий граф мог быть построен по шагам (узлы без data.presentations) —
     // считаем его одним источником по имени текущего графа и бэкфиллим, иначе
@@ -389,11 +398,22 @@ export const UploadGraphTab = () => {
     // продукты — к нижнему (сугияма-разделение для объединённых графов).
     const laid = await layoutForMergeTab(recolored, merged.edges);
 
+    // Перенумерация источников ПО НАПРАВЛЕНИЯМ: текущий пул держит номера, у
+    // добавляемого графа новые продукты продолжают нумерацию (общие — один номер).
+    const incomingSources =
+      parsedSources ?? reconstructSourcesPool(payload.nodes);
+    const combinedSources = mergeSourcesPools([
+      { pool: sourcesPool, seqCounter: sourcesSeqCounter },
+      incomingSources,
+    ]);
+
     dispatch(
       mergeGraphFromFile({
         nodes: laid.nodes,
         edges: laid.edges,
         presentationColors: registry,
+        sourcesPool: combinedSources.pool,
+        sourcesSeqCounter: combinedSources.seqCounter,
       }),
     );
 
