@@ -18,6 +18,8 @@ import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
 import { orientByBuildDirection } from "../../utils/orientByBuildDirection";
 import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
+import { markChainRoots } from "../../utils/markChainRoots";
+import { alignChainRoots } from "../../utils/alignChainRoots";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
 
@@ -41,7 +43,12 @@ import { loadSavedGraph } from "../../store/api/saved-graph-api";
 //    по канонической ориентации — чистое послойное размещение и для
 //    продуктовых, и для step-графов (у последних нет поля «Слой»), включая
 //    узлы-преобразования и изолированные ноды.
-// 3. После раскладки applyHandlesByGeometry перевыставляет хэндлы рёбер по
+// 3. alignChainRoots — выравнивает «начальные продукты» (истоки цепочек) всех
+//    объединённых графов на один горизонтальный уровень: каждую связную компоненту
+//    сдвигает по вертикали так, чтобы её корень встал на общий targetY (внутренняя
+//    раскладка цепочки сохраняется). Корень берётся по флагу chainBuiltRoot
+//    (проставлен markChainRoots до namespacing), иначе — по эвристике-стоку.
+// 4. После раскладки applyHandlesByGeometry перевыставляет хэндлы рёбер по
 //    фактическим Y-координатам — в т.ч. у развёрнутых на шаге 1 рёбер.
 const layoutForMergeTab = async (
   nodes: CustomNode[],
@@ -56,9 +63,10 @@ const layoutForMergeTab = async (
     const laid = await layoutMergedGraphElk(layeredNodes, oriented, {
       useLayers: true,
     });
+    const aligned = alignChainRoots(laid.nodes, laid.edges);
     return {
-      nodes: laid.nodes,
-      edges: applyHandlesByGeometry(laid.nodes, laid.edges),
+      nodes: aligned,
+      edges: applyHandlesByGeometry(aligned, laid.edges),
     };
   } catch (e) {
     console.warn(
@@ -66,9 +74,10 @@ const layoutForMergeTab = async (
       e,
     );
     const laid = await applyAutoLayout(layeredNodes, oriented, "TB");
+    const aligned = alignChainRoots(laid.nodes, laid.edges);
     return {
-      nodes: laid.nodes,
-      edges: applyHandlesByGeometry(laid.nodes, laid.edges),
+      nodes: aligned,
+      edges: applyHandlesByGeometry(aligned, laid.edges),
     };
   }
 };
@@ -158,8 +167,12 @@ export const UploadGraphTab = () => {
     // (например, скачанный с сервера merged-граф уже содержит id с
     // префиксом `m...__` — после повторной загрузки они должны стать
     // уникальными).
+    // markChainRoots ДО namespacing: помечаем истоки цепочек самодостаточным
+    // флагом chainBuiltRoot, пока id ещё совпадают с chainRootNodeId (после
+    // префиксации ниже эта ссылка протухает). Флаг переживает namespacing и
+    // нужен alignChainRoots для выравнивания начальных продуктов.
     const namespace = `r${crypto.randomUUID()}__`;
-    const namespacedRawNodes = payload.nodes.map((n) => ({
+    const namespacedRawNodes = markChainRoots(payload.nodes).map((n) => ({
       ...n,
       id: namespace + n.id,
     }));
@@ -294,11 +307,17 @@ export const UploadGraphTab = () => {
     // Гарантированно уникальный неймспейс — два быстрых клика на «Добавить
     // граф» с Date.now() могут попасть в одну миллисекунду и дать коллизию
     // node id с предыдущим merge, из-за чего React Flow «теряет» дубли.
+    // markChainRoots ДО namespacing: помечаем истоки цепочек флагом
+    // chainBuiltRoot, пока id ещё совпадают с chainRootNodeId (после префиксации
+    // ссылка протухает). Флаг переживает namespacing → alignChainRoots выровняет
+    // начальные продукты добавляемого графа вместе с уже существующими.
     const namespace = `m${crypto.randomUUID()}__`;
-    const namespacedNodes: CustomNode[] = payload.nodes.map((n) => ({
-      ...n,
-      id: namespace + n.id,
-    }));
+    const namespacedNodes: CustomNode[] = markChainRoots(payload.nodes).map(
+      (n) => ({
+        ...n,
+        id: namespace + n.id,
+      }),
+    );
     const namespacedEdges = payload.edges.map((e) => ({
       ...e,
       id: namespace + e.id,
