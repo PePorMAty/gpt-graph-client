@@ -15,8 +15,6 @@ import {
   ensureProductPresentations,
 } from "../../utils/presentationColors";
 import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
-import { orientByBuildDirection } from "../../utils/orientByBuildDirection";
-import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
@@ -29,47 +27,29 @@ import {
 import { SourcePickerModal } from "./SourcePickerModal";
 import { loadSavedGraph } from "../../store/api/saved-graph-api";
 
-// Раскладка для вкладки объединения: сырьё сверху, продукты снизу.
-// ELK (~1.5MB) подгружаем динамически — только когда пользователь
-// реально что-то делает на этой вкладке. При сбое — фолбэк на applyAutoLayout("TB").
-//
-// Шаги:
-// 1. orientByBuildDirection — приводим рёбра к канону «сырьё → продукт»,
-//    разворачивая части, построенные «вниз» (у них якорь — конечный продукт,
-//    и без разворота сырьё уходило бы вниз). Идемпотентно (флаг на ребре).
-// 2. Слои синтезируем по фактической топологии (assignTopologicalLayers) уже
-//    по канонической ориентации — чистое послойное размещение и для
-//    продуктовых, и для step-графов (у последних нет поля «Слой»), включая
-//    узлы-преобразования и изолированные ноды.
-// 3. После раскладки applyHandlesByGeometry перевыставляет хэндлы рёбер по
-//    фактическим Y-координатам — в т.ч. у развёрнутых на шаге 1 рёбер.
+// Раскладка для вкладки объединения. Правило ориентации — «корень построения
+// сверху»: assignTopologicalLayers ставит топологический исток (узел, с которого
+// начинали построение) в слой 0, а ELK идёт direction:DOWN. Для новых step-графов
+// это даёт up → сырьё сверху, down → исходный продукт сверху автоматически.
+// Старые сохранённые графы (корень = конечный продукт) правятся кнопкой
+// «Перевернуть». ELK (~1.5MB) грузим динамически; при сбое — фолбэк на
+// applyAutoLayout("TB").
 const layoutForMergeTab = async (
   nodes: CustomNode[],
   edges: Edge[],
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
-  const oriented = orientByBuildDirection(nodes, edges);
-  const layeredNodes = assignTopologicalLayers(nodes, oriented);
+  const layeredNodes = assignTopologicalLayers(nodes, edges);
   try {
     const { layoutMergedGraphElk } = await import(
       "../../utils/layoutMergedGraphElk"
     );
-    const laid = await layoutMergedGraphElk(layeredNodes, oriented, {
-      useLayers: true,
-    });
-    return {
-      nodes: laid.nodes,
-      edges: applyHandlesByGeometry(laid.nodes, laid.edges),
-    };
+    return await layoutMergedGraphElk(layeredNodes, edges, { useLayers: true });
   } catch (e) {
     console.warn(
       "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
       e,
     );
-    const laid = await applyAutoLayout(layeredNodes, oriented, "TB");
-    return {
-      nodes: laid.nodes,
-      edges: applyHandlesByGeometry(laid.nodes, laid.edges),
-    };
+    return applyAutoLayout(layeredNodes, edges, "TB");
   }
 };
 
@@ -442,6 +422,24 @@ export const UploadGraphTab = () => {
       await handleFile(file, mode);
     };
 
+  // Перевернуть граф по вертикали (для старых графов без направления построения,
+  // где корнем оказался конечный продукт). Отражаем y вокруг центра bbox —
+  // порядок слоёв сохраняется. Хэндлы рёбер перевыставит setGraphData
+  // (внутри редьюсера зовётся applyHandlesByGeometry).
+  const handleFlip = () => {
+    if (!hasGraph) return;
+    const ys = data.nodes.map((n) => n.position.y);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const flipped = data.nodes.map((n) => ({
+      ...n,
+      position: { x: n.position.x, y: minY + maxY - n.position.y },
+    }));
+    dispatch(setGraphData({ nodes: flipped, edges: data.edges }));
+    setError(null);
+    setInfo("Граф перевёрнут по вертикали.");
+  };
+
   const handleRelayout = async () => {
     if (!hasGraph) return;
     setError(null);
@@ -509,6 +507,16 @@ export const UploadGraphTab = () => {
         title="Пересчитать раскладку узлов (полезно после ручных правок или слияний)"
       >
         🔄 Пересчитать раскладку
+      </button>
+
+      <button
+        type="button"
+        className={styles.relayoutButton}
+        onClick={handleFlip}
+        disabled={!hasGraph || isProcessing}
+        title="Перевернуть граф по вертикали (сырьё ↔ продукт сверху)"
+      >
+        🔁 Перевернуть
       </button>
 
       {error && <div className={styles.error}>⚠️ {error}</div>}
