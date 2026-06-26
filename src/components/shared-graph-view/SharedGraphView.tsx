@@ -40,6 +40,8 @@ export const SharedGraphView = () => {
             leafNodes: file.state.leaf_nodes,
             hasMore: file.state.has_more,
             originalPrompt: file.meta.prompt ?? null,
+            sourcesPool: file.state.sources?.pool,
+            sourcesSeqCounter: file.state.sources?.seqCounter,
           }),
         );
         setStatus("ready");

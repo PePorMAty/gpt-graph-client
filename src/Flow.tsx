@@ -319,9 +319,9 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
-        // Бейджи «↑ 📖 N / ↓ 📖 N» — ТОЛЬКО для пошагового режима (источники в
-        // sourcesPool). Для полной цепочки (whole-режим) бейдж не выводим, чтобы
-        // не перегружать ноду. Кладём только в копию data для рендера.
+        // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
+        // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
+        // объединённый граф. Кладём только в копию data для рендера.
         if (n.type === "product") {
           const lbl = String(n.data?.label ?? "");
           const badge = countProductSourcesByDirection(
