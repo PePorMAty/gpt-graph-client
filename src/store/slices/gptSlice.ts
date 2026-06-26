@@ -207,8 +207,33 @@ const gptSlice = createSlice({
         nodes,
         edges: applyHandlesByGeometry(nodes, edges),
       };
-      // Новый граф — нумерация пошаговых источников начинается заново.
-      state.sourcesSeqCounter = { up: 0, down: 0 };
+      // Пул источников label-keyed и переживал смену набора узлов (сброс полотна,
+      // загрузка из localStorage). Из-за этого новая нода с именем ранее удалённого
+      // продукта подхватывала его «призрачные» источники. Оставляем в пуле только
+      // записи продуктов, реально присутствующих в новом наборе узлов.
+      const presentKeys = new Set<string>();
+      for (const n of nodes) {
+        if (n.type !== "product") continue;
+        const lbl = typeof n.data?.label === "string" ? n.data.label : "";
+        if (!lbl) continue;
+        presentKeys.add(sourcesPoolKey(lbl, "up"));
+        presentKeys.add(sourcesPoolKey(lbl, "down"));
+      }
+      for (const k of Object.keys(state.sourcesPool)) {
+        if (!presentKeys.has(k)) delete state.sourcesPool[k];
+      }
+      for (const k of Object.keys(state.needsFreshSources)) {
+        if (!presentKeys.has(k)) delete state.needsFreshSources[k];
+      }
+      // Счётчик номеров — максимум среди оставшихся записей по направлениям, чтобы
+      // дальнейшие поиски не выдавали номер, уже занятый в пуле (а сброс полотна,
+      // где записей не осталось, обнуляет нумерацию).
+      const maxSeq = { up: 0, down: 0 };
+      for (const [k, e] of Object.entries(state.sourcesPool)) {
+        const dir: "up" | "down" = k.endsWith("::up") ? "up" : "down";
+        if (e.seq != null && e.seq > maxSeq[dir]) maxSeq[dir] = e.seq;
+      }
+      state.sourcesSeqCounter = maxSeq;
     },
     addNode: (
       state,
