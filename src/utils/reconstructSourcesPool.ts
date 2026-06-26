@@ -1,5 +1,6 @@
 // src/utils/reconstructSourcesPool.ts
 import { normalizeProductName } from "./normalizeProductName";
+import { sourcesContentKey } from "./sourcesContentKey";
 import type { CustomNode } from "../types";
 import type { SavedSourcesBlock, SourcesPoolEntry } from "../store/types";
 
@@ -9,15 +10,16 @@ const poolKey = (label: string, dir: "up" | "down") =>
   `${normalizeProductName(label)}::${dir}`;
 
 /**
- * Реконструирует пул источников и сквозные счётчики номеров бейджа из понодовых
- * данных (`data.sourcesUp` / `data.sourcesDown`). Нужен для старых сохранённых
- * графов, в которых нет блока `state.sources`, а также как фолбэк при загрузке.
+ * Реконструирует пул источников и счётчики номеров бейджа из понодовых данных
+ * (`data.sourcesUp` / `data.sourcesDown`). Нужен для старых сохранённых графов,
+ * в которых нет блока `state.sources`, а также как фолбэк при загрузке.
  *
- * Понодовые источники сохраняются в узлах, но номер бейджа «📖 N» (`seq`) — нет.
- * Восстанавливаем `seq` ПО НАПРАВЛЕНИЯМ: продукты, у которых есть источники в
- * данном направлении, сортируем по `data.sources_meta?.fetchedAt` (фолбэк —
- * порядок узлов) и нумеруем 1..N. Ключ пула — `sourcesPoolKey(label, direction)`,
- * как в живом пуле, поэтому бейдж в `Flow.tsx` подхватит записи без изменений.
+ * Номер бейджа «📖 N» (`seq`) идентифицирует НАБОР источников, а не продукт:
+ * продукты с одинаковыми источниками (потомок взял «взаймы» у предка) делят один
+ * номер. Поэтому нумеруем ПО НАПРАВЛЕНИЯМ уникальные наборы источников
+ * (`sourcesContentKey`) в порядке первого появления (по `sources_meta.fetchedAt`,
+ * фолбэк — порядок узлов). Ключ пула — `poolKey(label, direction)`, как в живом
+ * пуле, поэтому бейдж в `Flow.tsx` подхватит записи без изменений.
  */
 export function reconstructSourcesPool(nodes: CustomNode[]): SavedSourcesBlock {
   const pool: Record<string, SourcesPoolEntry> = {};
@@ -25,13 +27,12 @@ export function reconstructSourcesPool(nodes: CustomNode[]): SavedSourcesBlock {
 
   type Draft = {
     key: string;
-    label: string;
     fetchedAt: string;
     order: number;
-    sources: SourcesPoolEntry["sources"];
+    contentKey: string;
   };
 
-  const collect = (dir: "up" | "down"): Draft[] => {
+  const assign = (dir: "up" | "down") => {
     const field = dir === "up" ? "sourcesUp" : "sourcesDown";
     const drafts: Draft[] = [];
     nodes.forEach((n, order) => {
@@ -42,36 +43,44 @@ export function reconstructSourcesPool(nodes: CustomNode[]): SavedSourcesBlock {
       if (!Array.isArray(sources) || sources.length === 0) return;
       const key = poolKey(label, dir);
       if (pool[key]) return; // один продукт+направление — одна запись
-      drafts.push({
-        key,
-        label,
-        fetchedAt: n.data?.sources_meta?.fetchedAt ?? "",
-        order,
-        sources,
-      });
+      const fetchedAt = n.data?.sources_meta?.fetchedAt ?? "";
       pool[key] = {
         sources: [...sources],
         product: label,
         originProduct: label,
-        lastFetchedAt: n.data?.sources_meta?.fetchedAt ?? "",
+        lastFetchedAt: fetchedAt,
       };
+      drafts.push({
+        key,
+        fetchedAt,
+        order,
+        contentKey: sourcesContentKey(sources),
+      });
     });
-    return drafts;
-  };
 
-  (["up", "down"] as const).forEach((dir) => {
-    const drafts = collect(dir);
-    // Порядок поиска: по времени, затем по порядку узлов (стабильно).
+    // Порядок: по времени поиска, затем по порядку узлов (стабильно).
     drafts.sort(
       (a, b) =>
         (a.fetchedAt < b.fetchedAt ? -1 : a.fetchedAt > b.fetchedAt ? 1 : 0) ||
         a.order - b.order,
     );
+
+    // Один номер на уникальный набор источников.
+    const contentToSeq = new Map<string, number>();
     drafts.forEach((d) => {
-      seqCounter[dir] += 1;
-      pool[d.key].seq = seqCounter[dir];
+      const seen = contentToSeq.get(d.contentKey);
+      if (seen != null) {
+        pool[d.key].seq = seen;
+      } else {
+        seqCounter[dir] += 1;
+        contentToSeq.set(d.contentKey, seqCounter[dir]);
+        pool[d.key].seq = seqCounter[dir];
+      }
     });
-  });
+  };
+
+  assign("up");
+  assign("down");
 
   return { pool, seqCounter };
 }
