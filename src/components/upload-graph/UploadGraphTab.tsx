@@ -238,6 +238,16 @@ export const UploadGraphTab = () => {
       }))
       .filter((e) => e.source !== e.target);
 
+    // Ремап chainRootNodeId у схлопнутых intra-file продуктов: осиротевшая ссылка
+    // на удалённый узел ломает ориентацию рёбер его преобразований (тот же мотив,
+    // что и при merge общих продуктов).
+    const dedupedNodesRemapped = dedupedNodes.map((n) => {
+      const r = n.data?.chainRootNodeId;
+      return typeof r === "string" && intraRemap[r]
+        ? { ...n, data: { ...n.data, chainRootNodeId: intraRemap[r] } }
+        : n;
+    });
+
     // Бэкфилл презентаций: графы, построенные по шагам, не несут
     // data.presentations у узлов. Считаем весь загружаемый граф одним
     // источником по его имени (presentationTitle → имя файла), чтобы
@@ -245,7 +255,7 @@ export const UploadGraphTab = () => {
     // (presentation-граф / скачанный merged) не трогаются.
     const sourceName = presentationTitle ?? fallbackName;
     const backfilled = ensureProductPresentations(
-      dedupedNodes,
+      dedupedNodesRemapped,
       sourceName,
       registry,
     );
@@ -359,13 +369,27 @@ export const UploadGraphTab = () => {
     );
     registry = incomingBackfill.registry;
 
-    const merged = mergeProductGraph({
+    const mergedRaw = mergeProductGraph({
       existingNodes,
       existingEdges: data.edges,
       newNodes: incomingBackfill.nodes,
       newEdges: namespacedEdges,
       registry,
     });
+
+    // Схлопывание общих продуктов осиротило ссылки chainRootNodeId у
+    // преобразований, чей анкор-продукт стал общим узлом (его id удалён). Ремапим
+    // chainRootNodeId на оставшийся узел, иначе ориентация рёбер таких
+    // преобразований падает в неточный фолбэк и продукт уходит не в ту сторону.
+    const merged = {
+      ...mergedRaw,
+      nodes: mergedRaw.nodes.map((n) => {
+        const r = n.data?.chainRootNodeId;
+        return typeof r === "string" && mergedRaw.idRemap[r]
+          ? { ...n, data: { ...n.data, chainRootNodeId: mergedRaw.idRemap[r] } }
+          : n;
+      }),
+    };
 
     // Список узлов, у которых после merge источников стало больше, чем до.
     // Это и есть «новые общие» / «получившие новый источник» узлы.
