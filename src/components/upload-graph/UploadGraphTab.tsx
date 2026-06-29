@@ -22,6 +22,7 @@ import { markChainRoots } from "../../utils/markChainRoots";
 import { alignChainRoots } from "../../utils/alignChainRoots";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { mergeSourcesPools } from "../../utils/mergeSourcesPools";
+import { separateComponentsHorizontally } from "../../utils/separateComponentsHorizontally";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
 
@@ -66,9 +67,10 @@ const layoutForMergeTab = async (
       useLayers: true,
     });
     const aligned = alignChainRoots(laid.nodes, laid.edges);
+    const spread = separateComponentsHorizontally(aligned, laid.edges);
     return {
-      nodes: aligned,
-      edges: applyHandlesByGeometry(aligned, laid.edges),
+      nodes: spread,
+      edges: applyHandlesByGeometry(spread, laid.edges),
     };
   } catch (e) {
     console.warn(
@@ -77,9 +79,10 @@ const layoutForMergeTab = async (
     );
     const laid = await applyAutoLayout(layeredNodes, oriented, "TB");
     const aligned = alignChainRoots(laid.nodes, laid.edges);
+    const spread = separateComponentsHorizontally(aligned, laid.edges);
     return {
-      nodes: aligned,
-      edges: applyHandlesByGeometry(aligned, laid.edges),
+      nodes: spread,
+      edges: applyHandlesByGeometry(spread, laid.edges),
     };
   }
 };

@@ -44,6 +44,9 @@ export interface CustomNodeData {
 
   // --- chain direction (which direction this node's chain uses) ---
   chainDirection?: BuildDirection;
+  // Направление альтернативного шага (alt-нода). chainDirection у alt-нод не
+  // ставится, поэтому ориентация рёбер в merge берёт направление и отсюда.
+  stepAltDirection?: BuildDirection;
 
   // --- step-by-step chain ---
   stepChainSessionKey?: string;

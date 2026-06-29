@@ -43,7 +43,13 @@ export function orientByBuildDirection(
   const dirOf = new Map<string, Dir | undefined>();
   const rootOf = new Map<string, string | undefined>();
   for (const n of nodes) {
-    dirOf.set(n.id, n.data?.chainDirection as Dir | undefined);
+    // alt-ноды несут направление в stepAltDirection (chainDirection у них нет) —
+    // иначе ребро к альтернативе не классифицируется и не разворачивается, и
+    // альтернатива «вверх»-графа уезжает вниз.
+    dirOf.set(
+      n.id,
+      (n.data?.chainDirection ?? n.data?.stepAltDirection) as Dir | undefined,
+    );
     rootOf.set(n.id, n.data?.chainRootNodeId as string | undefined);
   }
 
