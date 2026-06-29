@@ -184,6 +184,13 @@ export const UploadGraphTab = () => {
     const namespacedRawNodes = markChainRoots(payload.nodes).map((n) => ({
       ...n,
       id: namespace + n.id,
+      // Ремапим внутреннюю ссылку chainRootNodeId под новый префикс id, иначе она
+      // протухает, и ориентация рёбер не знает, к какой цепочке относится
+      // преобразование (важно для общих продуктов между графами).
+      data:
+        typeof n.data?.chainRootNodeId === "string"
+          ? { ...n.data, chainRootNodeId: namespace + n.data.chainRootNodeId }
+          : n.data,
     }));
     const namespacedRawEdges = payload.edges.map((e) => ({
       ...e,
@@ -328,6 +335,11 @@ export const UploadGraphTab = () => {
       (n) => ({
         ...n,
         id: namespace + n.id,
+        // Ремап chainRootNodeId под новый префикс (см. handleReplaceSource).
+        data:
+          typeof n.data?.chainRootNodeId === "string"
+            ? { ...n.data, chainRootNodeId: namespace + n.data.chainRootNodeId }
+            : n.data,
       }),
     );
     const namespacedEdges = payload.edges.map((e) => ({

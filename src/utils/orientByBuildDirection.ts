@@ -42,6 +42,7 @@ export function orientByBuildDirection(
   const idSet = new Set(nodes.map((n) => n.id));
   const dirOf = new Map<string, Dir | undefined>();
   const rootOf = new Map<string, string | undefined>();
+  const typeOf = new Map<string, string | undefined>();
   for (const n of nodes) {
     // alt-ноды несут направление в stepAltDirection (chainDirection у них нет) —
     // иначе ребро к альтернативе не классифицируется и не разворачивается, и
@@ -51,6 +52,7 @@ export function orientByBuildDirection(
       (n.data?.chainDirection ?? n.data?.stepAltDirection) as Dir | undefined,
     );
     rootOf.set(n.id, n.data?.chainRootNodeId as string | undefined);
+    typeOf.set(n.id, n.type);
   }
 
   // Ненаправленная смежность (направление рёбер тут НЕ важно — оно и есть то,
@@ -108,24 +110,40 @@ export function orientByBuildDirection(
     else if (touchesUp && !touchesDown) edgeDir = "up";
     if (edgeDir === null) return e;
 
-    // Дистанции ОБОИХ концов ребра меряем от ОДНОГО корня — того, к чьей цепочке
-    // ребро ближе (минимизируем max расстояния до концов). Иначе у ОБЩЕГО узла
-    // (после объединения он входит в несколько цепочек) ближайшим оказывается
-    // корень ДРУГОГО графа, а у второго конца — свой; расстояния от РАЗНЫХ корней
-    // несравнимы, и ребро разворачивается неверно (общий продукт «переезжает» на
-    // выход преобразования вместо входа).
+    // Дистанции ОБОИХ концов ребра меряем от ОДНОГО корня. Корень берём по
+    // ПРЕОБРАЗОВАНИЮ-концу ребра: преобразование принадлежит ровно одной цепочке
+    // (в отличие от ОБЩЕГО продукта, который после объединения входит в несколько),
+    // поэтому его chainRootNodeId однозначно задаёт «свою» цепочку. Иначе у общего
+    // продукта ближайшим оказывается корень ДРУГОГО графа, и ребро разворачивается
+    // неверно (общий продукт «переезжает» на выход преобразования вместо входа).
     let distU: number | undefined;
     let distV: number | undefined;
-    let bestMax = Infinity;
-    for (const dmap of distByRoot.values()) {
-      const a = dmap.get(e.source);
-      const b = dmap.get(e.target);
-      if (a == null || b == null) continue; // корень не достаёт оба конца
-      const mx = a > b ? a : b;
-      if (mx < bestMax) {
-        bestMax = mx;
-        distU = a;
-        distV = b;
+    const trEnd =
+      typeOf.get(e.source) === "transformation"
+        ? e.source
+        : typeOf.get(e.target) === "transformation"
+          ? e.target
+          : undefined;
+    const trRoot = trEnd ? rootOf.get(trEnd) : undefined;
+    if (trRoot && distByRoot.has(trRoot)) {
+      const dmap = distByRoot.get(trRoot)!;
+      distU = dmap.get(e.source);
+      distV = dmap.get(e.target);
+    }
+    // Фолбэк (нет валидного корня преобразования): оба конца от одного корня,
+    // ближайшего к ребру (минимизируем max расстояния до концов).
+    if (distU == null || distV == null) {
+      let bestMax = Infinity;
+      for (const dmap of distByRoot.values()) {
+        const a = dmap.get(e.source);
+        const b = dmap.get(e.target);
+        if (a == null || b == null) continue;
+        const mx = a > b ? a : b;
+        if (mx < bestMax) {
+          bestMax = mx;
+          distU = a;
+          distV = b;
+        }
       }
     }
     if (distU == null || distV == null || distU === distV) return e;
