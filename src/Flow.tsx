@@ -73,7 +73,7 @@ import {
   sourcesPoolKey,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
-import { parseAlternatives } from "./utils/parseAlternatives";
+import { parseAlternatives, dedupeAlternatives } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { SelectNeighborModal } from "./components/select-neighbor-modal";
@@ -1129,7 +1129,9 @@ export const Flow = ({
       const sliceState = sourcesByNodeId[sKey];
       const text = sliceState?.stepAggregatedText;
       if (text) {
-        const alts = parseAlternatives(text);
+        // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
+        // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
+        const alts = dedupeAlternatives(parseAlternatives(text));
         if (alts.length > 1) {
           dispatch(
             createStepAlternativeNodes({

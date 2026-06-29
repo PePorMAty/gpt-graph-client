@@ -1,4 +1,5 @@
 // src/utils/parseAlternatives.ts
+import { normalizeProductName } from "./normalizeProductName";
 
 export type ParsedAlternative = {
   title: string;
@@ -107,5 +108,70 @@ export function parseAlternatives(text: string): ParsedAlternative[] {
     result.push({ title, firstStepName, fullDescription: section });
   }
 
+  return result;
+}
+
+/**
+ * Парсит из markdown-секции шага списки продуктов «Что производят» (выходы) и
+ * «Из чего производят» (входы), нормализуя имена. Списки могут быть в скобках
+ * «[A, B]» или без; разделители — запятая/точка с запятой.
+ */
+export function extractStepProducts(description: string): {
+  inputs: string[];
+  outputs: string[];
+} {
+  const parseList = (raw: string): string[] =>
+    raw
+      .replace(/^\s*\[/, "")
+      .replace(/\]\s*$/, "")
+      .split(/[;,]/)
+      .map((s) => normalizeProductName(s.trim()))
+      .filter(Boolean);
+  const outM = /\*\*Что производят:\*\*\s*(.+)/.exec(description || "");
+  const inM = /\*\*Из чего производят:\*\*\s*(.+)/.exec(description || "");
+  return {
+    outputs: outM ? parseList(outM[1]) : [],
+    inputs: inM ? parseList(inM[1]) : [],
+  };
+}
+
+/**
+ * Канонический ключ «сути» варианта шага для детекта дублей. Основной сигнал —
+ * нормализованный набор входов+выходов; если их не удалось распарсить — фолбэк
+ * на нормализованную краткую формулу/заголовок. Пустая строка = ключ не
+ * определён (такой вариант НЕ схлопываем, чтобы не потерять данные).
+ */
+export function alternativeKey(item: {
+  fullDescription?: string;
+  firstStepName?: string;
+  title?: string;
+}): string {
+  const { inputs, outputs } = extractStepProducts(item.fullDescription || "");
+  if (inputs.length || outputs.length) {
+    return (
+      "p:" + [...outputs].sort().join("|") + "<=" + [...inputs].sort().join("|")
+    );
+  }
+  const f = normalizeProductName(item.firstStepName || item.title || "");
+  return f ? "f:" + f : "";
+}
+
+/**
+ * Схлопывает дубли вариантов шага: оставляет первое вхождение каждого
+ * уникального ключа (alternativeKey). Основной вариант идёт первым, поэтому
+ * альтернатива, совпадающая с ним по сути, тоже отбрасывается. Варианты с
+ * неопределённым ключом не трогаем.
+ */
+export function dedupeAlternatives(
+  parsed: ParsedAlternative[],
+): ParsedAlternative[] {
+  const seen = new Set<string>();
+  const result: ParsedAlternative[] = [];
+  for (const item of parsed) {
+    const key = alternativeKey(item);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    result.push(item);
+  }
   return result;
 }
