@@ -96,19 +96,6 @@ export function orientByBuildDirection(
   const distByRoot = new Map<string, Map<string, number>>();
   for (const root of roots) distByRoot.set(root, bfsFrom(root));
 
-  // Расстояние узла до СВОЕГО корня; иначе — до ближайшего корня (фолбэк для
-  // редких стыковых узлов без собственного корня в составе компоненты).
-  const distOf = (id: string): number | undefined => {
-    const own = rootOf.get(id);
-    if (own && distByRoot.get(own)?.has(id)) return distByRoot.get(own)!.get(id);
-    let best: number | undefined;
-    for (const dmap of distByRoot.values()) {
-      const v = dmap.get(id);
-      if (v != null && (best == null || v < best)) best = v;
-    }
-    return best;
-  };
-
   return edges.map((e) => {
     const du = dirOf.get(e.source);
     const dv = dirOf.get(e.target);
@@ -121,8 +108,26 @@ export function orientByBuildDirection(
     else if (touchesUp && !touchesDown) edgeDir = "up";
     if (edgeDir === null) return e;
 
-    const distU = distOf(e.source);
-    const distV = distOf(e.target);
+    // Дистанции ОБОИХ концов ребра меряем от ОДНОГО корня — того, к чьей цепочке
+    // ребро ближе (минимизируем max расстояния до концов). Иначе у ОБЩЕГО узла
+    // (после объединения он входит в несколько цепочек) ближайшим оказывается
+    // корень ДРУГОГО графа, а у второго конца — свой; расстояния от РАЗНЫХ корней
+    // несравнимы, и ребро разворачивается неверно (общий продукт «переезжает» на
+    // выход преобразования вместо входа).
+    let distU: number | undefined;
+    let distV: number | undefined;
+    let bestMax = Infinity;
+    for (const dmap of distByRoot.values()) {
+      const a = dmap.get(e.source);
+      const b = dmap.get(e.target);
+      if (a == null || b == null) continue; // корень не достаёт оба конца
+      const mx = a > b ? a : b;
+      if (mx < bestMax) {
+        bestMax = mx;
+        distU = a;
+        distV = b;
+      }
+    }
     if (distU == null || distV == null || distU === distV) return e;
 
     // Корень (chainBuiltRoot) = начальный продукт, с которого начали строить,
