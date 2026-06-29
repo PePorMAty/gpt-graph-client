@@ -65,19 +65,21 @@ export function orientByBuildDirection(
     adj.get(e.target)!.push(e.source);
   }
 
-  // Корни цепочек = «начальные продукты», помеченные markChainRoots флагом
-  // data.chainBuiltRoot. Флаг переживает namespacing id (в отличие от
-  // chainRootNodeId — ссылки на id, которая протухает после префиксации).
+  // Корни для BFS = ВСЕ под-цепочечные корни (значения chainRootNodeId), которые
+  // присутствуют как узлы. Каждый «поиск вверх/вниз» из продукта создаёт ПОД-сессию
+  // со своим rootNodeId, поэтому chainRootNodeId указывает на корень ЛОКАЛЬНОЙ
+  // под-цепочки (анкор шага), а не на глобальный исток графа. Меряя дистанции от
+  // корня под-цепочки ПРЕОБРАЗОВАНИЯ, получаем корректную локальную ориентацию даже
+  // у общих продуктов между графами (chainRootNodeId ремапится при namespacing).
   const roots = new Set<string>();
   for (const n of nodes) {
-    if (n.data?.chainBuiltRoot === true && idSet.has(n.id)) roots.add(n.id);
+    const r = rootOf.get(n.id);
+    if (typeof r === "string" && idSet.has(r)) roots.add(r);
   }
-  // Легаси-фолбэк: если флага нет (не-namespaced контекст) — по chainRootNodeId.
-  if (roots.size === 0) {
-    for (const n of nodes) {
-      const r = rootOf.get(n.id);
-      if (r && idSet.has(r)) roots.add(r);
-    }
+  // Глобальные истоки (chainBuiltRoot) — на случай одноуровневых цепочек без
+  // входящих chainRootNodeId-ссылок.
+  for (const n of nodes) {
+    if (n.data?.chainBuiltRoot === true && idSet.has(n.id)) roots.add(n.id);
   }
   if (roots.size === 0) return edges; // нет step-цепочек — трогать нечего
 
