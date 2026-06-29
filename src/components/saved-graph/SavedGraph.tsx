@@ -118,6 +118,29 @@ export const SavedGraph = () => {
     const prompt = originalPrompt ?? name ?? "graph";
 
     try {
+      // Полные источники уже лежат в node.data (sourcesUp/Down). В пуле для сейва
+      // оставляем только то, что нужно для бейджа и группировки номеров: номер
+      // (seq/originProduct) + лёгкие url/title (по ним считается номер набора в
+      // sourcesContentKey). Тяжёлые поля (technology_description, evidence_snippets,
+      // inputs_outputs_hint, access_hint) НЕ дублируем — иначе payload раздувается
+      // и упирается в лимит тела запроса (nginx). Длина массива сохраняется → бейдж
+      // на месте; полный текст источников берётся из node.data.
+      const lightPool = Object.fromEntries(
+        Object.entries(sourcesPool).map(([k, e]) => [
+          k,
+          {
+            ...e,
+            sources: e.sources.map((s) => ({
+              title: s.title,
+              url: s.url,
+              access_hint: "",
+              technology_description: "",
+              inputs_outputs_hint: [],
+              evidence_snippets: [],
+            })),
+          },
+        ]),
+      );
       await saveGraph({
         name,
         prompt,
@@ -125,8 +148,8 @@ export const SavedGraph = () => {
         edges: data.edges,
         leaf_nodes: leafNodes,
         has_more: hasMore,
-        // Сохраняем нумерацию бейджа источников (понодовые источники и так в узлах).
-        sources: { pool: sourcesPool, seqCounter: sourcesSeqCounter },
+        // Нумерация бейджа источников (понодовые источники и так в узлах).
+        sources: { pool: lightPool, seqCounter: sourcesSeqCounter },
       });
 
       setShowSaveModal(false);

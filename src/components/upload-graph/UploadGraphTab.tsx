@@ -22,6 +22,7 @@ import { markChainRoots } from "../../utils/markChainRoots";
 import { alignChainRoots } from "../../utils/alignChainRoots";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { mergeSourcesPools } from "../../utils/mergeSourcesPools";
+import { separateComponentsHorizontally } from "../../utils/separateComponentsHorizontally";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
 
@@ -66,9 +67,10 @@ const layoutForMergeTab = async (
       useLayers: true,
     });
     const aligned = alignChainRoots(laid.nodes, laid.edges);
+    const spread = separateComponentsHorizontally(aligned, laid.edges);
     return {
-      nodes: aligned,
-      edges: applyHandlesByGeometry(aligned, laid.edges),
+      nodes: spread,
+      edges: applyHandlesByGeometry(spread, laid.edges),
     };
   } catch (e) {
     console.warn(
@@ -77,9 +79,10 @@ const layoutForMergeTab = async (
     );
     const laid = await applyAutoLayout(layeredNodes, oriented, "TB");
     const aligned = alignChainRoots(laid.nodes, laid.edges);
+    const spread = separateComponentsHorizontally(aligned, laid.edges);
     return {
-      nodes: aligned,
-      edges: applyHandlesByGeometry(aligned, laid.edges),
+      nodes: spread,
+      edges: applyHandlesByGeometry(spread, laid.edges),
     };
   }
 };
@@ -181,6 +184,13 @@ export const UploadGraphTab = () => {
     const namespacedRawNodes = markChainRoots(payload.nodes).map((n) => ({
       ...n,
       id: namespace + n.id,
+      // Ремапим внутреннюю ссылку chainRootNodeId под новый префикс id, иначе она
+      // протухает, и ориентация рёбер не знает, к какой цепочке относится
+      // преобразование (важно для общих продуктов между графами).
+      data:
+        typeof n.data?.chainRootNodeId === "string"
+          ? { ...n.data, chainRootNodeId: namespace + n.data.chainRootNodeId }
+          : n.data,
     }));
     const namespacedRawEdges = payload.edges.map((e) => ({
       ...e,
@@ -228,6 +238,16 @@ export const UploadGraphTab = () => {
       }))
       .filter((e) => e.source !== e.target);
 
+    // Ремап chainRootNodeId у схлопнутых intra-file продуктов: осиротевшая ссылка
+    // на удалённый узел ломает ориентацию рёбер его преобразований (тот же мотив,
+    // что и при merge общих продуктов).
+    const dedupedNodesRemapped = dedupedNodes.map((n) => {
+      const r = n.data?.chainRootNodeId;
+      return typeof r === "string" && intraRemap[r]
+        ? { ...n, data: { ...n.data, chainRootNodeId: intraRemap[r] } }
+        : n;
+    });
+
     // Бэкфилл презентаций: графы, построенные по шагам, не несут
     // data.presentations у узлов. Считаем весь загружаемый граф одним
     // источником по его имени (presentationTitle → имя файла), чтобы
@@ -235,7 +255,7 @@ export const UploadGraphTab = () => {
     // (presentation-граф / скачанный merged) не трогаются.
     const sourceName = presentationTitle ?? fallbackName;
     const backfilled = ensureProductPresentations(
-      dedupedNodes,
+      dedupedNodesRemapped,
       sourceName,
       registry,
     );
@@ -325,6 +345,11 @@ export const UploadGraphTab = () => {
       (n) => ({
         ...n,
         id: namespace + n.id,
+        // Ремап chainRootNodeId под новый префикс (см. handleReplaceSource).
+        data:
+          typeof n.data?.chainRootNodeId === "string"
+            ? { ...n.data, chainRootNodeId: namespace + n.data.chainRootNodeId }
+            : n.data,
       }),
     );
     const namespacedEdges = payload.edges.map((e) => ({
@@ -344,13 +369,27 @@ export const UploadGraphTab = () => {
     );
     registry = incomingBackfill.registry;
 
-    const merged = mergeProductGraph({
+    const mergedRaw = mergeProductGraph({
       existingNodes,
       existingEdges: data.edges,
       newNodes: incomingBackfill.nodes,
       newEdges: namespacedEdges,
       registry,
     });
+
+    // Схлопывание общих продуктов осиротило ссылки chainRootNodeId у
+    // преобразований, чей анкор-продукт стал общим узлом (его id удалён). Ремапим
+    // chainRootNodeId на оставшийся узел, иначе ориентация рёбер таких
+    // преобразований падает в неточный фолбэк и продукт уходит не в ту сторону.
+    const merged = {
+      ...mergedRaw,
+      nodes: mergedRaw.nodes.map((n) => {
+        const r = n.data?.chainRootNodeId;
+        return typeof r === "string" && mergedRaw.idRemap[r]
+          ? { ...n, data: { ...n.data, chainRootNodeId: mergedRaw.idRemap[r] } }
+          : n;
+      }),
+    };
 
     // Список узлов, у которых после merge источников стало больше, чем до.
     // Это и есть «новые общие» / «получившие новый источник» узлы.

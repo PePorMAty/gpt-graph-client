@@ -9,22 +9,29 @@ type Dir = "up" | "down";
  * (по ходу производства, сверху вниз).
  *
  * Зачем именно идемпотентно: step-билдеры создают рёбра `якорь →
- * преобразование → новый-узел`, не переворачивая source/target по направлению.
- * У «вниз»-графа якорь — конечный продукт, поэтому рёбра топологически
- * перевёрнуты (продукт→сырьё) относительно «вверх»-графов и продуктовых графов
- * (сырьё→продукт). Нужно привести всё к одному канону.
+ * преобразование → новый-узел` для ОБОИХ направлений. У «вниз»-графа якорь —
+ * начальный (входной) продукт, поэтому рёбра уже идут сырьё→продукт (канон). У
+ * «вверх»-графа якорь — выходной продукт, а новые узлы — его предшественники,
+ * поэтому рёбра топологически перевёрнуты (продукт→сырьё). Нужно привести всё к
+ * одному канону.
  *
  * Ориентацию КАЖДОГО ребра вычисляем из СТАБИЛЬНОЙ структуры, не зависящей от
  * текущего направления рёбер: ненаправленное расстояние конца до корня цепочки
- * (`data.chainRootNodeId`) + направление сборки (`data.chainDirection`). Поэтому
- * повторное применение к уже-канональным рёбрам — no-op (нет тоггла и флага):
- * функция самовосстанавливается на любых входных рёбрах (нативных,
- * ранее-развёрнутых, из старых сохранений), что чинит переворот при повторном
- * объединении.
+ * (флаг `data.chainBuiltRoot`) + направление сборки (`data.chainDirection`).
+ * Поэтому повторное применение к уже-канональным рёбрам — no-op: функция
+ * самовосстанавливается на любых входных рёбрах (нативных, ранее-развёрнутых, из
+ * старых сохранений), что чинит переворот при повторном объединении.
  *
- * Корень «вниз»-цепочки — это конечный продукт (исходный узел, от которого
- * строили): сырьё дальше всего от него. Корень «вверх»-цепочки — входное сырьё:
- * оно ближе всего к корню. Так в обоих случаях source = сырьё, target = продукт.
+ * Корень цепочки (chainBuiltRoot) — НАЧАЛЬНЫЙ продукт, с которого начали строить,
+ * в ОБОИХ направлениях (rootNodeId в stepToFlow). Для «вниз» он сам — вход
+ * (dist=0), рёбра сырьё→продукт остаются как есть. Для «вверх» он сам — выход, а
+ * сырьё (предшественники) дальше от корня → рёбра разворачиваются
+ * предшественник→…→начальный продукт, и начальный продукт уходит вниз.
+ *
+ * ВАЖНО про корни: берём из флага `chainBuiltRoot` (его ставит markChainRoots), а
+ * НЕ из `chainRootNodeId` — последний есть ссылка на id, которая протухает после
+ * префиксации id в объединении/загрузке (`m…__`/`r…__`), из-за чего раньше функция
+ * не находила корни и была полностью no-op (отсюда переворот «вверх»-графов).
  */
 export function orientByBuildDirection(
   nodes: CustomNode[],
@@ -35,9 +42,17 @@ export function orientByBuildDirection(
   const idSet = new Set(nodes.map((n) => n.id));
   const dirOf = new Map<string, Dir | undefined>();
   const rootOf = new Map<string, string | undefined>();
+  const typeOf = new Map<string, string | undefined>();
   for (const n of nodes) {
-    dirOf.set(n.id, n.data?.chainDirection as Dir | undefined);
+    // alt-ноды несут направление в stepAltDirection (chainDirection у них нет) —
+    // иначе ребро к альтернативе не классифицируется и не разворачивается, и
+    // альтернатива «вверх»-графа уезжает вниз.
+    dirOf.set(
+      n.id,
+      (n.data?.chainDirection ?? n.data?.stepAltDirection) as Dir | undefined,
+    );
     rootOf.set(n.id, n.data?.chainRootNodeId as string | undefined);
+    typeOf.set(n.id, n.type);
   }
 
   // Ненаправленная смежность (направление рёбер тут НЕ важно — оно и есть то,
@@ -50,11 +65,21 @@ export function orientByBuildDirection(
     adj.get(e.target)!.push(e.source);
   }
 
-  // Корни цепочек = все встречающиеся chainRootNodeId.
+  // Корни для BFS = ВСЕ под-цепочечные корни (значения chainRootNodeId), которые
+  // присутствуют как узлы. Каждый «поиск вверх/вниз» из продукта создаёт ПОД-сессию
+  // со своим rootNodeId, поэтому chainRootNodeId указывает на корень ЛОКАЛЬНОЙ
+  // под-цепочки (анкор шага), а не на глобальный исток графа. Меряя дистанции от
+  // корня под-цепочки ПРЕОБРАЗОВАНИЯ, получаем корректную локальную ориентацию даже
+  // у общих продуктов между графами (chainRootNodeId ремапится при namespacing).
   const roots = new Set<string>();
   for (const n of nodes) {
     const r = rootOf.get(n.id);
-    if (r && idSet.has(r)) roots.add(r);
+    if (typeof r === "string" && idSet.has(r)) roots.add(r);
+  }
+  // Глобальные истоки (chainBuiltRoot) — на случай одноуровневых цепочек без
+  // входящих chainRootNodeId-ссылок.
+  for (const n of nodes) {
+    if (n.data?.chainBuiltRoot === true && idSet.has(n.id)) roots.add(n.id);
   }
   if (roots.size === 0) return edges; // нет step-цепочек — трогать нечего
 
@@ -75,19 +100,6 @@ export function orientByBuildDirection(
   const distByRoot = new Map<string, Map<string, number>>();
   for (const root of roots) distByRoot.set(root, bfsFrom(root));
 
-  // Расстояние узла до СВОЕГО корня; иначе — до ближайшего корня (фолбэк для
-  // редких стыковых узлов без собственного корня в составе компоненты).
-  const distOf = (id: string): number | undefined => {
-    const own = rootOf.get(id);
-    if (own && distByRoot.get(own)?.has(id)) return distByRoot.get(own)!.get(id);
-    let best: number | undefined;
-    for (const dmap of distByRoot.values()) {
-      const v = dmap.get(id);
-      if (v != null && (best == null || v < best)) best = v;
-    }
-    return best;
-  };
-
   return edges.map((e) => {
     const du = dirOf.get(e.source);
     const dv = dirOf.get(e.target);
@@ -100,14 +112,53 @@ export function orientByBuildDirection(
     else if (touchesUp && !touchesDown) edgeDir = "up";
     if (edgeDir === null) return e;
 
-    const distU = distOf(e.source);
-    const distV = distOf(e.target);
+    // Дистанции ОБОИХ концов ребра меряем от ОДНОГО корня. Корень берём по
+    // ПРЕОБРАЗОВАНИЮ-концу ребра: преобразование принадлежит ровно одной цепочке
+    // (в отличие от ОБЩЕГО продукта, который после объединения входит в несколько),
+    // поэтому его chainRootNodeId однозначно задаёт «свою» цепочку. Иначе у общего
+    // продукта ближайшим оказывается корень ДРУГОГО графа, и ребро разворачивается
+    // неверно (общий продукт «переезжает» на выход преобразования вместо входа).
+    let distU: number | undefined;
+    let distV: number | undefined;
+    const trEnd =
+      typeOf.get(e.source) === "transformation"
+        ? e.source
+        : typeOf.get(e.target) === "transformation"
+          ? e.target
+          : undefined;
+    const trRoot = trEnd ? rootOf.get(trEnd) : undefined;
+    if (trRoot && distByRoot.has(trRoot)) {
+      const dmap = distByRoot.get(trRoot)!;
+      distU = dmap.get(e.source);
+      distV = dmap.get(e.target);
+    }
+    // Фолбэк (нет валидного корня преобразования): оба конца от одного корня,
+    // ближайшего к ребру (минимизируем max расстояния до концов).
+    if (distU == null || distV == null) {
+      let bestMax = Infinity;
+      for (const dmap of distByRoot.values()) {
+        const a = dmap.get(e.source);
+        const b = dmap.get(e.target);
+        if (a == null || b == null) continue;
+        const mx = a > b ? a : b;
+        if (mx < bestMax) {
+          bestMax = mx;
+          distU = a;
+          distV = b;
+        }
+      }
+    }
     if (distU == null || distV == null || distU === distV) return e;
 
-    // Сырьё (source) — конец дальше от продукта:
-    //  • down: корень = продукт → сырьё имеет БОЛЬШИЙ dist;
-    //  • up:   корень = сырьё   → сырьё имеет МЕНЬШИЙ dist.
-    const sourceIsU = edgeDir === "down" ? distU > distV : distU < distV;
+    // Корень (chainBuiltRoot) = начальный продукт, с которого начали строить,
+    // dist=0, в обоих направлениях. Канон — сырьё→продукт (входы сверху), source
+    // = вход:
+    //  • down: начали со входа (он сам — сырьё) → source = БЛИЖЕ к корню (меньший
+    //    dist); цепочка S→…→производное остаётся как есть;
+    //  • up:   начали с выхода (он сам — продукт), сырьё — предшественники дальше
+    //    от корня → source = ДАЛЬШЕ (больший dist); рёбра разворачиваются в
+    //    предшественник→…→начальный продукт, и он уходит вниз.
+    const sourceIsU = edgeDir === "down" ? distU < distV : distU > distV;
     const newSource = sourceIsU ? e.source : e.target;
     const newTarget = sourceIsU ? e.target : e.source;
     if (newSource === e.source && newTarget === e.target) return e;
