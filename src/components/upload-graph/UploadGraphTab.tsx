@@ -18,7 +18,7 @@ import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
 import { orientByBuildDirection } from "../../utils/orientByBuildDirection";
 import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
-import { collapseDuplicateAlternatives } from "../../utils/collapseDuplicateAlternatives";
+import { collapseDuplicateTransformations } from "../../utils/collapseDuplicateTransformations";
 import { markChainRoots } from "../../utils/markChainRoots";
 import { alignChainRoots } from "../../utils/alignChainRoots";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
@@ -392,18 +392,19 @@ export const UploadGraphTab = () => {
       }),
     };
 
-    // Схлопывание дублей альтернатив: одинаковые по сути альтернативы от одного
-    // продукта (общий chainRootNodeId+направление + тот же набор входов/выходов)
-    // сливаем в одну. Делаем ПОСЛЕ ремапа chainRootNodeId — чтобы альтернативы от
-    // ставшего общим продукта сгруппировались. Зеркалит схлопывание продуктов.
-    const collapsedAlts = collapseDuplicateAlternatives(
+    // Схлопывание дублей преобразований (mergeProductGraph схлопывает только
+    // продукты): одинаковые alt-узлы (тот же анкор+направление+суть) и одинаковые
+    // обычные преобразования (то же имя + тот же набор связанных продуктов)
+    // сливаем в одно. Делаем ПОСЛЕ ремапа chainRootNodeId — чтобы узлы от ставшего
+    // общим продукта сгруппировались. Зеркалит схлопывание продуктов.
+    const collapsedTr = collapseDuplicateTransformations(
       mergedRemapped.nodes,
       mergedRemapped.edges,
     );
     const merged = {
       ...mergedRemapped,
-      nodes: collapsedAlts.nodes,
-      edges: collapsedAlts.edges,
+      nodes: collapsedTr.nodes,
+      edges: collapsedTr.edges,
     };
 
     // Список узлов, у которых после merge источников стало больше, чем до.
