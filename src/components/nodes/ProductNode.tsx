@@ -1,6 +1,8 @@
 import { Handle, Position } from "@xyflow/react";
-import React from "react";
+import React, { useState } from "react";
 import type { ProductNodeProps } from "../../types";
+import type { BuildDirection } from "../../store/types";
+import { useNodeActions } from "./nodeActionsContext";
 
 const DEFAULT_BORDER = "#2196f3";
 
@@ -101,13 +103,94 @@ const SourcesPill: React.FC<{
   </div>
 );
 
-export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
+/**
+ * Вариант A: кнопка построения прямо на ноде. ▲ сверху = вверх, ▼ снизу = вниз.
+ * Кнопка «наезжает» на край карточки (нет мёртвого зазора), поэтому наведение
+ * с тела ноды на кнопку не теряет hover. stopPropagation, чтобы не сработал
+ * onNodeClick (карточка) и перетаскивание ноды.
+ */
+const NodeBuildButton: React.FC<{
+  direction: BuildDirection;
+  color: string;
+  onClick: () => void;
+}> = ({ direction, color, onClick }) => (
+  <button
+    type="button"
+    className="nodrag nopan"
+    title={direction === "up" ? "Построить вверх" : "Построить вниз"}
+    onMouseDown={(e) => e.stopPropagation()}
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick();
+    }}
+    style={{
+      position: "absolute",
+      left: "50%",
+      transform: "translateX(-50%)",
+      [direction === "up" ? "top" : "bottom"]: -14,
+      display: "flex",
+      alignItems: "center",
+      gap: 4,
+      padding: "3px 10px",
+      borderRadius: 999,
+      border: `1px solid ${color}`,
+      background: "#fff",
+      color,
+      fontSize: 11,
+      fontWeight: 700,
+      lineHeight: 1,
+      cursor: "pointer",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+      whiteSpace: "nowrap",
+      zIndex: 12,
+    }}
+  >
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {direction === "up" ? (
+        <>
+          <line x1="12" y1="19" x2="12" y2="5" />
+          <polyline points="5 12 12 5 19 12" />
+        </>
+      ) : (
+        <>
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <polyline points="19 12 12 19 5 12" />
+        </>
+      )}
+    </svg>
+    {direction === "up" ? "Вверх" : "Вниз"}
+  </button>
+);
+
+export const ProductNode: React.FC<ProductNodeProps> = ({
+  id,
+  data,
+  selected,
+}) => {
   const color =
     typeof data.presentationColor === "string" && data.presentationColor
       ? data.presentationColor
       : DEFAULT_BORDER;
   const background = mixWithWhite(color, 0.85);
   const shadow = hexToRgba(color, 0.2);
+
+  const actions = useNodeActions();
+  const [hovered, setHovered] = useState(false);
+  // Вариант A: показать кнопки построения при наведении/выделении ноды.
+  const showBuildButtons =
+    actions?.variant === "A" &&
+    !actions.readOnly &&
+    (hovered || Boolean(selected));
 
   // Бейджи источников по направлениям (↑/↓ + книга + число) — вычисляются в
   // Flow.tsx и приходят в data.sourcesBadge. Показываем оба, если есть и те и те.
@@ -120,6 +203,8 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         background,
         padding: "15px",
@@ -133,6 +218,14 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         zIndex: 10,
       }}
     >
+      {showBuildButtons && (
+        <NodeBuildButton
+          direction="up"
+          color={color}
+          onClick={() => actions?.openBuild(id, "up")}
+        />
+      )}
+
       <Handle
         id="top"
         type="target"
@@ -181,6 +274,14 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         position={Position.Bottom}
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
+
+      {showBuildButtons && (
+        <NodeBuildButton
+          direction="down"
+          color={color}
+          onClick={() => actions?.openBuild(id, "down")}
+        />
+      )}
     </div>
   );
 };

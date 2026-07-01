@@ -1,6 +1,7 @@
 // src/components/flow-panel/types.ts
 import type {
   BuildDirection,
+  DesignVariant,
   ProductCard,
   StepChainApiStep,
   StepChainStatus,
@@ -142,6 +143,14 @@ export interface FlowPanelProps {
   // panel mode
   mode: "card" | "build";
   buildDirection?: BuildDirection;
+
+  /**
+   * Вариант дизайна точки входа build (временный переключатель сравнения):
+   * "A" — build открывается кнопками на ноде (панель работает как раньше по `mode`);
+   * "B" — в панели вкладки «Карточка»/«Построение»;
+   * "C" — в карточке кнопка «Построение», переключающая панель во внутренний build-view.
+   */
+  variant?: DesignVariant;
 
   /** Режим «только просмотр» (шар-ссылка): имя/описание read-only, без заполнения карточки. */
   readOnly?: boolean;
