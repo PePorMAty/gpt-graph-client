@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import type { SavedSourcesBlock } from "../store/types";
 import { reconstructPresentationColors } from "./presentationColors";
 
 export type LoadGraphPayload = {
@@ -26,6 +27,9 @@ export type ParseResult = {
   /** Реконструированный реестр «презентация → цвет» из узлов, если
    * они несут `data.presentationColor`. Пуст если ничего не нашлось. */
   presentationColors?: Record<string, string>;
+  /** Блок источников из `state.sources` (новые сейвы). Для старых файлов
+   * отсутствует — пул реконструируется из понодовых данных. */
+  sources?: SavedSourcesBlock;
 };
 
 type RawObject = Record<string, unknown>;
@@ -264,6 +268,7 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
   let hasMore = false;
   let presentations: string[] = [];
   let presentationTitle: string | null = null;
+  let sources: SavedSourcesBlock | undefined;
 
   if (format === "D") {
     const ru = parseRussianFormat(parsed, warnings);
@@ -313,6 +318,9 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
       );
     }
     hasMore = !!state?.has_more;
+    if (state && isObject(state.sources)) {
+      sources = state.sources as unknown as SavedSourcesBlock;
+    }
   } else if (format === "B") {
     rawNodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
     rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
@@ -553,5 +561,6 @@ export function parseGraphJson(raw: string | unknown): ParseResult {
     presentations,
     presentationTitle,
     presentationColors,
+    sources,
   };
 }

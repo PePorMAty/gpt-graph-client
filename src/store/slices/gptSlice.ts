@@ -25,7 +25,11 @@ import {
 } from "../api/graph-api";
 
 import type { CustomNode, CustomNodeData } from "../../types";
-import type { InitialGraphStateI, StepChainApiStep } from "../types";
+import type {
+  InitialGraphStateI,
+  SourcesPoolEntry,
+  StepChainApiStep,
+} from "../types";
 import {
   buildStep,
   fetchChainStep,
@@ -40,6 +44,7 @@ import { fetchProductCard } from "../api/product-card-api";
 import { parseAlternatives } from "../../utils/parseAlternatives";
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
 import { reconstructPresentationColors } from "../../utils/presentationColors";
+import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { sourcesKey } from "./sourcesSlice";
 
 const initialState: InitialGraphStateI = {
@@ -202,8 +207,33 @@ const gptSlice = createSlice({
         nodes,
         edges: applyHandlesByGeometry(nodes, edges),
       };
-      // Новый граф — нумерация пошаговых источников начинается заново.
-      state.sourcesSeqCounter = { up: 0, down: 0 };
+      // Пул источников label-keyed и переживал смену набора узлов (сброс полотна,
+      // загрузка из localStorage). Из-за этого новая нода с именем ранее удалённого
+      // продукта подхватывала его «призрачные» источники. Оставляем в пуле только
+      // записи продуктов, реально присутствующих в новом наборе узлов.
+      const presentKeys = new Set<string>();
+      for (const n of nodes) {
+        if (n.type !== "product") continue;
+        const lbl = typeof n.data?.label === "string" ? n.data.label : "";
+        if (!lbl) continue;
+        presentKeys.add(sourcesPoolKey(lbl, "up"));
+        presentKeys.add(sourcesPoolKey(lbl, "down"));
+      }
+      for (const k of Object.keys(state.sourcesPool)) {
+        if (!presentKeys.has(k)) delete state.sourcesPool[k];
+      }
+      for (const k of Object.keys(state.needsFreshSources)) {
+        if (!presentKeys.has(k)) delete state.needsFreshSources[k];
+      }
+      // Счётчик номеров — максимум среди оставшихся записей по направлениям, чтобы
+      // дальнейшие поиски не выдавали номер, уже занятый в пуле (а сброс полотна,
+      // где записей не осталось, обнуляет нумерацию).
+      const maxSeq = { up: 0, down: 0 };
+      for (const [k, e] of Object.entries(state.sourcesPool)) {
+        const dir: "up" | "down" = k.endsWith("::up") ? "up" : "down";
+        if (e.seq != null && e.seq > maxSeq[dir]) maxSeq[dir] = e.seq;
+      }
+      state.sourcesSeqCounter = maxSeq;
     },
     addNode: (
       state,
@@ -242,6 +272,9 @@ const gptSlice = createSlice({
         originalPrompt: string | null;
         /** Реестр презентация → цвет. Если передан — сбрасывает текущий. */
         presentationColors?: Record<string, string>;
+        /** Пул источников + счётчики бейджа. Если не переданы — реконструируем из узлов. */
+        sourcesPool?: Record<string, SourcesPoolEntry>;
+        sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
       const normNodes = normalizeNodes(action.payload.nodes);
@@ -250,9 +283,17 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
-      // Загруженный граф — нумерация пошаговых источников начинается заново
-      // (step-пул не персистится).
-      state.sourcesSeqCounter = { up: 0, down: 0 };
+      // Восстанавливаем пул источников и номера бейджа: из переданного блока
+      // (новые сейвы) либо реконструируем из понодовых sourcesUp/Down (старые сейвы).
+      const restored =
+        action.payload.sourcesPool && action.payload.sourcesSeqCounter
+          ? {
+              pool: action.payload.sourcesPool,
+              seqCounter: action.payload.sourcesSeqCounter,
+            }
+          : reconstructSourcesPool(normNodes);
+      state.sourcesPool = restored.pool;
+      state.sourcesSeqCounter = restored.seqCounter;
 
       state.leafNodes = action.payload.leafNodes;
       state.hasMore = action.payload.hasMore;
@@ -280,6 +321,9 @@ const gptSlice = createSlice({
         nodes: CustomNode[];
         edges: Edge[];
         presentationColors: Record<string, string>;
+        /** Объединённый (перенумерованный) пул источников + счётчики бейджа. */
+        sourcesPool?: Record<string, SourcesPoolEntry>;
+        sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
       const normNodes = normalizeNodes(action.payload.nodes);
@@ -288,8 +332,17 @@ const gptSlice = createSlice({
         nodes: normNodes,
         edges: applyHandlesByGeometry(normNodes, normEdges),
       };
-      // Слитый граф — нумерация пошаговых источников начинается заново.
-      state.sourcesSeqCounter = { up: 0, down: 0 };
+      // Источники слитого графа: берём переданный объединённый блок (с
+      // перенумерацией по направлениям) либо реконструируем из узлов.
+      const restored =
+        action.payload.sourcesPool && action.payload.sourcesSeqCounter
+          ? {
+              pool: action.payload.sourcesPool,
+              seqCounter: action.payload.sourcesSeqCounter,
+            }
+          : reconstructSourcesPool(normNodes);
+      state.sourcesPool = restored.pool;
+      state.sourcesSeqCounter = restored.seqCounter;
       state.presentationColors = action.payload.presentationColors;
       // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
       // позиции корректны. Если поставить "new", Flow перезапустит свой

@@ -12,8 +12,17 @@ import {
   assignColorsForPresentations,
   buildLegend,
   colorForPresentations,
+  ensureProductPresentations,
 } from "../../utils/presentationColors";
+import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
+import { orientByBuildDirection } from "../../utils/orientByBuildDirection";
+import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
+import { markChainRoots } from "../../utils/markChainRoots";
+import { alignChainRoots } from "../../utils/alignChainRoots";
+import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
+import { mergeSourcesPools } from "../../utils/mergeSourcesPools";
+import { separateComponentsHorizontally } from "../../utils/separateComponentsHorizontally";
 import type { CustomNode } from "../../types";
 import type { Edge } from "@xyflow/react";
 
@@ -28,21 +37,53 @@ import { loadSavedGraph } from "../../store/api/saved-graph-api";
 // Раскладка для вкладки объединения: сырьё сверху, продукты снизу.
 // ELK (~1.5MB) подгружаем динамически — только когда пользователь
 // реально что-то делает на этой вкладке. При сбое — фолбэк на applyAutoLayout("TB").
+//
+// Шаги:
+// 1. orientByBuildDirection — приводим рёбра к канону «сырьё → продукт»,
+//    разворачивая части, построенные «вниз» (у них якорь — конечный продукт,
+//    и без разворота сырьё уходило бы вниз). Идемпотентно (флаг на ребре).
+// 2. Слои синтезируем по фактической топологии (assignTopologicalLayers) уже
+//    по канонической ориентации — чистое послойное размещение и для
+//    продуктовых, и для step-графов (у последних нет поля «Слой»), включая
+//    узлы-преобразования и изолированные ноды.
+// 3. alignChainRoots — выравнивает «начальные продукты» (истоки цепочек) всех
+//    объединённых графов на один горизонтальный уровень: каждую связную компоненту
+//    сдвигает по вертикали так, чтобы её корень встал на общий targetY (внутренняя
+//    раскладка цепочки сохраняется). Корень берётся по флагу chainBuiltRoot
+//    (проставлен markChainRoots до namespacing), иначе — по эвристике-стоку.
+// 4. После раскладки applyHandlesByGeometry перевыставляет хэндлы рёбер по
+//    фактическим Y-координатам — в т.ч. у развёрнутых на шаге 1 рёбер.
 const layoutForMergeTab = async (
   nodes: CustomNode[],
   edges: Edge[],
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
+  const oriented = orientByBuildDirection(nodes, edges);
+  const layeredNodes = assignTopologicalLayers(nodes, oriented);
   try {
     const { layoutMergedGraphElk } = await import(
       "../../utils/layoutMergedGraphElk"
     );
-    return await layoutMergedGraphElk(nodes, edges, { useLayers: false });
+    const laid = await layoutMergedGraphElk(layeredNodes, oriented, {
+      useLayers: true,
+    });
+    const aligned = alignChainRoots(laid.nodes, laid.edges);
+    const spread = separateComponentsHorizontally(aligned, laid.edges);
+    return {
+      nodes: spread,
+      edges: applyHandlesByGeometry(spread, laid.edges),
+    };
   } catch (e) {
     console.warn(
       "[UploadGraphTab] ELK-раскладка с констрейнтами не сработала, фолбэк на dagre/longest-path:",
       e,
     );
-    return applyAutoLayout(nodes, edges, "TB");
+    const laid = await applyAutoLayout(layeredNodes, oriented, "TB");
+    const aligned = alignChainRoots(laid.nodes, laid.edges);
+    const spread = separateComponentsHorizontally(aligned, laid.edges);
+    return {
+      nodes: spread,
+      edges: applyHandlesByGeometry(spread, laid.edges),
+    };
   }
 };
 
@@ -50,7 +91,8 @@ type UploadMode = "replace" | "merge";
 
 export const UploadGraphTab = () => {
   const dispatch = useAppDispatch();
-  const { data, presentationColors } = useAppSelector((state) => state.graph);
+  const { data, presentationColors, originalPrompt, sourcesPool, sourcesSeqCounter } =
+    useAppSelector((state) => state.graph);
 
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const mergeInputRef = useRef<HTMLInputElement | null>(null);
@@ -113,13 +155,18 @@ export const UploadGraphTab = () => {
       presentations,
       presentationTitle,
       presentationColors: parsedColors,
+      sources: parsedSources,
     } = result;
+
+    // Источники графа: блок из файла (новые сейвы) либо реконструкция из узлов.
+    const incomingSources =
+      parsedSources ?? reconstructSourcesPool(payload.nodes);
 
     // Если в JSON-узлах уже сохранены цвета (скачанный с сервера
     // ранее объединённый граф) — переиспользуем их, чтобы раскраска
     // и порядок презентаций совпали с исходным. Иначе строим свежий
     // registry в порядке появления презентаций.
-    const registry =
+    let registry =
       parsedColors && Object.keys(parsedColors).length > 0
         ? parsedColors
         : assignColorsForPresentations({}, presentations);
@@ -129,10 +176,21 @@ export const UploadGraphTab = () => {
     // (например, скачанный с сервера merged-граф уже содержит id с
     // префиксом `m...__` — после повторной загрузки они должны стать
     // уникальными).
+    // markChainRoots ДО namespacing: помечаем истоки цепочек самодостаточным
+    // флагом chainBuiltRoot, пока id ещё совпадают с chainRootNodeId (после
+    // префиксации ниже эта ссылка протухает). Флаг переживает namespacing и
+    // нужен alignChainRoots для выравнивания начальных продуктов.
     const namespace = `r${crypto.randomUUID()}__`;
-    const namespacedRawNodes = payload.nodes.map((n) => ({
+    const namespacedRawNodes = markChainRoots(payload.nodes).map((n) => ({
       ...n,
       id: namespace + n.id,
+      // Ремапим внутреннюю ссылку chainRootNodeId под новый префикс id, иначе она
+      // протухает, и ориентация рёбер не знает, к какой цепочке относится
+      // преобразование (важно для общих продуктов между графами).
+      data:
+        typeof n.data?.chainRootNodeId === "string"
+          ? { ...n.data, chainRootNodeId: namespace + n.data.chainRootNodeId }
+          : n.data,
     }));
     const namespacedRawEdges = payload.edges.map((e) => ({
       ...e,
@@ -180,7 +238,30 @@ export const UploadGraphTab = () => {
       }))
       .filter((e) => e.source !== e.target);
 
-    const coloredNodes = colorizeNodes(dedupedNodes, registry);
+    // Ремап chainRootNodeId у схлопнутых intra-file продуктов: осиротевшая ссылка
+    // на удалённый узел ломает ориентацию рёбер его преобразований (тот же мотив,
+    // что и при merge общих продуктов).
+    const dedupedNodesRemapped = dedupedNodes.map((n) => {
+      const r = n.data?.chainRootNodeId;
+      return typeof r === "string" && intraRemap[r]
+        ? { ...n, data: { ...n.data, chainRootNodeId: intraRemap[r] } }
+        : n;
+    });
+
+    // Бэкфилл презентаций: графы, построенные по шагам, не несут
+    // data.presentations у узлов. Считаем весь загружаемый граф одним
+    // источником по его имени (presentationTitle → имя файла), чтобы
+    // заработали раскраска и легенда. Узлы с уже имеющимися презентациями
+    // (presentation-граф / скачанный merged) не трогаются.
+    const sourceName = presentationTitle ?? fallbackName;
+    const backfilled = ensureProductPresentations(
+      dedupedNodesRemapped,
+      sourceName,
+      registry,
+    );
+    registry = backfilled.registry;
+
+    const coloredNodes = colorizeNodes(backfilled.nodes, registry);
 
     let finalNodes = coloredNodes;
     let finalEdges = dedupedEdges;
@@ -202,6 +283,8 @@ export const UploadGraphTab = () => {
         hasMore: payload.hasMore,
         originalPrompt: promptFromFile,
         presentationColors: registry,
+        sourcesPool: incomingSources.pool,
+        sourcesSeqCounter: incomingSources.seqCounter,
       }),
     );
 
@@ -211,20 +294,36 @@ export const UploadGraphTab = () => {
     };
   };
 
-  const handleMergeSource = async (input: string | unknown) => {
+  const handleMergeSource = async (
+    input: string | unknown,
+    fallbackName: string,
+  ) => {
     const result = parseGraphJson(input);
-    const { payload, warnings, presentations, presentationTitle } = result;
+    const { payload, warnings, presentations, presentationTitle, sources: parsedSources } =
+      result;
 
-    // Расширяем реестр новыми презентациями (старые цвета сохраняются).
-    const registry = assignColorsForPresentations(
+    // Существующий граф мог быть построен по шагам (узлы без data.presentations) —
+    // считаем его одним источником по имени текущего графа и бэкфиллим, иначе
+    // при объединении он остался бы дефолтно-синим и выпал из легенды.
+    const existingSourceName =
+      (originalPrompt && originalPrompt.trim()) || "Текущий граф";
+    const existingBackfill = ensureProductPresentations(
+      data.nodes,
+      existingSourceName,
       presentationColors,
+    );
+    const existingNodes = existingBackfill.nodes;
+
+    // Расширяем реестр презентациями добавляемого графа (старые цвета целы).
+    let registry = assignColorsForPresentations(
+      existingBackfill.registry,
       presentations,
     );
 
-    // Слепок sources существующих product-узлов ДО merge — пригодится
-    // для отчёта «какие узлы стали общими в результате этого добавления».
+    // Слепок sources существующих product-узлов ДО merge (уже с бэкфиллом) —
+    // пригодится для отчёта «какие узлы стали общими в результате добавления».
     const beforeSourcesById = new Map<string, string[]>();
-    for (const n of data.nodes) {
+    for (const n of existingNodes) {
       if (n.type !== "product") continue;
       const pres = Array.isArray(n.data?.presentations)
         ? (n.data.presentations as string[])
@@ -237,11 +336,22 @@ export const UploadGraphTab = () => {
     // Гарантированно уникальный неймспейс — два быстрых клика на «Добавить
     // граф» с Date.now() могут попасть в одну миллисекунду и дать коллизию
     // node id с предыдущим merge, из-за чего React Flow «теряет» дубли.
+    // markChainRoots ДО namespacing: помечаем истоки цепочек флагом
+    // chainBuiltRoot, пока id ещё совпадают с chainRootNodeId (после префиксации
+    // ссылка протухает). Флаг переживает namespacing → alignChainRoots выровняет
+    // начальные продукты добавляемого графа вместе с уже существующими.
     const namespace = `m${crypto.randomUUID()}__`;
-    const namespacedNodes: CustomNode[] = payload.nodes.map((n) => ({
-      ...n,
-      id: namespace + n.id,
-    }));
+    const namespacedNodes: CustomNode[] = markChainRoots(payload.nodes).map(
+      (n) => ({
+        ...n,
+        id: namespace + n.id,
+        // Ремап chainRootNodeId под новый префикс (см. handleReplaceSource).
+        data:
+          typeof n.data?.chainRootNodeId === "string"
+            ? { ...n.data, chainRootNodeId: namespace + n.data.chainRootNodeId }
+            : n.data,
+      }),
+    );
     const namespacedEdges = payload.edges.map((e) => ({
       ...e,
       id: namespace + e.id,
@@ -249,13 +359,37 @@ export const UploadGraphTab = () => {
       target: namespace + e.target,
     }));
 
-    const merged = mergeProductGraph({
-      existingNodes: data.nodes,
+    // Бэкфилл добавляемого графа: step-граф без presentations считаем одним
+    // источником по его имени (presentationTitle → имя файла/сохранённого графа).
+    const incomingSourceName = presentationTitle ?? fallbackName;
+    const incomingBackfill = ensureProductPresentations(
+      namespacedNodes,
+      incomingSourceName,
+      registry,
+    );
+    registry = incomingBackfill.registry;
+
+    const mergedRaw = mergeProductGraph({
+      existingNodes,
       existingEdges: data.edges,
-      newNodes: namespacedNodes,
+      newNodes: incomingBackfill.nodes,
       newEdges: namespacedEdges,
       registry,
     });
+
+    // Схлопывание общих продуктов осиротило ссылки chainRootNodeId у
+    // преобразований, чей анкор-продукт стал общим узлом (его id удалён). Ремапим
+    // chainRootNodeId на оставшийся узел, иначе ориентация рёбер таких
+    // преобразований падает в неточный фолбэк и продукт уходит не в ту сторону.
+    const merged = {
+      ...mergedRaw,
+      nodes: mergedRaw.nodes.map((n) => {
+        const r = n.data?.chainRootNodeId;
+        return typeof r === "string" && mergedRaw.idRemap[r]
+          ? { ...n, data: { ...n.data, chainRootNodeId: mergedRaw.idRemap[r] } }
+          : n;
+      }),
+    };
 
     // Список узлов, у которых после merge источников стало больше, чем до.
     // Это и есть «новые общие» / «получившие новый источник» узлы.
@@ -303,11 +437,22 @@ export const UploadGraphTab = () => {
     // продукты — к нижнему (сугияма-разделение для объединённых графов).
     const laid = await layoutForMergeTab(recolored, merged.edges);
 
+    // Перенумерация источников ПО НАПРАВЛЕНИЯМ: текущий пул держит номера, у
+    // добавляемого графа новые продукты продолжают нумерацию (общие — один номер).
+    const incomingSources =
+      parsedSources ?? reconstructSourcesPool(payload.nodes);
+    const combinedSources = mergeSourcesPools([
+      { pool: sourcesPool, seqCounter: sourcesSeqCounter },
+      incomingSources,
+    ]);
+
     dispatch(
       mergeGraphFromFile({
         nodes: laid.nodes,
         edges: laid.edges,
         presentationColors: registry,
+        sourcesPool: combinedSources.pool,
+        sourcesSeqCounter: combinedSources.seqCounter,
       }),
     );
 
@@ -350,7 +495,7 @@ export const UploadGraphTab = () => {
     await runWithStatus(() =>
       mode === "replace"
         ? handleReplaceSource(text, fallbackName)
-        : handleMergeSource(text),
+        : handleMergeSource(text, fallbackName),
     );
   };
 
@@ -363,7 +508,7 @@ export const UploadGraphTab = () => {
       const file = await loadSavedGraph(id);
       return mode === "replace"
         ? handleReplaceSource(file, name)
-        : handleMergeSource(file);
+        : handleMergeSource(file, name);
     });
   };
 
@@ -374,6 +519,24 @@ export const UploadGraphTab = () => {
       if (!file) return;
       await handleFile(file, mode);
     };
+
+  // Перевернуть граф по вертикали (для старых графов без направления построения,
+  // где корнем оказался конечный продукт). Отражаем y вокруг центра bbox —
+  // порядок слоёв сохраняется. Хэндлы рёбер перевыставит setGraphData
+  // (внутри редьюсера зовётся applyHandlesByGeometry).
+  const handleFlip = () => {
+    if (!hasGraph) return;
+    const ys = data.nodes.map((n) => n.position.y);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const flipped = data.nodes.map((n) => ({
+      ...n,
+      position: { x: n.position.x, y: minY + maxY - n.position.y },
+    }));
+    dispatch(setGraphData({ nodes: flipped, edges: data.edges }));
+    setError(null);
+    setInfo("Граф перевёрнут по вертикали.");
+  };
 
   const handleRelayout = async () => {
     if (!hasGraph) return;
@@ -442,6 +605,16 @@ export const UploadGraphTab = () => {
         title="Пересчитать раскладку узлов (полезно после ручных правок или слияний)"
       >
         🔄 Пересчитать раскладку
+      </button>
+
+      <button
+        type="button"
+        className={styles.relayoutButton}
+        onClick={handleFlip}
+        disabled={!hasGraph || isProcessing}
+        title="Перевернуть граф по вертикали (сырьё ↔ продукт сверху)"
+      >
+        🔁 Перевернуть
       </button>
 
       {error && <div className={styles.error}>⚠️ {error}</div>}
