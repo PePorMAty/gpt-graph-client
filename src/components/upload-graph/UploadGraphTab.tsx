@@ -18,6 +18,7 @@ import { assignTopologicalLayers } from "../../utils/assignTopologicalLayers";
 import { orientByBuildDirection } from "../../utils/orientByBuildDirection";
 import { applyHandlesByGeometry } from "../../utils/normalize-edges";
 import { mergeProductGraph } from "../../utils/mergeProductGraph";
+import { collapseDuplicateTransformations } from "../../utils/collapseDuplicateTransformations";
 import { markChainRoots } from "../../utils/markChainRoots";
 import { alignChainRoots } from "../../utils/alignChainRoots";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
@@ -381,7 +382,7 @@ export const UploadGraphTab = () => {
     // преобразований, чей анкор-продукт стал общим узлом (его id удалён). Ремапим
     // chainRootNodeId на оставшийся узел, иначе ориентация рёбер таких
     // преобразований падает в неточный фолбэк и продукт уходит не в ту сторону.
-    const merged = {
+    const mergedRemapped = {
       ...mergedRaw,
       nodes: mergedRaw.nodes.map((n) => {
         const r = n.data?.chainRootNodeId;
@@ -389,6 +390,21 @@ export const UploadGraphTab = () => {
           ? { ...n, data: { ...n.data, chainRootNodeId: mergedRaw.idRemap[r] } }
           : n;
       }),
+    };
+
+    // Схлопывание дублей преобразований (mergeProductGraph схлопывает только
+    // продукты): одинаковые alt-узлы (тот же анкор+направление+суть) и одинаковые
+    // обычные преобразования (то же имя + тот же набор связанных продуктов)
+    // сливаем в одно. Делаем ПОСЛЕ ремапа chainRootNodeId — чтобы узлы от ставшего
+    // общим продукта сгруппировались. Зеркалит схлопывание продуктов.
+    const collapsedTr = collapseDuplicateTransformations(
+      mergedRemapped.nodes,
+      mergedRemapped.edges,
+    );
+    const merged = {
+      ...mergedRemapped,
+      nodes: collapsedTr.nodes,
+      edges: collapsedTr.edges,
     };
 
     // Список узлов, у которых после merge источников стало больше, чем до.
