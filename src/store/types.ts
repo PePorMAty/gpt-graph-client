@@ -165,9 +165,10 @@ export type BuildDirection = "up" | "down";
 /**
  * Вариант дизайна точки входа в «построение» (временный переключатель для
  * сравнения на полотне): A — кнопки на ноде, B — вкладки в панели,
- * C — кнопка «Построение» в карточке.
+ * C — кнопка «Построение» в карточке (build-view внутри панели),
+ * D — как C, но построение в модальном окне + таблица источников.
  */
-export type DesignVariant = "A" | "B" | "C";
+export type DesignVariant = "A" | "B" | "C" | "D";
 
 export type TechnologySource = {
   title: string;

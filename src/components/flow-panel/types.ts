@@ -9,6 +9,7 @@ import type {
 } from "../../store/types";
 import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
+import type { SourceRow } from "../../utils/mockSources";
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
@@ -148,9 +149,13 @@ export interface FlowPanelProps {
    * Вариант дизайна точки входа build (временный переключатель сравнения):
    * "A" — build открывается кнопками на ноде (панель работает как раньше по `mode`);
    * "B" — в панели вкладки «Карточка»/«Построение»;
-   * "C" — в карточке кнопка «Построение», переключающая панель во внутренний build-view.
+   * "C" — в карточке кнопка «Построение», переключающая панель во внутренний build-view;
+   * "D" — как C, но построение открывается в модальном окне + кнопка «Источники» (таблица).
    */
   variant?: DesignVariant;
+
+  /** Все источники по всем продуктам (реальные из пула или мок) — для таблицы (вариант D). */
+  sourceRows?: SourceRow[];
 
   /** Режим «только просмотр» (шар-ссылка): имя/описание read-only, без заполнения карточки. */
   readOnly?: boolean;

@@ -12,6 +12,7 @@ import {
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
+import { SourcesTableModal } from "../sources-table-modal";
 
 import styles from "./FlowPanel.module.css";
 
@@ -737,18 +738,24 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   readOnly = false,
   variant = "A",
   nodeId,
+  sourceRows = [],
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
 
-  // ── build entry-point state для вариантов B/C ──
-  // B: вкладка внутри панели; C: раскрытый build-view поверх карточки.
+  // ── build entry-point state для вариантов B/C/D ──
+  // B: вкладка внутри панели; C: раскрытый build-view поверх карточки;
+  // D: построение и таблица источников — в модальных окнах.
   const [activeTab, setActiveTab] = useState<"card" | "build">("card");
   const [cBuildOpen, setCBuildOpen] = useState(false);
+  const [dBuildOpen, setDBuildOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   // Сброс при смене выбранной ноды — панель всегда открывается на карточке.
   useEffect(() => {
     setActiveTab("card");
     setCBuildOpen(false);
+    setDBuildOpen(false);
+    setSourcesOpen(false);
   }, [nodeId]);
 
   // В readOnly build недоступен — ведём себя как вариант A (только карточка).
@@ -881,6 +888,10 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   // ── click outside ──
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Пока открыта модалка варианта D (построение/источники) — клики
+      // обрабатывает сама модалка; панель не закрываем (модалки рендерятся вне
+      // panelRef, иначе любой клик по ним закрыл бы панель).
+      if (dBuildOpen || sourcesOpen) return;
       if (
         panelRef.current &&
         event.target instanceof Node &&
@@ -892,7 +903,18 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
     if (isOpen) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, dBuildOpen, sourcesOpen]);
+
+  // Esc закрывает модалку построения (вариант D). У таблицы источников —
+  // собственный обработчик Esc.
+  useEffect(() => {
+    if (!dBuildOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDBuildOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dBuildOpen]);
 
   if (!isOpen) return null;
 
@@ -1195,16 +1217,29 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               </div>
               )}
 
-              {/* ── Вариант C: отдельная кнопка перехода в build-view ── */}
-              {effVariant === "C" && !readOnly && (
+              {/* ── Варианты C/D: кнопка построения (+ таблица источников для D) ── */}
+              {(effVariant === "C" || effVariant === "D") && !readOnly && (
                 <div className={styles.formGroup}>
                   <button
                     type="button"
                     className={styles.buildEntryButton}
-                    onClick={() => setCBuildOpen(true)}
+                    onClick={() =>
+                      effVariant === "C"
+                        ? setCBuildOpen(true)
+                        : setDBuildOpen(true)
+                    }
                   >
                     ⚙ Построение ▸
                   </button>
+                  {effVariant === "D" && (
+                    <button
+                      type="button"
+                      className={styles.sourcesEntryButton}
+                      onClick={() => setSourcesOpen(true)}
+                    >
+                      📚 Источники ({sourceRows.length})
+                    </button>
+                  )}
                 </div>
               )}
             </>
@@ -1237,6 +1272,43 @@ export const FlowPanel: FC<FlowPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* ══════════ Вариант D: построение в модальном окне ══════════ */}
+      {effVariant === "D" && dBuildOpen && !readOnly && (
+        <div className={styles.modalOverlay} onClick={() => setDBuildOpen(false)}>
+          <div
+            className={styles.modalWindow}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>Построение — «{value}»</h3>
+              <button
+                className={styles.modalClose}
+                onClick={() => setDBuildOpen(false)}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <PanelBuildView
+                productName={value}
+                downTab={downTab}
+                upTab={upTab}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ Вариант D: таблица источников ══════════ */}
+      {effVariant === "D" && sourcesOpen && !readOnly && (
+        <SourcesTableModal
+          rows={sourceRows}
+          currentProduct={value}
+          onClose={() => setSourcesOpen(false)}
+        />
+      )}
     </>
   );
 };

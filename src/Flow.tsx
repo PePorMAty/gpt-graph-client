@@ -46,6 +46,7 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
+import { collectSourceRows, buildMockSourceRows } from "./utils/mockSources";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type {
@@ -280,7 +281,12 @@ export const Flow = ({
   // вариантов на полотне. Сохраняем выбор в localStorage.
   const [designVariant, setDesignVariant] = useState<DesignVariant>(() => {
     const saved = localStorage.getItem("design-variant");
-    return saved === "A" || saved === "B" || saved === "C" ? saved : "A";
+    return saved === "A" ||
+      saved === "B" ||
+      saved === "C" ||
+      saved === "D"
+      ? saved
+      : "A";
   });
   useEffect(() => {
     localStorage.setItem("design-variant", designVariant);
@@ -1545,6 +1551,17 @@ export const Flow = ({
     [buildDirectionTab],
   );
 
+  // Строки таблицы источников (вариант D): реальные из sourcesPool по всем
+  // продуктам; если их нет (напр. без бэкенда) — мок-данные для наглядности.
+  const sourceRows = useMemo(() => {
+    const labels = data.nodes
+      .filter((n) => n.type === "product")
+      .map((n) => String(n.data?.label ?? ""))
+      .filter(Boolean);
+    const real = collectSourceRows(labels, sourcesPool, poolKey);
+    return real.length ? real : buildMockSourceRows(labels);
+  }, [data.nodes, sourcesPool, poolKey]);
+
   const handleBuildProductCard = useCallback(
     async (options?: {
       customSystemPrompt?: string;
@@ -1617,11 +1634,11 @@ export const Flow = ({
         </div>
       )}
 
-      {/* Временный переключатель дизайна точки входа build (A/B/C). */}
+      {/* Временный переключатель дизайна точки входа build (A/B/C/D). */}
       {!readOnly && (
         <div className={styles.designVariantSwitch}>
           <span className={styles.designVariantLabel}>Дизайн build:</span>
-          {(["A", "B", "C"] as const).map((v) => (
+          {(["A", "B", "C", "D"] as const).map((v) => (
             <button
               key={v}
               type="button"
@@ -1634,7 +1651,9 @@ export const Flow = ({
                   ? "A — кнопки на ноде"
                   : v === "B"
                     ? "B — вкладки в панели"
-                    : "C — кнопка «Построение» в карточке"
+                    : v === "C"
+                      ? "C — кнопка «Построение» в карточке"
+                      : "D — построение в модалке + таблица источников"
               }
             >
               {v}
@@ -1835,6 +1854,7 @@ export const Flow = ({
         readOnly={readOnly}
         variant={designVariant}
         nodeId={selectedNodeId}
+        sourceRows={sourceRows}
       />
 
       <Notification

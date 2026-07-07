@@ -685,3 +685,82 @@
   background: #dbe6ff;
   border-color: #1d4ed8;
 }
+
+/* Вариант D: кнопка открытия таблицы источников. */
+.sourcesEntryButton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px dashed #0d9488;
+  border-radius: 8px;
+  background: #effcf9;
+  color: #0f766e;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.sourcesEntryButton:hover {
+  background: #d5f5ee;
+  border-color: #0f766e;
+}
+
+/* Вариант D: модальное окно построения. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 24px;
+}
+
+.modalWindow {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  width: min(560px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.modalClose {
+  border: none;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 0 4px;
+}
+
+.modalClose:hover {
+  color: #334155;
+}
+
+.modalBody {
+  overflow: auto;
+  padding: 16px 20px 20px;
+}
