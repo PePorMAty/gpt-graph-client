@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
+import type { BuildDirection } from "../../store/types";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { StepByStepContent } from "./StepByStepContent";
 import { MarkdownEditor } from "../markdown-editor";
@@ -11,6 +12,7 @@ import {
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
+import { SourcesTableModal } from "../sources-table-modal";
 
 import styles from "./FlowPanel.module.css";
 
@@ -643,6 +645,72 @@ const DirectionContent: FC<DirectionTabProps> = ({
 };
 
 // ─────────────────────────────────────────────────
+// PanelBuildView — build-view внутри панели (варианты B и C).
+// Сначала выбор направления (вверх/вниз), затем существующий DirectionContent.
+// ─────────────────────────────────────────────────
+const PanelBuildView: FC<{
+  productName: string;
+  downTab: DirectionTabProps;
+  upTab: DirectionTabProps;
+  onBack?: () => void;
+}> = ({ productName, downTab, upTab, onBack }) => {
+  const [dir, setDir] = useState<BuildDirection | null>(null);
+
+  return (
+    <>
+      {onBack && (
+        <button
+          type="button"
+          className={styles.promptToggle}
+          onClick={onBack}
+          style={{ marginBottom: 8 }}
+        >
+          ‹ Назад к карточке
+        </button>
+      )}
+
+      <div className={styles.formGroup}>
+        <div className={styles.modeToggleRow}>
+          <button
+            type="button"
+            className={`${styles.modeToggleBtn} ${dir === "up" ? styles.modeToggleBtnActive : ""}`}
+            onClick={() => setDir("up")}
+          >
+            Построить вверх
+          </button>
+          <button
+            type="button"
+            className={`${styles.modeToggleBtn} ${dir === "down" ? styles.modeToggleBtnActive : ""}`}
+            onClick={() => setDir("down")}
+          >
+            Построить вниз
+          </button>
+        </div>
+        {dir === null && (
+          <div
+            className={styles.sourcesTitle}
+            style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}
+          >
+            Выберите направление построения.
+          </div>
+        )}
+      </div>
+
+      {dir && (
+        <>
+          <div className={styles.buildHeader}>
+            {dir === "down"
+              ? `Построить вниз от «${productName}»`
+              : `Построить вверх от «${productName}»`}
+          </div>
+          <DirectionContent {...(dir === "down" ? downTab : upTab)} />
+        </>
+      )}
+    </>
+  );
+};
+
+// ─────────────────────────────────────────────────
 // FlowPanel — main component
 // ─────────────────────────────────────────────────
 export const FlowPanel: FC<FlowPanelProps> = ({
@@ -668,9 +736,42 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   mode,
   buildDirection,
   readOnly = false,
+  variant = "A",
+  nodeId,
+  sourceRows = [],
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
+
+  // ── build entry-point state для вариантов B/C/D ──
+  // B: вкладка внутри панели; C: раскрытый build-view поверх карточки;
+  // D: построение и таблица источников — в модальных окнах.
+  const [activeTab, setActiveTab] = useState<"card" | "build">("card");
+  const [cBuildOpen, setCBuildOpen] = useState(false);
+  const [dBuildOpen, setDBuildOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  // Сброс при смене выбранной ноды — панель всегда открывается на карточке.
+  useEffect(() => {
+    setActiveTab("card");
+    setCBuildOpen(false);
+    setDBuildOpen(false);
+    setSourcesOpen(false);
+  }, [nodeId]);
+
+  // В readOnly build недоступен — ведём себя как вариант A (только карточка).
+  const effVariant = readOnly ? "A" : variant;
+  const showCardBody =
+    effVariant === "B"
+      ? activeTab === "card"
+      : effVariant === "C"
+        ? !cBuildOpen
+        : mode === "card";
+  const showBCBuild =
+    effVariant === "B"
+      ? activeTab === "build"
+      : effVariant === "C"
+        ? cBuildOpen
+        : false;
 
   // ── field selection state ──
   const predefinedFields = useMemo(
@@ -787,6 +888,10 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   // ── click outside ──
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Пока открыта модалка варианта D (построение/источники) — клики
+      // обрабатывает сама модалка; панель не закрываем (модалки рендерятся вне
+      // panelRef, иначе любой клик по ним закрыл бы панель).
+      if (dBuildOpen || sourcesOpen) return;
       if (
         panelRef.current &&
         event.target instanceof Node &&
@@ -798,7 +903,18 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
     if (isOpen) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, dBuildOpen, sourcesOpen]);
+
+  // Esc закрывает модалку построения (вариант D). У таблицы источников —
+  // собственный обработчик Esc.
+  useEffect(() => {
+    if (!dBuildOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDBuildOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dBuildOpen]);
 
   if (!isOpen) return null;
 
@@ -839,8 +955,28 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             />
           </div>
 
+          {/* ── Вариант B: вкладки «Карточка» / «Построение» ── */}
+          {effVariant === "B" && (
+            <div className={styles.tabBar}>
+              <button
+                type="button"
+                className={`${styles.tab} ${activeTab === "card" ? styles.tabActive : ""}`}
+                onClick={() => setActiveTab("card")}
+              >
+                Карточка
+              </button>
+              <button
+                type="button"
+                className={`${styles.tab} ${activeTab === "build" ? styles.tabActive : ""}`}
+                onClick={() => setActiveTab("build")}
+              >
+                Построение
+              </button>
+            </div>
+          )}
+
           {/* ══════════ MODE: Card ══════════ */}
-          {mode === "card" && (
+          {showCardBody && (
             <>
               {productCardStatus === "loading" && (
                 <div className={styles.tabLoader}>
@@ -1080,11 +1216,37 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 )}
               </div>
               )}
+
+              {/* ── Варианты C/D: кнопка построения (+ таблица источников для D) ── */}
+              {(effVariant === "C" || effVariant === "D") && !readOnly && (
+                <div className={styles.formGroup}>
+                  <button
+                    type="button"
+                    className={styles.buildEntryButton}
+                    onClick={() =>
+                      effVariant === "C"
+                        ? setCBuildOpen(true)
+                        : setDBuildOpen(true)
+                    }
+                  >
+                    ⚙ Построение ▸
+                  </button>
+                  {effVariant === "D" && (
+                    <button
+                      type="button"
+                      className={styles.sourcesEntryButton}
+                      onClick={() => setSourcesOpen(true)}
+                    >
+                      📚 Источники ({sourceRows.length})
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           )}
 
-          {/* ══════════ MODE: Build ══════════ */}
-          {mode === "build" && buildDirection && (
+          {/* ══════════ MODE: Build (вариант A — из кнопок на ноде) ══════════ */}
+          {effVariant === "A" && mode === "build" && buildDirection && (
             <>
               <div className={styles.buildHeader}>
                 {buildDirection === "down"
@@ -1096,8 +1258,57 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               />
             </>
           )}
+
+          {/* ══════════ Build-view (варианты B/C — внутри панели) ══════════ */}
+          {showBCBuild && (
+            <PanelBuildView
+              productName={value}
+              downTab={downTab}
+              upTab={upTab}
+              onBack={
+                effVariant === "C" ? () => setCBuildOpen(false) : undefined
+              }
+            />
+          )}
         </div>
       </div>
+
+      {/* ══════════ Вариант D: построение в модальном окне ══════════ */}
+      {effVariant === "D" && dBuildOpen && !readOnly && (
+        <div className={styles.modalOverlay} onClick={() => setDBuildOpen(false)}>
+          <div
+            className={styles.modalWindow}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>Построение — «{value}»</h3>
+              <button
+                className={styles.modalClose}
+                onClick={() => setDBuildOpen(false)}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <PanelBuildView
+                productName={value}
+                downTab={downTab}
+                upTab={upTab}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ Вариант D: таблица источников ══════════ */}
+      {effVariant === "D" && sourcesOpen && !readOnly && (
+        <SourcesTableModal
+          rows={sourceRows}
+          currentProduct={value}
+          onClose={() => setSourcesOpen(false)}
+        />
+      )}
     </>
   );
 };

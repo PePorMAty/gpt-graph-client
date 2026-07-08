@@ -37,6 +37,7 @@ import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
 import { ProductNode, TransformationNode } from "./components/nodes";
+import { NodeActionsProvider } from "./components/nodes/nodeActionsContext";
 
 import { AddNodeModal } from "./components/add-node-modal";
 import { ShareGraphModal } from "./components/share-graph-modal";
@@ -45,9 +46,14 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
+import { collectSourceRows, buildMockSourceRows } from "./utils/mockSources";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
-import type { BuildDirection, TechnologySource } from "./store/types";
+import type {
+  BuildDirection,
+  DesignVariant,
+  TechnologySource,
+} from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import {
   sourcesKey,
@@ -271,6 +277,20 @@ export const Flow = ({
   const [panelMode, setPanelMode] = useState<
     { type: "card" } | { type: "build"; direction: BuildDirection }
   >({ type: "card" });
+  // Временный переключатель дизайна точки входа build (A/B/C) — для сравнения
+  // вариантов на полотне. Сохраняем выбор в localStorage.
+  const [designVariant, setDesignVariant] = useState<DesignVariant>(() => {
+    const saved = localStorage.getItem("design-variant");
+    return saved === "A" ||
+      saved === "B" ||
+      saved === "C" ||
+      saved === "D"
+      ? saved
+      : "A";
+  });
+  useEffect(() => {
+    localStorage.setItem("design-variant", designVariant);
+  }, [designVariant]);
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
@@ -469,17 +489,34 @@ export const Flow = ({
     setContextMenu(null);
   }, []);
 
-  // Из контекстного меню → открыть панель в build mode
-  const handleContextBuild = useCallback(
-    (direction: BuildDirection) => {
-      const nodeId = contextMenu?.nodeId;
-      if (!nodeId) return;
+  // Единая точка входа в построение: открыть панель в build mode для узла.
+  // Используют все варианты дизайна (кнопки на ноде / вкладки / кнопка в карточке)
+  // и «Построить альтернативу» из контекстного меню.
+  const openBuild = useCallback(
+    (nodeId: string, direction: BuildDirection) => {
       setSelectedNodeId(nodeId);
       setPanelMode({ type: "build", direction });
       setIsPanelOpen(true);
       setContextMenu(null);
     },
-    [contextMenu],
+    [],
+  );
+
+  // Значение контекста для нод (мемоизируем, чтобы не ре-рендерить ноды на
+  // каждый рендер Flow).
+  const nodeActionsValue = useMemo(
+    () => ({ variant: designVariant, readOnly, openBuild }),
+    [designVariant, readOnly, openBuild],
+  );
+
+  // Из контекстного меню → открыть панель в build mode
+  const handleContextBuild = useCallback(
+    (direction: BuildDirection) => {
+      const nodeId = contextMenu?.nodeId;
+      if (!nodeId) return;
+      openBuild(nodeId, direction);
+    },
+    [contextMenu, openBuild],
   );
 
   // Из контекстного меню → показать модалку подтверждения удаления.
@@ -1514,6 +1551,17 @@ export const Flow = ({
     [buildDirectionTab],
   );
 
+  // Строки таблицы источников (вариант D): реальные из sourcesPool по всем
+  // продуктам; если их нет (напр. без бэкенда) — мок-данные для наглядности.
+  const sourceRows = useMemo(() => {
+    const labels = data.nodes
+      .filter((n) => n.type === "product")
+      .map((n) => String(n.data?.label ?? ""))
+      .filter(Boolean);
+    const real = collectSourceRows(labels, sourcesPool, poolKey);
+    return real.length ? real : buildMockSourceRows(labels);
+  }, [data.nodes, sourcesPool, poolKey]);
+
   const handleBuildProductCard = useCallback(
     async (options?: {
       customSystemPrompt?: string;
@@ -1586,6 +1634,35 @@ export const Flow = ({
         </div>
       )}
 
+      {/* Временный переключатель дизайна точки входа build (A/B/C/D). */}
+      {!readOnly && (
+        <div className={styles.designVariantSwitch}>
+          <span className={styles.designVariantLabel}>Дизайн build:</span>
+          {(["A", "B", "C", "D"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              className={`${styles.designVariantBtn} ${
+                designVariant === v ? styles.designVariantBtnActive : ""
+              }`}
+              onClick={() => setDesignVariant(v)}
+              title={
+                v === "A"
+                  ? "A — кнопки на ноде"
+                  : v === "B"
+                    ? "B — вкладки в панели"
+                    : v === "C"
+                      ? "C — кнопка «Построение» в карточке"
+                      : "D — построение в модалке + таблица источников"
+              }
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <NodeActionsProvider value={nodeActionsValue}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -1711,6 +1788,7 @@ export const Flow = ({
         </Controls>
         <Background />
       </ReactFlow>
+      </NodeActionsProvider>
       {readOnly && !isPanelOpen && <GraphLegend />}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
@@ -1736,8 +1814,6 @@ export const Flow = ({
             isProduct={ctxNode?.type === "product"}
             isStepAlt={ctxIsStepAlt}
             hasOutgoingProductNeighbors={contextMenuHasOutgoingNeighbors}
-            onBuildUp={() => handleContextBuild("up")}
-            onBuildDown={() => handleContextBuild("down")}
             onBuildAlt={
               ctxIsStepAlt
                 ? () =>
@@ -1776,6 +1852,9 @@ export const Flow = ({
           panelMode.type === "build" ? panelMode.direction : undefined
         }
         readOnly={readOnly}
+        variant={designVariant}
+        nodeId={selectedNodeId}
+        sourceRows={sourceRows}
       />
 
       <Notification

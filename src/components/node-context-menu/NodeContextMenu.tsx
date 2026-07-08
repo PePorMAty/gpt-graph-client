@@ -7,8 +7,6 @@ interface NodeContextMenuProps {
   isProduct: boolean;
   isStepAlt?: boolean;
   hasOutgoingProductNeighbors?: boolean;
-  onBuildUp: () => void;
-  onBuildDown: () => void;
   onBuildAlt?: () => void;
   onFetchTransformations?: () => void;
   onDelete: () => void;
@@ -23,8 +21,6 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   isProduct,
   isStepAlt,
   hasOutgoingProductNeighbors,
-  onBuildUp,
-  onBuildDown,
   onBuildAlt,
   onFetchTransformations,
   onDelete,
@@ -103,17 +99,6 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
         </>
       ) : (
         <>
-          {isProduct && (
-            <>
-              <button className={styles.item} onClick={onBuildUp}>
-                Построить вверх
-              </button>
-              <button className={styles.item} onClick={onBuildDown}>
-                Построить вниз
-              </button>
-              <div className={styles.separator} />
-            </>
-          )}
           {isStepAlt && onBuildAlt && (
             <>
               <button className={styles.item} onClick={onBuildAlt}>

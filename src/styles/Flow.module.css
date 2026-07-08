@@ -19,6 +19,57 @@
   height: 100vh;
   position: relative;
 }
+
+/* Временный переключатель дизайна точки входа build (A/B/C). */
+.designVariantSwitch {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+
+.designVariantLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.designVariantBtn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.designVariantBtn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.designVariantBtnActive {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
 .position_btn {
   background: #007bff;
   color: white;
