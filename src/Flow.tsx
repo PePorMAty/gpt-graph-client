@@ -817,6 +817,41 @@ export const Flow = ({
     [],
   );
 
+  // Коммит markdown-описания (alt-нода): MarkdownEditor отдаёт готовую строку —
+  // сразу пишем в node.data.description (минуя blur-путь textarea).
+  const handleCommitDescription = useCallback(
+    (text: string) => {
+      setTempNodeDescription(text);
+      if (!selectedNodeId) return;
+      if (text !== initialDescription) {
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: { description: text },
+          }),
+        );
+        setInitialDescription(text);
+        showSavedNotification();
+      }
+    },
+    [selectedNodeId, initialDescription, dispatch, showSavedNotification],
+  );
+
+  // Коммит обобщённого описания преобразования → node.data.aggregatedDescription.
+  const handleCommitAggregatedDescription = useCallback(
+    (text: string) => {
+      if (!selectedNodeId) return;
+      dispatch(
+        updateNodeData({
+          nodeId: selectedNodeId,
+          data: { aggregatedDescription: text },
+        }),
+      );
+      showSavedNotification();
+    },
+    [selectedNodeId, dispatch, showSavedNotification],
+  );
+
   // Обработчики изменений узлов и ребер
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -1001,11 +1036,17 @@ export const Flow = ({
       ) => {
         if (!selectedNodeId) return;
         const sKey = stepSessionKey(selectedNodeId, direction);
+        // Обобщённое описание шага продукта-якоря (markdown) — прокинем на
+        // создаваемую transformation-ноду (см. stepToFlow / карточка преобразования).
+        const anchorAggregatedText =
+          sourcesByNodeId[sourcesKey(selectedNodeId, direction)]
+            ?.stepAggregatedText ?? null;
         dispatch(
           acceptPendingStep({
             sessionKey: sKey,
             selectedContinueProductNodeId,
             filteredStep,
+            anchorAggregatedText,
           }),
         );
         dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
@@ -1013,7 +1054,7 @@ export const Flow = ({
         // альтернативы должны остаться видимыми, и useEffect пересоздаст
         // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
-    [dispatch, selectedNodeId],
+    [dispatch, selectedNodeId, sourcesByNodeId],
   );
 
   const handleFetchStepSourcesV2 = useCallback(
@@ -1855,6 +1896,12 @@ export const Flow = ({
         variant={designVariant}
         nodeId={selectedNodeId}
         sourceRows={sourceRows}
+        isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        aggregatedDescription={
+          selectedNode?.data?.aggregatedDescription as string | undefined
+        }
+        onCommitDescription={handleCommitDescription}
+        onCommitAggregatedDescription={handleCommitAggregatedDescription}
       />
 
       <Notification

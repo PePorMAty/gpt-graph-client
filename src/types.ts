@@ -11,6 +11,12 @@ import type {
 export interface CustomNodeData {
   label: string;
   description?: string;
+  /**
+   * Обобщённое описание шага (markdown), прокинутое на transformation-ноду от
+   * продукта-якоря, от которого строился шаг (step-by-step). Показывается в
+   * карточке преобразования через переключатель «Описание ↔ Обобщённое».
+   */
+  aggregatedDescription?: string;
 
   // --- product card ---
   productCard?: ProductCard;

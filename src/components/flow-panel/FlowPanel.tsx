@@ -739,6 +739,10 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   variant = "A",
   nodeId,
   sourceRows = [],
+  isAltNode = false,
+  aggregatedDescription,
+  onCommitDescription,
+  onCommitAggregatedDescription,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
@@ -750,13 +754,20 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   const [cBuildOpen, setCBuildOpen] = useState(false);
   const [dBuildOpen, setDBuildOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  // Вкладка описания в карточке преобразования: обычное описание ↔ обобщённое.
+  const [descTab, setDescTab] = useState<"plain" | "aggregated">("plain");
   // Сброс при смене выбранной ноды — панель всегда открывается на карточке.
   useEffect(() => {
     setActiveTab("card");
     setCBuildOpen(false);
     setDBuildOpen(false);
     setSourcesOpen(false);
+    setDescTab("plain");
   }, [nodeId]);
+
+  const hasAggregatedDesc =
+    typeof aggregatedDescription === "string" &&
+    aggregatedDescription.trim().length > 0;
 
   // В readOnly build недоступен — ведём себя как вариант A (только карточка).
   const effVariant = readOnly ? "A" : variant;
@@ -986,16 +997,70 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               )}
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Описание:</label>
-                <textarea
-                  value={descriptionValue}
-                  onChange={onChangeDescription}
-                  onBlur={onFieldBlur}
-                  className={styles.formTextarea}
-                  placeholder="Введите описание узла"
-                  rows={4}
-                  readOnly={readOnly}
-                />
+                {isAltNode ? (
+                  /* Задача №1: описание альтернативы рендерим как markdown. */
+                  <>
+                    <label className={styles.formLabel}>Описание:</label>
+                    <MarkdownEditor
+                      value={descriptionValue}
+                      onChange={readOnly ? undefined : onCommitDescription}
+                      placeholder="Введите описание (Markdown)"
+                    />
+                  </>
+                ) : hasAggregatedDesc ? (
+                  /* Задача №2: у преобразования есть обобщённое описание —
+                     переключатель «Описание ↔ Обобщённое» (обобщённое = markdown). */
+                  <>
+                    <div className={styles.modeToggleRow}>
+                      <button
+                        type="button"
+                        className={`${styles.modeToggleBtn} ${descTab === "plain" ? styles.modeToggleBtnActive : ""}`}
+                        onClick={() => setDescTab("plain")}
+                      >
+                        Описание
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.modeToggleBtn} ${descTab === "aggregated" ? styles.modeToggleBtnActive : ""}`}
+                        onClick={() => setDescTab("aggregated")}
+                      >
+                        Обобщённое
+                      </button>
+                    </div>
+                    {descTab === "plain" ? (
+                      <textarea
+                        value={descriptionValue}
+                        onChange={onChangeDescription}
+                        onBlur={onFieldBlur}
+                        className={styles.formTextarea}
+                        placeholder="Введите описание узла"
+                        rows={4}
+                        readOnly={readOnly}
+                      />
+                    ) : (
+                      <MarkdownEditor
+                        value={aggregatedDescription ?? ""}
+                        onChange={
+                          readOnly ? undefined : onCommitAggregatedDescription
+                        }
+                        placeholder="Обобщённое описание (Markdown)"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <label className={styles.formLabel}>Описание:</label>
+                    <textarea
+                      value={descriptionValue}
+                      onChange={onChangeDescription}
+                      onBlur={onFieldBlur}
+                      className={styles.formTextarea}
+                      placeholder="Введите описание узла"
+                      rows={4}
+                      readOnly={readOnly}
+                    />
+                  </>
+                )}
                 {Array.isArray(transformationSources) &&
                   transformationSources.length > 0 && (
                     <div style={{ marginTop: 8 }}>
