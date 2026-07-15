@@ -142,6 +142,19 @@
   color: #1f2937;
 }
 
+.inheritNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: #1e40af;
+  font-size: 13px;
+}
+
 .rowHighlight td {
   background: #eff6ff;
 }

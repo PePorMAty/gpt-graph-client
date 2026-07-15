@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type FC } from "react";
 import type { BuildDirection } from "../../store/types";
-import type { SourceRow } from "../../utils/mockSources";
+import type { SourceGroup } from "../../utils/sourceRows";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 import styles from "./SourcesTableModal.module.css";
 
 interface SourcesTableModalProps {
-  rows: SourceRow[];
-  /** Продукт, из карточки которого открыли таблицу — его источники выделяем. */
+  groups: SourceGroup[];
+  /** Продукт, из ноды которого открыли таблицу — его источники выделяем. */
   currentProduct: string;
   onClose: () => void;
 }
@@ -22,33 +22,49 @@ const DirBadge: FC<{ direction: BuildDirection }> = ({ direction }) => (
   </span>
 );
 
-const Rows: FC<{ rows: SourceRow[]; highlight?: boolean }> = ({
-  rows,
-  highlight,
-}) => (
-  <>
-    {rows.map((r) => (
-      <tr
-        key={r.id}
-        className={highlight ? styles.rowHighlight : undefined}
-      >
-        <td className={styles.cellProduct}>{r.product}</td>
-        <td className={styles.cellDir}>
-          <DirBadge direction={r.direction} />
-        </td>
-        <td className={styles.cellTitle}>{r.title}</td>
-        <td className={styles.cellLink}>
-          <a href={r.url} target="_blank" rel="noreferrer">
-            {r.url}
-          </a>
-        </td>
+/** Таблица источников для набора «своих» групп (у каждой — свои источники). */
+const SourceTable: FC<{
+  groups: SourceGroup[];
+  showProduct?: boolean;
+  highlight?: boolean;
+}> = ({ groups, showProduct = true, highlight }) => (
+  <table className={styles.table}>
+    <thead>
+      <tr>
+        {showProduct && <th className={styles.cellProduct}>Продукт</th>}
+        <th className={styles.cellDir}>Направление</th>
+        <th className={styles.cellTitle}>Название</th>
+        <th className={styles.cellLink}>Ссылка</th>
       </tr>
-    ))}
-  </>
+    </thead>
+    <tbody>
+      {groups.flatMap((g) =>
+        g.sources.map((s, i) => (
+          <tr
+            key={`${g.id}::${i}`}
+            className={highlight ? styles.rowHighlight : undefined}
+          >
+            {showProduct && (
+              <td className={styles.cellProduct}>{g.product}</td>
+            )}
+            <td className={styles.cellDir}>
+              <DirBadge direction={g.direction} />
+            </td>
+            <td className={styles.cellTitle}>{s.title}</td>
+            <td className={styles.cellLink}>
+              <a href={s.url} target="_blank" rel="noreferrer">
+                {s.url}
+              </a>
+            </td>
+          </tr>
+        )),
+      )}
+    </tbody>
+  </table>
 );
 
 export const SourcesTableModal: FC<SourcesTableModalProps> = ({
-  rows,
+  groups,
   currentProduct,
   onClose,
 }) => {
@@ -68,34 +84,33 @@ export const SourcesTableModal: FC<SourcesTableModalProps> = ({
   );
 
   const uniqueProducts = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.product))).sort(),
-    [rows],
+    () => Array.from(new Set(groups.map((g) => g.product))).sort(),
+    [groups],
   );
 
-  const { currentRows, otherRows } = useMemo(() => {
+  const { currentGroups, otherOwnGroups, totalOwn } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = q
-      ? rows.filter((r) => r.product.toLowerCase().includes(q))
-      : rows;
-    const cur: SourceRow[] = [];
-    const other: SourceRow[] = [];
-    for (const r of filtered) {
-      if (normalizeProductName(r.product) === currentNorm) cur.push(r);
-      else other.push(r);
+    const matches = (g: SourceGroup) =>
+      !q || g.product.toLowerCase().includes(q);
+    const cur: SourceGroup[] = [];
+    const other: SourceGroup[] = [];
+    let total = 0;
+    for (const g of groups) {
+      if (!g.inheritedFrom) total += g.sources.length;
+      if (!matches(g)) continue;
+      const isCurrent =
+        !!currentProduct &&
+        normalizeProductName(g.product) === currentNorm;
+      if (isCurrent) cur.push(g);
+      else if (!g.inheritedFrom) other.push(g); // унаследованные чужие не дублируем
     }
-    return { currentRows: cur, otherRows: other };
-  }, [rows, query, currentNorm]);
+    return { currentGroups: cur, otherOwnGroups: other, totalOwn: total };
+  }, [groups, query, currentNorm, currentProduct]);
 
-  const header = (
-    <tr>
-      <th className={styles.cellProduct}>Продукт</th>
-      <th className={styles.cellDir}>Направление</th>
-      <th className={styles.cellTitle}>Название</th>
-      <th className={styles.cellLink}>Ссылка</th>
-    </tr>
-  );
+  const currentOwn = currentGroups.filter((g) => !g.inheritedFrom);
+  const currentInherited = currentGroups.filter((g) => g.inheritedFrom);
 
-  const nothingFound = currentRows.length === 0 && otherRows.length === 0;
+  const nothing = currentGroups.length === 0 && otherOwnGroups.length === 0;
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -104,7 +119,7 @@ export const SourcesTableModal: FC<SourcesTableModalProps> = ({
           <div>
             <h3 className={styles.title}>Источники</h3>
             <div className={styles.subtitle}>
-              Все источники: <b>{rows.length}</b> · продуктов:{" "}
+              Все источники: <b>{totalOwn}</b> · продуктов:{" "}
               <b>{uniqueProducts.length}</b>
             </div>
           </div>
@@ -138,35 +153,29 @@ export const SourcesTableModal: FC<SourcesTableModalProps> = ({
         </div>
 
         <div className={styles.body}>
-          {nothingFound && (
-            <div className={styles.empty}>Ничего не найдено.</div>
-          )}
+          {nothing && <div className={styles.empty}>Ничего не найдено.</div>}
 
-          {currentRows.length > 0 && (
+          {currentGroups.length > 0 && (
             <div className={styles.section}>
               <div className={styles.sectionTitle}>
-                Источники этого продукта — «{currentProduct}» ({currentRows.length})
+                Источники этого продукта — «{currentProduct}»
               </div>
-              <table className={styles.table}>
-                <thead>{header}</thead>
-                <tbody>
-                  <Rows rows={currentRows} highlight />
-                </tbody>
-              </table>
+              {currentInherited.map((g) => (
+                <div key={g.id} className={styles.inheritNote}>
+                  <DirBadge direction={g.direction} /> источники наследованы от
+                  «{g.inheritedFrom}»
+                </div>
+              ))}
+              {currentOwn.length > 0 && (
+                <SourceTable groups={currentOwn} showProduct={false} highlight />
+              )}
             </div>
           )}
 
-          {otherRows.length > 0 && (
+          {otherOwnGroups.length > 0 && (
             <div className={styles.section}>
-              <div className={styles.sectionTitle}>
-                Другие продукты ({otherRows.length})
-              </div>
-              <table className={styles.table}>
-                <thead>{header}</thead>
-                <tbody>
-                  <Rows rows={otherRows} />
-                </tbody>
-              </table>
+              <div className={styles.sectionTitle}>Другие продукты</div>
+              <SourceTable groups={otherOwnGroups} />
             </div>
           )}
         </div>
