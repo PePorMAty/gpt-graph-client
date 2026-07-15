@@ -23,6 +23,9 @@ export interface StepToFlowOpts {
   spacingX?: number;
   stepY1?: number;
   stepY2?: number;
+  /** Обобщённое описание шага (markdown) от продукта-якоря — кладём на
+   *  transformation-ноду для показа в карточке (переключатель «Обобщённое»). */
+  anchorAggregatedText?: string | null;
 }
 
 export function stepToFlow(
@@ -42,6 +45,7 @@ export function stepToFlow(
     spacingX = 260,
     stepY1 = 180,
     stepY2 = 220,
+    anchorAggregatedText = null,
   } = opts;
 
   const isDown = direction === "down";
@@ -159,6 +163,9 @@ export function stepToFlow(
     data: {
       label: step.transformation.name,
       description: step.transformation.description || "",
+      ...(anchorAggregatedText
+        ? { aggregatedDescription: anchorAggregatedText }
+        : {}),
       chainRootNodeId: rootNodeId,
       chainDirection: direction,
       stepChainSessionKey: sessionKey,

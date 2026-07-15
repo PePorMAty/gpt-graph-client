@@ -125,6 +125,15 @@ export interface FlowPanelProps {
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onFieldBlur?: () => void; // Сохранение при потере фокуса поля имени/описания
 
+  /** Нода — альтернатива (chainVariant === "alt"): описание рендерим как markdown. */
+  isAltNode?: boolean;
+  /** Обобщённое описание преобразования (markdown) — для тумблера в карточке. */
+  aggregatedDescription?: string;
+  /** Коммит markdown-описания (alt): пишет строку в node.data.description. */
+  onCommitDescription?: (text: string) => void;
+  /** Коммит обобщённого описания преобразования → node.data.aggregatedDescription. */
+  onCommitAggregatedDescription?: (text: string) => void;
+
   nodeId?: string | null;
   nodeType?: string;
 

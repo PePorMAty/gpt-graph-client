@@ -419,6 +419,9 @@ const gptSlice = createSlice({
         // чтобы альтернатива не реюзала источники основного пути и не сходилась
         // к его продуктам.
         isAlternativeFirstStep?: boolean;
+        // Обобщённое описание шага (markdown) продукта-якоря — кладём на
+        // создаваемую transformation-ноду (карточка: тумблер «Обобщённое»).
+        anchorAggregatedText?: string | null;
       }>,
     ) => {
       const {
@@ -426,6 +429,7 @@ const gptSlice = createSlice({
         selectedContinueProductNodeId,
         filteredStep,
         isAlternativeFirstStep,
+        anchorAggregatedText,
       } = action.payload;
       const session = state.stepChainSessions[sessionKey];
       if (!session || !session.pendingStep) return;
@@ -450,6 +454,7 @@ const gptSlice = createSlice({
         stepNumber,
         existingNodes: state.data.nodes,
         existingEdges: state.data.edges,
+        anchorAggregatedText: anchorAggregatedText ?? null,
       });
 
       // Тупик: шаг свёлся бы только к петле(ям) на предка → граф НЕ трогаем,
