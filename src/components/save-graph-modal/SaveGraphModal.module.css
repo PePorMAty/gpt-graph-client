@@ -1,0 +1,110 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 24px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  width: min(420px, 100%);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #475569;
+}
+
+.modal input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1f2937;
+  box-sizing: border-box;
+}
+
+.modal input:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.actions button {
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.actions button:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.actions .primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+.actions .primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+@media (prefers-color-scheme: dark) {
+  .modal {
+    background: #1e293b;
+  }
+  .modal h3 {
+    color: #f1f5f9;
+  }
+  .hint {
+    color: #cbd5e1;
+  }
+  .modal input {
+    background: #0f172a;
+    border-color: #475569;
+    color: #e2e8f0;
+  }
+  .actions button {
+    background: #0f172a;
+    border-color: #475569;
+    color: #e2e8f0;
+  }
+}
