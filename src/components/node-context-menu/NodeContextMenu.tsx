@@ -4,11 +4,6 @@ import styles from "./NodeContextMenu.module.css";
 interface NodeContextMenuProps {
   x: number;
   y: number;
-  isProduct: boolean;
-  isStepAlt?: boolean;
-  hasOutgoingProductNeighbors?: boolean;
-  onBuildAlt?: () => void;
-  onFetchTransformations?: () => void;
   onDelete: () => void;
   /** Кол-во выделенных нод. Если > 1 — меню показывает групповое удаление. */
   selectedCount?: number;
@@ -18,11 +13,6 @@ interface NodeContextMenuProps {
 export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   x,
   y,
-  isProduct,
-  isStepAlt,
-  hasOutgoingProductNeighbors,
-  onBuildAlt,
-  onFetchTransformations,
   onDelete,
   selectedCount,
   onClose,
@@ -98,35 +88,12 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
           </button>
         </>
       ) : (
-        <>
-          {isStepAlt && onBuildAlt && (
-            <>
-              <button className={styles.item} onClick={onBuildAlt}>
-                Построить альтернативу
-              </button>
-              <div className={styles.separator} />
-            </>
-          )}
-          {isProduct &&
-            hasOutgoingProductNeighbors &&
-            onFetchTransformations && (
-              <>
-                <button
-                  className={styles.item}
-                  onClick={onFetchTransformations}
-                >
-                  Получить преобразования к соседним продуктам
-                </button>
-                <div className={styles.separator} />
-              </>
-            )}
-          <button
-            className={`${styles.item} ${styles.itemDanger}`}
-            onClick={onDelete}
-          >
-            Удалить
-          </button>
-        </>
+        <button
+          className={`${styles.item} ${styles.itemDanger}`}
+          onClick={onDelete}
+        >
+          Удалить
+        </button>
       )}
     </div>
   );

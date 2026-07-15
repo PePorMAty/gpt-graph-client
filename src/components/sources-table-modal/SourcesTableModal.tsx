@@ -93,16 +93,30 @@ export const SourcesTableModal: FC<SourcesTableModalProps> = ({
     const matches = (g: SourceGroup) =>
       !q || g.product.toLowerCase().includes(q);
     const cur: SourceGroup[] = [];
-    const other: SourceGroup[] = [];
     let total = 0;
     for (const g of groups) {
       if (!g.inheritedFrom) total += g.sources.length;
       if (!matches(g)) continue;
-      const isCurrent =
-        !!currentProduct &&
-        normalizeProductName(g.product) === currentNorm;
-      if (isCurrent) cur.push(g);
-      else if (!g.inheritedFrom) other.push(g); // унаследованные чужие не дублируем
+      if (!!currentProduct && normalizeProductName(g.product) === currentNorm) {
+        cur.push(g);
+      }
+    }
+    // Наборы, уже показанные в секции текущего продукта как унаследованные:
+    // их origin-группы не дублируем в «Другие продукты» (содержимое идентично).
+    const shownOrigins = new Set(
+      cur
+        .filter((g) => g.inheritedFrom)
+        .map((g) => `${normalizeProductName(g.inheritedFrom as string)}::${g.direction}`),
+    );
+    const other: SourceGroup[] = [];
+    for (const g of groups) {
+      if (!matches(g)) continue;
+      if (!!currentProduct && normalizeProductName(g.product) === currentNorm)
+        continue;
+      if (g.inheritedFrom) continue; // унаследованные чужие не дублируем
+      if (shownOrigins.has(`${normalizeProductName(g.product)}::${g.direction}`))
+        continue;
+      other.push(g);
     }
     return { currentGroups: cur, otherOwnGroups: other, totalOwn: total };
   }, [groups, query, currentNorm, currentProduct]);
@@ -161,9 +175,14 @@ export const SourcesTableModal: FC<SourcesTableModalProps> = ({
                 Источники этого продукта — «{currentProduct}»
               </div>
               {currentInherited.map((g) => (
-                <div key={g.id} className={styles.inheritNote}>
-                  <DirBadge direction={g.direction} /> источники наследованы от
-                  «{g.inheritedFrom}»
+                <div key={g.id}>
+                  <div className={styles.inheritNote}>
+                    <DirBadge direction={g.direction} /> источники наследованы
+                    от «{g.inheritedFrom}»
+                  </div>
+                  {/* Показываем сами унаследованные источники, чтобы не искать
+                      продукт-предок на графе. */}
+                  <SourceTable groups={[g]} showProduct={false} highlight />
                 </div>
               ))}
               {currentOwn.length > 0 && (
