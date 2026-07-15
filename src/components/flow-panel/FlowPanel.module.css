@@ -686,7 +686,29 @@
   border-color: #1d4ed8;
 }
 
-/* Вариант D: кнопка открытия таблицы источников. */
+/* Кнопка «Получить преобразования к соседним продуктам» в карточке продукта. */
+.transformEntryButton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px dashed #d97706;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #b45309;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.transformEntryButton:hover {
+  background: #fef3c7;
+  border-color: #b45309;
+}
+
+/* Кнопка открытия таблицы источников. */
 .sourcesEntryButton {
   width: 100%;
   margin-top: 8px;
@@ -724,8 +746,8 @@
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  width: min(560px, 100%);
-  max-height: 85vh;
+  width: min(780px, 100%);
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;

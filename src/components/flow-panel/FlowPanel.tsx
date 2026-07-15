@@ -733,13 +733,14 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   downTab,
   upTab,
 
-  mode,
-  buildDirection,
+  hasOutgoingProductNeighbors = false,
+  onFetchTransformations,
   readOnly = false,
   nodeId,
   sourceGroups = [],
   sourcesCurrentProduct = "",
   isAltNode = false,
+  altDirection,
   aggregatedDescription,
   onCommitDescription,
   onCommitAggregatedDescription,
@@ -773,8 +774,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
       ),
     [sourceGroups],
   );
-
-  const showCardBody = mode === "card";
 
   // ── field selection state ──
   const predefinedFields = useMemo(
@@ -931,13 +930,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
       >
         <div className={styles.panelHeader}>
           <h3 className={styles.panelTitle}>
-            {mode === "build"
-              ? buildDirection === "down"
-                ? "Построить вниз"
-                : "Построить вверх"
-              : readOnly
-                ? "Просмотр узла"
-                : "Редактирование узла"}
+            {readOnly ? "Просмотр узла" : "Редактирование узла"}
           </h3>
           <button className={styles.closeButton} onClick={onClose}>
             ×
@@ -958,8 +951,8 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             />
           </div>
 
-          {/* ══════════ MODE: Card ══════════ */}
-          {showCardBody && (
+          {/* ══════════ Карточка ══════════ */}
+          {(
             <>
               {productCardStatus === "loading" && (
                 <div className={styles.tabLoader}>
@@ -1254,16 +1247,39 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               </div>
               )}
 
-              {/* Построение (модалка) + таблица источников — на каждой ноде. */}
+              {/* Кнопки действий: построение (продукт/альтернатива),
+                  преобразования к соседям (продукт), источники (все ноды). */}
               {!readOnly && (
                 <div className={styles.formGroup}>
-                  <button
-                    type="button"
-                    className={styles.buildEntryButton}
-                    onClick={() => setDBuildOpen(true)}
-                  >
-                    ⚙ Построение ▸
-                  </button>
+                  {effectiveNodeType === "product" && (
+                    <button
+                      type="button"
+                      className={styles.buildEntryButton}
+                      onClick={() => setDBuildOpen(true)}
+                    >
+                      ⚙ Построение ▸
+                    </button>
+                  )}
+                  {isAltNode && altDirection && (
+                    <button
+                      type="button"
+                      className={styles.buildEntryButton}
+                      onClick={() => setDBuildOpen(true)}
+                    >
+                      ⚙ Построить альтернативу
+                    </button>
+                  )}
+                  {effectiveNodeType === "product" &&
+                    hasOutgoingProductNeighbors &&
+                    onFetchTransformations && (
+                      <button
+                        type="button"
+                        className={styles.transformEntryButton}
+                        onClick={onFetchTransformations}
+                      >
+                        🔗 Получить преобразования к соседним продуктам
+                      </button>
+                    )}
                   <button
                     type="button"
                     className={styles.sourcesEntryButton}
@@ -1273,20 +1289,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   </button>
                 </div>
               )}
-            </>
-          )}
-
-          {/* ══════════ MODE: Build (alt-построение из ПКМ «Построить альтернативу») ══════════ */}
-          {mode === "build" && buildDirection && (
-            <>
-              <div className={styles.buildHeader}>
-                {buildDirection === "down"
-                  ? `Построить вниз от «${value}»`
-                  : `Построить вверх от «${value}»`}
-              </div>
-              <DirectionContent
-                {...(buildDirection === "down" ? downTab : upTab)}
-              />
             </>
           )}
         </div>
@@ -1300,7 +1302,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>Построение — «{value}»</h3>
+              <h3 className={styles.modalTitle}>
+                {isAltNode
+                  ? `Построение альтернативы — «${value}»`
+                  : `Построение — «${value}»`}
+              </h3>
               <button
                 className={styles.modalClose}
                 onClick={() => setDBuildOpen(false)}
@@ -1310,11 +1316,19 @@ export const FlowPanel: FC<FlowPanelProps> = ({
               </button>
             </div>
             <div className={styles.modalBody}>
-              <PanelBuildView
-                productName={value}
-                downTab={downTab}
-                upTab={upTab}
-              />
+              {isAltNode && altDirection ? (
+                /* Альтернатива: направление фиксировано (stepAltDirection),
+                   селектор не нужен; downTab/upTab уже несут alt-overrides. */
+                <DirectionContent
+                  {...(altDirection === "down" ? downTab : upTab)}
+                />
+              ) : (
+                <PanelBuildView
+                  productName={value}
+                  downTab={downTab}
+                  upTab={upTab}
+                />
+              )}
             </div>
           </div>
         </div>

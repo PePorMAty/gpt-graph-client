@@ -126,6 +126,8 @@ export interface FlowPanelProps {
 
   /** Нода — альтернатива (chainVariant === "alt"): описание рендерим как markdown. */
   isAltNode?: boolean;
+  /** Направление альтернативного шага (alt-нода) — для кнопки «Построить альтернативу». */
+  altDirection?: BuildDirection;
   /** Обобщённое описание преобразования (markdown) — для тумблера в карточке. */
   aggregatedDescription?: string;
   /** Коммит markdown-описания (alt): пишет строку в node.data.description. */
@@ -149,9 +151,10 @@ export interface FlowPanelProps {
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
 
-  // panel mode
-  mode: "card" | "build";
-  buildDirection?: BuildDirection;
+  /** У продукта есть прямые соседи-продукты без преобразования между ними. */
+  hasOutgoingProductNeighbors?: boolean;
+  /** Открыть поток «Получить преобразования к соседним продуктам» (SelectNeighborModal). */
+  onFetchTransformations?: () => void;
 
   /** Группы источников по всем продуктам (реальные из пула) — для таблицы. */
   sourceGroups?: SourceGroup[];

@@ -269,9 +269,6 @@ export const Flow = ({
     x: number;
     y: number;
   } | null>(null);
-  const [panelMode, setPanelMode] = useState<
-    { type: "card" } | { type: "build"; direction: BuildDirection }
-  >({ type: "card" });
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
@@ -421,7 +418,6 @@ export const Flow = ({
     // панель редактирования — пользователь выделяет несколько нод.
     if (event.shiftKey || event.ctrlKey || event.metaKey) return;
     setSelectedNodeId(node.id);
-    setPanelMode({ type: "card" });
     setIsPanelOpen(true);
     setContextMenu(null);
   }, []);
@@ -470,29 +466,6 @@ export const Flow = ({
     setContextMenu(null);
   }, []);
 
-  // Единая точка входа в построение: открыть панель в build mode для узла.
-  // Открывает панель в build-режиме. Используется «Построить альтернативу» из
-  // контекстного меню (продуктовое построение вверх/вниз — через карточку).
-  const openBuild = useCallback(
-    (nodeId: string, direction: BuildDirection) => {
-      setSelectedNodeId(nodeId);
-      setPanelMode({ type: "build", direction });
-      setIsPanelOpen(true);
-      setContextMenu(null);
-    },
-    [],
-  );
-
-  // Из контекстного меню → открыть панель в build mode
-  const handleContextBuild = useCallback(
-    (direction: BuildDirection) => {
-      const nodeId = contextMenu?.nodeId;
-      if (!nodeId) return;
-      openBuild(nodeId, direction);
-    },
-    [contextMenu, openBuild],
-  );
-
   // Из контекстного меню → показать модалку подтверждения удаления.
   // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
   // всю группу, иначе только одну ноду.
@@ -509,22 +482,20 @@ export const Flow = ({
     setContextMenu(null);
   }, [contextMenu, data.nodes]);
 
-  // Из контекстного меню → открыть модалку с подтверждением запроса
-  const handleContextFetchTransformations = useCallback(() => {
-    if (!contextMenu) return;
-    const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+  // Из карточки продукта → открыть модалку «Получить преобразования к соседним
+  // продуктам» (SelectNeighborModal) для выбранной ноды.
+  const handleOpenFetchTransformations = useCallback(() => {
+    if (!selectedNodeId) return;
+    const node = data.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
     const outgoing = getDirectProductNeighbors(
-      contextMenu.nodeId,
+      selectedNodeId,
       data.nodes,
       data.edges,
     ).filter((n) => n.role === "outgoing");
-    if (!outgoing.length) {
-      setContextMenu(null);
-      return;
-    }
+    if (!outgoing.length) return;
     setInsertTrState({
-      nodeId: contextMenu.nodeId,
+      nodeId: selectedNodeId,
       productLabel: String(node.data?.label ?? ""),
       neighbors: outgoing,
       loading: false,
@@ -532,8 +503,7 @@ export const Flow = ({
       customSystemPrompt: defaultTransformationsBetweenPrompt,
       isPromptDirty: false,
     });
-    setContextMenu(null);
-  }, [contextMenu, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
+  }, [selectedNodeId, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
 
   const handleFetchTransformations = useCallback(async () => {
     if (!insertTrState) return;
@@ -652,15 +622,16 @@ export const Flow = ({
     }
   }, [dispatch, insertTrState, data.nodes]);
 
-  // Outgoing-соседи для пункта меню (для текущего contextMenu.nodeId)
-  const contextMenuHasOutgoingNeighbors = useMemo(() => {
-    if (!contextMenu) return false;
+  // Outgoing-соседи выбранной ноды — для кнопки «Получить преобразования…»
+  // в карточке продукта.
+  const selectedNodeHasOutgoingNeighbors = useMemo(() => {
+    if (!selectedNodeId) return false;
     return getDirectProductNeighbors(
-      contextMenu.nodeId,
+      selectedNodeId,
       data.nodes,
       data.edges,
     ).some((n) => n.role === "outgoing");
-  }, [contextMenu, data.nodes, data.edges]);
+  }, [selectedNodeId, data.nodes, data.edges]);
 
   // Подтверждение удаления (одна нода или группа выделенных)
   const handleConfirmDelete = useCallback(() => {
@@ -765,7 +736,6 @@ export const Flow = ({
     saveChanges();
 
     setIsPanelOpen(false);
-    setPanelMode({ type: "card" });
     setTimeout(() => {
       setSelectedNodeId(null);
       setTempNodeLabel("");
@@ -1808,33 +1778,15 @@ export const Flow = ({
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
       />
-      {contextMenu && (() => {
-        const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
-        const ctxIsStepAlt =
-          ctxNode?.data?.chainVariant === "alt" &&
-          !!ctxNode?.data?.stepAltDirection;
-        return (
-          <NodeContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            isProduct={ctxNode?.type === "product"}
-            isStepAlt={ctxIsStepAlt}
-            hasOutgoingProductNeighbors={contextMenuHasOutgoingNeighbors}
-            onBuildAlt={
-              ctxIsStepAlt
-                ? () =>
-                    handleContextBuild(
-                      ctxNode!.data!.stepAltDirection as BuildDirection,
-                    )
-                : undefined
-            }
-            onFetchTransformations={handleContextFetchTransformations}
-            onDelete={handleContextDelete}
-            selectedCount={selectedNodes.length}
-            onClose={() => setContextMenu(null)}
-          />
-        );
-      })()}
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDelete={handleContextDelete}
+          selectedCount={selectedNodes.length}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}
@@ -1853,15 +1805,16 @@ export const Flow = ({
         productCard={selectedNode?.data?.productCard}
         downTab={downTab}
         upTab={upTab}
-        mode={panelMode.type}
-        buildDirection={
-          panelMode.type === "build" ? panelMode.direction : undefined
-        }
+        hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
+        onFetchTransformations={handleOpenFetchTransformations}
         readOnly={readOnly}
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}
         isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        altDirection={
+          selectedNode?.data?.stepAltDirection as BuildDirection | undefined
+        }
         aggregatedDescription={
           selectedNode?.data?.aggregatedDescription as string | undefined
         }
