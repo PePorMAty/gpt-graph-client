@@ -32,6 +32,7 @@ import {
   removeStepAlternativeNodes,
   acceptStepAlternative,
   insertTransformationsForNeighbors,
+  addSourcesToPool,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -880,7 +881,12 @@ export const Flow = ({
   );
 
   const handleAggregateSources = useCallback(
-    (direction: BuildDirection) => async (customSystemPrompt?: string, customUserPrompt?: string) => {
+    (direction: BuildDirection) =>
+      async (
+        customSystemPrompt?: string,
+        customUserPrompt?: string,
+        selectedSources?: TechnologySource[],
+      ) => {
       if (!selectedNodeId || !selectedNode) return;
       const productName = String(selectedNode.data?.label || "").trim();
       if (!productName) return;
@@ -894,8 +900,12 @@ export const Flow = ({
       // fallback to sourcesSlice
       const sliceKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
+      // Пользователь мог отметить чекбоксами подмножество источников (3.1) —
+      // тогда обобщаем только по ним.
       const payloadSources: TechnologySource[] =
-        dirSources ?? sliceState?.sources ?? [];
+        selectedSources && selectedSources.length
+          ? selectedSources
+          : (dirSources ?? sliceState?.sources ?? []);
 
       if (!payloadSources.length) return;
 
@@ -1040,7 +1050,12 @@ export const Flow = ({
   );
 
   const handleAggregateStepSources = useCallback(
-    (direction: BuildDirection) => (customSystemPrompt?: string, customUserPrompt?: string) => {
+    (direction: BuildDirection) =>
+      (
+        customSystemPrompt?: string,
+        customUserPrompt?: string,
+        selectedSources?: TechnologySource[],
+      ) => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();
@@ -1053,8 +1068,11 @@ export const Flow = ({
         }),
       );
 
+      // Отмеченное чекбоксами подмножество (3.1) имеет приоритет над полным пулом.
       const poolSources =
-        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+        selectedSources && selectedSources.length
+          ? selectedSources
+          : (sourcesPool[poolKey(productName, direction)]?.sources ?? []);
       if (!poolSources.length) return;
 
       const descField =
@@ -1083,6 +1101,63 @@ export const Flow = ({
       selectedNode,
       sourcesPool,
     ],
+  );
+
+  // Ручное добавление источника (3.2): пишем и в пул (единый для step-потока и
+  // бейджей; addSourcesToPool сам разрулит seq/originProduct — пул становится
+  // «своим»), и в node.data.sourcesUp/Down (отображение full-chain потока).
+  // Возвращает текст ошибки или null при успехе.
+  const handleAddManualSource = useCallback(
+    (direction: BuildDirection) =>
+      (src: { title: string; url: string; description?: string }): string | null => {
+        if (!selectedNodeId || !selectedNode) return "Узел не выбран";
+        const productName = String(selectedNode.data?.label || "").trim();
+        if (!productName) return "У узла нет названия";
+
+        const url = src.url.trim();
+        const title = src.title.trim() || url;
+        if (!/^https?:\/\/.+/i.test(url)) {
+          return "Ссылка должна начинаться с http:// или https://";
+        }
+
+        const dirField = direction === "up" ? "sourcesUp" : "sourcesDown";
+        const nodeSources =
+          (selectedNode.data?.[dirField] as TechnologySource[] | undefined) ?? [];
+        const poolSources =
+          sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+        // Объединяем оба хранилища (могли разойтись), дедуп по url.
+        const merged: TechnologySource[] = [];
+        const seen = new Set<string>();
+        for (const s of [...poolSources, ...nodeSources]) {
+          const key = String(s.url || "").trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(s);
+        }
+        if (seen.has(url.toLowerCase())) {
+          return "Источник с таким URL уже есть в списке";
+        }
+
+        const manual: TechnologySource = {
+          title,
+          url,
+          access_hint: "",
+          technology_description: src.description?.trim() ?? "",
+          inputs_outputs_hint: [],
+          evidence_snippets: [],
+        };
+        const next = [...merged, manual];
+
+        dispatch(addSourcesToPool({ productName, direction, sources: next }));
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: { [dirField]: next },
+          }),
+        );
+        return null;
+      },
+    [dispatch, selectedNodeId, selectedNode, sourcesPool],
   );
 
   const handleBuildStep = useCallback(
@@ -1274,6 +1349,7 @@ export const Flow = ({
         sources: effectiveSources,
 
         onAggregateSources: handleAggregateSources(direction),
+        onAddManualSource: handleAddManualSource(direction),
         aggregateLoading: sliceState?.aggregateStatus === "loading",
         aggregateError: sliceState?.aggregateError ?? null,
         hasAggregated,
@@ -1514,6 +1590,7 @@ export const Flow = ({
       needsFreshSources,
       handleFindSources,
       handleAggregateSources,
+      handleAddManualSource,
       handleInitChain,
       handleExpandNext,
       stepChainSessions,

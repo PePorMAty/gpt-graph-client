@@ -786,3 +786,62 @@
   overflow: auto;
   padding: 16px 20px 20px;
 }
+
+/* ── Ручное добавление источника (3.2) ── */
+.addSourceBox {
+  margin-top: 8px;
+}
+
+.addSourceForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+}
+
+.addSourceInput {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  color: inherit;
+}
+
+.addSourceInput:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.addSourceTextarea {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  resize: vertical;
+  color: inherit;
+}
+
+.addSourceSuccess {
+  color: #15803d;
+  font-size: 12px;
+}
+
+/* ── Выбор источников для обобщения (3.1) ── */
+.sourceSelectRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sourceSelectRow input[type="checkbox"] {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.selectedCounter {
+  font-size: 12px;
+  opacity: 0.75;
+}

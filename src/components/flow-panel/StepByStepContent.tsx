@@ -8,6 +8,7 @@ import {
   splitStepAggregatePrompt,
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
+import { AddSourceForm } from "./AddSourceForm";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -37,6 +38,7 @@ type StepByStepContentProps = Pick<
   | "pendingStep"
   | "onFetchStepSources"
   | "onAggregateStepSources"
+  | "onAddManualSource"
   | "onBuildStep"
   | "stepBuiltFromAggregate"
   | "onClearStepState"
@@ -76,6 +78,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   onFetchStepSources,
   onAggregateStepSources,
+  onAddManualSource,
   onBuildStep,
   onClearStepState,
   onForceStepPreview,
@@ -107,6 +110,36 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview =
     !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
+
+  // ── Выбор источников для обобщения шага (3.1) ──
+  const [excludedUrls, setExcludedUrls] = useState<Set<string>>(new Set());
+  const stepSourcesUrlsKey = useMemo(
+    () =>
+      stepSources
+        .map((s) => (s.url || "").trim().toLowerCase())
+        .sort()
+        .join("|"),
+    [stepSources],
+  );
+  useEffect(() => {
+    setExcludedUrls(new Set());
+  }, [stepSourcesUrlsKey]);
+  const selectedStepSources = useMemo(
+    () =>
+      stepSources.filter(
+        (s) => !excludedUrls.has((s.url || "").trim().toLowerCase()),
+      ),
+    [stepSources, excludedUrls],
+  );
+  const toggleSourceSelected = (url: string) => {
+    const key = (url || "").trim().toLowerCase();
+    setExcludedUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // ── Sources prompt state ──
   const [maxItems, setMaxItems] = useState(5);
@@ -165,9 +198,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const handleAggregate = () => {
     if (isAggPromptDirty) {
       const { system, user } = splitStepAggregatePrompt(displayedAggPrompt);
-      onAggregateStepSources?.(system, user);
+      onAggregateStepSources?.(system, user, selectedStepSources);
     } else {
-      onAggregateStepSources?.();
+      onAggregateStepSources?.(undefined, undefined, selectedStepSources);
     }
   };
 
@@ -427,6 +460,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
           )}
+
+          {/* Ручное добавление источников доступно и ДО поиска (3.2). */}
+          <AddSourceForm onAdd={onAddManualSource} />
         </>
       )}
 
@@ -483,7 +519,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             type="button"
             onClick={handleAggregate}
             disabled={
-              aggregateLoading || stepSources.length < 1 || isAggPromptEmpty
+              aggregateLoading ||
+              selectedStepSources.length < 1 ||
+              isAggPromptEmpty
             }
             className={styles.findSourcesButton}
           >
@@ -620,7 +658,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           <button
             type="button"
             onClick={handleAggregate}
-            disabled={aggregateLoading || buildLoading}
+            disabled={
+              aggregateLoading || buildLoading || selectedStepSources.length < 1
+            }
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
@@ -679,7 +719,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {sourcesUsable && (
         <div className={styles.sourcesBox}>
           <div className={styles.sourcesTitle}>
-            Источники ({stepSources.length})
+            Источники ({stepSources.length}){" "}
+            <span className={styles.selectedCounter}>
+              · для обобщения выбрано: {selectedStepSources.length}
+            </span>
           </div>
           {isBorrowedSources && (
             <div className={styles.warningText}>
@@ -695,7 +738,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {stepSources.map((s) => (
             <details key={s.url} className={styles.sourceItem}>
               <summary className={styles.sourceSummary}>
-                <span className={styles.sourceTitle}>{s.title}</span>
+                <span className={styles.sourceSelectRow}>
+                  {/* Чекбокс выбора источника для обобщения шага (3.1). */}
+                  <input
+                    type="checkbox"
+                    checked={
+                      !excludedUrls.has((s.url || "").trim().toLowerCase())
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleSourceSelected(s.url)}
+                    title="Использовать этот источник при обобщении"
+                  />
+                  <span className={styles.sourceTitle}>{s.title}</span>
+                </span>
               </summary>
               <div className={styles.sourceBody}>
                 <a
@@ -712,6 +767,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               </div>
             </details>
           ))}
+
+          {/* Ручное добавление источников ПОСЛЕ поиска (3.2). */}
+          <AddSourceForm onAdd={onAddManualSource} />
         </div>
       )}
 

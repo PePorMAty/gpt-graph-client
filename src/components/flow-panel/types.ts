@@ -27,7 +27,13 @@ export interface DirectionTabProps {
   sourcesError?: string | null;
   sources: TechnologySource[];
 
-  onAggregateSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
+  /** selectedSources — подмножество источников, отмеченное чекбоксами (3.1);
+   *  undefined = использовать все. */
+  onAggregateSources?: (
+    customSystemPrompt?: string,
+    customUserPrompt?: string,
+    selectedSources?: TechnologySource[],
+  ) => void;
   aggregateLoading?: boolean;
   aggregateError?: string | null;
   hasAggregated?: boolean;
@@ -35,6 +41,14 @@ export interface DirectionTabProps {
   onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   /** Правка обобщённого описания шага (step-by-step flow). */
   onChangeStepAggregatedText?: (text: string) => void;
+
+  /** Ручное добавление источника (3.2): пишет в пул и node.data.
+   *  Возвращает текст ошибки (невалидный url / дубль) или null при успехе. */
+  onAddManualSource?: (src: {
+    title: string;
+    url: string;
+    description?: string;
+  }) => string | null;
 
   productName?: string;
 
@@ -104,7 +118,12 @@ export interface DirectionTabProps {
   stepBuiltFromAggregate?: boolean;
 
   onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
-  onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
+  /** selectedSources — подмножество источников (3.1); undefined = все. */
+  onAggregateStepSources?: (
+    customSystemPrompt?: string,
+    customUserPrompt?: string,
+    selectedSources?: TechnologySource[],
+  ) => void;
   onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
   onClearStepState?: () => void;
   /** Открыть превью шага, построенного при insufficient («построить всё равно»). */

@@ -13,6 +13,7 @@ import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
 import { SourcesTableModal } from "../sources-table-modal";
+import { AddSourceForm } from "./AddSourceForm";
 
 import styles from "./FlowPanel.module.css";
 
@@ -34,6 +35,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   aggregatedDescription,
   onChangeAggregatedDescription,
   onChangeStepAggregatedText,
+  onAddManualSource,
 
   productName,
 
@@ -92,6 +94,37 @@ const DirectionContent: FC<DirectionTabProps> = ({
   altDescription,
 }) => {
   const hasSources = Array.isArray(sources) && sources.length > 0;
+
+  // ── Выбор источников для обобщения (3.1): чекбоксы, по умолчанию все ──
+  const [excludedUrls, setExcludedUrls] = useState<Set<string>>(new Set());
+  // Сбрасываем выбор, когда реально меняется НАБОР источников (а не ссылка на массив).
+  const sourcesUrlsKey = useMemo(
+    () =>
+      sources
+        .map((s) => (s.url || "").trim().toLowerCase())
+        .sort()
+        .join("|"),
+    [sources],
+  );
+  useEffect(() => {
+    setExcludedUrls(new Set());
+  }, [sourcesUrlsKey]);
+  const selectedSources = useMemo(
+    () =>
+      sources.filter(
+        (s) => !excludedUrls.has((s.url || "").trim().toLowerCase()),
+      ),
+    [sources, excludedUrls],
+  );
+  const toggleSourceSelected = (url: string) => {
+    const key = (url || "").trim().toLowerCase();
+    setExcludedUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // ── sources prompt + maxItems editor state ──
   const [maxItems, setMaxItems] = useState(5);
@@ -215,6 +248,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           pendingStep={pendingStep}
           onFetchStepSources={onFetchStepSources}
           onAggregateStepSources={onAggregateStepSources}
+          onAddManualSource={onAddManualSource}
           onBuildStep={onBuildStep}
           onClearStepState={onClearStepState}
           onForceStepPreview={onForceStepPreview}
@@ -325,6 +359,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
           {sourcesError && (
             <div className={styles.errorText}>Ошибка: {sourcesError}</div>
           )}
+
+          {/* Ручное добавление источников доступно и ДО поиска (3.2). */}
+          <AddSourceForm onAdd={onAddManualSource} />
         </div>
       )}
 
@@ -332,7 +369,10 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {hasSources && !hasAggregated && (
         <div className={styles.formGroup}>
           <div className={styles.sourcesTitle}>
-            Источники найдены: {sources.length}
+            Источники найдены: {sources.length}{" "}
+            <span className={styles.selectedCounter}>
+              (для обобщения выбрано: {selectedSources.length})
+            </span>
           </div>
 
           {sources.length < 2 && (
@@ -388,19 +428,29 @@ const DirectionContent: FC<DirectionTabProps> = ({
             onClick={() => {
               if (isAggPromptDirty) {
                 const { system, user } = splitAggregatePrompt(displayedAggPrompt);
-                onAggregateSources?.(system, user);
+                onAggregateSources?.(system, user, selectedSources);
               } else {
-                onAggregateSources?.();
+                onAggregateSources?.(undefined, undefined, selectedSources);
               }
             }}
-            disabled={sourcesLoading || aggregateLoading || sources.length < 2 || isAggPromptEmpty}
+            disabled={
+              sourcesLoading ||
+              aggregateLoading ||
+              selectedSources.length < 2 ||
+              isAggPromptEmpty
+            }
             className={styles.findSourcesButton}
+            title={
+              selectedSources.length < 2
+                ? "Для обобщения нужно выбрать минимум 2 источника"
+                : ""
+            }
           >
             {aggregateLoading
               ? "Обобщение источников..."
               : isAggPromptDirty
                 ? "Обобщить источники (свой промпт)"
-                : "Обобщить источники"}
+                : `Обобщить источники (${selectedSources.length})`}
           </button>
 
           {sources.length < 2 && (
@@ -478,19 +528,23 @@ const DirectionContent: FC<DirectionTabProps> = ({
                 onClick={() => {
                   if (isAggPromptDirty) {
                     const { system, user } = splitAggregatePrompt(displayedAggPrompt);
-                    onAggregateSources?.(system, user);
+                    onAggregateSources?.(system, user, selectedSources);
                   } else {
-                    onAggregateSources?.();
+                    onAggregateSources?.(undefined, undefined, selectedSources);
                   }
                 }}
-                disabled={aggregateLoading || isAggPromptEmpty}
+                disabled={
+                  aggregateLoading ||
+                  isAggPromptEmpty ||
+                  selectedSources.length < 2
+                }
                 className={styles.findSourcesButton}
               >
                 {aggregateLoading
                   ? "Обобщение источников..."
                   : isAggPromptDirty
                     ? "Обобщить повторно (свой промпт)"
-                    : "Обобщить повторно"}
+                    : `Обобщить повторно (${selectedSources.length})`}
               </button>
               {aggregateError && (
                 <div className={styles.errorText}>Ошибка: {aggregateError}</div>
@@ -611,13 +665,29 @@ const DirectionContent: FC<DirectionTabProps> = ({
       {hasSources && (
         <div className={styles.sourcesBox}>
           <div className={styles.sourcesTitle}>
-            Источники ({sources.length})
+            Источники ({sources.length}){" "}
+            <span className={styles.selectedCounter}>
+              · выбрано: {selectedSources.length}
+            </span>
           </div>
 
           {sources.map((s) => (
             <details key={s.url} className={styles.sourceItem}>
               <summary className={styles.sourceSummary}>
-                <span className={styles.sourceTitle}>{s.title}</span>
+                <span className={styles.sourceSelectRow}>
+                  {/* Чекбокс выбора источника для обобщения (3.1).
+                      stopPropagation — чтобы клик не раскрывал details. */}
+                  <input
+                    type="checkbox"
+                    checked={
+                      !excludedUrls.has((s.url || "").trim().toLowerCase())
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleSourceSelected(s.url)}
+                    title="Использовать этот источник при обобщении"
+                  />
+                  <span className={styles.sourceTitle}>{s.title}</span>
+                </span>
               </summary>
 
               <div className={styles.sourceBody}>
@@ -636,6 +706,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
               </div>
             </details>
           ))}
+
+          {/* Ручное добавление источников ПОСЛЕ поиска (3.2). */}
+          <AddSourceForm onAdd={onAddManualSource} />
         </div>
       )}
       </>
