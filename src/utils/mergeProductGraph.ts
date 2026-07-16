@@ -27,8 +27,10 @@ const HYPHENS = /[-‐‑‒–—―−­]/g;
 // Разные апострофы: U+2019, U+02BC, U+02B9, U+00B4, U+0060.
 const APOSTROPHES = /[’ʼʹ´`]/g;
 // Zero-width символы: U+200B (ZWSP), U+200C (ZWNJ), U+200D (ZWJ), U+FEFF.
+// eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class -- класс намеренно содержит zero-width символы (ZWSP/ZWNJ/ZWJ/BOM)
 const ZERO_WIDTH = /[​‌‍﻿]/g;
 // Неразрывный пробел U+00A0.
+// eslint-disable-next-line no-irregular-whitespace -- регэксп намеренно матчит NBSP (U+00A0)
 const NBSP = / /g;
 
 function normalizeLabel(s: string): string {

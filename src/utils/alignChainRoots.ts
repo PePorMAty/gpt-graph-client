@@ -109,7 +109,7 @@ export function alignChainRoots(
   // Сдвиг компоненты по primary + индивидуальная доводка остальных истоков.
   const dyByComp = new Map<number, number>();
   const snapToTarget = new Set<string>();
-  components.forEach((comp, ci) => {
+  components.forEach((_, ci) => {
     const roots = compRoots[ci];
     if (roots.length === 0) return;
     const primary = extreme(roots);

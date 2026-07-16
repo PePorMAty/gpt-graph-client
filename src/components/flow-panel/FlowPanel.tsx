@@ -56,11 +56,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepChainError,
   stepChainStepCount,
   stepChainCurrentProductLabel,
-  stepChainCurrentProductNodeId,
   stepChainInsufficientProducts,
   onUndoStep,
-  stepChainBranchOptions,
-  onSelectBranch,
 
   // step v2
   stepSources,
