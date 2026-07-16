@@ -14,6 +14,8 @@ import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../promp
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
 import { SourcesTableModal } from "../sources-table-modal";
 import { AddSourceForm } from "./AddSourceForm";
+import { SearchDomainsInput } from "./SearchDomainsInput";
+import { parseDomainsInput } from "../../utils/parseDomains";
 
 import styles from "./FlowPanel.module.css";
 
@@ -131,6 +133,10 @@ const DirectionContent: FC<DirectionTabProps> = ({
   const [sourcesPromptOpen, setSourcesPromptOpen] = useState(false);
   const [manualSourcesPrompt, setManualSourcesPrompt] = useState<string | null>(null);
 
+  // ── ограничение доменов поиска (3.3) ──
+  const [domainsText, setDomainsText] = useState("");
+  const [domainsOpen, setDomainsOpen] = useState(false);
+
   const autoSourcesPrompt = useMemo(
     () => getDefaultSourcesPrompt(direction, productName || "", maxItems),
     [direction, productName, maxItems],
@@ -140,9 +146,11 @@ const DirectionContent: FC<DirectionTabProps> = ({
   const isSourcesPromptEmpty = displayedSourcesPrompt.trim() === "";
 
   const handleFindSourcesClick = () => {
+    const allowedDomains = parseDomainsInput(domainsText);
     onFindSources?.({
       maxItems,
       customSystemPrompt: isSourcesPromptDirty ? displayedSourcesPrompt : undefined,
+      ...(allowedDomains.length ? { allowedDomains } : {}),
     });
   };
 
@@ -309,6 +317,14 @@ const DirectionContent: FC<DirectionTabProps> = ({
               className={styles.maxItemsInput}
             />
           </div>
+
+          {/* ограничение доменов поиска (3.3) */}
+          <SearchDomainsInput
+            value={domainsText}
+            onChange={setDomainsText}
+            open={domainsOpen}
+            onToggle={() => setDomainsOpen((v) => !v)}
+          />
 
           {/* sources prompt editor */}
           <button

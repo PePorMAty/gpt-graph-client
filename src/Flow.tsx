@@ -862,7 +862,11 @@ export const Flow = ({
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
     (direction: BuildDirection) =>
-      async (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+      async (opts?: {
+        customSystemPrompt?: string;
+        maxItems?: number;
+        allowedDomains?: string[];
+      }) => {
         if (!selectedNodeId || !selectedNode) return;
         const productName = String(selectedNode.data?.label || "").trim();
         if (!productName) return;
@@ -874,6 +878,7 @@ export const Flow = ({
             maxItems: opts?.maxItems ?? 5,
             direction,
             customSystemPrompt: opts?.customSystemPrompt,
+            allowedDomains: opts?.allowedDomains,
           }),
         ).unwrap();
       },
@@ -1012,7 +1017,12 @@ export const Flow = ({
   );
 
   const handleFetchStepSourcesV2 = useCallback(
-    (direction: BuildDirection) => (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+    (direction: BuildDirection) =>
+      (opts?: {
+        customSystemPrompt?: string;
+        maxItems?: number;
+        allowedDomains?: string[];
+      }) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -1037,6 +1047,9 @@ export const Flow = ({
           ...(existingSources.length ? { existingSources } : {}),
           ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
           ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
+          ...(opts?.allowedDomains?.length
+            ? { allowedDomains: opts.allowedDomains }
+            : {}),
         }),
       );
     },

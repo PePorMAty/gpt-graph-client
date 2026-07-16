@@ -22,7 +22,12 @@ export interface FillCardOptions {
 export interface DirectionTabProps {
   direction: BuildDirection;
 
-  onFindSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
+  onFindSources?: (opts?: {
+    customSystemPrompt?: string;
+    maxItems?: number;
+    /** Whitelist доменов для web_search (3.3); пусто/undefined = искать везде. */
+    allowedDomains?: string[];
+  }) => void;
   sourcesLoading?: boolean;
   sourcesError?: string | null;
   sources: TechnologySource[];
@@ -117,7 +122,12 @@ export interface DirectionTabProps {
   /** Шаг уже построен из текущего обобщения — кнопка «Построить шаг» скрыта до переобобщения. */
   stepBuiltFromAggregate?: boolean;
 
-  onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
+  onFetchStepSources?: (opts?: {
+    customSystemPrompt?: string;
+    maxItems?: number;
+    /** Whitelist доменов для web_search (3.3); пусто/undefined = искать везде. */
+    allowedDomains?: string[];
+  }) => void;
   /** selectedSources — подмножество источников (3.1); undefined = все. */
   onAggregateStepSources?: (
     customSystemPrompt?: string,

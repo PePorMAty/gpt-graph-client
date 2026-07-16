@@ -829,6 +829,18 @@
   font-size: 12px;
 }
 
+/* ── Ограничение доменов поиска (3.3) ── */
+.searchDomainsHint {
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.4;
+}
+
+.searchDomainsPresets {
+  display: flex;
+  gap: 10px;
+}
+
 /* ── Выбор источников для обобщения (3.1) ── */
 .sourceSelectRow {
   display: flex;

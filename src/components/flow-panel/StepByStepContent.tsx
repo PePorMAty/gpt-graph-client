@@ -9,6 +9,8 @@ import {
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
+import { SearchDomainsInput } from "./SearchDomainsInput";
+import { parseDomainsInput } from "../../utils/parseDomains";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -146,6 +148,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const [srcPromptOpen, setSrcPromptOpen] = useState(false);
   const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
 
+  // ── Ограничение доменов поиска (3.3) ──
+  const [domainsText, setDomainsText] = useState("");
+  const [domainsOpen, setDomainsOpen] = useState(false);
+
   const autoSrcPrompt = useMemo(
     () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
     [direction, productName, maxItems],
@@ -189,9 +195,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
+    const allowedDomains = parseDomainsInput(domainsText);
     onFetchStepSources?.({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
+      ...(allowedDomains.length ? { allowedDomains } : {}),
     });
   };
 
@@ -392,6 +400,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               className={styles.maxItemsInput}
             />
           </div>
+
+          {/* Ограничение доменов поиска (3.3) */}
+          <SearchDomainsInput
+            value={domainsText}
+            onChange={setDomainsText}
+            open={domainsOpen}
+            onToggle={() => setDomainsOpen((v) => !v)}
+          />
 
           {/* Sources prompt editor */}
           <button
