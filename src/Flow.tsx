@@ -30,7 +30,6 @@ import {
   setGraphData,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
-  acceptStepAlternative,
   insertTransformationsForNeighbors,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
@@ -74,7 +73,11 @@ import {
   sourcesPoolKey,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
-import { parseAlternatives, dedupeAlternatives } from "./utils/parseAlternatives";
+import {
+  parseAlternatives,
+  dedupeAlternatives,
+  alternativeKey,
+} from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { SelectNeighborModal } from "./components/select-neighbor-modal";
@@ -1165,9 +1168,12 @@ export const Flow = ({
         } else {
           dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
         }
-      } else {
-        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
       }
+      // Нет обобщения (например, свежий поиск источников после цикла) — alt-ноды
+      // НЕ трогаем: при цикле основной вариант не строится, и альтернативы —
+      // единственный способ продолжить (задача №4). Удаление только явное:
+      // «Сбросить и начать шаг заново» (handleClearStepState) или замена новым
+      // обобщением (ветки выше).
     }
   }, [
     selectedNodeId,
@@ -1471,26 +1477,25 @@ export const Flow = ({
             filteredStep?: import("./store/types").StepChainApiStep,
           ) => {
             const sKey = stepSessionKey(rootNodeId, direction);
+            // Ключ содержимого альтернативы. «Принятой» её пометит сам reducer
+            // и ТОЛЬКО если шаг реально материализовался — при dead-end цикла
+            // alt-нода должна остаться на полотне (задача №4). Ключ по
+            // содержимому, а не индексу: индексы теряют смысл, когда alt-ноды
+            // переживают пере-обобщение.
+            const altAcceptKey = alternativeKey({
+              fullDescription: altDesc,
+              title: String(selectedNode?.data?.label ?? ""),
+            });
             dispatch(
               acceptPendingStep({
                 sessionKey: sKey,
                 selectedContinueProductNodeId,
                 filteredStep,
                 isAlternativeFirstStep: true,
+                ...(altAcceptKey ? { altAcceptKey } : {}),
               }),
             );
             dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
-            // Помечаем именно эту альтернативу как принятую: alt-нода с этим idx
-            // удаляется и в дальнейшем не пересоздаётся useEffect-ом, остальные
-            // альтернативы остаются доступны для построения.
-            const altIdxStr =
-              (selectedNode?.id ?? "").split("::").pop() ?? "";
-            const idx = parseInt(altIdxStr, 10);
-            if (Number.isFinite(idx)) {
-              dispatch(
-                acceptStepAlternative({ rootNodeId, direction, idx }),
-              );
-            }
           };
 
           baseResult.onRejectStep = () => {
