@@ -9,7 +9,7 @@ import {
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
-import { SearchDomainsInput } from "./SearchDomainsInput";
+import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 import styles from "./FlowPanel.module.css";
 
@@ -148,9 +148,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const [srcPromptOpen, setSrcPromptOpen] = useState(false);
   const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
 
-  // ── Ограничение доменов поиска (3.3) ──
+  // ── Белый список доменов поиска (3.3) ──
   const [domainsText, setDomainsText] = useState("");
-  const [domainsOpen, setDomainsOpen] = useState(false);
 
   const autoSrcPrompt = useMemo(
     () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
@@ -202,6 +201,22 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       ...(allowedDomains.length ? { allowedDomains } : {}),
     });
   };
+
+  // Редактор поиска (промпт + домены): стейт общий, поэтому один и тот же
+  // элемент рендерится на каждой стадии, где есть «Найти источники заново».
+  const searchPromptEditor = (
+    <SearchPromptEditor
+      open={srcPromptOpen}
+      onToggle={() => setSrcPromptOpen((v) => !v)}
+      prompt={displayedSrcPrompt}
+      onChangePrompt={setManualSrcPrompt}
+      isDirty={isSrcPromptDirty}
+      onResetPrompt={() => setManualSrcPrompt(null)}
+      isEmpty={isSrcPromptEmpty}
+      domainsText={domainsText}
+      onChangeDomains={setDomainsText}
+    />
+  );
 
   const handleAggregate = () => {
     if (isAggPromptDirty) {
@@ -401,52 +416,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             />
           </div>
 
-          {/* Ограничение доменов поиска (3.3) */}
-          <SearchDomainsInput
-            value={domainsText}
-            onChange={setDomainsText}
-            open={domainsOpen}
-            onToggle={() => setDomainsOpen((v) => !v)}
-          />
-
-          {/* Sources prompt editor */}
-          <button
-            type="button"
-            onClick={() => setSrcPromptOpen((v) => !v)}
-            className={styles.promptToggle}
-          >
-            {srcPromptOpen
-              ? "Скрыть промпт поиска"
-              : "Редактировать промпт поиска"}
-          </button>
-
-          {srcPromptOpen && (
-            <div className={styles.promptEditor}>
-              <label className={styles.promptLabel}>
-                Промпт поиска источников:
-              </label>
-              <textarea
-                value={displayedSrcPrompt}
-                onChange={(e) => setManualSrcPrompt(e.target.value)}
-                className={styles.promptTextarea}
-                rows={12}
-              />
-              {isSrcPromptDirty && (
-                <button
-                  type="button"
-                  className={styles.promptResetBtn}
-                  onClick={() => setManualSrcPrompt(null)}
-                >
-                  Сбросить промпт
-                </button>
-              )}
-              {isSrcPromptEmpty && (
-                <div className={styles.errorText}>
-                  Промпт не может быть пустым
-                </div>
-              )}
-            </div>
-          )}
+          {/* Редактор поиска: промпт + белый список доменов (3.3) */}
+          {searchPromptEditor}
 
           {sourcesLoading && (
             <div className={styles.tabLoader}>
@@ -547,14 +518,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Обобщить (свой промпт)"
                 : "Обобщить (один шаг)"}
           </button>
+          {searchPromptEditor}
           <button
             type="button"
             onClick={handleFetchSources}
-            disabled={sourcesLoading || aggregateLoading}
+            disabled={sourcesLoading || aggregateLoading || isSrcPromptEmpty}
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            {sourcesLoading ? "Поиск..." : "Найти источники заново"}
+            {sourcesLoading
+              ? "Поиск..."
+              : isSrcPromptDirty
+                ? "Найти источники заново (свой промпт)"
+                : "Найти источники заново"}
           </button>
           {stepAggregateError && (
             <div className={styles.errorText}>Ошибка: {stepAggregateError}</div>
@@ -580,15 +556,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 : "Попробуйте добор источников или измените промпт обобщения."}
             </div>
           )}
+          {/* Стадия 1 (!sourcesUsable) может рендериться параллельно — не дублируем редактор. */}
+          {sourcesUsable && searchPromptEditor}
           <button
             type="button"
             onClick={handleFetchSources}
-            disabled={sourcesLoading}
+            disabled={sourcesLoading || isSrcPromptEmpty}
             className={styles.findSourcesButton}
           >
             {sourcesLoading
               ? "Поиск..."
-              : `Найти источники заново для «${productName}»`}
+              : isSrcPromptDirty
+                ? `Найти источники заново для «${productName}» (свой промпт)`
+                : `Найти источники заново для «${productName}»`}
           </button>
         </>
       )}
@@ -682,14 +662,24 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           >
             Переобобщить (свежий шаг)
           </button>
+          {searchPromptEditor}
           <button
             type="button"
             onClick={handleFetchSources}
-            disabled={sourcesLoading || aggregateLoading || buildLoading}
+            disabled={
+              sourcesLoading ||
+              aggregateLoading ||
+              buildLoading ||
+              isSrcPromptEmpty
+            }
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            {sourcesLoading ? "Поиск..." : "Найти источники заново"}
+            {sourcesLoading
+              ? "Поиск..."
+              : isSrcPromptDirty
+                ? "Найти источники заново (свой промпт)"
+                : "Найти источники заново"}
           </button>
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>

@@ -14,7 +14,7 @@ import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../promp
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
 import { SourcesTableModal } from "../sources-table-modal";
 import { AddSourceForm } from "./AddSourceForm";
-import { SearchDomainsInput } from "./SearchDomainsInput";
+import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 
 import styles from "./FlowPanel.module.css";
@@ -133,9 +133,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
   const [sourcesPromptOpen, setSourcesPromptOpen] = useState(false);
   const [manualSourcesPrompt, setManualSourcesPrompt] = useState<string | null>(null);
 
-  // ── ограничение доменов поиска (3.3) ──
+  // ── белый список доменов поиска (3.3) ──
   const [domainsText, setDomainsText] = useState("");
-  const [domainsOpen, setDomainsOpen] = useState(false);
 
   const autoSourcesPrompt = useMemo(
     () => getDefaultSourcesPrompt(direction, productName || "", maxItems),
@@ -318,46 +317,18 @@ const DirectionContent: FC<DirectionTabProps> = ({
             />
           </div>
 
-          {/* ограничение доменов поиска (3.3) */}
-          <SearchDomainsInput
-            value={domainsText}
-            onChange={setDomainsText}
-            open={domainsOpen}
-            onToggle={() => setDomainsOpen((v) => !v)}
+          {/* редактор поиска: промпт + белый список доменов (3.3) */}
+          <SearchPromptEditor
+            open={sourcesPromptOpen}
+            onToggle={() => setSourcesPromptOpen((v) => !v)}
+            prompt={displayedSourcesPrompt}
+            onChangePrompt={setManualSourcesPrompt}
+            isDirty={isSourcesPromptDirty}
+            onResetPrompt={() => setManualSourcesPrompt(null)}
+            isEmpty={isSourcesPromptEmpty}
+            domainsText={domainsText}
+            onChangeDomains={setDomainsText}
           />
-
-          {/* sources prompt editor */}
-          <button
-            type="button"
-            onClick={() => setSourcesPromptOpen((v) => !v)}
-            className={styles.promptToggle}
-          >
-            {sourcesPromptOpen ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
-          </button>
-
-          {sourcesPromptOpen && (
-            <div className={styles.promptEditor}>
-              <label className={styles.promptLabel}>Промпт поиска источников:</label>
-              <textarea
-                value={displayedSourcesPrompt}
-                onChange={(e) => setManualSourcesPrompt(e.target.value)}
-                className={styles.promptTextarea}
-                rows={12}
-              />
-              {isSourcesPromptDirty && (
-                <button
-                  type="button"
-                  className={styles.promptResetBtn}
-                  onClick={() => setManualSourcesPrompt(null)}
-                >
-                  Сбросить промпт
-                </button>
-              )}
-              {isSourcesPromptEmpty && (
-                <div className={styles.errorText}>Промпт не может быть пустым</div>
-              )}
-            </div>
-          )}
 
           <button
             type="button"
@@ -470,14 +441,29 @@ const DirectionContent: FC<DirectionTabProps> = ({
           </button>
 
           {sources.length < 2 && (
-            <button
-              type="button"
-              onClick={handleFindSourcesClick}
-              disabled={sourcesLoading || aggregateLoading || isSourcesPromptEmpty}
-              className={styles.findSourcesButton}
-            >
-              Повторить поиск источников
-            </button>
+            <>
+              <SearchPromptEditor
+                open={sourcesPromptOpen}
+                onToggle={() => setSourcesPromptOpen((v) => !v)}
+                prompt={displayedSourcesPrompt}
+                onChangePrompt={setManualSourcesPrompt}
+                isDirty={isSourcesPromptDirty}
+                onResetPrompt={() => setManualSourcesPrompt(null)}
+                isEmpty={isSourcesPromptEmpty}
+                domainsText={domainsText}
+                onChangeDomains={setDomainsText}
+              />
+              <button
+                type="button"
+                onClick={handleFindSourcesClick}
+                disabled={sourcesLoading || aggregateLoading || isSourcesPromptEmpty}
+                className={styles.findSourcesButton}
+              >
+                {isSourcesPromptDirty
+                  ? "Повторить поиск источников (свой промпт)"
+                  : "Повторить поиск источников"}
+              </button>
+            </>
           )}
 
           {sourcesError && (

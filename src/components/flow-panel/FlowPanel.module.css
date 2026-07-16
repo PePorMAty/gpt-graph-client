@@ -829,16 +829,33 @@
   font-size: 12px;
 }
 
-/* ── Ограничение доменов поиска (3.3) ── */
+/* ── Белый список доменов поиска (3.3) ── */
 .searchDomainsHint {
   font-size: 12px;
   opacity: 0.75;
   line-height: 1.4;
+  margin-top: 4px;
 }
 
 .searchDomainsPresets {
   display: flex;
   gap: 10px;
+  margin-top: 4px;
+}
+
+.domainsInput {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Пометка при свёрнутом редакторе: белый список активен */
+.domainsActiveNote {
+  font-size: 12px;
+  color: #2563eb;
+  margin: 2px 0 6px;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 /* ── Выбор источников для обобщения (3.1) ── */
