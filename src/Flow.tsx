@@ -1671,9 +1671,10 @@ export const Flow = ({
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
+          // sourceHandle/targetHandle тут не задаём: DefaultEdgeOptions их не
+          // поддерживает (Omit в типах @xyflow), библиотека их игнорировала;
+          // хэндлы рёбрам назначает normalizeEdges/applyHandlesByGeometry.
           type: "straight",
-          sourceHandle: "bottom",
-          targetHandle: "top",
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>

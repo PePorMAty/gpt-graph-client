@@ -5,6 +5,7 @@
 // чем merge — и появится визуальный дубликат после объединения графов.
 const HYPHENS = /[-‐‑‒–—―−­]/g;
 const APOSTROPHES = /[’ʼʹ´`]/g;
+// eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class -- класс намеренно содержит zero-width символы (ZWSP/ZWNJ/ZWJ/BOM)
 const ZERO_WIDTH = /[​‌‍﻿]/g;
 const NBSP = / /g;
 

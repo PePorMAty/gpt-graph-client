@@ -213,6 +213,7 @@ export const UploadGraphTab = () => {
           .normalize("NFC")
           .replace(/[-‐‑‒–—―−­]/g, " ")
           .replace(/[’ʼʹ´`]/g, "'")
+          // eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class -- класс намеренно содержит zero-width символы (ZWSP/ZWNJ/ZWJ/BOM)
           .replace(/[​‌‍﻿]/g, "")
           .replace(/ /g, " ")
           .replace(/ё/g, "е")
