@@ -135,6 +135,8 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     maxItems?: number;
     existingSources?: TechnologySource[];
     customSystemPrompt?: string;
+    /** Whitelist доменов для web_search (3.3); пусто = искать везде. */
+    allowedDomains?: string[];
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/fetchSources", async (args, thunkApi) => {
@@ -150,6 +152,9 @@ export const fetchStepSourcesV2 = createAsyncThunk<
           : {}),
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
+          : {}),
+        ...(args.allowedDomains?.length
+          ? { allowedDomains: args.allowedDomains }
           : {}),
       },
       { headers: { "Content-Type": "application/json" } },

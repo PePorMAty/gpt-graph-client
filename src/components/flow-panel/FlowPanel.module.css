@@ -663,3 +663,214 @@
   font-size: 14px;
   text-align: center;
 }
+
+/* Вариант C: кнопка перехода в build-view, визуально отделённая от карточки. */
+.buildEntryButton {
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 14px;
+  border: 1px dashed #2563eb;
+  border-radius: 8px;
+  background: #eff4ff;
+  color: #2563eb;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.buildEntryButton:hover {
+  background: #dbe6ff;
+  border-color: #1d4ed8;
+}
+
+/* Кнопка «Получить преобразования к соседним продуктам» в карточке продукта. */
+.transformEntryButton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px dashed #d97706;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #b45309;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.transformEntryButton:hover {
+  background: #fef3c7;
+  border-color: #b45309;
+}
+
+/* Кнопка открытия таблицы источников. */
+.sourcesEntryButton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px dashed #0d9488;
+  border-radius: 8px;
+  background: #effcf9;
+  color: #0f766e;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.sourcesEntryButton:hover {
+  background: #d5f5ee;
+  border-color: #0f766e;
+}
+
+/* Вариант D: модальное окно построения. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 24px;
+}
+
+.modalWindow {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  width: min(780px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.modalClose {
+  border: none;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 0 4px;
+}
+
+.modalClose:hover {
+  color: #334155;
+}
+
+.modalBody {
+  overflow: auto;
+  padding: 16px 20px 20px;
+}
+
+/* ── Ручное добавление источника (3.2) ── */
+.addSourceBox {
+  margin-top: 8px;
+}
+
+.addSourceForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+}
+
+.addSourceInput {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  color: inherit;
+}
+
+.addSourceInput:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.addSourceTextarea {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  resize: vertical;
+  color: inherit;
+}
+
+.addSourceSuccess {
+  color: #15803d;
+  font-size: 12px;
+}
+
+/* ── Белый список доменов поиска (3.3) ── */
+.searchDomainsHint {
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.searchDomainsPresets {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.domainsInput {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Пометка при свёрнутом редакторе: белый список активен */
+.domainsActiveNote {
+  font-size: 12px;
+  color: #2563eb;
+  margin: 2px 0 6px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* ── Выбор источников для обобщения (3.1) ── */
+.sourceSelectRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sourceSelectRow input[type="checkbox"] {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.selectedCounter {
+  font-size: 12px;
+  opacity: 0.75;
+}

@@ -126,6 +126,8 @@ export interface SavedGraphMeta {
   id: string;
   name: string;
   createdAt: string;
+  /** Время последнего обновления/переименования (ISO). Может отсутствовать у старых сейвов. */
+  updatedAt?: string | null;
   leafCount: number;
 }
 

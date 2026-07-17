@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import type { SavedGraphMeta } from "../../store/types";
 
 import styles from "./SavedGraph.module.css";
 
 import {
+  clearOpenedGraph,
   deleteSavedGraphThunk,
   fetchSavedGraphsThunk,
   loadSavedGraphThunk,
+  renameSavedGraphThunk,
+  setOpenedGraph,
+  updateSavedGraphThunk,
 } from "../../store/slices/savedGraphSlice";
 
 import { saveGraph } from "../../store/api/saved-graph-api";
@@ -25,7 +30,9 @@ import { ConfirmDeleteModal } from "../confirm-delete-modal";
 export const SavedGraph = () => {
   const dispatch = useAppDispatch();
 
-  const { list, isLoading } = useAppSelector((state) => state.savedGraphs);
+  const { list, isLoading, openedGraphId, openedGraphName } = useAppSelector(
+    (state) => state.savedGraphs,
+  );
 
   const { data, leafNodes, hasMore, originalPrompt, sourcesPool, sourcesSeqCounter } =
     useAppSelector((state) => state.graph);
@@ -33,6 +40,17 @@ export const SavedGraph = () => {
   const selectedGraph = useAppSelector(
     (state) => state.savedGraphs.selectedGraph,
   );
+
+  // id/имя графа, который открывается сейчас (запоминаем при клике «Загрузить»,
+  // чтобы после полного открытия привязать «Обновить» к правильному файлу).
+  const [pendingOpen, setPendingOpen] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [renameCandidate, setRenameCandidate] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -63,10 +81,17 @@ export const SavedGraph = () => {
       }),
     );
 
+    // Полное открытие сохранённого графа — запоминаем его файл для «Обновить».
+    if (pendingOpen) {
+      dispatch(setOpenedGraph(pendingOpen));
+    }
+
     setShowOpenModal(false);
   };
 
   const openPartial = () => {
+    // Частичное открытие даёт подграф — это уже не «тот же файл», отвязываем.
+    dispatch(clearOpenedGraph());
     setShowOpenModal(false);
     setTimeout(() => {
       setShowSelectNode(true);
@@ -114,46 +139,52 @@ export const SavedGraph = () => {
   /* =======================
      Сохранение графа
   ======================= */
-  const handleSaveGraph = async (name?: string) => {
+  // Собрать payload текущего состояния полотна (общий для save и update).
+  // Полные источники уже лежат в node.data (sourcesUp/Down). В пуле для сейва
+  // оставляем только лёгкие url/title (по ним считается номер набора) + номер;
+  // тяжёлые поля не дублируем, чтобы не раздувать тело запроса.
+  const buildGraphPayload = (name?: string) => {
     const prompt = originalPrompt ?? name ?? "graph";
+    const lightPool = Object.fromEntries(
+      Object.entries(sourcesPool).map(([k, e]) => [
+        k,
+        {
+          ...e,
+          sources: e.sources.map((s) => ({
+            title: s.title,
+            url: s.url,
+            access_hint: "",
+            technology_description: "",
+            inputs_outputs_hint: [],
+            evidence_snippets: [],
+          })),
+        },
+      ]),
+    );
+    return {
+      name,
+      prompt,
+      nodes: data.nodes,
+      edges: data.edges,
+      leaf_nodes: leafNodes,
+      has_more: hasMore,
+      sources: { pool: lightPool, seqCounter: sourcesSeqCounter },
+    };
+  };
 
+  const handleSaveGraph = async (name?: string) => {
     try {
-      // Полные источники уже лежат в node.data (sourcesUp/Down). В пуле для сейва
-      // оставляем только то, что нужно для бейджа и группировки номеров: номер
-      // (seq/originProduct) + лёгкие url/title (по ним считается номер набора в
-      // sourcesContentKey). Тяжёлые поля (technology_description, evidence_snippets,
-      // inputs_outputs_hint, access_hint) НЕ дублируем — иначе payload раздувается
-      // и упирается в лимит тела запроса (nginx). Длина массива сохраняется → бейдж
-      // на месте; полный текст источников берётся из node.data.
-      const lightPool = Object.fromEntries(
-        Object.entries(sourcesPool).map(([k, e]) => [
-          k,
-          {
-            ...e,
-            sources: e.sources.map((s) => ({
-              title: s.title,
-              url: s.url,
-              access_hint: "",
-              technology_description: "",
-              inputs_outputs_hint: [],
-              evidence_snippets: [],
-            })),
-          },
-        ]),
-      );
-      await saveGraph({
-        name,
-        prompt,
-        nodes: data.nodes,
-        edges: data.edges,
-        leaf_nodes: leafNodes,
-        has_more: hasMore,
-        // Нумерация бейджа источников (понодовые источники и так в узлах).
-        sources: { pool: lightPool, seqCounter: sourcesSeqCounter },
-      });
+      const res = await saveGraph(buildGraphPayload(name));
 
       setShowSaveModal(false);
       alert("Граф сохранён ✅");
+
+      // Новый файл теперь «открыт» — последующее «Сохранить» предложит его обновить.
+      if (res?.file) {
+        dispatch(
+          setOpenedGraph({ id: res.file, name: name || (originalPrompt ?? "graph") }),
+        );
+      }
 
       // обновим список, чтобы новый файл появился
       dispatch(fetchSavedGraphsThunk());
@@ -163,7 +194,43 @@ export const SavedGraph = () => {
     }
   };
 
-  const handleLoadGraph = (g: any) => {
+  // Перезаписать открытый сохранённый граф текущим состоянием полотна.
+  const handleUpdateGraph = async () => {
+    if (!openedGraphId) return;
+    try {
+      await dispatch(
+        updateSavedGraphThunk({
+          id: openedGraphId,
+          payload: buildGraphPayload(openedGraphName ?? undefined),
+        }),
+      ).unwrap();
+      setShowSaveModal(false);
+      alert(`Граф «${openedGraphName}» обновлён ✅`);
+    } catch (e) {
+      alert(
+        "Не удалось обновить граф: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    }
+  };
+
+  // Переименовать сохранённый граф из списка.
+  const handleRename = async (id: string, name?: string) => {
+    const trimmed = (name ?? "").trim();
+    if (!trimmed) return;
+    try {
+      await dispatch(renameSavedGraphThunk({ id, name: trimmed })).unwrap();
+      setRenameCandidate(null);
+    } catch (e) {
+      alert(
+        "Не удалось переименовать граф: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    }
+  };
+
+  const handleLoadGraph = (g: SavedGraphMeta) => {
+    setPendingOpen({ id: g.id, name: g.name });
     dispatch(loadSavedGraphThunk(g.id));
 
     setShowOpenModal(true);
@@ -193,6 +260,8 @@ export const SavedGraph = () => {
       }
 
       dispatch(loadGraphFromFile(finalPayload));
+      // Загруженный из локального файла граф не привязан к серверному сейву.
+      dispatch(clearOpenedGraph());
 
       const summary = `Загружено узлов: ${finalPayload.nodes.length}, рёбер: ${finalPayload.edges.length}.`;
       if (warnings.length) {
@@ -285,6 +354,20 @@ export const SavedGraph = () => {
         onClose={() => setShowSaveModal(false)}
         onSave={handleSaveGraph}
         defaultName={originalPrompt ?? "graph"}
+        openedName={openedGraphId ? openedGraphName : null}
+        onUpdate={openedGraphId ? handleUpdateGraph : undefined}
+      />
+
+      {/* Переименование сохранённого графа (переиспользуем модалку). */}
+      <SaveGraphModal
+        isOpen={!!renameCandidate}
+        onClose={() => setRenameCandidate(null)}
+        onSave={(newName) =>
+          renameCandidate && handleRename(renameCandidate.id, newName)
+        }
+        defaultName={renameCandidate?.name ?? ""}
+        title="✏️ Переименовать граф"
+        confirmLabel="Переименовать"
       />
 
       {!isLoading && list.length === 0 && (
@@ -307,6 +390,16 @@ export const SavedGraph = () => {
                 disabled={deletingId === g.id}
               >
                 Загрузить
+              </button>
+              <button
+                type="button"
+                className={styles.renameButton}
+                onClick={() => setRenameCandidate({ id: g.id, name: g.name })}
+                disabled={deletingId === g.id}
+                title="Переименовать граф"
+                aria-label={`Переименовать граф «${g.name}»`}
+              >
+                ✏️
               </button>
               <button
                 type="button"

@@ -32,6 +32,7 @@ import {
   removeStepAlternativeNodes,
   acceptStepAlternative,
   insertTransformationsForNeighbors,
+  addSourcesToPool,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -45,6 +46,7 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
+import { collectSourceGroups } from "./utils/sourceRows";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -268,9 +270,6 @@ export const Flow = ({
     x: number;
     y: number;
   } | null>(null);
-  const [panelMode, setPanelMode] = useState<
-    { type: "card" } | { type: "build"; direction: BuildDirection }
-  >({ type: "card" });
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
@@ -420,7 +419,6 @@ export const Flow = ({
     // панель редактирования — пользователь выделяет несколько нод.
     if (event.shiftKey || event.ctrlKey || event.metaKey) return;
     setSelectedNodeId(node.id);
-    setPanelMode({ type: "card" });
     setIsPanelOpen(true);
     setContextMenu(null);
   }, []);
@@ -469,19 +467,6 @@ export const Flow = ({
     setContextMenu(null);
   }, []);
 
-  // Из контекстного меню → открыть панель в build mode
-  const handleContextBuild = useCallback(
-    (direction: BuildDirection) => {
-      const nodeId = contextMenu?.nodeId;
-      if (!nodeId) return;
-      setSelectedNodeId(nodeId);
-      setPanelMode({ type: "build", direction });
-      setIsPanelOpen(true);
-      setContextMenu(null);
-    },
-    [contextMenu],
-  );
-
   // Из контекстного меню → показать модалку подтверждения удаления.
   // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
   // всю группу, иначе только одну ноду.
@@ -498,22 +483,20 @@ export const Flow = ({
     setContextMenu(null);
   }, [contextMenu, data.nodes]);
 
-  // Из контекстного меню → открыть модалку с подтверждением запроса
-  const handleContextFetchTransformations = useCallback(() => {
-    if (!contextMenu) return;
-    const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+  // Из карточки продукта → открыть модалку «Получить преобразования к соседним
+  // продуктам» (SelectNeighborModal) для выбранной ноды.
+  const handleOpenFetchTransformations = useCallback(() => {
+    if (!selectedNodeId) return;
+    const node = data.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
     const outgoing = getDirectProductNeighbors(
-      contextMenu.nodeId,
+      selectedNodeId,
       data.nodes,
       data.edges,
     ).filter((n) => n.role === "outgoing");
-    if (!outgoing.length) {
-      setContextMenu(null);
-      return;
-    }
+    if (!outgoing.length) return;
     setInsertTrState({
-      nodeId: contextMenu.nodeId,
+      nodeId: selectedNodeId,
       productLabel: String(node.data?.label ?? ""),
       neighbors: outgoing,
       loading: false,
@@ -521,8 +504,7 @@ export const Flow = ({
       customSystemPrompt: defaultTransformationsBetweenPrompt,
       isPromptDirty: false,
     });
-    setContextMenu(null);
-  }, [contextMenu, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
+  }, [selectedNodeId, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
 
   const handleFetchTransformations = useCallback(async () => {
     if (!insertTrState) return;
@@ -641,15 +623,16 @@ export const Flow = ({
     }
   }, [dispatch, insertTrState, data.nodes]);
 
-  // Outgoing-соседи для пункта меню (для текущего contextMenu.nodeId)
-  const contextMenuHasOutgoingNeighbors = useMemo(() => {
-    if (!contextMenu) return false;
+  // Outgoing-соседи выбранной ноды — для кнопки «Получить преобразования…»
+  // в карточке продукта.
+  const selectedNodeHasOutgoingNeighbors = useMemo(() => {
+    if (!selectedNodeId) return false;
     return getDirectProductNeighbors(
-      contextMenu.nodeId,
+      selectedNodeId,
       data.nodes,
       data.edges,
     ).some((n) => n.role === "outgoing");
-  }, [contextMenu, data.nodes, data.edges]);
+  }, [selectedNodeId, data.nodes, data.edges]);
 
   // Подтверждение удаления (одна нода или группа выделенных)
   const handleConfirmDelete = useCallback(() => {
@@ -754,7 +737,6 @@ export const Flow = ({
     saveChanges();
 
     setIsPanelOpen(false);
-    setPanelMode({ type: "card" });
     setTimeout(() => {
       setSelectedNodeId(null);
       setTempNodeLabel("");
@@ -778,6 +760,41 @@ export const Flow = ({
       setTempNodeDescription(event.target.value);
     },
     [],
+  );
+
+  // Коммит markdown-описания (alt-нода): MarkdownEditor отдаёт готовую строку —
+  // сразу пишем в node.data.description (минуя blur-путь textarea).
+  const handleCommitDescription = useCallback(
+    (text: string) => {
+      setTempNodeDescription(text);
+      if (!selectedNodeId) return;
+      if (text !== initialDescription) {
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: { description: text },
+          }),
+        );
+        setInitialDescription(text);
+        showSavedNotification();
+      }
+    },
+    [selectedNodeId, initialDescription, dispatch, showSavedNotification],
+  );
+
+  // Коммит обобщённого описания преобразования → node.data.aggregatedDescription.
+  const handleCommitAggregatedDescription = useCallback(
+    (text: string) => {
+      if (!selectedNodeId) return;
+      dispatch(
+        updateNodeData({
+          nodeId: selectedNodeId,
+          data: { aggregatedDescription: text },
+        }),
+      );
+      showSavedNotification();
+    },
+    [selectedNodeId, dispatch, showSavedNotification],
   );
 
   // Обработчики изменений узлов и ребер
@@ -845,7 +862,11 @@ export const Flow = ({
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
     (direction: BuildDirection) =>
-      async (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+      async (opts?: {
+        customSystemPrompt?: string;
+        maxItems?: number;
+        allowedDomains?: string[];
+      }) => {
         if (!selectedNodeId || !selectedNode) return;
         const productName = String(selectedNode.data?.label || "").trim();
         if (!productName) return;
@@ -857,6 +878,7 @@ export const Flow = ({
             maxItems: opts?.maxItems ?? 5,
             direction,
             customSystemPrompt: opts?.customSystemPrompt,
+            allowedDomains: opts?.allowedDomains,
           }),
         ).unwrap();
       },
@@ -864,7 +886,12 @@ export const Flow = ({
   );
 
   const handleAggregateSources = useCallback(
-    (direction: BuildDirection) => async (customSystemPrompt?: string, customUserPrompt?: string) => {
+    (direction: BuildDirection) =>
+      async (
+        customSystemPrompt?: string,
+        customUserPrompt?: string,
+        selectedSources?: TechnologySource[],
+      ) => {
       if (!selectedNodeId || !selectedNode) return;
       const productName = String(selectedNode.data?.label || "").trim();
       if (!productName) return;
@@ -878,8 +905,12 @@ export const Flow = ({
       // fallback to sourcesSlice
       const sliceKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
+      // Пользователь мог отметить чекбоксами подмножество источников (3.1) —
+      // тогда обобщаем только по ним.
       const payloadSources: TechnologySource[] =
-        dirSources ?? sliceState?.sources ?? [];
+        selectedSources && selectedSources.length
+          ? selectedSources
+          : (dirSources ?? sliceState?.sources ?? []);
 
       if (!payloadSources.length) return;
 
@@ -964,11 +995,17 @@ export const Flow = ({
       ) => {
         if (!selectedNodeId) return;
         const sKey = stepSessionKey(selectedNodeId, direction);
+        // Обобщённое описание шага продукта-якоря (markdown) — прокинем на
+        // создаваемую transformation-ноду (см. stepToFlow / карточка преобразования).
+        const anchorAggregatedText =
+          sourcesByNodeId[sourcesKey(selectedNodeId, direction)]
+            ?.stepAggregatedText ?? null;
         dispatch(
           acceptPendingStep({
             sessionKey: sKey,
             selectedContinueProductNodeId,
             filteredStep,
+            anchorAggregatedText,
           }),
         );
         dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
@@ -976,11 +1013,16 @@ export const Flow = ({
         // альтернативы должны остаться видимыми, и useEffect пересоздаст
         // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
-    [dispatch, selectedNodeId],
+    [dispatch, selectedNodeId, sourcesByNodeId],
   );
 
   const handleFetchStepSourcesV2 = useCallback(
-    (direction: BuildDirection) => (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+    (direction: BuildDirection) =>
+      (opts?: {
+        customSystemPrompt?: string;
+        maxItems?: number;
+        allowedDomains?: string[];
+      }) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -1005,6 +1047,9 @@ export const Flow = ({
           ...(existingSources.length ? { existingSources } : {}),
           ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
           ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
+          ...(opts?.allowedDomains?.length
+            ? { allowedDomains: opts.allowedDomains }
+            : {}),
         }),
       );
     },
@@ -1018,7 +1063,12 @@ export const Flow = ({
   );
 
   const handleAggregateStepSources = useCallback(
-    (direction: BuildDirection) => (customSystemPrompt?: string, customUserPrompt?: string) => {
+    (direction: BuildDirection) =>
+      (
+        customSystemPrompt?: string,
+        customUserPrompt?: string,
+        selectedSources?: TechnologySource[],
+      ) => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();
@@ -1031,8 +1081,11 @@ export const Flow = ({
         }),
       );
 
+      // Отмеченное чекбоксами подмножество (3.1) имеет приоритет над полным пулом.
       const poolSources =
-        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+        selectedSources && selectedSources.length
+          ? selectedSources
+          : (sourcesPool[poolKey(productName, direction)]?.sources ?? []);
       if (!poolSources.length) return;
 
       const descField =
@@ -1061,6 +1114,63 @@ export const Flow = ({
       selectedNode,
       sourcesPool,
     ],
+  );
+
+  // Ручное добавление источника (3.2): пишем и в пул (единый для step-потока и
+  // бейджей; addSourcesToPool сам разрулит seq/originProduct — пул становится
+  // «своим»), и в node.data.sourcesUp/Down (отображение full-chain потока).
+  // Возвращает текст ошибки или null при успехе.
+  const handleAddManualSource = useCallback(
+    (direction: BuildDirection) =>
+      (src: { title: string; url: string; description?: string }): string | null => {
+        if (!selectedNodeId || !selectedNode) return "Узел не выбран";
+        const productName = String(selectedNode.data?.label || "").trim();
+        if (!productName) return "У узла нет названия";
+
+        const url = src.url.trim();
+        const title = src.title.trim() || url;
+        if (!/^https?:\/\/.+/i.test(url)) {
+          return "Ссылка должна начинаться с http:// или https://";
+        }
+
+        const dirField = direction === "up" ? "sourcesUp" : "sourcesDown";
+        const nodeSources =
+          (selectedNode.data?.[dirField] as TechnologySource[] | undefined) ?? [];
+        const poolSources =
+          sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+        // Объединяем оба хранилища (могли разойтись), дедуп по url.
+        const merged: TechnologySource[] = [];
+        const seen = new Set<string>();
+        for (const s of [...poolSources, ...nodeSources]) {
+          const key = String(s.url || "").trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(s);
+        }
+        if (seen.has(url.toLowerCase())) {
+          return "Источник с таким URL уже есть в списке";
+        }
+
+        const manual: TechnologySource = {
+          title,
+          url,
+          access_hint: "",
+          technology_description: src.description?.trim() ?? "",
+          inputs_outputs_hint: [],
+          evidence_snippets: [],
+        };
+        const next = [...merged, manual];
+
+        dispatch(addSourcesToPool({ productName, direction, sources: next }));
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: { [dirField]: next },
+          }),
+        );
+        return null;
+      },
+    [dispatch, selectedNodeId, selectedNode, sourcesPool],
   );
 
   const handleBuildStep = useCallback(
@@ -1252,6 +1362,7 @@ export const Flow = ({
         sources: effectiveSources,
 
         onAggregateSources: handleAggregateSources(direction),
+        onAddManualSource: handleAddManualSource(direction),
         aggregateLoading: sliceState?.aggregateStatus === "loading",
         aggregateError: sliceState?.aggregateError ?? null,
         hasAggregated,
@@ -1492,6 +1603,7 @@ export const Flow = ({
       needsFreshSources,
       handleFindSources,
       handleAggregateSources,
+      handleAddManualSource,
       handleInitChain,
       handleExpandNext,
       stepChainSessions,
@@ -1513,6 +1625,38 @@ export const Flow = ({
     () => buildDirectionTab("up"),
     [buildDirectionTab],
   );
+
+  // Группы источников для таблицы: реальные из sourcesPool по всем продуктам.
+  // Каждая группа = продукт×направление с пометкой наследования (inheritedFrom)
+  // и дедупом источников по url.
+  const sourceGroups = useMemo(() => {
+    const labels = data.nodes
+      .filter((n) => n.type === "product")
+      .map((n) => String(n.data?.label ?? ""))
+      .filter(Boolean);
+    return collectSourceGroups(labels, sourcesPool, poolKey);
+  }, [data.nodes, sourcesPool, poolKey]);
+
+  // Продукт, чьи источники подсвечиваются при открытии таблицы из выбранной ноды.
+  // Для продукта — он сам; для преобразования/альтернативы — продукт-якорь
+  // (источник входящего ребра или chainRootNodeId).
+  const sourcesCurrentProduct = useMemo(() => {
+    if (!selectedNode) return "";
+    if (selectedNode.type === "product")
+      return String(selectedNode.data?.label ?? "");
+    const incoming = data.edges.find((e) => e.target === selectedNode.id);
+    const parent = incoming
+      ? data.nodes.find(
+          (n) => n.id === incoming.source && n.type === "product",
+        )
+      : undefined;
+    if (parent) return String(parent.data?.label ?? "");
+    const rootId = String(selectedNode.data?.chainRootNodeId ?? "");
+    const root = rootId
+      ? data.nodes.find((n) => n.id === rootId)
+      : undefined;
+    return root ? String(root.data?.label ?? "") : "";
+  }, [selectedNode, data.edges, data.nodes]);
 
   const handleBuildProductCard = useCallback(
     async (options?: {
@@ -1724,35 +1868,15 @@ export const Flow = ({
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
       />
-      {contextMenu && (() => {
-        const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
-        const ctxIsStepAlt =
-          ctxNode?.data?.chainVariant === "alt" &&
-          !!ctxNode?.data?.stepAltDirection;
-        return (
-          <NodeContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            isProduct={ctxNode?.type === "product"}
-            isStepAlt={ctxIsStepAlt}
-            hasOutgoingProductNeighbors={contextMenuHasOutgoingNeighbors}
-            onBuildUp={() => handleContextBuild("up")}
-            onBuildDown={() => handleContextBuild("down")}
-            onBuildAlt={
-              ctxIsStepAlt
-                ? () =>
-                    handleContextBuild(
-                      ctxNode!.data!.stepAltDirection as BuildDirection,
-                    )
-                : undefined
-            }
-            onFetchTransformations={handleContextFetchTransformations}
-            onDelete={handleContextDelete}
-            selectedCount={selectedNodes.length}
-            onClose={() => setContextMenu(null)}
-          />
-        );
-      })()}
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDelete={handleContextDelete}
+          selectedCount={selectedNodes.length}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}
@@ -1771,11 +1895,21 @@ export const Flow = ({
         productCard={selectedNode?.data?.productCard}
         downTab={downTab}
         upTab={upTab}
-        mode={panelMode.type}
-        buildDirection={
-          panelMode.type === "build" ? panelMode.direction : undefined
-        }
+        hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
+        onFetchTransformations={handleOpenFetchTransformations}
         readOnly={readOnly}
+        nodeId={selectedNodeId}
+        sourceGroups={sourceGroups}
+        sourcesCurrentProduct={sourcesCurrentProduct}
+        isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        altDirection={
+          selectedNode?.data?.stepAltDirection as BuildDirection | undefined
+        }
+        aggregatedDescription={
+          selectedNode?.data?.aggregatedDescription as string | undefined
+        }
+        onCommitDescription={handleCommitDescription}
+        onCommitAggregatedDescription={handleCommitAggregatedDescription}
       />
 
       <Notification

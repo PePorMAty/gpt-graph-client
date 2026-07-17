@@ -1,0 +1,1 @@
+export { SourcesTableModal } from "./SourcesTableModal";
