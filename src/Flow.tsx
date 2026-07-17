@@ -46,6 +46,7 @@ import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
 import { collectSourceGroups } from "./utils/sourceRows";
+import { collapseToProductsView } from "./utils/productsOnlyView";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -175,8 +176,14 @@ export const Flow = ({
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
-  // При входе/выходе из режима просмотра размер холста меняется (разворот на
-  // весь экран и обратно) — переавтоцентрируем граф. Первый рендер пропускаем.
+  // Режим «только продукты»: преобразования/альтернативы скрыты, продукты
+  // склеены напрямую. Чистая проекция для рендера — store не мутируется,
+  // выключение возвращает полный граф. Пока включён — полу-просмотр:
+  // структурные правки заблокированы (двигать ноды и открывать карточки можно).
+  const [productsOnly, setProductsOnly] = useState(false);
+
+  // При входе/выходе из режима просмотра или «только продукты» размер/состав
+  // холста меняется — переавтоцентрируем граф. Первый рендер пропускаем.
   const viewModeFirstRun = useRef(true);
   useEffect(() => {
     if (viewModeFirstRun.current) {
@@ -187,7 +194,7 @@ export const Flow = ({
       fitView({ padding: 0.2, duration: 300 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [viewMode, fitView]);
+  }, [viewMode, productsOnly, fitView]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
@@ -307,9 +314,15 @@ export const Flow = ({
   const poolKey = sourcesPoolKey;
 
   // Flow.tsx
+  const productsView = useMemo(
+    () =>
+      productsOnly ? collapseToProductsView(data.nodes, data.edges) : null,
+    [productsOnly, data.nodes, data.edges],
+  );
+
   const flowNodes = useMemo(
     () =>
-      data.nodes.map((n) => {
+      (productsView?.nodes ?? data.nodes).map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
 
@@ -342,19 +355,20 @@ export const Flow = ({
 
         return { ...n, className: cls };
       }),
-    [data.nodes, highlightedId, chainSet, sourcesPool],
+    [data.nodes, productsView, highlightedId, chainSet, sourcesPool],
   );
 
   const flowEdges = useMemo(() => {
-    if (!chainSet) return data.edges;
-    return data.edges.map((e) => {
+    const baseEdges = productsView?.edges ?? data.edges;
+    if (!chainSet) return baseEdges;
+    return baseEdges.map((e) => {
       const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
       if (bothIn) return e;
       const existing = e.className ?? "";
       const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
       return { ...e, className: cls };
     });
-  }, [data.edges, chainSet]);
+  }, [data.edges, productsView, chainSet]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -810,9 +824,12 @@ export const Flow = ({
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      // В режиме «только продукты» на полотне синтетические рёбра, которых нет
+      // в сторе — их изменения не применяем.
+      if (productsOnly) return;
       dispatch(onEdgesChange(changes));
     },
-    [dispatch],
+    [dispatch, productsOnly],
   );
 
   const handleConnect: OnConnect = useCallback(
@@ -1740,13 +1757,15 @@ export const Flow = ({
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={readOnly ? undefined : handleConnect}
+        onConnect={readOnly || productsOnly ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={readOnly ? undefined : onNodeContextMenu}
+        onNodeContextMenu={
+          readOnly || productsOnly ? undefined : onNodeContextMenu
+        }
         onPaneClick={onPaneClick}
-        nodesConnectable={!readOnly}
+        nodesConnectable={!readOnly && !productsOnly}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
@@ -1754,9 +1773,11 @@ export const Flow = ({
         selectionKeyCode={readOnly ? null : "Shift"}
         multiSelectionKeyCode={readOnly ? null : ["Meta", "Control"]}
         selectionOnDrag={false}
-        onReconnect={readOnly ? undefined : handleReconnect}
-        onReconnectStart={readOnly ? undefined : onReconnectStart}
-        onReconnectEnd={readOnly ? undefined : onReconnectEnd}
+        onReconnect={readOnly || productsOnly ? undefined : handleReconnect}
+        onReconnectStart={
+          readOnly || productsOnly ? undefined : onReconnectStart
+        }
+        onReconnectEnd={readOnly || productsOnly ? undefined : onReconnectEnd}
         // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
@@ -1833,6 +1854,39 @@ export const Flow = ({
               )}
             </ControlButton>
           )}
+          {/* Тумблер «только продукты»: скрыть преобразования/альтернативы,
+              склеив продукты напрямую. Доступен и в режиме просмотра. */}
+          <ControlButton
+            onClick={() => setProductsOnly((v) => !v)}
+            data-tooltip={
+              productsOnly ? "Вернуть преобразования" : "Только продукты"
+            }
+            aria-label={
+              productsOnly ? "Вернуть преобразования" : "Только продукты"
+            }
+            style={
+              productsOnly
+                ? { backgroundColor: "#2563eb", color: "#fff" }
+                : undefined
+            }
+          >
+            {productsOnly ? (
+              // Сейчас только продукты: два круга, склеенные напрямую.
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="5" r="3" />
+                <circle cx="12" cy="19" r="3" />
+                <path d="M12 8v8" />
+              </svg>
+            ) : (
+              // Сейчас полный граф: круг — квадрат (преобразование) — круг.
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="4" r="2.5" />
+                <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
+                <circle cx="12" cy="20" r="2.5" />
+                <path d="M12 6.5v3M12 14.5v3" />
+              </svg>
+            )}
+          </ControlButton>
           {!readOnly && (
             <>
           <ControlButton
@@ -1903,7 +1957,7 @@ export const Flow = ({
         upTab={upTab}
         hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
         onFetchTransformations={handleOpenFetchTransformations}
-        readOnly={readOnly}
+        readOnly={readOnly || productsOnly}
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}
