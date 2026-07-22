@@ -8,6 +8,9 @@ import {
   splitStepAggregatePrompt,
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
+import { AddSourceForm } from "./AddSourceForm";
+import { SearchPromptEditor } from "./SearchPromptEditor";
+import { parseDomainsInput } from "../../utils/parseDomains";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -37,6 +40,7 @@ type StepByStepContentProps = Pick<
   | "pendingStep"
   | "onFetchStepSources"
   | "onAggregateStepSources"
+  | "onAddManualSource"
   | "onBuildStep"
   | "stepBuiltFromAggregate"
   | "onClearStepState"
@@ -76,6 +80,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   onFetchStepSources,
   onAggregateStepSources,
+  onAddManualSource,
   onBuildStep,
   onClearStepState,
   onForceStepPreview,
@@ -108,10 +113,43 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const showPreview =
     !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
 
+  // ── Выбор источников для обобщения шага (3.1) ──
+  const [excludedUrls, setExcludedUrls] = useState<Set<string>>(new Set());
+  const stepSourcesUrlsKey = useMemo(
+    () =>
+      stepSources
+        .map((s) => (s.url || "").trim().toLowerCase())
+        .sort()
+        .join("|"),
+    [stepSources],
+  );
+  useEffect(() => {
+    setExcludedUrls(new Set());
+  }, [stepSourcesUrlsKey]);
+  const selectedStepSources = useMemo(
+    () =>
+      stepSources.filter(
+        (s) => !excludedUrls.has((s.url || "").trim().toLowerCase()),
+      ),
+    [stepSources, excludedUrls],
+  );
+  const toggleSourceSelected = (url: string) => {
+    const key = (url || "").trim().toLowerCase();
+    setExcludedUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // ── Sources prompt state ──
   const [maxItems, setMaxItems] = useState(5);
   const [srcPromptOpen, setSrcPromptOpen] = useState(false);
   const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
+
+  // ── Белый список доменов поиска (3.3) ──
+  const [domainsText, setDomainsText] = useState("");
 
   const autoSrcPrompt = useMemo(
     () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
@@ -156,18 +194,36 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
+    const allowedDomains = parseDomainsInput(domainsText);
     onFetchStepSources?.({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
+      ...(allowedDomains.length ? { allowedDomains } : {}),
     });
   };
+
+  // Редактор поиска (промпт + домены): стейт общий, поэтому один и тот же
+  // элемент рендерится на каждой стадии, где есть «Найти источники заново».
+  const searchPromptEditor = (
+    <SearchPromptEditor
+      open={srcPromptOpen}
+      onToggle={() => setSrcPromptOpen((v) => !v)}
+      prompt={displayedSrcPrompt}
+      onChangePrompt={setManualSrcPrompt}
+      isDirty={isSrcPromptDirty}
+      onResetPrompt={() => setManualSrcPrompt(null)}
+      isEmpty={isSrcPromptEmpty}
+      domainsText={domainsText}
+      onChangeDomains={setDomainsText}
+    />
+  );
 
   const handleAggregate = () => {
     if (isAggPromptDirty) {
       const { system, user } = splitStepAggregatePrompt(displayedAggPrompt);
-      onAggregateStepSources?.(system, user);
+      onAggregateStepSources?.(system, user, selectedStepSources);
     } else {
-      onAggregateStepSources?.();
+      onAggregateStepSources?.(undefined, undefined, selectedStepSources);
     }
   };
 
@@ -360,44 +416,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             />
           </div>
 
-          {/* Sources prompt editor */}
-          <button
-            type="button"
-            onClick={() => setSrcPromptOpen((v) => !v)}
-            className={styles.promptToggle}
-          >
-            {srcPromptOpen
-              ? "Скрыть промпт поиска"
-              : "Редактировать промпт поиска"}
-          </button>
-
-          {srcPromptOpen && (
-            <div className={styles.promptEditor}>
-              <label className={styles.promptLabel}>
-                Промпт поиска источников:
-              </label>
-              <textarea
-                value={displayedSrcPrompt}
-                onChange={(e) => setManualSrcPrompt(e.target.value)}
-                className={styles.promptTextarea}
-                rows={12}
-              />
-              {isSrcPromptDirty && (
-                <button
-                  type="button"
-                  className={styles.promptResetBtn}
-                  onClick={() => setManualSrcPrompt(null)}
-                >
-                  Сбросить промпт
-                </button>
-              )}
-              {isSrcPromptEmpty && (
-                <div className={styles.errorText}>
-                  Промпт не может быть пустым
-                </div>
-              )}
-            </div>
-          )}
+          {/* Редактор поиска: промпт + белый список доменов (3.3) */}
+          {searchPromptEditor}
 
           {sourcesLoading && (
             <div className={styles.tabLoader}>
@@ -427,6 +447,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
           )}
+
+          {/* Ручное добавление источников доступно и ДО поиска (3.2). */}
+          <AddSourceForm onAdd={onAddManualSource} />
         </>
       )}
 
@@ -483,7 +506,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             type="button"
             onClick={handleAggregate}
             disabled={
-              aggregateLoading || stepSources.length < 1 || isAggPromptEmpty
+              aggregateLoading ||
+              selectedStepSources.length < 1 ||
+              isAggPromptEmpty
             }
             className={styles.findSourcesButton}
           >
@@ -493,14 +518,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Обобщить (свой промпт)"
                 : "Обобщить (один шаг)"}
           </button>
+          {searchPromptEditor}
           <button
             type="button"
             onClick={handleFetchSources}
-            disabled={sourcesLoading || aggregateLoading}
+            disabled={sourcesLoading || aggregateLoading || isSrcPromptEmpty}
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            {sourcesLoading ? "Поиск..." : "Найти источники заново"}
+            {sourcesLoading
+              ? "Поиск..."
+              : isSrcPromptDirty
+                ? "Найти источники заново (свой промпт)"
+                : "Найти источники заново"}
           </button>
           {stepAggregateError && (
             <div className={styles.errorText}>Ошибка: {stepAggregateError}</div>
@@ -526,15 +556,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 : "Попробуйте добор источников или измените промпт обобщения."}
             </div>
           )}
+          {/* Стадия 1 (!sourcesUsable) может рендериться параллельно — не дублируем редактор. */}
+          {sourcesUsable && searchPromptEditor}
           <button
             type="button"
             onClick={handleFetchSources}
-            disabled={sourcesLoading}
+            disabled={sourcesLoading || isSrcPromptEmpty}
             className={styles.findSourcesButton}
           >
             {sourcesLoading
               ? "Поиск..."
-              : `Найти источники заново для «${productName}»`}
+              : isSrcPromptDirty
+                ? `Найти источники заново для «${productName}» (свой промпт)`
+                : `Найти источники заново для «${productName}»`}
           </button>
         </>
       )}
@@ -620,20 +654,32 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           <button
             type="button"
             onClick={handleAggregate}
-            disabled={aggregateLoading || buildLoading}
+            disabled={
+              aggregateLoading || buildLoading || selectedStepSources.length < 1
+            }
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
             Переобобщить (свежий шаг)
           </button>
+          {searchPromptEditor}
           <button
             type="button"
             onClick={handleFetchSources}
-            disabled={sourcesLoading || aggregateLoading || buildLoading}
+            disabled={
+              sourcesLoading ||
+              aggregateLoading ||
+              buildLoading ||
+              isSrcPromptEmpty
+            }
             className={styles.findSourcesButton}
             style={{ marginTop: 4 }}
           >
-            {sourcesLoading ? "Поиск..." : "Найти источники заново"}
+            {sourcesLoading
+              ? "Поиск..."
+              : isSrcPromptDirty
+                ? "Найти источники заново (свой промпт)"
+                : "Найти источники заново"}
           </button>
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
@@ -679,7 +725,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {sourcesUsable && (
         <div className={styles.sourcesBox}>
           <div className={styles.sourcesTitle}>
-            Источники ({stepSources.length})
+            Источники ({stepSources.length}){" "}
+            <span className={styles.selectedCounter}>
+              · для обобщения выбрано: {selectedStepSources.length}
+            </span>
           </div>
           {isBorrowedSources && (
             <div className={styles.warningText}>
@@ -695,7 +744,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {stepSources.map((s) => (
             <details key={s.url} className={styles.sourceItem}>
               <summary className={styles.sourceSummary}>
-                <span className={styles.sourceTitle}>{s.title}</span>
+                <span className={styles.sourceSelectRow}>
+                  {/* Чекбокс выбора источника для обобщения шага (3.1). */}
+                  <input
+                    type="checkbox"
+                    checked={
+                      !excludedUrls.has((s.url || "").trim().toLowerCase())
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleSourceSelected(s.url)}
+                    title="Использовать этот источник при обобщении"
+                  />
+                  <span className={styles.sourceTitle}>{s.title}</span>
+                </span>
               </summary>
               <div className={styles.sourceBody}>
                 <a
@@ -712,6 +773,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               </div>
             </details>
           ))}
+
+          {/* Ручное добавление источников ПОСЛЕ поиска (3.2). */}
+          <AddSourceForm onAdd={onAddManualSource} />
         </div>
       )}
 

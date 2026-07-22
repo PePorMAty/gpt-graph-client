@@ -22,6 +22,8 @@ export const fetchSources = createAsyncThunk<
     maxItems?: number;
     direction: BuildDirection;
     customSystemPrompt?: string;
+    /** Whitelist доменов для web_search (3.3); пусто = искать везде. */
+    allowedDomains?: string[];
   }
 >("sources/fetchSources", async (payload, thunkApi) => {
   try {
@@ -30,6 +32,9 @@ export const fetchSources = createAsyncThunk<
       maxItems: payload.maxItems ?? 5,
       direction: payload.direction,
       ...(payload.customSystemPrompt ? { customSystemPrompt: payload.customSystemPrompt } : {}),
+      ...(payload.allowedDomains?.length
+        ? { allowedDomains: payload.allowedDomains }
+        : {}),
     });
 
     if (!res.data?.success) {
