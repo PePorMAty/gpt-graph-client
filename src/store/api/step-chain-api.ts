@@ -131,11 +131,8 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     maxItems?: number;
     existingSources?: TechnologySource[];
     customSystemPrompt?: string;
-<<<<<<< HEAD
-=======
     /** Whitelist доменов для web_search (3.3); пусто = искать везде. */
     allowedDomains?: string[];
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
     provider?: string;
     model?: string;
   },
@@ -154,12 +151,9 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
-<<<<<<< HEAD
-=======
         ...(args.allowedDomains?.length
           ? { allowedDomains: args.allowedDomains }
           : {}),
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
         ...(args.provider ? { provider: args.provider } : {}),
         ...(args.model ? { model: args.model } : {}),
       },

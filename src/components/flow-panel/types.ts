@@ -125,14 +125,6 @@ export interface DirectionTabProps {
   onFetchStepSources?: (opts?: {
     customSystemPrompt?: string;
     maxItems?: number;
-<<<<<<< HEAD
-    provider?: string;
-    model?: string;
-  }) => void;
-  onAggregateStepSources?: (
-    customSystemPrompt?: string,
-    customUserPrompt?: string,
-=======
     /** Whitelist доменов для web_search (3.3); пусто/undefined = искать везде. */
     allowedDomains?: string[];
     provider?: string;
@@ -143,7 +135,6 @@ export interface DirectionTabProps {
     customSystemPrompt?: string,
     customUserPrompt?: string,
     selectedSources?: TechnologySource[],
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
     provider?: string,
     model?: string,
   ) => void;

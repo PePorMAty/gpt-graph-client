@@ -1038,14 +1038,6 @@ export const Flow = ({
 
   const handleFetchStepSourcesV2 = useCallback(
     (direction: BuildDirection) =>
-<<<<<<< HEAD
-    (opts?: {
-      customSystemPrompt?: string;
-      maxItems?: number;
-      provider?: string;
-      model?: string;
-    }) => {
-=======
       (opts?: {
         customSystemPrompt?: string;
         maxItems?: number;
@@ -1053,7 +1045,6 @@ export const Flow = ({
         provider?: string;
         model?: string;
       }) => {
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -1078,12 +1069,9 @@ export const Flow = ({
           ...(existingSources.length ? { existingSources } : {}),
           ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
           ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
-<<<<<<< HEAD
-=======
           ...(opts?.allowedDomains?.length
             ? { allowedDomains: opts.allowedDomains }
             : {}),
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
           ...(opts?.provider ? { provider: opts.provider } : {}),
           ...(opts?.model ? { model: opts.model } : {}),
         }),
@@ -1100,14 +1088,6 @@ export const Flow = ({
 
   const handleAggregateStepSources = useCallback(
     (direction: BuildDirection) =>
-<<<<<<< HEAD
-    (
-      customSystemPrompt?: string,
-      customUserPrompt?: string,
-      provider?: string,
-      model?: string,
-    ) => {
-=======
       (
         customSystemPrompt?: string,
         customUserPrompt?: string,
@@ -1115,7 +1095,6 @@ export const Flow = ({
         provider?: string,
         model?: string,
       ) => {
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();

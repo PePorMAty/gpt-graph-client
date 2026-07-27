@@ -664,8 +664,6 @@
   text-align: center;
 }
 
-<<<<<<< HEAD
-=======
 /* Вариант C: кнопка перехода в build-view, визуально отделённая от карточки. */
 .buildEntryButton {
   width: 100%;
@@ -877,7 +875,6 @@
   opacity: 0.75;
 }
 
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
 .aiConfigBlock {
   margin-bottom: 8px;
 }

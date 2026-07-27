@@ -8,12 +8,9 @@ import {
   splitStepAggregatePrompt,
 } from "../../prompts/aggregatePrompt";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
-<<<<<<< HEAD
-=======
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
 import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
 
@@ -243,10 +240,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     onFetchStepSources?.({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
-<<<<<<< HEAD
-=======
       ...(allowedDomains.length ? { allowedDomains } : {}),
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
       ...(aiProvider ? { provider: aiProvider } : {}),
       ...(aiModel ? { model: aiModel } : {}),
     });
@@ -271,11 +265,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const handleAggregate = () => {
     if (isAggPromptDirty) {
       const { system, user } = splitStepAggregatePrompt(displayedAggPrompt);
-<<<<<<< HEAD
-      onAggregateStepSources?.(system, user, aiProvider, aiModel);
-    } else {
-      onAggregateStepSources?.(undefined, undefined, aiProvider, aiModel);
-=======
       onAggregateStepSources?.(
         system,
         user,
@@ -291,7 +280,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         aiProvider,
         aiModel,
       );
->>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
     }
   };
 
@@ -490,8 +478,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
           {/* Редактор поиска: промпт + белый список доменов (3.3) */}
           {searchPromptEditor}
-
-          {renderAiSelect()}
 
           {renderAiSelect()}
 
