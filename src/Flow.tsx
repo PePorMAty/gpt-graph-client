@@ -30,8 +30,8 @@ import {
   setGraphData,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
-  acceptStepAlternative,
   insertTransformationsForNeighbors,
+  addSourcesToPool,
 } from "./store/slices/gptSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
@@ -45,6 +45,8 @@ import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
+import { collectSourceGroups } from "./utils/sourceRows";
+import { collapseToProductsView } from "./utils/productsOnlyView";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -73,7 +75,11 @@ import {
   sourcesPoolKey,
 } from "./store/slices/gptSlice";
 import type { DirectionTabProps } from "./components/flow-panel/types";
-import { parseAlternatives, dedupeAlternatives } from "./utils/parseAlternatives";
+import {
+  parseAlternatives,
+  dedupeAlternatives,
+  alternativeKey,
+} from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { SelectNeighborModal } from "./components/select-neighbor-modal";
@@ -170,8 +176,14 @@ export const Flow = ({
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
-  // При входе/выходе из режима просмотра размер холста меняется (разворот на
-  // весь экран и обратно) — переавтоцентрируем граф. Первый рендер пропускаем.
+  // Режим «только продукты»: преобразования/альтернативы скрыты, продукты
+  // склеены напрямую. Чистая проекция для рендера — store не мутируется,
+  // выключение возвращает полный граф. Пока включён — полу-просмотр:
+  // структурные правки заблокированы (двигать ноды и открывать карточки можно).
+  const [productsOnly, setProductsOnly] = useState(false);
+
+  // При входе/выходе из режима просмотра или «только продукты» размер/состав
+  // холста меняется — переавтоцентрируем граф. Первый рендер пропускаем.
   const viewModeFirstRun = useRef(true);
   useEffect(() => {
     if (viewModeFirstRun.current) {
@@ -182,7 +194,7 @@ export const Flow = ({
       fitView({ padding: 0.2, duration: 300 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [viewMode, fitView]);
+  }, [viewMode, productsOnly, fitView]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
@@ -268,9 +280,6 @@ export const Flow = ({
     x: number;
     y: number;
   } | null>(null);
-  const [panelMode, setPanelMode] = useState<
-    { type: "card" } | { type: "build"; direction: BuildDirection }
-  >({ type: "card" });
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
@@ -305,9 +314,15 @@ export const Flow = ({
   const poolKey = sourcesPoolKey;
 
   // Flow.tsx
+  const productsView = useMemo(
+    () =>
+      productsOnly ? collapseToProductsView(data.nodes, data.edges) : null,
+    [productsOnly, data.nodes, data.edges],
+  );
+
   const flowNodes = useMemo(
     () =>
-      data.nodes.map((n) => {
+      (productsView?.nodes ?? data.nodes).map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
 
@@ -340,19 +355,20 @@ export const Flow = ({
 
         return { ...n, className: cls };
       }),
-    [data.nodes, highlightedId, chainSet, sourcesPool],
+    [data.nodes, productsView, highlightedId, chainSet, sourcesPool],
   );
 
   const flowEdges = useMemo(() => {
-    if (!chainSet) return data.edges;
-    return data.edges.map((e) => {
+    const baseEdges = productsView?.edges ?? data.edges;
+    if (!chainSet) return baseEdges;
+    return baseEdges.map((e) => {
       const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
       if (bothIn) return e;
       const existing = e.className ?? "";
       const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
       return { ...e, className: cls };
     });
-  }, [data.edges, chainSet]);
+  }, [data.edges, productsView, chainSet]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -420,7 +436,6 @@ export const Flow = ({
     // панель редактирования — пользователь выделяет несколько нод.
     if (event.shiftKey || event.ctrlKey || event.metaKey) return;
     setSelectedNodeId(node.id);
-    setPanelMode({ type: "card" });
     setIsPanelOpen(true);
     setContextMenu(null);
   }, []);
@@ -469,19 +484,6 @@ export const Flow = ({
     setContextMenu(null);
   }, []);
 
-  // Из контекстного меню → открыть панель в build mode
-  const handleContextBuild = useCallback(
-    (direction: BuildDirection) => {
-      const nodeId = contextMenu?.nodeId;
-      if (!nodeId) return;
-      setSelectedNodeId(nodeId);
-      setPanelMode({ type: "build", direction });
-      setIsPanelOpen(true);
-      setContextMenu(null);
-    },
-    [contextMenu],
-  );
-
   // Из контекстного меню → показать модалку подтверждения удаления.
   // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
   // всю группу, иначе только одну ноду.
@@ -498,22 +500,20 @@ export const Flow = ({
     setContextMenu(null);
   }, [contextMenu, data.nodes]);
 
-  // Из контекстного меню → открыть модалку с подтверждением запроса
-  const handleContextFetchTransformations = useCallback(() => {
-    if (!contextMenu) return;
-    const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+  // Из карточки продукта → открыть модалку «Получить преобразования к соседним
+  // продуктам» (SelectNeighborModal) для выбранной ноды.
+  const handleOpenFetchTransformations = useCallback(() => {
+    if (!selectedNodeId) return;
+    const node = data.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
     const outgoing = getDirectProductNeighbors(
-      contextMenu.nodeId,
+      selectedNodeId,
       data.nodes,
       data.edges,
     ).filter((n) => n.role === "outgoing");
-    if (!outgoing.length) {
-      setContextMenu(null);
-      return;
-    }
+    if (!outgoing.length) return;
     setInsertTrState({
-      nodeId: contextMenu.nodeId,
+      nodeId: selectedNodeId,
       productLabel: String(node.data?.label ?? ""),
       neighbors: outgoing,
       loading: false,
@@ -521,8 +521,7 @@ export const Flow = ({
       customSystemPrompt: defaultTransformationsBetweenPrompt,
       isPromptDirty: false,
     });
-    setContextMenu(null);
-  }, [contextMenu, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
+  }, [selectedNodeId, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
 
   const handleFetchTransformations = useCallback(async () => {
     if (!insertTrState) return;
@@ -641,15 +640,16 @@ export const Flow = ({
     }
   }, [dispatch, insertTrState, data.nodes]);
 
-  // Outgoing-соседи для пункта меню (для текущего contextMenu.nodeId)
-  const contextMenuHasOutgoingNeighbors = useMemo(() => {
-    if (!contextMenu) return false;
+  // Outgoing-соседи выбранной ноды — для кнопки «Получить преобразования…»
+  // в карточке продукта.
+  const selectedNodeHasOutgoingNeighbors = useMemo(() => {
+    if (!selectedNodeId) return false;
     return getDirectProductNeighbors(
-      contextMenu.nodeId,
+      selectedNodeId,
       data.nodes,
       data.edges,
     ).some((n) => n.role === "outgoing");
-  }, [contextMenu, data.nodes, data.edges]);
+  }, [selectedNodeId, data.nodes, data.edges]);
 
   // Подтверждение удаления (одна нода или группа выделенных)
   const handleConfirmDelete = useCallback(() => {
@@ -754,7 +754,6 @@ export const Flow = ({
     saveChanges();
 
     setIsPanelOpen(false);
-    setPanelMode({ type: "card" });
     setTimeout(() => {
       setSelectedNodeId(null);
       setTempNodeLabel("");
@@ -780,6 +779,41 @@ export const Flow = ({
     [],
   );
 
+  // Коммит markdown-описания (alt-нода): MarkdownEditor отдаёт готовую строку —
+  // сразу пишем в node.data.description (минуя blur-путь textarea).
+  const handleCommitDescription = useCallback(
+    (text: string) => {
+      setTempNodeDescription(text);
+      if (!selectedNodeId) return;
+      if (text !== initialDescription) {
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: { description: text },
+          }),
+        );
+        setInitialDescription(text);
+        showSavedNotification();
+      }
+    },
+    [selectedNodeId, initialDescription, dispatch, showSavedNotification],
+  );
+
+  // Коммит обобщённого описания преобразования → node.data.aggregatedDescription.
+  const handleCommitAggregatedDescription = useCallback(
+    (text: string) => {
+      if (!selectedNodeId) return;
+      dispatch(
+        updateNodeData({
+          nodeId: selectedNodeId,
+          data: { aggregatedDescription: text },
+        }),
+      );
+      showSavedNotification();
+    },
+    [selectedNodeId, dispatch, showSavedNotification],
+  );
+
   // Обработчики изменений узлов и ребер
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -790,9 +824,12 @@ export const Flow = ({
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      // В режиме «только продукты» на полотне синтетические рёбра, которых нет
+      // в сторе — их изменения не применяем.
+      if (productsOnly) return;
       dispatch(onEdgesChange(changes));
     },
-    [dispatch],
+    [dispatch, productsOnly],
   );
 
   const handleConnect: OnConnect = useCallback(
@@ -845,7 +882,11 @@ export const Flow = ({
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
     (direction: BuildDirection) =>
-      async (opts?: { customSystemPrompt?: string; maxItems?: number }) => {
+      async (opts?: {
+        customSystemPrompt?: string;
+        maxItems?: number;
+        allowedDomains?: string[];
+      }) => {
         if (!selectedNodeId || !selectedNode) return;
         const productName = String(selectedNode.data?.label || "").trim();
         if (!productName) return;
@@ -857,6 +898,7 @@ export const Flow = ({
             maxItems: opts?.maxItems ?? 5,
             direction,
             customSystemPrompt: opts?.customSystemPrompt,
+            allowedDomains: opts?.allowedDomains,
           }),
         ).unwrap();
       },
@@ -864,7 +906,12 @@ export const Flow = ({
   );
 
   const handleAggregateSources = useCallback(
-    (direction: BuildDirection) => async (customSystemPrompt?: string, customUserPrompt?: string) => {
+    (direction: BuildDirection) =>
+      async (
+        customSystemPrompt?: string,
+        customUserPrompt?: string,
+        selectedSources?: TechnologySource[],
+      ) => {
       if (!selectedNodeId || !selectedNode) return;
       const productName = String(selectedNode.data?.label || "").trim();
       if (!productName) return;
@@ -878,8 +925,12 @@ export const Flow = ({
       // fallback to sourcesSlice
       const sliceKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
+      // Пользователь мог отметить чекбоксами подмножество источников (3.1) —
+      // тогда обобщаем только по ним.
       const payloadSources: TechnologySource[] =
-        dirSources ?? sliceState?.sources ?? [];
+        selectedSources && selectedSources.length
+          ? selectedSources
+          : (dirSources ?? sliceState?.sources ?? []);
 
       if (!payloadSources.length) return;
 
@@ -964,11 +1015,17 @@ export const Flow = ({
       ) => {
         if (!selectedNodeId) return;
         const sKey = stepSessionKey(selectedNodeId, direction);
+        // Обобщённое описание шага продукта-якоря (markdown) — прокинем на
+        // создаваемую transformation-ноду (см. stepToFlow / карточка преобразования).
+        const anchorAggregatedText =
+          sourcesByNodeId[sourcesKey(selectedNodeId, direction)]
+            ?.stepAggregatedText ?? null;
         dispatch(
           acceptPendingStep({
             sessionKey: sKey,
             selectedContinueProductNodeId,
             filteredStep,
+            anchorAggregatedText,
           }),
         );
         dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
@@ -976,17 +1033,27 @@ export const Flow = ({
         // альтернативы должны остаться видимыми, и useEffect пересоздаст
         // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
-    [dispatch, selectedNodeId],
+    [dispatch, selectedNodeId, sourcesByNodeId],
   );
 
   const handleFetchStepSourcesV2 = useCallback(
     (direction: BuildDirection) =>
+<<<<<<< HEAD
     (opts?: {
       customSystemPrompt?: string;
       maxItems?: number;
       provider?: string;
       model?: string;
     }) => {
+=======
+      (opts?: {
+        customSystemPrompt?: string;
+        maxItems?: number;
+        allowedDomains?: string[];
+        provider?: string;
+        model?: string;
+      }) => {
+>>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -1011,6 +1078,12 @@ export const Flow = ({
           ...(existingSources.length ? { existingSources } : {}),
           ...(opts?.customSystemPrompt ? { customSystemPrompt: opts.customSystemPrompt } : {}),
           ...(opts?.maxItems ? { maxItems: opts.maxItems } : {}),
+<<<<<<< HEAD
+=======
+          ...(opts?.allowedDomains?.length
+            ? { allowedDomains: opts.allowedDomains }
+            : {}),
+>>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
           ...(opts?.provider ? { provider: opts.provider } : {}),
           ...(opts?.model ? { model: opts.model } : {}),
         }),
@@ -1027,12 +1100,22 @@ export const Flow = ({
 
   const handleAggregateStepSources = useCallback(
     (direction: BuildDirection) =>
+<<<<<<< HEAD
     (
       customSystemPrompt?: string,
       customUserPrompt?: string,
       provider?: string,
       model?: string,
     ) => {
+=======
+      (
+        customSystemPrompt?: string,
+        customUserPrompt?: string,
+        selectedSources?: TechnologySource[],
+        provider?: string,
+        model?: string,
+      ) => {
+>>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
       const productName = String(selectedNode?.data?.label || "").trim();
@@ -1045,8 +1128,11 @@ export const Flow = ({
         }),
       );
 
+      // Отмеченное чекбоксами подмножество (3.1) имеет приоритет над полным пулом.
       const poolSources =
-        sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+        selectedSources && selectedSources.length
+          ? selectedSources
+          : (sourcesPool[poolKey(productName, direction)]?.sources ?? []);
       if (!poolSources.length) return;
 
       const descField =
@@ -1077,6 +1163,63 @@ export const Flow = ({
       selectedNode,
       sourcesPool,
     ],
+  );
+
+  // Ручное добавление источника (3.2): пишем и в пул (единый для step-потока и
+  // бейджей; addSourcesToPool сам разрулит seq/originProduct — пул становится
+  // «своим»), и в node.data.sourcesUp/Down (отображение full-chain потока).
+  // Возвращает текст ошибки или null при успехе.
+  const handleAddManualSource = useCallback(
+    (direction: BuildDirection) =>
+      (src: { title: string; url: string; description?: string }): string | null => {
+        if (!selectedNodeId || !selectedNode) return "Узел не выбран";
+        const productName = String(selectedNode.data?.label || "").trim();
+        if (!productName) return "У узла нет названия";
+
+        const url = src.url.trim();
+        const title = src.title.trim() || url;
+        if (!/^https?:\/\/.+/i.test(url)) {
+          return "Ссылка должна начинаться с http:// или https://";
+        }
+
+        const dirField = direction === "up" ? "sourcesUp" : "sourcesDown";
+        const nodeSources =
+          (selectedNode.data?.[dirField] as TechnologySource[] | undefined) ?? [];
+        const poolSources =
+          sourcesPool[poolKey(productName, direction)]?.sources ?? [];
+        // Объединяем оба хранилища (могли разойтись), дедуп по url.
+        const merged: TechnologySource[] = [];
+        const seen = new Set<string>();
+        for (const s of [...poolSources, ...nodeSources]) {
+          const key = String(s.url || "").trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(s);
+        }
+        if (seen.has(url.toLowerCase())) {
+          return "Источник с таким URL уже есть в списке";
+        }
+
+        const manual: TechnologySource = {
+          title,
+          url,
+          access_hint: "",
+          technology_description: src.description?.trim() ?? "",
+          inputs_outputs_hint: [],
+          evidence_snippets: [],
+        };
+        const next = [...merged, manual];
+
+        dispatch(addSourcesToPool({ productName, direction, sources: next }));
+        dispatch(
+          updateNodeData({
+            nodeId: selectedNodeId,
+            data: { [dirField]: next },
+          }),
+        );
+        return null;
+      },
+    [dispatch, selectedNodeId, selectedNode, sourcesPool],
   );
 
   const handleBuildStep = useCallback(
@@ -1167,9 +1310,12 @@ export const Flow = ({
         } else {
           dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
         }
-      } else {
-        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
       }
+      // Нет обобщения (например, свежий поиск источников после цикла) — alt-ноды
+      // НЕ трогаем: при цикле основной вариант не строится, и альтернативы —
+      // единственный способ продолжить (задача №4). Удаление только явное:
+      // «Сбросить и начать шаг заново» (handleClearStepState) или замена новым
+      // обобщением (ветки выше).
     }
   }, [
     selectedNodeId,
@@ -1276,6 +1422,7 @@ export const Flow = ({
         sources: effectiveSources,
 
         onAggregateSources: handleAggregateSources(direction),
+        onAddManualSource: handleAddManualSource(direction),
         aggregateLoading: sliceState?.aggregateStatus === "loading",
         aggregateError: sliceState?.aggregateError ?? null,
         hasAggregated,
@@ -1473,26 +1620,25 @@ export const Flow = ({
             filteredStep?: import("./store/types").StepChainApiStep,
           ) => {
             const sKey = stepSessionKey(rootNodeId, direction);
+            // Ключ содержимого альтернативы. «Принятой» её пометит сам reducer
+            // и ТОЛЬКО если шаг реально материализовался — при dead-end цикла
+            // alt-нода должна остаться на полотне (задача №4). Ключ по
+            // содержимому, а не индексу: индексы теряют смысл, когда alt-ноды
+            // переживают пере-обобщение.
+            const altAcceptKey = alternativeKey({
+              fullDescription: altDesc,
+              title: String(selectedNode?.data?.label ?? ""),
+            });
             dispatch(
               acceptPendingStep({
                 sessionKey: sKey,
                 selectedContinueProductNodeId,
                 filteredStep,
                 isAlternativeFirstStep: true,
+                ...(altAcceptKey ? { altAcceptKey } : {}),
               }),
             );
             dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
-            // Помечаем именно эту альтернативу как принятую: alt-нода с этим idx
-            // удаляется и в дальнейшем не пересоздаётся useEffect-ом, остальные
-            // альтернативы остаются доступны для построения.
-            const altIdxStr =
-              (selectedNode?.id ?? "").split("::").pop() ?? "";
-            const idx = parseInt(altIdxStr, 10);
-            if (Number.isFinite(idx)) {
-              dispatch(
-                acceptStepAlternative({ rootNodeId, direction, idx }),
-              );
-            }
           };
 
           baseResult.onRejectStep = () => {
@@ -1516,6 +1662,7 @@ export const Flow = ({
       needsFreshSources,
       handleFindSources,
       handleAggregateSources,
+      handleAddManualSource,
       handleInitChain,
       handleExpandNext,
       stepChainSessions,
@@ -1537,6 +1684,38 @@ export const Flow = ({
     () => buildDirectionTab("up"),
     [buildDirectionTab],
   );
+
+  // Группы источников для таблицы: реальные из sourcesPool по всем продуктам.
+  // Каждая группа = продукт×направление с пометкой наследования (inheritedFrom)
+  // и дедупом источников по url.
+  const sourceGroups = useMemo(() => {
+    const labels = data.nodes
+      .filter((n) => n.type === "product")
+      .map((n) => String(n.data?.label ?? ""))
+      .filter(Boolean);
+    return collectSourceGroups(labels, sourcesPool, poolKey);
+  }, [data.nodes, sourcesPool, poolKey]);
+
+  // Продукт, чьи источники подсвечиваются при открытии таблицы из выбранной ноды.
+  // Для продукта — он сам; для преобразования/альтернативы — продукт-якорь
+  // (источник входящего ребра или chainRootNodeId).
+  const sourcesCurrentProduct = useMemo(() => {
+    if (!selectedNode) return "";
+    if (selectedNode.type === "product")
+      return String(selectedNode.data?.label ?? "");
+    const incoming = data.edges.find((e) => e.target === selectedNode.id);
+    const parent = incoming
+      ? data.nodes.find(
+          (n) => n.id === incoming.source && n.type === "product",
+        )
+      : undefined;
+    if (parent) return String(parent.data?.label ?? "");
+    const rootId = String(selectedNode.data?.chainRootNodeId ?? "");
+    const root = rootId
+      ? data.nodes.find((n) => n.id === rootId)
+      : undefined;
+    return root ? String(root.data?.label ?? "") : "";
+  }, [selectedNode, data.edges, data.nodes]);
 
   const handleBuildProductCard = useCallback(
     async (options?: {
@@ -1615,13 +1794,15 @@ export const Flow = ({
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={readOnly ? undefined : handleConnect}
+        onConnect={readOnly || productsOnly ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={readOnly ? undefined : onNodeContextMenu}
+        onNodeContextMenu={
+          readOnly || productsOnly ? undefined : onNodeContextMenu
+        }
         onPaneClick={onPaneClick}
-        nodesConnectable={!readOnly}
+        nodesConnectable={!readOnly && !productsOnly}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
@@ -1629,9 +1810,11 @@ export const Flow = ({
         selectionKeyCode={readOnly ? null : "Shift"}
         multiSelectionKeyCode={readOnly ? null : ["Meta", "Control"]}
         selectionOnDrag={false}
-        onReconnect={readOnly ? undefined : handleReconnect}
-        onReconnectStart={readOnly ? undefined : onReconnectStart}
-        onReconnectEnd={readOnly ? undefined : onReconnectEnd}
+        onReconnect={readOnly || productsOnly ? undefined : handleReconnect}
+        onReconnectStart={
+          readOnly || productsOnly ? undefined : onReconnectStart
+        }
+        onReconnectEnd={readOnly || productsOnly ? undefined : onReconnectEnd}
         // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
@@ -1641,9 +1824,10 @@ export const Flow = ({
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
+          // sourceHandle/targetHandle тут не задаём: DefaultEdgeOptions их не
+          // поддерживает (Omit в типах @xyflow), библиотека их игнорировала;
+          // хэндлы рёбрам назначает normalizeEdges/applyHandlesByGeometry.
           type: "straight",
-          sourceHandle: "bottom",
-          targetHandle: "top",
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
@@ -1707,6 +1891,39 @@ export const Flow = ({
               )}
             </ControlButton>
           )}
+          {/* Тумблер «только продукты»: скрыть преобразования/альтернативы,
+              склеив продукты напрямую. Доступен и в режиме просмотра. */}
+          <ControlButton
+            onClick={() => setProductsOnly((v) => !v)}
+            data-tooltip={
+              productsOnly ? "Вернуть преобразования" : "Только продукты"
+            }
+            aria-label={
+              productsOnly ? "Вернуть преобразования" : "Только продукты"
+            }
+            style={
+              productsOnly
+                ? { backgroundColor: "#2563eb", color: "#fff" }
+                : undefined
+            }
+          >
+            {productsOnly ? (
+              // Сейчас только продукты: два круга, склеенные напрямую.
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="5" r="3" />
+                <circle cx="12" cy="19" r="3" />
+                <path d="M12 8v8" />
+              </svg>
+            ) : (
+              // Сейчас полный граф: круг — квадрат (преобразование) — круг.
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="4" r="2.5" />
+                <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
+                <circle cx="12" cy="20" r="2.5" />
+                <path d="M12 6.5v3M12 14.5v3" />
+              </svg>
+            )}
+          </ControlButton>
           {!readOnly && (
             <>
           <ControlButton
@@ -1748,35 +1965,15 @@ export const Flow = ({
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
       />
-      {contextMenu && (() => {
-        const ctxNode = data.nodes.find((n) => n.id === contextMenu.nodeId);
-        const ctxIsStepAlt =
-          ctxNode?.data?.chainVariant === "alt" &&
-          !!ctxNode?.data?.stepAltDirection;
-        return (
-          <NodeContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            isProduct={ctxNode?.type === "product"}
-            isStepAlt={ctxIsStepAlt}
-            hasOutgoingProductNeighbors={contextMenuHasOutgoingNeighbors}
-            onBuildUp={() => handleContextBuild("up")}
-            onBuildDown={() => handleContextBuild("down")}
-            onBuildAlt={
-              ctxIsStepAlt
-                ? () =>
-                    handleContextBuild(
-                      ctxNode!.data!.stepAltDirection as BuildDirection,
-                    )
-                : undefined
-            }
-            onFetchTransformations={handleContextFetchTransformations}
-            onDelete={handleContextDelete}
-            selectedCount={selectedNodes.length}
-            onClose={() => setContextMenu(null)}
-          />
-        );
-      })()}
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDelete={handleContextDelete}
+          selectedCount={selectedNodes.length}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
       <FlowPanel
         onClose={closePanel}
         isOpen={isPanelOpen}
@@ -1795,11 +1992,21 @@ export const Flow = ({
         productCard={selectedNode?.data?.productCard}
         downTab={downTab}
         upTab={upTab}
-        mode={panelMode.type}
-        buildDirection={
-          panelMode.type === "build" ? panelMode.direction : undefined
+        hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
+        onFetchTransformations={handleOpenFetchTransformations}
+        readOnly={readOnly || productsOnly}
+        nodeId={selectedNodeId}
+        sourceGroups={sourceGroups}
+        sourcesCurrentProduct={sourcesCurrentProduct}
+        isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        altDirection={
+          selectedNode?.data?.stepAltDirection as BuildDirection | undefined
         }
-        readOnly={readOnly}
+        aggregatedDescription={
+          selectedNode?.data?.aggregatedDescription as string | undefined
+        }
+        onCommitDescription={handleCommitDescription}
+        onCommitAggregatedDescription={handleCommitAggregatedDescription}
       />
 
       <Notification

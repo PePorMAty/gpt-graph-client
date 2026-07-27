@@ -8,6 +8,7 @@ import type {
 } from "../../store/types";
 import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
+import type { SourceGroup } from "../../utils/sourceRows";
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
@@ -21,12 +22,23 @@ export interface FillCardOptions {
 export interface DirectionTabProps {
   direction: BuildDirection;
 
-  onFindSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
+  onFindSources?: (opts?: {
+    customSystemPrompt?: string;
+    maxItems?: number;
+    /** Whitelist доменов для web_search (3.3); пусто/undefined = искать везде. */
+    allowedDomains?: string[];
+  }) => void;
   sourcesLoading?: boolean;
   sourcesError?: string | null;
   sources: TechnologySource[];
 
-  onAggregateSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
+  /** selectedSources — подмножество источников, отмеченное чекбоксами (3.1);
+   *  undefined = использовать все. */
+  onAggregateSources?: (
+    customSystemPrompt?: string,
+    customUserPrompt?: string,
+    selectedSources?: TechnologySource[],
+  ) => void;
   aggregateLoading?: boolean;
   aggregateError?: string | null;
   hasAggregated?: boolean;
@@ -34,6 +46,14 @@ export interface DirectionTabProps {
   onChangeAggregatedDescription?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   /** Правка обобщённого описания шага (step-by-step flow). */
   onChangeStepAggregatedText?: (text: string) => void;
+
+  /** Ручное добавление источника (3.2): пишет в пул и node.data.
+   *  Возвращает текст ошибки (невалидный url / дубль) или null при успехе. */
+  onAddManualSource?: (src: {
+    title: string;
+    url: string;
+    description?: string;
+  }) => string | null;
 
   productName?: string;
 
@@ -105,12 +125,25 @@ export interface DirectionTabProps {
   onFetchStepSources?: (opts?: {
     customSystemPrompt?: string;
     maxItems?: number;
+<<<<<<< HEAD
     provider?: string;
     model?: string;
   }) => void;
   onAggregateStepSources?: (
     customSystemPrompt?: string,
     customUserPrompt?: string,
+=======
+    /** Whitelist доменов для web_search (3.3); пусто/undefined = искать везде. */
+    allowedDomains?: string[];
+    provider?: string;
+    model?: string;
+  }) => void;
+  /** selectedSources — подмножество источников (3.1); undefined = все. */
+  onAggregateStepSources?: (
+    customSystemPrompt?: string,
+    customUserPrompt?: string,
+    selectedSources?: TechnologySource[],
+>>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
     provider?: string,
     model?: string,
   ) => void;
@@ -138,6 +171,17 @@ export interface FlowPanelProps {
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onFieldBlur?: () => void; // Сохранение при потере фокуса поля имени/описания
 
+  /** Нода — альтернатива (chainVariant === "alt"): описание рендерим как markdown. */
+  isAltNode?: boolean;
+  /** Направление альтернативного шага (alt-нода) — для кнопки «Построить альтернативу». */
+  altDirection?: BuildDirection;
+  /** Обобщённое описание преобразования (markdown) — для тумблера в карточке. */
+  aggregatedDescription?: string;
+  /** Коммит markdown-описания (alt): пишет строку в node.data.description. */
+  onCommitDescription?: (text: string) => void;
+  /** Коммит обобщённого описания преобразования → node.data.aggregatedDescription. */
+  onCommitAggregatedDescription?: (text: string) => void;
+
   nodeId?: string | null;
   nodeType?: string;
 
@@ -154,9 +198,15 @@ export interface FlowPanelProps {
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
 
-  // panel mode
-  mode: "card" | "build";
-  buildDirection?: BuildDirection;
+  /** У продукта есть прямые соседи-продукты без преобразования между ними. */
+  hasOutgoingProductNeighbors?: boolean;
+  /** Открыть поток «Получить преобразования к соседним продуктам» (SelectNeighborModal). */
+  onFetchTransformations?: () => void;
+
+  /** Группы источников по всем продуктам (реальные из пула) — для таблицы. */
+  sourceGroups?: SourceGroup[];
+  /** Продукт, чьи источники подсвечиваются при открытии таблицы (для не-продуктовых нод — якорь). */
+  sourcesCurrentProduct?: string;
 
   /** Режим «только просмотр» (шар-ссылка): имя/описание read-only, без заполнения карточки. */
   readOnly?: boolean;

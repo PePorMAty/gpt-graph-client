@@ -25,7 +25,7 @@ export interface InitialGraphStateI {
     status: "idle" | "loading" | "succeeded" | "failed";
     error: string | null;
     nodeId: string | null;
-    direction: import("../types").BuildDirection | null;
+    direction: BuildDirection | null;
   };
   chainSessions: Record<string, ChainSessionData>;
   stepChainSessions: Record<string, StepChainSession>;
@@ -54,7 +54,10 @@ export interface InitialGraphStateI {
    *  раздельные для построения вверх/вниз. Инкрементируются при КАЖДОМ новом
    *  поиске для продукта, у которого ещё нет своего номера в этом направлении. */
   sourcesSeqCounter: { up: number; down: number };
-  acceptedStepAlternatives: Record<string, number[]>;
+  /** Построенные («принятые») альтернативы шага по продукту×направлению.
+   *  Ключи массива — alternativeKey (содержимое, не индекс): alt-ноды переживают
+   *  пере-обобщение, и индексы старого/нового списков не связаны. */
+  acceptedStepAlternatives: Record<string, string[]>;
   /** Реестр презентация → hex-цвет. Заполняется при загрузке/добавлении пользовательских JSON-графов. */
   presentationColors: Record<string, string>;
 }
@@ -126,6 +129,8 @@ export interface SavedGraphMeta {
   id: string;
   name: string;
   createdAt: string;
+  /** Время последнего обновления/переименования (ISO). Может отсутствовать у старых сейвов. */
+  updatedAt?: string | null;
   leafCount: number;
 }
 
@@ -310,6 +315,9 @@ export interface StepRecord {
   cycleProductNames?: string[];
   // Тупик: после исключения петель соединять нечего, граф не менялся.
   isDeadEnd?: boolean;
+  // Шаг — материализация альтернативы: ключ её содержимого (alternativeKey).
+  // Нужен, чтобы undo шага снял пометку «принята» и вернул alt-ноду.
+  altAcceptKey?: string;
 }
 
 export type StepChainStatus =

@@ -10,11 +10,7 @@ import type {
   TechnologySource,
 } from "../types";
 import type { TechChain } from "../../utils/chainToFlow";
-import {
-  addSourcesToPool,
-  clearAcceptedStepAlternatives,
-  sourcesPoolKey,
-} from "../slices/gptSlice";
+import { addSourcesToPool, sourcesPoolKey } from "../slices/gptSlice";
 import { getAncestorProductLabels } from "../../utils/graphReachability";
 
 export const fetchChainStep = createAsyncThunk<
@@ -135,6 +131,11 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     maxItems?: number;
     existingSources?: TechnologySource[];
     customSystemPrompt?: string;
+<<<<<<< HEAD
+=======
+    /** Whitelist доменов для web_search (3.3); пусто = искать везде. */
+    allowedDomains?: string[];
+>>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
     provider?: string;
     model?: string;
   },
@@ -153,6 +154,12 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
+<<<<<<< HEAD
+=======
+        ...(args.allowedDomains?.length
+          ? { allowedDomains: args.allowedDomains }
+          : {}),
+>>>>>>> 63773b20f8fa9d14ebbc3c58dee1465a1c47404a
         ...(args.provider ? { provider: args.provider } : {}),
         ...(args.model ? { model: args.model } : {}),
       },
@@ -315,14 +322,11 @@ export const aggregateStepSources = createAsyncThunk<
       );
     }
 
-    // Новое обобщение → набор альтернатив сменился, ранее принятые indices
-    // теперь не относятся к актуальному списку.
-    thunkApi.dispatch(
-      clearAcceptedStepAlternatives({
-        nodeId: args.nodeId,
-        direction: args.direction,
-      }),
-    );
+    // Принятые альтернативы при новом обобщении НЕ сбрасываем: они помечены
+    // ключом СОДЕРЖИМОГО (alternativeKey), а не индексом. Если новое обобщение
+    // вернёт ту же альтернативу — она уже материализована на полотне, и
+    // пересоздавать её alt-ноду было бы дублем; новые альтернативы под
+    // старые ключи не попадают.
 
     if (res.data.status === "needs-sources") {
       return {

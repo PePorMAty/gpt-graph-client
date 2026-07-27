@@ -35,3 +35,27 @@ export async function loadSavedGraph(id: string): Promise<SavedGraphFile> {
 export async function deleteSavedGraph(id: string): Promise<void> {
   await axios.delete(`${import.meta.env.VITE_API_URL}/graph-files/${id}`);
 }
+
+// Обновить (перезаписать содержимое) уже сохранённый граф — тот же файл/id.
+export async function updateSavedGraph(
+  id: string,
+  payload: SaveGraphPayload,
+): Promise<SavedGraphMeta> {
+  const { data } = await axios.put(
+    `${import.meta.env.VITE_API_URL}/graph-files/${id}`,
+    payload,
+  );
+  return data.data;
+}
+
+// Переименовать сохранённый граф (меняется только имя, id стабилен).
+export async function renameSavedGraph(
+  id: string,
+  name: string,
+): Promise<SavedGraphMeta> {
+  const { data } = await axios.patch(
+    `${import.meta.env.VITE_API_URL}/graph-files/${id}`,
+    { name },
+  );
+  return data.data;
+}

@@ -75,6 +75,33 @@
   cursor: not-allowed;
 }
 
+.renameButton {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #6c757d;
+  font-size: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.renameButton:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
+.renameButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .empty {
   opacity: 0.6;
 }

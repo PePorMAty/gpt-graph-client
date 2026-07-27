@@ -41,7 +41,7 @@ import { normalizeProductName } from "../../utils/normalizeProductName";
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
-import { parseAlternatives } from "../../utils/parseAlternatives";
+import { parseAlternatives, alternativeKey } from "../../utils/parseAlternatives";
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
 import { reconstructPresentationColors } from "../../utils/presentationColors";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
@@ -419,6 +419,14 @@ const gptSlice = createSlice({
         // чтобы альтернатива не реюзала источники основного пути и не сходилась
         // к его продуктам.
         isAlternativeFirstStep?: boolean;
+        // Обобщённое описание шага (markdown) продукта-якоря — кладём на
+        // создаваемую transformation-ноду (карточка: тумблер «Обобщённое»).
+        anchorAggregatedText?: string | null;
+        // Ключ содержимого принимаемой альтернативы (alternativeKey). Пометка
+        // «принята» и снятие alt-ноды с полотна происходят ТОЛЬКО если шаг
+        // реально материализовался — при dead-end цикла альтернатива остаётся
+        // доступной (задача №4).
+        altAcceptKey?: string;
       }>,
     ) => {
       const {
@@ -426,6 +434,8 @@ const gptSlice = createSlice({
         selectedContinueProductNodeId,
         filteredStep,
         isAlternativeFirstStep,
+        anchorAggregatedText,
+        altAcceptKey,
       } = action.payload;
       const session = state.stepChainSessions[sessionKey];
       if (!session || !session.pendingStep) return;
@@ -450,6 +460,7 @@ const gptSlice = createSlice({
         stepNumber,
         existingNodes: state.data.nodes,
         existingEdges: state.data.edges,
+        anchorAggregatedText: anchorAggregatedText ?? null,
       });
 
       // Тупик: шаг свёлся бы только к петле(ям) на предка → граф НЕ трогаем,
@@ -482,6 +493,38 @@ const gptSlice = createSlice({
       // Add edges (dedup by id)
       const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
       state.data.edges.push(...edges.filter((e) => !existingEdgeIds.has(e.id)));
+
+      // Альтернатива материализовалась в реальный шаг — только теперь помечаем
+      // её «принятой» (по содержимому) и снимаем alt-ноду с полотна. При
+      // dead-end выше сюда не доходим — alt-нода остаётся.
+      if (isAlternativeFirstStep && altAcceptKey) {
+        const accKey = `${session.rootNodeId}::${session.direction}`;
+        const arr = state.acceptedStepAlternatives[accKey] ?? [];
+        if (!arr.includes(altAcceptKey)) arr.push(altAcceptKey);
+        state.acceptedStepAlternatives[accKey] = arr;
+        // Запоминаем ключ в записи шага: undo вернёт альтернативу на полотно.
+        stepRecord.altAcceptKey = altAcceptKey;
+
+        const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
+        const matched = state.data.nodes.filter(
+          (n) =>
+            n.id.startsWith(altPrefix) &&
+            alternativeKey({
+              fullDescription: String(n.data?.description ?? ""),
+              title: String(n.data?.label ?? ""),
+            }) === altAcceptKey,
+        );
+        for (const altNode of matched) {
+          const idx = altNode.id.slice(altPrefix.length);
+          const altEdgeId = `step::${session.rootNodeId}::${session.direction}::alt-edge::${idx}`;
+          state.data.nodes = state.data.nodes.filter(
+            (n) => n.id !== altNode.id,
+          );
+          state.data.edges = state.data.edges.filter(
+            (e) => e.id !== altEdgeId,
+          );
+        }
+      }
 
       session.steps.push(stepRecord);
 
@@ -613,6 +656,15 @@ const gptSlice = createSlice({
         (e) => !removeEdgeIds.has(e.id),
       );
 
+      // Откат первого шага альтернативы → снимаем пометку «принята», чтобы
+      // useEffect пересоздал alt-ноду и её можно было построить снова.
+      if (lastStep.altAcceptKey) {
+        const accKey = `${session.rootNodeId}::${session.direction}`;
+        state.acceptedStepAlternatives[accKey] = (
+          state.acceptedStepAlternatives[accKey] ?? []
+        ).filter((k) => k !== lastStep.altAcceptKey);
+      }
+
       session.currentProductNodeId = lastStep.fromProductNodeId;
       session.status = "idle";
       session.pendingStep = null;
@@ -725,9 +777,12 @@ const gptSlice = createSlice({
       const spacingX = 300;
 
       alternatives.forEach((alt, idx) => {
-        // Пропускаем альтернативы, которые пользователь уже построил —
-        // они «материализовались» в реальный шаг, дублировать не нужно.
-        if (acceptedSet.has(idx)) return;
+        // Пропускаем альтернативы, которые пользователь уже построил — они
+        // «материализовались» в реальный шаг, дублировать не нужно. Сравнение
+        // по СОДЕРЖИМОМУ (alternativeKey), а не по индексу: alt-ноды переживают
+        // пере-обобщение, и индексы нового списка со старыми не связаны.
+        const altKey = alternativeKey(alt);
+        if (altKey && acceptedSet.has(altKey)) return;
         const altNodeId = `${prefix}${idx}`;
         const side =
           idx % 2 === 0
@@ -776,34 +831,6 @@ const gptSlice = createSlice({
       state.data.nodes = state.data.nodes.filter((n) => !n.id.startsWith(prefix));
       state.data.edges = state.data.edges.filter((e) => !e.id.startsWith(edgePrefix));
       // Полная зачистка альтернатив этого продукта → accepted-список тоже не нужен.
-      delete state.acceptedStepAlternatives[`${nodeId}::${direction}`];
-    },
-
-    acceptStepAlternative: (
-      state,
-      action: PayloadAction<{
-        rootNodeId: string;
-        direction: "up" | "down";
-        idx: number;
-      }>,
-    ) => {
-      const { rootNodeId, direction, idx } = action.payload;
-      const key = `${rootNodeId}::${direction}`;
-      const arr = state.acceptedStepAlternatives[key] ?? [];
-      if (!arr.includes(idx)) arr.push(idx);
-      state.acceptedStepAlternatives[key] = arr;
-
-      const altNodeId = `step::${rootNodeId}::${direction}::alt::${idx}`;
-      const altEdgeId = `step::${rootNodeId}::${direction}::alt-edge::${idx}`;
-      state.data.nodes = state.data.nodes.filter((n) => n.id !== altNodeId);
-      state.data.edges = state.data.edges.filter((e) => e.id !== altEdgeId);
-    },
-
-    clearAcceptedStepAlternatives: (
-      state,
-      action: PayloadAction<{ nodeId: string; direction: "up" | "down" }>,
-    ) => {
-      const { nodeId, direction } = action.payload;
       delete state.acceptedStepAlternatives[`${nodeId}::${direction}`];
     },
 
@@ -1387,8 +1414,6 @@ export const {
   clearSourcesPool,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
-  acceptStepAlternative,
-  clearAcceptedStepAlternatives,
   insertTransformationBetween,
   insertTransformationsForNeighbors,
 } = gptSlice.actions;
