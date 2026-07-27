@@ -28,11 +28,8 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
   ],
   qwen: [
     { value: "", label: "По умолчанию (сервер)" },
-    {
-      value: "qwen3.8-max-preview",
-      label: "Qwen3.8 Max Preview",
-      hint: "Новейший флагман, превью: максимальное качество, поведение может меняться",
-    },
+    // qwen3.8-max-preview убрана намеренно: ключу отдаётся access_denied на
+    // любой запрос к ней. Вернуть, когда на аккаунте появится доступ.
     {
       value: "qwen3.7-max",
       label: "Qwen3.7 Max",
