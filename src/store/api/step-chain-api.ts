@@ -135,6 +135,8 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     maxItems?: number;
     existingSources?: TechnologySource[];
     customSystemPrompt?: string;
+    provider?: string;
+    model?: string;
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/fetchSources", async (args, thunkApi) => {
@@ -151,6 +153,8 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
+        ...(args.provider ? { provider: args.provider } : {}),
+        ...(args.model ? { model: args.model } : {}),
       },
       { headers: { "Content-Type": "application/json" } },
     );
@@ -253,6 +257,8 @@ export const aggregateStepSources = createAsyncThunk<
     existingChain: string;
     customSystemPrompt?: string;
     customUserPrompt?: string;
+    provider?: string;
+    model?: string;
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/aggregate", async (args, thunkApi) => {
@@ -294,6 +300,8 @@ export const aggregateStepSources = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
+        ...(args.provider ? { provider: args.provider } : {}),
+        ...(args.model ? { model: args.model } : {}),
         ...(args.customUserPrompt
           ? { customUserPrompt: args.customUserPrompt }
           : {}),
@@ -373,6 +381,8 @@ export const buildStep = createAsyncThunk<
     techText: string;
     existingSources?: TechnologySource[];
     customSystemPrompt?: string;
+    provider?: string;
+    model?: string;
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/build", async (args, thunkApi) => {
@@ -417,6 +427,8 @@ export const buildStep = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
+        ...(args.provider ? { provider: args.provider } : {}),
+        ...(args.model ? { model: args.model } : {}),
       },
       { headers: { "Content-Type": "application/json" } },
     );

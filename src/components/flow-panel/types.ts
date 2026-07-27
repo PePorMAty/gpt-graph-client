@@ -102,9 +102,24 @@ export interface DirectionTabProps {
   /** Шаг уже построен из текущего обобщения — кнопка «Построить шаг» скрыта до переобобщения. */
   stepBuiltFromAggregate?: boolean;
 
-  onFetchStepSources?: (opts?: { customSystemPrompt?: string; maxItems?: number }) => void;
-  onAggregateStepSources?: (customSystemPrompt?: string, customUserPrompt?: string) => void;
-  onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
+  onFetchStepSources?: (opts?: {
+    customSystemPrompt?: string;
+    maxItems?: number;
+    provider?: string;
+    model?: string;
+  }) => void;
+  onAggregateStepSources?: (
+    customSystemPrompt?: string,
+    customUserPrompt?: string,
+    provider?: string,
+    model?: string,
+  ) => void;
+  onBuildStep?: (
+    customText?: string,
+    customSystemPrompt?: string,
+    provider?: string,
+    model?: string,
+  ) => void;
   onClearStepState?: () => void;
   /** Открыть превью шага, построенного при insufficient («построить всё равно»). */
   onForceStepPreview?: () => void;

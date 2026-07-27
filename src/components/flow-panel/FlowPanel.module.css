@@ -663,3 +663,31 @@
   font-size: 14px;
   text-align: center;
 }
+
+.aiConfigBlock {
+  margin-bottom: 8px;
+}
+
+.aiConfigRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiConfigSelect {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+}
+
+.aiConfigHint {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #777;
+}
