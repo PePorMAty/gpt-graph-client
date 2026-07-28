@@ -43,6 +43,16 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
     // qwen3.6-flash убрана намеренно: не соблюдает json_schema даже со
     // strict: true (на тестовой схеме возвращала [1] и свободный текст),
     // а поиск источников и построение шага разбирают ответ по схеме.
+    {
+      value: "qwen-plus",
+      label: "Qwen Plus",
+      hint: "Проверена на схеме: баланс качества, скорости и цены",
+    },
+    {
+      value: "qwen-flash",
+      label: "Qwen Flash",
+      hint: "Быстрая и дешёвая, для простых задач",
+    },
   ],
 };
 
