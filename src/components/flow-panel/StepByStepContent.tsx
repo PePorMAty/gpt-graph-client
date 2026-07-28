@@ -11,6 +11,7 @@ import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
+import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -39,6 +40,7 @@ type StepByStepContentProps = Pick<
   | "stepBuildError"
   | "pendingStep"
   | "onFetchStepSources"
+  | "onCancelStepSources"
   | "onAggregateStepSources"
   | "onAddManualSource"
   | "onBuildStep"
@@ -79,6 +81,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepBuiltFromAggregate = false,
 
   onFetchStepSources,
+  onCancelStepSources,
   onAggregateStepSources,
   onAddManualSource,
   onBuildStep,
@@ -192,6 +195,47 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     setEditedAltDesc(altDescription ?? "");
   }, [altDescription]);
 
+  // ── AI provider/model ──
+  // Выбор общий для всех этапов и живёт вне компонента: выбранная на поиске
+  // источников модель остаётся выбранной на обобщении и построении.
+  const { config: aiConfig, setProvider, setModel } = useAiConfig();
+  const aiProvider = aiConfig.provider || undefined;
+  const aiModel = aiConfig.model || undefined;
+
+  const renderAiSelect = () => {
+    const models = AI_MODELS[aiConfig.provider] ?? AI_MODELS[""];
+    const hint = models.find((m) => m.value === aiConfig.model)?.hint;
+    return (
+      <div className={styles.aiConfigBlock}>
+        <div className={styles.aiConfigRow}>
+          <select
+            value={aiConfig.provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className={styles.aiConfigSelect}
+          >
+            {AI_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={aiConfig.model}
+            onChange={(e) => setModel(e.target.value)}
+            className={styles.aiConfigSelect}
+          >
+            {models.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {hint && <div className={styles.aiConfigHint}>{hint}</div>}
+      </div>
+    );
+  };
+
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
     const allowedDomains = parseDomainsInput(domainsText);
@@ -199,11 +243,24 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
       ...(allowedDomains.length ? { allowedDomains } : {}),
+      ...(aiProvider ? { provider: aiProvider } : {}),
+      ...(aiModel ? { model: aiModel } : {}),
     });
   };
 
   // Редактор поиска (промпт + домены): стейт общий, поэтому один и тот же
   // элемент рендерится на каждой стадии, где есть «Найти источники заново».
+  // Поиск источников идёт минутами — на время ожидания даём его прервать.
+  const cancelSearchButton = sourcesLoading ? (
+    <button
+      type="button"
+      onClick={() => onCancelStepSources?.()}
+      className={styles.cancelSearchButton}
+    >
+      Отменить поиск
+    </button>
+  ) : null;
+
   const searchPromptEditor = (
     <SearchPromptEditor
       open={srcPromptOpen}
@@ -221,9 +278,21 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const handleAggregate = () => {
     if (isAggPromptDirty) {
       const { system, user } = splitStepAggregatePrompt(displayedAggPrompt);
-      onAggregateStepSources?.(system, user, selectedStepSources);
+      onAggregateStepSources?.(
+        system,
+        user,
+        selectedStepSources,
+        aiProvider,
+        aiModel,
+      );
     } else {
-      onAggregateStepSources?.(undefined, undefined, selectedStepSources);
+      onAggregateStepSources?.(
+        undefined,
+        undefined,
+        selectedStepSources,
+        aiProvider,
+        aiModel,
+      );
     }
   };
 
@@ -231,6 +300,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     onBuildStep?.(
       customText,
       isBuildPromptDirty ? displayedBuildPrompt : undefined,
+      aiProvider,
+      aiModel,
     );
   };
 
@@ -288,6 +359,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             )}
           </div>
         )}
+
+        {renderAiSelect()}
 
         {buildLoading && (
           <div className={styles.tabLoader}>
@@ -419,6 +492,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {/* Редактор поиска: промпт + белый список доменов (3.3) */}
           {searchPromptEditor}
 
+          {renderAiSelect()}
+
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -444,6 +519,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                     ? "Найти свежие источники"
                     : "Найти источники (шаг)"}
           </button>
+          {cancelSearchButton}
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
           )}
@@ -496,6 +572,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
 
+          {renderAiSelect()}
+
           {aggregateLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -532,6 +610,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Найти источники заново (свой промпт)"
                 : "Найти источники заново"}
           </button>
+          {cancelSearchButton}
           {stepAggregateError && (
             <div className={styles.errorText}>Ошибка: {stepAggregateError}</div>
           )}
@@ -570,6 +649,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? `Найти источники заново для «${productName}» (свой промпт)`
                 : `Найти источники заново для «${productName}»`}
           </button>
+          {cancelSearchButton}
         </>
       )}
 
@@ -624,6 +704,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
+
+          {renderAiSelect()}
 
           {buildLoading && (
             <div className={styles.tabLoader}>
@@ -681,6 +763,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Найти источники заново (свой промпт)"
                 : "Найти источники заново"}
           </button>
+          {cancelSearchButton}
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
           )}
@@ -707,6 +790,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Поиск..."
                 : `Найти свежие источники для «${productName}»`}
             </button>
+            {cancelSearchButton}
             {pendingStep && (
               <button
                 type="button"

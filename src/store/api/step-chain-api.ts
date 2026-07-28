@@ -133,6 +133,8 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     customSystemPrompt?: string;
     /** Whitelist доменов для web_search (3.3); пусто = искать везде. */
     allowedDomains?: string[];
+    provider?: string;
+    model?: string;
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/fetchSources", async (args, thunkApi) => {
@@ -152,8 +154,14 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         ...(args.allowedDomains?.length
           ? { allowedDomains: args.allowedDomains }
           : {}),
+        ...(args.provider ? { provider: args.provider } : {}),
+        ...(args.model ? { model: args.model } : {}),
       },
-      { headers: { "Content-Type": "application/json" } },
+      {
+        headers: { "Content-Type": "application/json" },
+        // Поиск источников идёт минутами — даём прервать его из UI.
+        signal: thunkApi.signal,
+      },
     );
 
     if (!res.data?.success) {
@@ -218,6 +226,9 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       exhausted,
     };
   } catch (e: unknown) {
+    // Отмена пользователем — не ошибка: пробрасываем, чтобы RTK пометил экшен
+    // как aborted, иначе в UI попадёт «request error» вместо тихой отмены.
+    if (axios.isCancel(e) || thunkApi.signal.aborted) throw e;
     if (axios.isAxiosError(e)) {
       return thunkApi.rejectWithValue(
         e.response?.data?.error || e.message || "step/sources: request error",
@@ -254,6 +265,8 @@ export const aggregateStepSources = createAsyncThunk<
     existingChain: string;
     customSystemPrompt?: string;
     customUserPrompt?: string;
+    provider?: string;
+    model?: string;
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/aggregate", async (args, thunkApi) => {
@@ -295,6 +308,8 @@ export const aggregateStepSources = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
+        ...(args.provider ? { provider: args.provider } : {}),
+        ...(args.model ? { model: args.model } : {}),
         ...(args.customUserPrompt
           ? { customUserPrompt: args.customUserPrompt }
           : {}),
@@ -371,6 +386,8 @@ export const buildStep = createAsyncThunk<
     techText: string;
     existingSources?: TechnologySource[];
     customSystemPrompt?: string;
+    provider?: string;
+    model?: string;
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/build", async (args, thunkApi) => {
@@ -415,6 +432,8 @@ export const buildStep = createAsyncThunk<
         ...(args.customSystemPrompt
           ? { customSystemPrompt: args.customSystemPrompt }
           : {}),
+        ...(args.provider ? { provider: args.provider } : {}),
+        ...(args.model ? { model: args.model } : {}),
       },
       { headers: { "Content-Type": "application/json" } },
     );

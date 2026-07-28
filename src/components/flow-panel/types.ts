@@ -127,14 +127,25 @@ export interface DirectionTabProps {
     maxItems?: number;
     /** Whitelist доменов для web_search (3.3); пусто/undefined = искать везде. */
     allowedDomains?: string[];
+    provider?: string;
+    model?: string;
   }) => void;
+  /** Прерывает идущий поиск источников (он может длиться минутами). */
+  onCancelStepSources?: () => void;
   /** selectedSources — подмножество источников (3.1); undefined = все. */
   onAggregateStepSources?: (
     customSystemPrompt?: string,
     customUserPrompt?: string,
     selectedSources?: TechnologySource[],
+    provider?: string,
+    model?: string,
   ) => void;
-  onBuildStep?: (customText?: string, customSystemPrompt?: string) => void;
+  onBuildStep?: (
+    customText?: string,
+    customSystemPrompt?: string,
+    provider?: string,
+    model?: string,
+  ) => void;
   onClearStepState?: () => void;
   /** Открыть превью шага, построенного при insufficient («построить всё равно»). */
   onForceStepPreview?: () => void;

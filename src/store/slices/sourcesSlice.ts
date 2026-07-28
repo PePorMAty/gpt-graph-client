@@ -263,6 +263,13 @@ const sourcesSlice = createSlice({
         const { nodeId, direction } = action.meta.arg;
         const key = sourcesKey(nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
+        // Отмена пользователем: возвращаем стадию в исходное состояние, чтобы
+        // можно было сразу запустить поиск заново, и не показываем ошибку.
+        if (action.meta.aborted) {
+          state.byNodeId[key].stepSourcesStatus = "idle";
+          state.byNodeId[key].stepSourcesError = null;
+          return;
+        }
         state.byNodeId[key].stepSourcesStatus = "failed";
         state.byNodeId[key].stepSourcesError =
           (action.payload as string) || "Ошибка поиска step-источников";
