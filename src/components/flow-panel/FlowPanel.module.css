@@ -875,6 +875,24 @@
   opacity: 0.75;
 }
 
+/* Прервать длинный поиск источников — рядом с кнопкой поиска. */
+.cancelSearchButton {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid #b91c1c;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cancelSearchButton:hover {
+  background: #fee2e2;
+}
+
 .aiConfigBlock {
   margin-bottom: 8px;
 }

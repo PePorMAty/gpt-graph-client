@@ -1,0 +1,78 @@
+.container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Клики проходят сквозь пустое место, но не сквозь сами тосты. */
+  pointer-events: none;
+  max-width: min(360px, calc(100vw - 32px));
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #d0d7de;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #1f2937;
+  animation: slideIn 0.18s ease-out;
+}
+
+.success {
+  border-left: 4px solid #15803d;
+}
+
+.error {
+  border-left: 4px solid #b91c1c;
+}
+
+.info {
+  border-left: 4px solid #2563eb;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.iconBtn {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #94a3b8;
+}
+
+.iconBtn:hover {
+  color: #334155;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

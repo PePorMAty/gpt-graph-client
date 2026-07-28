@@ -1036,6 +1036,25 @@ export const Flow = ({
     [dispatch, selectedNodeId, sourcesByNodeId],
   );
 
+  // Активные запросы поиска источников — по ключу продукт+направление.
+  // Нужны, чтобы прервать долгий поиск: dispatch(thunk) возвращает промис
+  // с методом abort().
+  const stepSourcesRequestsRef = useRef<
+    Record<string, { abort: (reason?: string) => void } & Promise<unknown>>
+  >({});
+
+  const handleCancelStepSources = useCallback(
+    (direction: BuildDirection) => () => {
+      if (!selectedNodeId) return;
+      const runKey = sourcesKey(selectedNodeId, direction);
+      const running = stepSourcesRequestsRef.current[runKey];
+      if (!running) return;
+      running.abort("cancelled-by-user");
+      delete stepSourcesRequestsRef.current[runKey];
+    },
+    [selectedNodeId],
+  );
+
   const handleFetchStepSourcesV2 = useCallback(
     (direction: BuildDirection) =>
       (opts?: {
@@ -1061,7 +1080,7 @@ export const Flow = ({
       const existingSources =
         sourcesPool[poolKey(productName, direction)]?.sources ?? [];
 
-      dispatch(
+      const running = dispatch(
         fetchStepSourcesV2({
           nodeId: selectedNodeId,
           productName,
@@ -1076,6 +1095,16 @@ export const Flow = ({
           ...(opts?.model ? { model: opts.model } : {}),
         }),
       );
+
+      // Держим ссылку на запрос, чтобы его можно было прервать кнопкой.
+      // Ключ по продукту+направлению: параллельные поиски не мешают друг другу.
+      const runKey = sourcesKey(selectedNodeId, direction);
+      stepSourcesRequestsRef.current[runKey] = running;
+      void running.finally(() => {
+        if (stepSourcesRequestsRef.current[runKey] === running) {
+          delete stepSourcesRequestsRef.current[runKey];
+        }
+      });
     },
     [
       dispatch,
@@ -1516,6 +1545,7 @@ export const Flow = ({
         stepBuiltFromAggregate: sliceState?.stepBuiltFromAggregate ?? false,
 
         onFetchStepSources: handleFetchStepSourcesV2(direction),
+        onCancelStepSources: handleCancelStepSources(direction),
         onAggregateStepSources: handleAggregateStepSources(direction),
         onBuildStep: handleBuildStep(direction),
         onClearStepState: handleClearStepState(direction),
@@ -1647,6 +1677,7 @@ export const Flow = ({
       stepChainSessions,
       handleAcceptStep,
       handleFetchStepSourcesV2,
+      handleCancelStepSources,
       handleAggregateStepSources,
       handleBuildStep,
       handleClearStepState,
