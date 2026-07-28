@@ -130,6 +130,8 @@ export interface DirectionTabProps {
     provider?: string;
     model?: string;
   }) => void;
+  /** Прерывает идущий поиск источников (он может длиться минутами). */
+  onCancelStepSources?: () => void;
   /** selectedSources — подмножество источников (3.1); undefined = все. */
   onAggregateStepSources?: (
     customSystemPrompt?: string,

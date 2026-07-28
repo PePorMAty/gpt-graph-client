@@ -40,6 +40,7 @@ type StepByStepContentProps = Pick<
   | "stepBuildError"
   | "pendingStep"
   | "onFetchStepSources"
+  | "onCancelStepSources"
   | "onAggregateStepSources"
   | "onAddManualSource"
   | "onBuildStep"
@@ -80,6 +81,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepBuiltFromAggregate = false,
 
   onFetchStepSources,
+  onCancelStepSources,
   onAggregateStepSources,
   onAddManualSource,
   onBuildStep,
@@ -248,6 +250,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   // Редактор поиска (промпт + домены): стейт общий, поэтому один и тот же
   // элемент рендерится на каждой стадии, где есть «Найти источники заново».
+  // Поиск источников идёт минутами — на время ожидания даём его прервать.
+  const cancelSearchButton = sourcesLoading ? (
+    <button
+      type="button"
+      onClick={() => onCancelStepSources?.()}
+      className={styles.cancelSearchButton}
+    >
+      Отменить поиск
+    </button>
+  ) : null;
+
   const searchPromptEditor = (
     <SearchPromptEditor
       open={srcPromptOpen}
@@ -506,6 +519,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                     ? "Найти свежие источники"
                     : "Найти источники (шаг)"}
           </button>
+          {cancelSearchButton}
           {stepSourcesError && (
             <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
           )}
@@ -596,6 +610,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Найти источники заново (свой промпт)"
                 : "Найти источники заново"}
           </button>
+          {cancelSearchButton}
           {stepAggregateError && (
             <div className={styles.errorText}>Ошибка: {stepAggregateError}</div>
           )}
@@ -634,6 +649,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? `Найти источники заново для «${productName}» (свой промпт)`
                 : `Найти источники заново для «${productName}»`}
           </button>
+          {cancelSearchButton}
         </>
       )}
 
@@ -747,6 +763,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Найти источники заново (свой промпт)"
                 : "Найти источники заново"}
           </button>
+          {cancelSearchButton}
           {stepBuildError && (
             <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
           )}
@@ -773,6 +790,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 ? "Поиск..."
                 : `Найти свежие источники для «${productName}»`}
             </button>
+            {cancelSearchButton}
             {pendingStep && (
               <button
                 type="button"

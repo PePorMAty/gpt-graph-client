@@ -157,7 +157,11 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         ...(args.provider ? { provider: args.provider } : {}),
         ...(args.model ? { model: args.model } : {}),
       },
-      { headers: { "Content-Type": "application/json" } },
+      {
+        headers: { "Content-Type": "application/json" },
+        // Поиск источников идёт минутами — даём прервать его из UI.
+        signal: thunkApi.signal,
+      },
     );
 
     if (!res.data?.success) {
@@ -222,6 +226,9 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       exhausted,
     };
   } catch (e: unknown) {
+    // Отмена пользователем — не ошибка: пробрасываем, чтобы RTK пометил экшен
+    // как aborted, иначе в UI попадёт «request error» вместо тихой отмены.
+    if (axios.isCancel(e) || thunkApi.signal.aborted) throw e;
     if (axios.isAxiosError(e)) {
       return thunkApi.rejectWithValue(
         e.response?.data?.error || e.message || "step/sources: request error",
