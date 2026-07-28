@@ -1042,6 +1042,8 @@ export const Flow = ({
         customSystemPrompt?: string;
         maxItems?: number;
         allowedDomains?: string[];
+        provider?: string;
+        model?: string;
       }) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
@@ -1070,6 +1072,8 @@ export const Flow = ({
           ...(opts?.allowedDomains?.length
             ? { allowedDomains: opts.allowedDomains }
             : {}),
+          ...(opts?.provider ? { provider: opts.provider } : {}),
+          ...(opts?.model ? { model: opts.model } : {}),
         }),
       );
     },
@@ -1088,6 +1092,8 @@ export const Flow = ({
         customSystemPrompt?: string,
         customUserPrompt?: string,
         selectedSources?: TechnologySource[],
+        provider?: string,
+        model?: string,
       ) => {
       if (!selectedNodeId) return;
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -1125,6 +1131,8 @@ export const Flow = ({
           existingChain,
           ...(customSystemPrompt ? { customSystemPrompt } : {}),
           ...(customUserPrompt ? { customUserPrompt } : {}),
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
         }),
       );
     },
@@ -1194,7 +1202,13 @@ export const Flow = ({
   );
 
   const handleBuildStep = useCallback(
-    (direction: BuildDirection) => (customText?: string, customSystemPrompt?: string) => {
+    (direction: BuildDirection) =>
+    (
+      customText?: string,
+      customSystemPrompt?: string,
+      provider?: string,
+      model?: string,
+    ) => {
       if (!selectedNodeId) return;
       ensureStepSession(direction);
       const sKey = stepSessionKey(selectedNodeId, direction);
@@ -1226,6 +1240,8 @@ export const Flow = ({
           techText: aggregated,
           existingSources: poolSources.length ? poolSources : undefined,
           ...(customSystemPrompt ? { customSystemPrompt } : {}),
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
         }),
       );
     },

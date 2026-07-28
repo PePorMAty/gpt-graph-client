@@ -11,6 +11,7 @@ import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
+import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -192,6 +193,47 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     setEditedAltDesc(altDescription ?? "");
   }, [altDescription]);
 
+  // ── AI provider/model ──
+  // Выбор общий для всех этапов и живёт вне компонента: выбранная на поиске
+  // источников модель остаётся выбранной на обобщении и построении.
+  const { config: aiConfig, setProvider, setModel } = useAiConfig();
+  const aiProvider = aiConfig.provider || undefined;
+  const aiModel = aiConfig.model || undefined;
+
+  const renderAiSelect = () => {
+    const models = AI_MODELS[aiConfig.provider] ?? AI_MODELS[""];
+    const hint = models.find((m) => m.value === aiConfig.model)?.hint;
+    return (
+      <div className={styles.aiConfigBlock}>
+        <div className={styles.aiConfigRow}>
+          <select
+            value={aiConfig.provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className={styles.aiConfigSelect}
+          >
+            {AI_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={aiConfig.model}
+            onChange={(e) => setModel(e.target.value)}
+            className={styles.aiConfigSelect}
+          >
+            {models.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {hint && <div className={styles.aiConfigHint}>{hint}</div>}
+      </div>
+    );
+  };
+
   // ── Handlers with prompt support ──
   const handleFetchSources = () => {
     const allowedDomains = parseDomainsInput(domainsText);
@@ -199,6 +241,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
       ...(allowedDomains.length ? { allowedDomains } : {}),
+      ...(aiProvider ? { provider: aiProvider } : {}),
+      ...(aiModel ? { model: aiModel } : {}),
     });
   };
 
@@ -221,9 +265,21 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const handleAggregate = () => {
     if (isAggPromptDirty) {
       const { system, user } = splitStepAggregatePrompt(displayedAggPrompt);
-      onAggregateStepSources?.(system, user, selectedStepSources);
+      onAggregateStepSources?.(
+        system,
+        user,
+        selectedStepSources,
+        aiProvider,
+        aiModel,
+      );
     } else {
-      onAggregateStepSources?.(undefined, undefined, selectedStepSources);
+      onAggregateStepSources?.(
+        undefined,
+        undefined,
+        selectedStepSources,
+        aiProvider,
+        aiModel,
+      );
     }
   };
 
@@ -231,6 +287,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     onBuildStep?.(
       customText,
       isBuildPromptDirty ? displayedBuildPrompt : undefined,
+      aiProvider,
+      aiModel,
     );
   };
 
@@ -288,6 +346,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             )}
           </div>
         )}
+
+        {renderAiSelect()}
 
         {buildLoading && (
           <div className={styles.tabLoader}>
@@ -419,6 +479,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {/* Редактор поиска: промпт + белый список доменов (3.3) */}
           {searchPromptEditor}
 
+          {renderAiSelect()}
+
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -495,6 +557,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
+
+          {renderAiSelect()}
 
           {aggregateLoading && (
             <div className={styles.tabLoader}>
@@ -624,6 +688,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
+
+          {renderAiSelect()}
 
           {buildLoading && (
             <div className={styles.tabLoader}>
