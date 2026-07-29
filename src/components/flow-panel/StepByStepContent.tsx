@@ -203,7 +203,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const aiModel = aiConfig.model || undefined;
 
   const renderAiSelect = () => {
-    const models = AI_MODELS[aiConfig.provider] ?? AI_MODELS[""];
+    const models = AI_MODELS[aiConfig.provider] ?? [];
     const hint = models.find((m) => m.value === aiConfig.model)?.hint;
     return (
       <div className={styles.aiConfigBlock}>

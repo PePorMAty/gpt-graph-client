@@ -4,30 +4,25 @@ export type AiModelOption = { value: string; label: string; hint?: string };
 export type AiConfig = { provider: string; model: string };
 
 export const AI_PROVIDERS: AiModelOption[] = [
-  { value: "", label: "По умолчанию (сервер)" },
-  { value: "openai", label: "OpenAI" },
   { value: "qwen", label: "Qwen (DashScope)" },
+  { value: "openai", label: "OpenAI" },
 ];
 
 // Списки моделей ограничены теми, что реально доступны нашим ключам:
 // лишние варианты в выпадашке дают 403 AccessDenied уже после отправки запроса.
+// Первая модель в списке — дефолт провайдера (см. defaultModelFor).
 export const AI_MODELS: Record<string, AiModelOption[]> = {
-  "": [{ value: "", label: "По умолчанию" }],
-  openai: [
-    { value: "", label: "По умолчанию (сервер)" },
-    {
-      value: "gpt-5-mini",
-      label: "GPT-5 Mini",
-      hint: "Быстрый и дешёвый, хорош для рутинных задач",
-    },
-    {
-      value: "gpt-5",
-      label: "GPT-5",
-      hint: "Максимальное качество, сложные рассуждения, дороже",
-    },
-  ],
   qwen: [
-    { value: "", label: "По умолчанию (сервер)" },
+    {
+      value: "qwen-plus",
+      label: "Qwen Plus",
+      hint: "По умолчанию: проверена на схеме, баланс качества, скорости и цены",
+    },
+    {
+      value: "qwen-flash",
+      label: "Qwen Flash",
+      hint: "Быстрая и дешёвая, для простых задач",
+    },
     // qwen3.8-max-preview убрана намеренно: ключу отдаётся access_denied на
     // любой запрос к ней. Вернуть, когда на аккаунте появится доступ.
     {
@@ -43,44 +38,60 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
     // qwen3.6-flash убрана намеренно: не соблюдает json_schema даже со
     // strict: true (на тестовой схеме возвращала [1] и свободный текст),
     // а поиск источников и построение шага разбирают ответ по схеме.
+  ],
+  openai: [
     {
-      value: "qwen-plus",
-      label: "Qwen Plus",
-      hint: "Проверена на схеме: баланс качества, скорости и цены",
+      value: "gpt-5-mini",
+      label: "GPT-5 Mini",
+      hint: "Быстрый и дешёвый, хорош для рутинных задач",
     },
     {
-      value: "qwen-flash",
-      label: "Qwen Flash",
-      hint: "Быстрая и дешёвая, для простых задач",
+      value: "gpt-5",
+      label: "GPT-5",
+      hint: "Максимальное качество, сложные рассуждения, дороже",
     },
   ],
 };
 
-const STORAGE_KEY = "ai-model-config";
-const EMPTY: AiConfig = { provider: "", model: "" };
+// Пресет: провайдер и модель выбраны всегда, пункта «по умолчанию» больше нет.
+// Клиент теперь ВСЕГДА шлёт provider и model, поэтому серверный дефолт
+// (AI_PROVIDER / gpt-5-mini) на стадии шага не применяется.
+export const DEFAULT_AI_CONFIG: AiConfig = {
+  provider: "qwen",
+  model: "qwen-plus",
+};
 
-// Провайдер/модель из localStorage могли устареть (список моделей меняется),
-// поэтому любое значение извне прогоняем через каталог.
+function defaultModelFor(provider: string): string {
+  return AI_MODELS[provider]?.[0]?.value ?? DEFAULT_AI_CONFIG.model;
+}
+
+const STORAGE_KEY = "ai-model-config";
+
+// Провайдер/модель из localStorage могли устареть (список моделей меняется,
+// пункт «по умолчанию» с пустым значением убран), поэтому любое значение
+// извне прогоняем через каталог и подменяем негодное пресетом.
 function normalize(cfg: AiConfig): AiConfig {
   const provider = AI_PROVIDERS.some((p) => p.value === cfg.provider)
     ? cfg.provider
-    : "";
-  const models = AI_MODELS[provider] ?? AI_MODELS[""];
-  const model = models.some((m) => m.value === cfg.model) ? cfg.model : "";
+    : DEFAULT_AI_CONFIG.provider;
+  const models = AI_MODELS[provider] ?? [];
+  const model = models.some((m) => m.value === cfg.model)
+    ? cfg.model
+    : defaultModelFor(provider);
   return { provider, model };
 }
 
 function load(): AiConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return EMPTY;
+    if (!raw) return DEFAULT_AI_CONFIG;
     const parsed = JSON.parse(raw);
     return normalize({
       provider: String(parsed?.provider ?? ""),
       model: String(parsed?.model ?? ""),
     });
   } catch {
-    return EMPTY;
+    return DEFAULT_AI_CONFIG;
   }
 }
 
@@ -122,10 +133,13 @@ export function useAiConfig() {
   const config = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const setProvider = useCallback((provider: string) => {
-    // у провайдеров разные каталоги моделей — при смене сбрасываем модель
+    // у провайдеров разные каталоги моделей — при смене берём дефолт нового
     setAiConfig({
       provider,
-      model: provider === current.provider ? current.model : "",
+      model:
+        provider === current.provider
+          ? current.model
+          : defaultModelFor(provider),
     });
   }, []);
 
