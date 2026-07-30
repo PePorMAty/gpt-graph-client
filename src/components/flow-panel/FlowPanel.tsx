@@ -87,7 +87,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
   onForceStepPreview,
   onAcceptStep,
   onRejectStep,
-  onRetryStep,
 
   isAlternativeNode,
   altDescription,
@@ -258,7 +257,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onForceStepPreview={onForceStepPreview}
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
-          onRetryStep={onRetryStep}
           onChangeStepAggregatedText={onChangeStepAggregatedText}
           isAlternativeNode={isAlternativeNode}
           altDescription={altDescription}

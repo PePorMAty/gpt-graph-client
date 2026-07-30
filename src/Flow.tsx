@@ -1541,7 +1541,6 @@ export const Flow = ({
         onAcceptStep: handleAcceptStep(direction),
         onRejectStep: () => dispatch(rejectPendingStep(sKeyStep)),
         onForceStepPreview: () => dispatch(forceStepPreview(sKeyStep)),
-        onRetryStep: handleBuildStep(direction),
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
         pendingStep: stepSession?.pendingStep ?? null,
@@ -1639,7 +1638,12 @@ export const Flow = ({
           baseResult.stepChainStatus =
             rootStepSession?.status ?? "idle";
 
-          baseResult.onBuildStep = (customText?: string, customSystemPrompt?: string) => {
+          baseResult.onBuildStep = (
+            customText?: string,
+            customSystemPrompt?: string,
+            provider?: string,
+            model?: string,
+          ) => {
             const sKey = stepSessionKey(rootNodeId, direction);
             if (!stepChainSessions[sKey]) {
               dispatch(
@@ -1668,6 +1672,11 @@ export const Flow = ({
                 techText: customText || altDesc,
                 existingSources: poolSrcs.length ? poolSrcs : undefined,
                 ...(customSystemPrompt ? { customSystemPrompt } : {}),
+                // Выбор провайдера/модели из панели: раньше override для
+                // alt-нод обрезал эти аргументы, и построение альтернативы
+                // всегда уходило на дефолтный провайдер.
+                ...(provider ? { provider } : {}),
+                ...(model ? { model } : {}),
               }),
             );
           };
@@ -1702,8 +1711,6 @@ export const Flow = ({
             const sKey = stepSessionKey(rootNodeId, direction);
             dispatch(rejectPendingStep(sKey));
           };
-
-          baseResult.onRetryStep = baseResult.onBuildStep;
         }
       }
 

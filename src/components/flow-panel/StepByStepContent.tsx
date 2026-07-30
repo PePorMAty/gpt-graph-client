@@ -48,7 +48,6 @@ type StepByStepContentProps = Pick<
   | "onClearStepState"
   | "onAcceptStep"
   | "onRejectStep"
-  | "onRetryStep"
   | "onChangeStepAggregatedText"
   | "isAlternativeNode"
   | "altDescription"
@@ -89,7 +88,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onForceStepPreview,
   onAcceptStep,
   onRejectStep,
-  onRetryStep,
   onChangeStepAggregatedText,
 
   isAlternativeNode = false,
@@ -405,7 +403,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
             onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
-            onRetry={() => onRetryStep?.()}
+            // Перестроение — тем же путём, что и кнопка построения: с текущим
+            // промптом и выбранными провайдером/моделью (onRetryStep без
+            // аргументов терял выбор модели — запрос уходил на дефолтную).
+            onRetry={() => handleBuild(editedAltDesc)}
             onReject={() => onRejectStep?.()}
           />
         )}
@@ -897,7 +898,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
-          onRetry={() => onRetryStep?.()}
+          // Перестроение тем же путём, что и «Построить шаг»: с текущим
+          // промптом и выбранными провайдером/моделью.
+          onRetry={() => handleBuild()}
           onReject={() => onRejectStep?.()}
         />
       )}

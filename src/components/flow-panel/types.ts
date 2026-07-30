@@ -87,7 +87,6 @@ export interface DirectionTabProps {
     filteredStep?: StepChainApiStep,
   ) => void;
   onRejectStep?: () => void;
-  onRetryStep?: () => void;
   onUndoStep?: () => void;
 
   pendingStep?: StepChainApiStep | null;
