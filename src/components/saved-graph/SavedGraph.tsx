@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import type { SavedGraphMeta } from "../../store/types";
+import type { SavedGraphFile, SavedGraphMeta } from "../../store/types";
 
 import styles from "./SavedGraph.module.css";
 
@@ -11,10 +17,9 @@ import {
   loadSavedGraphThunk,
   renameSavedGraphThunk,
   setOpenedGraph,
-  updateSavedGraphThunk,
 } from "../../store/slices/savedGraphSlice";
 
-import { saveGraph } from "../../store/api/saved-graph-api";
+import { useSaveGraph } from "../../hooks/useSaveGraph";
 import { SaveGraphModal } from "../save-graph-modal";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
 import { extractSubgraph } from "../../utils/extractSubgraph";
@@ -27,15 +32,34 @@ import { parseGraphJson } from "../../utils/parseGraphJson";
 import { applyAutoLayout } from "../../utils/applyAutoLayout";
 import { ConfirmDeleteModal } from "../confirm-delete-modal";
 
+// Режимы сортировки списка сохранённых графов. Выбор переживает перезагрузку.
+type SortMode = "date-desc" | "date-asc" | "name-asc" | "name-desc";
+const SORT_KEY = "saved-graphs-sort";
+
+const readSortMode = (): SortMode => {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return v === "date-asc" || v === "name-asc" || v === "name-desc"
+      ? v
+      : "date-desc";
+  } catch {
+    return "date-desc";
+  }
+};
+
 export const SavedGraph = () => {
   const dispatch = useAppDispatch();
 
-  const { list, isLoading, openedGraphId, openedGraphName } = useAppSelector(
-    (state) => state.savedGraphs,
-  );
+  const { list, isLoading } = useAppSelector((state) => state.savedGraphs);
 
-  const { data, leafNodes, hasMore, originalPrompt, sourcesPool, sourcesSeqCounter } =
-    useAppSelector((state) => state.graph);
+  const {
+    openedGraphId,
+    openedGraphName,
+    defaultName,
+    hasNodes,
+    saveNew,
+    updateOpened,
+  } = useSaveGraph();
 
   const selectedGraph = useAppSelector(
     (state) => state.savedGraphs.selectedGraph,
@@ -66,18 +90,42 @@ export const SavedGraph = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const openFull = () => {
-    if (!selectedGraph) return;
+  // Промис загрузки выбранного файла графа. «Открыть полностью/узел» ждут его
+  // вместо чтения selectedGraph из стора: раньше первый клик попадал на ещё
+  // не загруженный (или прошлый) selectedGraph и молча выходил — кнопку
+  // приходилось жать дважды.
+  const loadRequestRef = useRef<Promise<SavedGraphFile> | null>(null);
+
+  // Дождаться загрузки выбранного графа; при ошибке — сообщить и вернуть null.
+  const awaitSelectedGraph = async (): Promise<SavedGraphFile | null> => {
+    if (!loadRequestRef.current) return selectedGraph;
+    try {
+      return await loadRequestRef.current;
+    } catch (e) {
+      alert(
+        "Не удалось загрузить граф: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+      return null;
+    }
+  };
+
+  const openFull = async () => {
+    const graph = await awaitSelectedGraph();
+    if (!graph) {
+      setShowOpenModal(false);
+      return;
+    }
 
     dispatch(
       loadGraphFromFile({
-        nodes: selectedGraph.graph.nodes,
-        edges: selectedGraph.graph.edges,
-        leafNodes: selectedGraph.state.leaf_nodes,
-        hasMore: selectedGraph.state.has_more,
-        originalPrompt: selectedGraph.meta.prompt ?? null,
-        sourcesPool: selectedGraph.state.sources?.pool,
-        sourcesSeqCounter: selectedGraph.state.sources?.seqCounter,
+        nodes: graph.graph.nodes,
+        edges: graph.graph.edges,
+        leafNodes: graph.state.leaf_nodes,
+        hasMore: graph.state.has_more,
+        originalPrompt: graph.meta.prompt ?? null,
+        sourcesPool: graph.state.sources?.pool,
+        sourcesSeqCounter: graph.state.sources?.seqCounter,
       }),
     );
 
@@ -89,13 +137,14 @@ export const SavedGraph = () => {
     setShowOpenModal(false);
   };
 
-  const openPartial = () => {
+  const openPartial = async () => {
     // Частичное открытие даёт подграф — это уже не «тот же файл», отвязываем.
     dispatch(clearOpenedGraph());
     setShowOpenModal(false);
-    setTimeout(() => {
-      setShowSelectNode(true);
-    }, 0);
+    // Модалка выбора узла читает selectedGraph из стора — дождёмся загрузки.
+    const graph = await awaitSelectedGraph();
+    if (!graph) return;
+    setShowSelectNode(true);
   };
 
   const openNode = (nodeId: string) => {
@@ -137,81 +186,52 @@ export const SavedGraph = () => {
   }, [dispatch]);
 
   /* =======================
-     Сохранение графа
+     Сортировка списка
   ======================= */
-  // Собрать payload текущего состояния полотна (общий для save и update).
-  // Полные источники уже лежат в node.data (sourcesUp/Down). В пуле для сейва
-  // оставляем только лёгкие url/title (по ним считается номер набора) + номер;
-  // тяжёлые поля не дублируем, чтобы не раздувать тело запроса.
-  const buildGraphPayload = (name?: string) => {
-    const prompt = originalPrompt ?? name ?? "graph";
-    const lightPool = Object.fromEntries(
-      Object.entries(sourcesPool).map(([k, e]) => [
-        k,
-        {
-          ...e,
-          sources: e.sources.map((s) => ({
-            title: s.title,
-            url: s.url,
-            access_hint: "",
-            technology_description: "",
-            inputs_outputs_hint: [],
-            evidence_snippets: [],
-          })),
-        },
-      ]),
-    );
-    return {
-      name,
-      prompt,
-      nodes: data.nodes,
-      edges: data.edges,
-      leaf_nodes: leafNodes,
-      has_more: hasMore,
-      sources: { pool: lightPool, seqCounter: sourcesSeqCounter },
-    };
+  const [sortMode, setSortMode] = useState<SortMode>(readSortMode);
+
+  const changeSortMode = (mode: SortMode) => {
+    setSortMode(mode);
+    try {
+      localStorage.setItem(SORT_KEY, mode);
+    } catch { /* приватный режим — выбор не переживёт перезагрузку */ }
   };
 
-  const handleSaveGraph = async (name?: string) => {
-    try {
-      const res = await saveGraph(buildGraphPayload(name));
-
-      setShowSaveModal(false);
-      alert("Граф сохранён ✅");
-
-      // Новый файл теперь «открыт» — последующее «Сохранить» предложит его обновить.
-      if (res?.file) {
-        dispatch(
-          setOpenedGraph({ id: res.file, name: name || (originalPrompt ?? "graph") }),
-        );
-      }
-
-      // обновим список, чтобы новый файл появился
-      dispatch(fetchSavedGraphsThunk());
-    } catch (e) {
-      console.error(e);
-      alert("Ошибка сохранения графа");
+  const sortedList = useMemo(() => {
+    // «По дате» — по последнему изменению (updatedAt), для нетронутых сейвов —
+    // по дате создания.
+    const ts = (g: SavedGraphMeta) =>
+      Date.parse(g.updatedAt ?? g.createdAt) || 0;
+    const byName = (a: SavedGraphMeta, b: SavedGraphMeta) =>
+      a.name.localeCompare(b.name, "ru", { sensitivity: "base" });
+    const arr = [...list];
+    switch (sortMode) {
+      case "date-asc":
+        arr.sort((a, b) => ts(a) - ts(b));
+        break;
+      case "name-asc":
+        arr.sort(byName);
+        break;
+      case "name-desc":
+        arr.sort((a, b) => byName(b, a));
+        break;
+      default:
+        arr.sort((a, b) => ts(b) - ts(a));
     }
+    return arr;
+  }, [list, sortMode]);
+
+  /* =======================
+     Сохранение графа
+  ======================= */
+  // Сборка payload и запросы — в useSaveGraph (общий с боковой кнопкой на полотне).
+  const handleSaveGraph = async (name?: string) => {
+    if (await saveNew(name)) setShowSaveModal(false);
   };
 
   // Перезаписать открытый сохранённый граф текущим состоянием полотна.
   const handleUpdateGraph = async () => {
-    if (!openedGraphId) return;
-    try {
-      await dispatch(
-        updateSavedGraphThunk({
-          id: openedGraphId,
-          payload: buildGraphPayload(openedGraphName ?? undefined),
-        }),
-      ).unwrap();
-      setShowSaveModal(false);
-      alert(`Граф «${openedGraphName}» обновлён ✅`);
-    } catch (e) {
-      alert(
-        "Не удалось обновить граф: " +
-          (e instanceof Error ? e.message : String(e)),
-      );
-    }
+    if (await updateOpened()) setShowSaveModal(false);
   };
 
   // Переименовать сохранённый граф из списка.
@@ -231,7 +251,11 @@ export const SavedGraph = () => {
 
   const handleLoadGraph = (g: SavedGraphMeta) => {
     setPendingOpen({ id: g.id, name: g.name });
-    dispatch(loadSavedGraphThunk(g.id));
+    const request = dispatch(loadSavedGraphThunk(g.id)).unwrap();
+    loadRequestRef.current = request;
+    // Ошибку показываем в момент открытия (awaitSelectedGraph) — тут только
+    // глушим unhandled rejection.
+    request.catch(() => {});
 
     setShowOpenModal(true);
   };
@@ -325,21 +349,43 @@ export const SavedGraph = () => {
 
       {isLoading && <p>Загрузка...</p>}
 
-      <button
-        className={styles.saveButton}
-        onClick={() => setShowSaveModal(true)}
-        disabled={!data.nodes.length}
-      >
-        💾 Сохранить граф
-      </button>
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarButtons}>
+          <button
+            className={styles.saveButton}
+            onClick={() => setShowSaveModal(true)}
+            disabled={!hasNodes}
+          >
+            💾 Сохранить граф
+          </button>
 
-      <button
-        className={styles.uploadButton}
-        onClick={() => fileInputRef.current?.click()}
-        disabled={isUploading}
-      >
-        {isUploading ? "⏳ Загрузка..." : "📂 Загрузить из файла"}
-      </button>
+          <button
+            className={styles.uploadButton}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+          >
+            {isUploading ? "⏳ Загрузка..." : "📂 Загрузить из файла"}
+          </button>
+        </div>
+
+        <label
+          className={styles.sortControl}
+          title="Сортировка списка сохранённых графов"
+        >
+          <span aria-hidden>⇅</span>
+          <select
+            className={styles.sortSelect}
+            value={sortMode}
+            onChange={(e) => changeSortMode(e.target.value as SortMode)}
+            aria-label="Сортировка сохранённых графов"
+          >
+            <option value="date-desc">Сначала новые</option>
+            <option value="date-asc">Сначала старые</option>
+            <option value="name-asc">Имя А→Я</option>
+            <option value="name-desc">Имя Я→А</option>
+          </select>
+        </label>
+      </div>
 
       <input
         ref={fileInputRef}
@@ -353,7 +399,7 @@ export const SavedGraph = () => {
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onSave={handleSaveGraph}
-        defaultName={originalPrompt ?? "graph"}
+        defaultName={defaultName}
         openedName={openedGraphId ? openedGraphName : null}
         onUpdate={openedGraphId ? handleUpdateGraph : undefined}
       />
@@ -375,11 +421,16 @@ export const SavedGraph = () => {
       )}
 
       <ul className={styles.list}>
-        {list.map((g) => (
+        {sortedList.map((g) => (
           <li key={g.id} className={styles.item}>
             <div className={styles.meta}>
               <strong>{g.name}</strong>
-              <span>{new Date(g.createdAt).toLocaleString()}</span>
+              <span>
+                {new Date(g.createdAt).toLocaleString()}
+                {g.updatedAt
+                  ? ` · обновлён ${new Date(g.updatedAt).toLocaleString()}`
+                  : ""}
+              </span>
               <small>Leaf: {g.leafCount}</small>
             </div>
 

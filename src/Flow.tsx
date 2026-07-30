@@ -28,11 +28,16 @@ import {
   removeNodes,
   addNode,
   setGraphData,
+  loadGraphFromFile,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   insertTransformationsForNeighbors,
   addSourcesToPool,
 } from "./store/slices/gptSlice";
+import {
+  clearOpenedGraph,
+  setOpenedGraph,
+} from "./store/slices/savedGraphSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -40,7 +45,11 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
 import { ShareGraphModal } from "./components/share-graph-modal";
+import { SaveGraphModal } from "./components/save-graph-modal";
 import { GraphLegend } from "./components/graph-legend";
+import { useSaveGraph } from "./hooks/useSaveGraph";
+import { buildSaveGraphPayload } from "./utils/buildSaveGraphPayload";
+import { getLeafNodes } from "./utils/getLeafNodes";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
@@ -97,6 +106,10 @@ const nodeTypes: NodeTypes = {
   transformation: TransformationNode,
 };
 
+// Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
+// вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
+const AUTOSAVE_KEY = "autosave-graph";
+
 interface FlowProps {
   /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
   sharedView?: boolean;
@@ -112,9 +125,17 @@ export const Flow = ({
   onToggleViewMode,
 }: FlowProps = {}) => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
-    (store) => store.graph,
-  );
+  const {
+    data,
+    isLoading,
+    error,
+    rootId,
+    source,
+    chainBuild,
+    leafNodes,
+    hasMore,
+    originalPrompt,
+  } = useAppSelector((store) => store.graph);
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -123,14 +144,40 @@ export const Flow = ({
 
   useEffect(() => {
     // В режиме просмотра по ссылке граф приходит с сервера — не перетираем его
-    // содержимым из localStorage.
+    // содержимым автосейва.
     if (sharedView) return;
     try {
-      const raw = localStorage.getItem("saved-graph");
+      // Автосейв текущей сессии приоритетнее устаревшего ручного
+      // localStorage-сейва (кнопка теперь сохраняет на сервер, но старый
+      // сейв у пользователей мог остаться — не теряем его).
+      const raw =
+        sessionStorage.getItem(AUTOSAVE_KEY) ??
+        localStorage.getItem("saved-graph");
       if (!raw) return;
-      const { nodes, edges } = JSON.parse(raw);
-      if (Array.isArray(nodes) && nodes.length) {
-        dispatch(setGraphData({ nodes, edges }));
+      const saved = JSON.parse(raw);
+      const nodes = saved.nodes;
+      const edges = Array.isArray(saved.edges) ? saved.edges : [];
+      if (!Array.isArray(nodes) || !nodes.length) return;
+      // loadGraphFromFile (а не setGraphData): восстанавливает rootId, пул
+      // источников и реестр цветов легенды по данным узлов.
+      dispatch(
+        loadGraphFromFile({
+          nodes,
+          edges,
+          leafNodes: Array.isArray(saved.leaf_nodes)
+            ? saved.leaf_nodes
+            : getLeafNodes(nodes, edges),
+          hasMore: !!saved.has_more,
+          originalPrompt:
+            typeof saved.prompt === "string" ? saved.prompt : null,
+          sourcesPool: saved.sources?.pool,
+          sourcesSeqCounter: saved.sources?.seqCounter,
+        }),
+      );
+      // Привязка к открытому сохранённому графу переживает перезагрузку —
+      // «Обновить …» продолжит писать в тот же файл.
+      if (saved.openedGraph?.id) {
+        dispatch(setOpenedGraph(saved.openedGraph));
       }
     } catch { /* ignore corrupted data */ }
   }, []);
@@ -305,6 +352,7 @@ export const Flow = ({
     (s) => s.graph.stepChainSessions,
   );
   const sourcesPool = useAppSelector((s) => s.graph.sourcesPool);
+  const sourcesSeqCounter = useAppSelector((s) => s.graph.sourcesSeqCounter);
   const needsFreshSources = useAppSelector((s) => s.graph.needsFreshSources);
   const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
     `step::${nodeId}::${dir}`;
@@ -1746,23 +1794,92 @@ export const Flow = ({
     [dispatch, selectedNodeId],
   );
 
+  // ─── Сохранение на сервер (боковая кнопка) ───
+  // Та же логика, что у кнопки во вкладке «Сохранённые»: если открыт
+  // сохранённый граф — модалка предложит обновить его или сохранить как новый.
+  const {
+    openedGraphId,
+    openedGraphName,
+    defaultName: saveDefaultName,
+    saveNew: saveGraphAsNew,
+    updateOpened: updateOpenedGraph,
+  } = useSaveGraph();
+  const [showSaveGraphModal, setShowSaveGraphModal] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
-  const handleSaveToLocalStorage = useCallback(() => {
-    localStorage.setItem(
-      "saved-graph",
-      JSON.stringify({
-        // не сохраняем флаг выделения, чтобы граф не открывался «предвыделенным»
-        nodes: data.nodes.map((n) => {
-          const copy = { ...n };
-          delete copy.selected;
-          return copy;
-        }),
-        edges: data.edges,
-      }),
-    );
+  const flashSaveButton = useCallback(() => {
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
-  }, [data.nodes, data.edges]);
+  }, []);
+
+  const handleSaveGraphAsNew = useCallback(
+    async (name?: string) => {
+      if (await saveGraphAsNew(name)) {
+        setShowSaveGraphModal(false);
+        flashSaveButton();
+      }
+    },
+    [saveGraphAsNew, flashSaveButton],
+  );
+
+  const handleUpdateOpenedGraph = useCallback(async () => {
+    if (await updateOpenedGraph()) {
+      setShowSaveGraphModal(false);
+      flashSaveButton();
+    }
+  }, [updateOpenedGraph, flashSaveButton]);
+
+  // ─── Автосейв в sessionStorage ───
+  // Каждое изменение графа (с debounce — drag генерирует десятки событий в
+  // секунду) пишем в sessionStorage: перезагрузка/зависание вкладки не теряет
+  // результат. Сериализация графа на сотни узлов занимает единицы миллисекунд,
+  // с debounce 600 мс это незаметно.
+  useEffect(() => {
+    if (sharedView) return;
+    const timer = setTimeout(() => {
+      try {
+        if (!data.nodes.length) {
+          // Пустое полотно (например, после очистки) — автосейв не нужен.
+          sessionStorage.removeItem(AUTOSAVE_KEY);
+          return;
+        }
+        const payload = buildSaveGraphPayload({
+          originalPrompt,
+          nodes: data.nodes,
+          edges: data.edges,
+          leafNodes,
+          hasMore,
+          sourcesPool,
+          sourcesSeqCounter,
+        });
+        sessionStorage.setItem(
+          AUTOSAVE_KEY,
+          JSON.stringify({
+            ...payload,
+            ...(openedGraphId
+              ? {
+                  openedGraph: {
+                    id: openedGraphId,
+                    name: openedGraphName ?? "",
+                  },
+                }
+              : {}),
+          }),
+        );
+      } catch { /* квота/приватный режим — автосейв не критичен */ }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [
+    sharedView,
+    data.nodes,
+    data.edges,
+    leafNodes,
+    hasMore,
+    originalPrompt,
+    sourcesPool,
+    sourcesSeqCounter,
+    openedGraphId,
+    openedGraphName,
+  ]);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -1770,7 +1887,11 @@ export const Flow = ({
 
   const handleClearCanvas = useCallback(() => {
     dispatch(setGraphData({ nodes: [], edges: [] }));
+    // Очищенное полотно больше не привязано к сохранённому файлу — иначе
+    // «Сохранить» предложил бы перезаписать сейв пустым графом.
+    dispatch(clearOpenedGraph());
     localStorage.removeItem("saved-graph");
+    sessionStorage.removeItem(AUTOSAVE_KEY);
     setShowClearConfirm(false);
   }, [dispatch]);
 
@@ -1844,9 +1965,14 @@ export const Flow = ({
           {!readOnly && (
             <>
           <ControlButton
-            onClick={handleSaveToLocalStorage}
-            data-tooltip="Сохранить граф"
-            aria-label="Сохранить граф"
+            onClick={() => setShowSaveGraphModal(true)}
+            disabled={!data.nodes.length}
+            data-tooltip={
+              openedGraphId
+                ? `Сохранить граф (открыт «${openedGraphName}»)`
+                : "Сохранить граф на сервер"
+            }
+            aria-label="Сохранить граф на сервер"
             style={saveFlash ? { backgroundColor: "#4caf50", color: "#fff" } : undefined}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -1974,6 +2100,14 @@ export const Flow = ({
       <ShareGraphModal
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
+      />
+      <SaveGraphModal
+        isOpen={showSaveGraphModal}
+        onClose={() => setShowSaveGraphModal(false)}
+        onSave={handleSaveGraphAsNew}
+        defaultName={saveDefaultName}
+        openedName={openedGraphId ? openedGraphName : null}
+        onUpdate={openedGraphId ? handleUpdateOpenedGraph : undefined}
       />
       {contextMenu && (
         <NodeContextMenu
