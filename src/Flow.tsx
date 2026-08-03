@@ -96,6 +96,7 @@ import {
   getDirectProductNeighbors,
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
+import { getLinkedProducts } from "./utils/getLinkedProducts";
 import { fetchTransformationsForNeighbors } from "./store/api/transformation-between-api";
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
@@ -138,7 +139,7 @@ export const Flow = ({
   } = useAppSelector((store) => store.graph);
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const { fitView, screenToFlowPosition, setCenter } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
 
@@ -810,6 +811,53 @@ export const Flow = ({
       setInitialDescription("");
     }, 300);
   }, [saveChanges]);
+
+  // ─── Ссылки на связанные продукты в карточке ───
+  // Соседние продукты выбранной ноды (напрямую или через преобразование) —
+  // рендерятся в карточке продукта как кликабельные ссылки.
+  const linkedProducts = useMemo(
+    () =>
+      selectedNodeId
+        ? getLinkedProducts(selectedNodeId, data.nodes, data.edges)
+        : [],
+    [selectedNodeId, data.nodes, data.edges],
+  );
+
+  // Клик по ссылке-соседу: закрыть карточку текущего продукта (с сохранением
+  // правок), перелететь к выбранной ноде, выделить и подсветить её.
+  const handleFocusLinkedProduct = useCallback(
+    (nodeId: string) => {
+      const node = data.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+
+      closePanel();
+
+      // «Поймать фокус»: снять выделение с остальных нод, выделить цель.
+      const changes: NodeChange[] = [
+        ...data.nodes
+          .filter((n) => n.selected && n.id !== nodeId)
+          .map((n) => ({
+            id: n.id,
+            type: "select" as const,
+            selected: false,
+          })),
+        { id: nodeId, type: "select" as const, selected: true },
+      ];
+      dispatch(onNodesChange(changes));
+
+      // Перелёт к ноде: центр с учётом измеренных размеров (как в поиске).
+      const w = node.measured?.width ?? 0;
+      const h = node.measured?.height ?? 0;
+      setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+        zoom: 1.3,
+        duration: 600,
+      });
+      window.dispatchEvent(
+        new CustomEvent("highlight-node", { detail: nodeId }),
+      );
+    },
+    [data.nodes, dispatch, closePanel, setCenter],
+  );
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
@@ -2145,6 +2193,8 @@ export const Flow = ({
         upTab={upTab}
         hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
         onFetchTransformations={handleOpenFetchTransformations}
+        linkedProducts={linkedProducts}
+        onFocusLinkedProduct={handleFocusLinkedProduct}
         readOnly={readOnly || productsOnly}
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
