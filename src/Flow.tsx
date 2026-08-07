@@ -49,6 +49,8 @@ import { collectSourceGroups } from "./utils/sourceRows";
 import { collapseToProductsView } from "./utils/productsOnlyView";
 import {
   buildFocusSubgraph,
+  focusScopeDepth,
+  type FocusScope,
   type FocusSubgraphResult,
 } from "./utils/focusSubgraph";
 import {
@@ -203,6 +205,9 @@ export const Flow = ({
     history: string[];
   } | null>(null);
   const [focusDepth, setFocusDepth] = useState(2);
+  // Охват окрестности: шаги (стандарт) / только родители и дети / вся
+  // цепочка узла. Переживает навигацию и повторный вход в режим.
+  const [focusScope, setFocusScope] = useState<FocusScope>("steps");
   // Разложенная окрестность фокуса (готовые позиции + рёбра с хэндлами).
   const [focusView, setFocusView] = useState<FocusSubgraphResult | null>(null);
   const focusOn = focusState !== null;
@@ -264,7 +269,7 @@ export const Flow = ({
         data.nodes,
         data.edges,
         focusState.focusId,
-        focusDepth,
+        focusScopeDepth(focusScope, focusDepth),
       );
       const laid = await layoutTree(
         sub.nodes,
@@ -293,8 +298,8 @@ export const Flow = ({
       // Камера: границы целевой окрестности считаем сами (nodesBounds), не
       // полагаясь на внутренний стор React Flow — иначе fitView до коммита
       // новых нод подгонял бы камеру под старую раскладку. Двигаем только при
-      // смене фокуса/глубины, а не на каждое фоновое обновление данных.
-      const fitKey = `${focusState.focusId}::${focusDepth}`;
+      // смене фокуса/охвата/глубины, а не на каждое фоновое обновление данных.
+      const fitKey = `${focusState.focusId}::${focusScope}::${focusDepth}`;
       const cameraMoves = focusFitKeyRef.current !== fitKey;
       focusFitKeyRef.current = fitKey;
 
@@ -336,7 +341,7 @@ export const Flow = ({
       focusAnimRef.current?.cancel();
       focusAnimRef.current = null;
     };
-  }, [focusState, focusDepth, data.nodes, data.edges, fitBounds]);
+  }, [focusState, focusScope, focusDepth, data.nodes, data.edges, fitBounds]);
 
   // После смены состава фокус-окрестности даём React Flow измерить ноды в DOM
   // и переставляем хэндлы (тот же приём, что для полного графа выше).
@@ -2293,6 +2298,8 @@ export const Flow = ({
         <FocusModeHud
           focusLabel={focusLabelById(focusState.focusId)}
           historyLabels={focusState.history.map(focusLabelById)}
+          scope={focusScope}
+          onScopeChange={setFocusScope}
           depth={focusDepth}
           onDepthChange={setFocusDepth}
           onBack={handleFocusBack}

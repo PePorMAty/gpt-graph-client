@@ -14,6 +14,25 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 
+/**
+ * Охват окрестности фокус-режима:
+ *  • steps — N шагов в обе стороны (стандарт, N = 1..3);
+ *  • neighbors — только родители и дети узла (входящие/исходящие продукты,
+ *    эквивалент одного шага);
+ *  • chain — вся цепочка узла: все предки и потомки без ограничения глубины,
+ *    но НЕ весь граф (несвязанные с узлом ветки не показываются).
+ */
+export type FocusScope = "steps" | "neighbors" | "chain";
+
+/** Глубина обхода для заданного охвата. Бесконечность безопасна:
+ *  buildFocusSubgraph дедуплицирует посещения и завершится, обойдя всё
+ *  достижимое от фокуса. */
+export function focusScopeDepth(scope: FocusScope, stepsDepth: number): number {
+  if (scope === "neighbors") return 1;
+  if (scope === "chain") return Number.POSITIVE_INFINITY;
+  return stepsDepth;
+}
+
 export type FocusSubgraphResult = {
   nodes: CustomNode[];
   edges: Edge[];

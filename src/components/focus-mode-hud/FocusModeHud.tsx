@@ -1,4 +1,5 @@
 import React from "react";
+import type { FocusScope } from "../../utils/focusSubgraph";
 import styles from "./FocusModeHud.module.css";
 
 interface FocusModeHudProps {
@@ -6,7 +7,10 @@ interface FocusModeHudProps {
   focusLabel: string;
   /** Метки пути навигации (от старых к новым), БЕЗ текущего фокуса. */
   historyLabels: string[];
-  /** Глубина видимой окрестности (в шагах-продуктах). */
+  /** Охват окрестности: шаги / соседи / вся цепочка узла. */
+  scope: FocusScope;
+  onScopeChange: (scope: FocusScope) => void;
+  /** Глубина окрестности в шагах-продуктах (для охвата «Шаги»). */
   depth: number;
   onDepthChange: (depth: number) => void;
   /** Шаг назад по истории. Недоступен при пустой истории. */
@@ -20,13 +24,39 @@ const DEPTH_OPTIONS = [1, 2, 3];
 /** Сколько последних посещённых узлов показывать в крошках. */
 const VISIBLE_CRUMBS = 3;
 
+const SCOPE_OPTIONS: Array<{
+  value: FocusScope;
+  label: string;
+  title: string;
+}> = [
+  {
+    value: "steps",
+    label: "Шаги",
+    title: "Окрестность узла на 1–3 шага в обе стороны",
+  },
+  {
+    value: "neighbors",
+    label: "Соседи",
+    title:
+      "Только родители и дети узла: входящие и исходящие продукты",
+  },
+  {
+    value: "chain",
+    label: "Цепочка",
+    title:
+      "Вся цепочка узла: все его предки и потомки целиком, без остального графа",
+  },
+];
+
 /**
  * Плашка фокус-режима: путь навигации (хлебные крошки), кнопка «назад»,
- * выбор глубины окрестности и выход из режима. Рисуется поверх полотна.
+ * выбор охвата и глубины окрестности, выход из режима. Поверх полотна.
  */
 export const FocusModeHud: React.FC<FocusModeHudProps> = ({
   focusLabel,
   historyLabels,
+  scope,
+  onScopeChange,
   depth,
   onDepthChange,
   onBack,
@@ -89,20 +119,38 @@ export const FocusModeHud: React.FC<FocusModeHudProps> = ({
         </span>
       </div>
 
-      <div className={styles.depth} title="Сколько шагов видно вокруг фокуса">
-        <span className={styles.depthLabel}>Шаги:</span>
-        {DEPTH_OPTIONS.map((d) => (
-          <button
-            key={d}
-            type="button"
-            className={`${styles.depthButton} ${
-              d === depth ? styles.depthButtonActive : ""
-            }`}
-            onClick={() => onDepthChange(d)}
-            aria-pressed={d === depth}
-          >
-            {d}
-          </button>
+      <div className={styles.scope}>
+        {SCOPE_OPTIONS.map((opt) => (
+          <React.Fragment key={opt.value}>
+            <button
+              type="button"
+              className={`${styles.scopeButton} ${
+                scope === opt.value ? styles.scopeButtonActive : ""
+              }`}
+              onClick={() => onScopeChange(opt.value)}
+              title={opt.title}
+              aria-pressed={scope === opt.value}
+            >
+              {opt.label}
+            </button>
+            {/* Глубина — только для охвата «Шаги», сразу за его кнопкой. */}
+            {opt.value === "steps" &&
+              scope === "steps" &&
+              DEPTH_OPTIONS.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={`${styles.depthButton} ${
+                    d === depth ? styles.depthButtonActive : ""
+                  }`}
+                  onClick={() => onDepthChange(d)}
+                  title={`Видно ${d} шаг(а) вокруг фокуса`}
+                  aria-pressed={d === depth}
+                >
+                  {d}
+                </button>
+              ))}
+          </React.Fragment>
         ))}
       </div>
 

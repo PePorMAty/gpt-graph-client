@@ -7,8 +7,10 @@
 
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
-  max-width: min(92%, 760px);
+  max-width: min(92%, 860px);
 
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.96);
@@ -97,7 +99,7 @@
   max-width: 220px;
 }
 
-.depth {
+.scope {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -106,10 +108,32 @@
   border-left: 1px solid #e2e9f3;
 }
 
-.depthLabel {
-  color: #6b7f99;
+.scopeButton {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid #c9d6e8;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f4e96;
   font-size: 12px;
-  margin-right: 2px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.scopeButton:hover {
+  background: #eaf2ff;
+}
+
+.scopeButtonActive {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.scopeButtonActive:hover {
+  background: #2563eb;
 }
 
 .depthButton {
