@@ -87,7 +87,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
   onForceStepPreview,
   onAcceptStep,
   onRejectStep,
-  onRetryStep,
 
   isAlternativeNode,
   altDescription,
@@ -258,7 +257,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onForceStepPreview={onForceStepPreview}
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
-          onRetryStep={onRetryStep}
           onChangeStepAggregatedText={onChangeStepAggregatedText}
           isAlternativeNode={isAlternativeNode}
           altDescription={altDescription}
@@ -807,6 +805,8 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   hasOutgoingProductNeighbors = false,
   onFetchTransformations,
+  linkedProducts = [],
+  onFocusLinkedProduct,
   readOnly = false,
   nodeId,
   sourceGroups = [],
@@ -1137,6 +1137,52 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     </div>
                   )}
               </div>
+
+              {/* ── Связанные продукты: ссылки-соседи (напрямую или через
+                  преобразование). Клик закрывает карточку и фокусирует полотно
+                  на выбранной ноде. ── */}
+              {effectiveNodeType === "product" &&
+                linkedProducts.length > 0 && (
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>
+                      Связанные продукты:
+                    </label>
+                    <div className={styles.linkedProducts}>
+                      {linkedProducts.map((p) => (
+                        <button
+                          key={`${p.role}-${p.nodeId}`}
+                          type="button"
+                          className={styles.linkedProductBtn}
+                          onClick={() => onFocusLinkedProduct?.(p.nodeId)}
+                          title={
+                            (p.role === "incoming"
+                              ? "Входящая связь"
+                              : "Исходящая связь") +
+                            (p.viaTransformation
+                              ? ` через «${p.viaTransformation}»`
+                              : "") +
+                            " — показать на графе"
+                          }
+                        >
+                          <span
+                            className={styles.linkedProductArrow}
+                            aria-hidden
+                          >
+                            {p.role === "incoming" ? "←" : "→"}
+                          </span>
+                          <span className={styles.linkedProductLabel}>
+                            {p.label || p.nodeId}
+                          </span>
+                          {p.viaTransformation && (
+                            <span className={styles.linkedProductVia}>
+                              {p.viaTransformation}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
               {/* ── PRODUCT CARD (скрыто в режиме просмотра) ── */}
               {!readOnly && (
