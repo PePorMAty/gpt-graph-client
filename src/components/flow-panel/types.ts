@@ -9,6 +9,7 @@ import type {
 import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
 import type { SourceGroup } from "../../utils/sourceRows";
+import type { LinkedProduct } from "../../utils/getLinkedProducts";
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
@@ -87,7 +88,6 @@ export interface DirectionTabProps {
     filteredStep?: StepChainApiStep,
   ) => void;
   onRejectStep?: () => void;
-  onRetryStep?: () => void;
   onUndoStep?: () => void;
 
   pendingStep?: StepChainApiStep | null;
@@ -195,6 +195,12 @@ export interface FlowPanelProps {
   hasOutgoingProductNeighbors?: boolean;
   /** Открыть поток «Получить преобразования к соседним продуктам» (SelectNeighborModal). */
   onFetchTransformations?: () => void;
+
+  /** Продукты, связанные с выбранным (напрямую или через преобразование) —
+   *  ссылки в карточке продукта. */
+  linkedProducts?: LinkedProduct[];
+  /** Клик по ссылке-соседу: закрыть карточку и сфокусировать полотно на ноде. */
+  onFocusLinkedProduct?: (nodeId: string) => void;
 
   /** Группы источников по всем продуктам (реальные из пула) — для таблицы. */
   sourceGroups?: SourceGroup[];

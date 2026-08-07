@@ -43,7 +43,10 @@ import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
 import { parseAlternatives, alternativeKey } from "../../utils/parseAlternatives";
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
-import { reconstructPresentationColors } from "../../utils/presentationColors";
+import {
+  colorForPresentations,
+  reconstructPresentationColors,
+} from "../../utils/presentationColors";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { sourcesKey } from "./sourcesSlice";
 
@@ -494,6 +497,73 @@ const gptSlice = createSlice({
       const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
       state.data.edges.push(...edges.filter((e) => !existingEdgeIds.has(e.id)));
 
+      // Наследование легенды: новые продукты шага получают презентации
+      // родителя-якоря и красятся в цвет его дерева (у общего родителя набор
+      // презентаций > 1 → потомки тоже общие/серые). Существующий узел, в
+      // который сошёлся шаг из другого дерева, получает объединение
+      // презентаций — и тем самым общий цвет. Якорь без презентаций (обычный
+      // step-граф без легенды) ничего не меняет.
+      const anchorPresentations = Array.isArray(anchor.data?.presentations)
+        ? (anchor.data.presentations as string[]).filter(
+            (p) => typeof p === "string" && p.trim(),
+          )
+        : [];
+      if (anchorPresentations.length > 0) {
+        for (const nid of stepRecord.newProductNodeIds) {
+          const node = state.data.nodes.find((n) => n.id === nid);
+          if (!node) continue;
+          const label =
+            typeof node.data?.label === "string" ? node.data.label : "";
+          node.data = {
+            ...node.data,
+            presentations: [...anchorPresentations],
+            presentationColor: colorForPresentations(
+              anchorPresentations,
+              state.presentationColors,
+            ),
+            ...(label
+              ? {
+                  labelsByPresentation: Object.fromEntries(
+                    anchorPresentations.map((p) => [p, label]),
+                  ),
+                }
+              : {}),
+          };
+        }
+
+        const recolored: NonNullable<
+          typeof stepRecord.recoloredMergedNodes
+        > = [];
+        for (const nid of stepRecord.mergedProductNodeIds) {
+          const node = state.data.nodes.find((n) => n.id === nid);
+          if (!node || node.type !== "product") continue;
+          const prev = Array.isArray(node.data?.presentations)
+            ? (node.data.presentations as string[])
+            : [];
+          const union = Array.from(
+            new Set([...prev, ...anchorPresentations]),
+          );
+          if (union.length === prev.length) continue;
+          recolored.push({
+            nodeId: nid,
+            presentations: prev,
+            presentationColor:
+              typeof node.data?.presentationColor === "string"
+                ? node.data.presentationColor
+                : undefined,
+          });
+          node.data = {
+            ...node.data,
+            presentations: union,
+            presentationColor: colorForPresentations(
+              union,
+              state.presentationColors,
+            ),
+          };
+        }
+        if (recolored.length) stepRecord.recoloredMergedNodes = recolored;
+      }
+
       // Альтернатива материализовалась в реальный шаг — только теперь помечаем
       // её «принятой» (по содержимому) и снимаем alt-ноду с полотна. При
       // dead-end выше сюда не доходим — alt-нода остаётся.
@@ -645,7 +715,11 @@ const gptSlice = createSlice({
 
       // Remove nodes created by this step
       const removeNodeIds = new Set(lastStep.newProductNodeIds);
-      removeNodeIds.add(lastStep.transformationNodeId);
+      // Реюзнутое преобразование существовало до шага — его не трогаем,
+      // удалятся только добавленные шагом рёбра.
+      if (!lastStep.transformationReused) {
+        removeNodeIds.add(lastStep.transformationNodeId);
+      }
       state.data.nodes = state.data.nodes.filter(
         (n) => !removeNodeIds.has(n.id),
       );
@@ -655,6 +729,17 @@ const gptSlice = createSlice({
       state.data.edges = state.data.edges.filter(
         (e) => !removeEdgeIds.has(e.id),
       );
+
+      // Вернуть презентации/цвет узлам, перекрашенным этим шагом в общий цвет.
+      for (const rec of lastStep.recoloredMergedNodes ?? []) {
+        const node = state.data.nodes.find((n) => n.id === rec.nodeId);
+        if (!node) continue;
+        node.data = {
+          ...node.data,
+          presentations: rec.presentations,
+          presentationColor: rec.presentationColor,
+        };
+      }
 
       // Откат первого шага альтернативы → снимаем пометку «принята», чтобы
       // useEffect пересоздал alt-ноду и её можно было построить снова.

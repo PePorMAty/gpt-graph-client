@@ -920,3 +920,55 @@
   line-height: 1.35;
   color: #777;
 }
+
+/* ── Связанные продукты: ссылки-соседи в карточке продукта ── */
+.linkedProducts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linkedProductBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.3;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.linkedProductBtn:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.linkedProductArrow {
+  flex-shrink: 0;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.linkedProductLabel {
+  color: #1565c0;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.linkedProductVia {
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}

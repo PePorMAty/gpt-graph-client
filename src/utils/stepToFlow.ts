@@ -150,46 +150,78 @@ export function stepToFlow(
   const addedEdgeIds: string[] = [];
 
   // --- 4) узел-трансформация ---
+  // Преобразование с тем же именем, уже построенное от этого же якоря (и
+  // только от него), переиспользуем вместо создания дубля: «Нефть → Пиролиз →
+  // Этилен» и следующий шаг «Пиролиз → Пропилен» дают ОДИН узел «Пиролиз» с
+  // двумя выходами (правило «имя + входные продукты»).
+  const trNorm = normalizeProductName(step.transformation.name);
+  let reusedTrNode: CustomNode | null = null;
+  if (trNorm) {
+    for (const n of existingNodes) {
+      if (n.type !== "transformation") continue;
+      if (n.data?.chainVariant === "alt") continue;
+      const label = typeof n.data?.label === "string" ? n.data.label : "";
+      if (normalizeProductName(label) !== trNorm) continue;
+      // Направление должно совпадать: одноимённые up/down-процессы от одного
+      // якоря — разные шаги (вверх — к прекурсорам, вниз — к продуктам).
+      const dir = n.data?.chainDirection;
+      if (dir && dir !== direction) continue;
+      // Единственный «вход» существующего преобразования — тот же якорь.
+      const inputs = new Set(
+        existingEdges.filter((e) => e.target === n.id).map((e) => e.source),
+      );
+      if (inputs.size === 1 && inputs.has(anchorNodeId)) {
+        reusedTrNode = n;
+        break;
+      }
+    }
+  }
+
   const trId = step.transformation.id || String(stepNumber);
-  const trFlowId = `step::${sessionKey}::tr::${stepNumber}::${trId}`;
-  const trY = anchorY + sign * stepY1;
+  const trFlowId = reusedTrNode
+    ? reusedTrNode.id
+    : `step::${sessionKey}::tr::${stepNumber}::${trId}`;
+  const trX = reusedTrNode ? reusedTrNode.position.x : anchorX;
+  const trY = reusedTrNode ? reusedTrNode.position.y : anchorY + sign * stepY1;
 
-  nodes.push({
-    id: trFlowId,
-    type: "transformation",
-    position: { x: anchorX, y: trY },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    data: {
-      label: step.transformation.name,
-      description: step.transformation.description || "",
-      ...(anchorAggregatedText
-        ? { aggregatedDescription: anchorAggregatedText }
-        : {}),
-      chainRootNodeId: rootNodeId,
-      chainDirection: direction,
-      stepChainSessionKey: sessionKey,
-      stepChainStepNumber: stepNumber,
-    },
-  });
+  if (!reusedTrNode) {
+    nodes.push({
+      id: trFlowId,
+      type: "transformation",
+      position: { x: trX, y: trY },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      data: {
+        label: step.transformation.name,
+        description: step.transformation.description || "",
+        ...(anchorAggregatedText
+          ? { aggregatedDescription: anchorAggregatedText }
+          : {}),
+        chainRootNodeId: rootNodeId,
+        chainDirection: direction,
+        stepChainSessionKey: sessionKey,
+        stepChainStepNumber: stepNumber,
+      },
+    });
 
-  // --- 5) ребро: anchor → transformation ---
-  const anchorToTrEdgeId = `step::${sessionKey}::e::${anchorNodeId}::${trFlowId}`;
-  edges.push({
-    id: anchorToTrEdgeId,
-    source: anchorNodeId,
-    target: trFlowId,
-    sourceHandle: isDown ? "bottom" : "top-source",
-    targetHandle: isDown ? "top" : "bottom-target",
-    type: "straight",
-  });
-  addedEdgeIds.push(anchorToTrEdgeId);
+    // --- 5) ребро: anchor → transformation (у реюза оно уже есть) ---
+    const anchorToTrEdgeId = `step::${sessionKey}::e::${anchorNodeId}::${trFlowId}`;
+    edges.push({
+      id: anchorToTrEdgeId,
+      source: anchorNodeId,
+      target: trFlowId,
+      sourceHandle: isDown ? "bottom" : "top-source",
+      targetHandle: isDown ? "top" : "bottom-target",
+      type: "straight",
+    });
+    addedEdgeIds.push(anchorToTrEdgeId);
+  }
 
   // --- 6) узлы-продукты ---
   const productCount = renderProducts.length;
   const productsY = trY + sign * stepY2;
   const rowWidth = productCount > 1 ? (productCount - 1) * spacingX : 0;
-  const startX = anchorX - rowWidth / 2;
+  const startX = trX - rowWidth / 2;
 
   renderProducts.forEach(({ product, existingNodeId }, idx) => {
     const x = startX + idx * spacingX;
@@ -276,6 +308,7 @@ export function stepToFlow(
     addedEdgeIds,
     cycleProductNames,
     isDeadEnd: false,
+    ...(reusedTrNode ? { transformationReused: true } : {}),
   };
 
   return { nodes, edges, stepRecord };

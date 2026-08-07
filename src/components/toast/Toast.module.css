@@ -45,6 +45,20 @@
   word-break: break-word;
 }
 
+/* Ползунок громкости звука уведомлений. */
+.volume {
+  flex-shrink: 0;
+  width: 60px;
+  margin-top: 3px;
+  accent-color: #64748b;
+  cursor: pointer;
+}
+
+.volume:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .iconBtn {
   flex-shrink: 0;
   border: none;
