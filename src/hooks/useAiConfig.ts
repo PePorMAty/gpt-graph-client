@@ -1,6 +1,13 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export type AiModelOption = { value: string; label: string; hint?: string };
+export type AiModelOption = {
+  value: string;
+  label: string;
+  hint?: string;
+  /** Модель непригодна для поиска источников (не ищет в вебе или не доходит
+   *  до ответа). На стадии поиска её не предлагаем и не отправляем. */
+  noSearch?: boolean;
+};
 export type AiConfig = { provider: string; model: string };
 
 export const AI_PROVIDERS: AiModelOption[] = [
@@ -33,7 +40,10 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
     {
       value: "qwen3.6-flash",
       label: "Qwen3.6 Flash",
-      hint: "Быстрая и дешёвая, соблюдает JSON-схему",
+      hint: "Быстрая и дешёвая; для поиска источников не годится",
+      // На поиске источников весь бюджет уходит в размышления: ответ приходит
+      // пустым. Для обобщения и построения шага модель рабочая.
+      noSearch: true,
     },
     {
       value: "deepseek-v4-pro",
@@ -134,6 +144,40 @@ export function setAiConfig(next: AiConfig) {
     // приватный режим / переполненное хранилище — выбор просто не переживёт релоад
   }
   listeners.forEach((l) => l());
+}
+
+/**
+ * Текущий выбор без хука — для thunk-ов: они шлют запросы к LLM и должны
+ * уважать выбранную модель, не протаскивая её пропсами через все панели.
+ */
+export function getAiConfig(): AiConfig {
+  return current;
+}
+
+/**
+ * provider/model для тела запроса. Для стадии поиска источников подменяет
+ * модели с noSearch на пригодную: иначе запрос уйдёт и вернётся пустым.
+ */
+export function getAiRequestFields(opts?: { forSearch?: boolean }): {
+  provider?: string;
+  model?: string;
+} {
+  const { provider, model } = current;
+  if (!provider) return {};
+  if (!opts?.forSearch) return { provider, model: model || undefined };
+
+  const models = AI_MODELS[provider] ?? [];
+  const chosen = models.find((m) => m.value === model);
+  if (!chosen?.noSearch) return { provider, model: model || undefined };
+
+  const fallback = models.find((m) => !m.noSearch);
+  return { provider, model: fallback?.value || undefined };
+}
+
+/** Умеет ли выбранная модель искать источники. */
+export function isSearchCapable(cfg: AiConfig = current): boolean {
+  const models = AI_MODELS[cfg.provider] ?? [];
+  return !models.find((m) => m.value === cfg.model)?.noSearch;
 }
 
 export function useAiConfig() {

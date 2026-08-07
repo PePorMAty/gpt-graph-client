@@ -8,6 +8,7 @@ import type {
   SourcesSearchResponse,
   TechnologySource,
 } from "../types";
+import { getAiRequestFields } from "../../hooks/useAiConfig";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "",
@@ -28,6 +29,7 @@ export const fetchSources = createAsyncThunk<
 >("sources/fetchSources", async (payload, thunkApi) => {
   try {
     const res = await api.post<SourcesSearchResponse>(`/graphs/gpt/sources`, {
+      ...getAiRequestFields({ forSearch: true }),
       productName: payload.productName,
       maxItems: payload.maxItems ?? 5,
       direction: payload.direction,
@@ -107,6 +109,7 @@ export const aggregateSources = createAsyncThunk<
     const { data } = await api.post<AggregateSourcesResponse>(
       "/graphs/gpt/sources/aggregate",
       {
+        ...getAiRequestFields(),
         productName,
         sources,
         direction,

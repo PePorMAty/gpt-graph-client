@@ -9,6 +9,7 @@ import {
 import styles from "./RequsetPanel.module.css";
 import { SavedGraph } from "../saved-graph";
 import { UploadGraphTab } from "../upload-graph";
+import { AiModelSelect } from "../ai-model-select";
 
 export const RequestPanel = () => {
   const dispatch = useAppDispatch();
@@ -100,6 +101,8 @@ export const RequestPanel = () => {
       {/* CREATE TAB */}
       {activeTab === "create" && (
         <div className={styles.input_wrapper}>
+          {/* Выбор общий: действует на все запросы к LLM, не только на создание. */}
+          <AiModelSelect warnIfNoSearch />
           {/* Accordion header */}
           <div
             className={styles.accordionHeader}

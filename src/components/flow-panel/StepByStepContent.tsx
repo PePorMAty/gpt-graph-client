@@ -11,7 +11,13 @@ import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
-import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
+import {
+  AI_MODELS,
+  AI_PROVIDERS,
+  getAiRequestFields,
+  isSearchCapable,
+  useAiConfig,
+} from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -230,19 +236,30 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </select>
         </div>
         {hint && <div className={styles.aiConfigHint}>{hint}</div>}
+        {searchModelSubstituted && (
+          <div className={styles.aiConfigHint}>
+            Для поиска источников эта модель не годится — поиск пойдёт на{" "}
+            {searchFields.model || "модель по умолчанию"}. Обобщение и
+            построение шага останутся на выбранной.
+          </div>
+        )}
       </div>
     );
   };
 
   // ── Handlers with prompt support ──
+  // Поиск источников: модель с noSearch (qwen3.6-flash) сюда не отправляем —
+  // запрос уйдёт и вернётся пустым. Подменяем пригодной и говорим об этом.
+  const searchFields = getAiRequestFields({ forSearch: true });
+  const searchModelSubstituted = !isSearchCapable(aiConfig);
+
   const handleFetchSources = () => {
     const allowedDomains = parseDomainsInput(domainsText);
     onFetchStepSources?.({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
       ...(allowedDomains.length ? { allowedDomains } : {}),
-      ...(aiProvider ? { provider: aiProvider } : {}),
-      ...(aiModel ? { model: aiModel } : {}),
+      ...searchFields,
     });
   };
 

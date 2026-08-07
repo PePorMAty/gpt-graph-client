@@ -18,6 +18,7 @@ import { type TechChain } from "../../utils/chainToFlow";
 import type { Edge } from "@xyflow/react";
 import { popQueueHead } from "../slices/gptSlice";
 import { sourcesKey } from "../slices/sourcesSlice";
+import { getAiRequestFields } from "../../hooks/useAiConfig";
 
 export const getGraphData = createAsyncThunk<
   CreateGraphResult,
@@ -29,6 +30,7 @@ export const getGraphData = createAsyncThunk<
       const response = await axios.post<GraphApiResponse>(
         `${import.meta.env.VITE_API_URL}/graphs/gpt`,
         {
+          ...getAiRequestFields(),
           userPrompt: promptValue,
           promptLayout,
         },
@@ -68,6 +70,7 @@ export const continueGraph = createAsyncThunk<
       const response = await axios.post<GPTGraphResponse>(
         `${import.meta.env.VITE_API_URL}/graphs/gpt/continue`,
         {
+          ...getAiRequestFields(),
           originalPrompt: state.originalPrompt,
           existingGraph: state.data,
           leafNodes: selectedLeafNodes,
@@ -108,6 +111,7 @@ export const buildChainLevel1 = createAsyncThunk<
     const res = await axios.post<ChainApiResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/chain`,
       {
+        ...getAiRequestFields(),
         productName,
         techText,
         targetProductId: "Продукт1",
