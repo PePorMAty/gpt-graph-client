@@ -203,6 +203,11 @@ export const Flow = ({
   // Живой ref для обработчиков, подписанных один раз (highlight-node, клики).
   const focusStateRef = useRef(focusState);
   focusStateRef.current = focusState;
+  // Последний узел, с которым взаимодействовал пользователь (клик, контекстное
+  // меню, выбор в поиске, навигация в фокус-режиме). В отличие от
+  // selectedNodeId переживает закрытие карточки (closePanel его зануляет) —
+  // именно от этого узла отталкивается вход в фокус-режим.
+  const lastInteractedNodeIdRef = useRef<string | null>(null);
 
   // При входе/выходе из режима просмотра или «только продукты» размер/состав
   // холста меняется — переавтоцентрируем граф. Первый рендер пропускаем.
@@ -236,6 +241,9 @@ export const Flow = ({
       setFocusState(null);
       return;
     }
+    // Любая смена фокуса (клик, «назад», крошки, поиск) — это взаимодействие:
+    // повторный вход в режим продолжит с последнего центра.
+    lastInteractedNodeIdRef.current = focusState.focusId;
     let cancelled = false;
     (async () => {
       const sub = buildFocusSubgraph(
@@ -385,21 +393,49 @@ export const Flow = ({
 
   // ===== Фокус-режим: вход/выход/навигация =====
 
-  // Вход: центр — выбранный узел, иначе корень, иначе первый продукт графа.
+  // Вход. Центр подбираем от «на чём был фокус пользователя», по приоритету:
+  // открытая карточка → выделенный на полотне узел → последний узел, с
+  // которым взаимодействовали (переживает закрытие карточки) → корень →
+  // первый продукт графа.
   const enterFocusMode = useCallback(() => {
     const nodes = nodesRef.current;
     const isValid = (id: string | null | undefined): id is string =>
       !!id && nodes.some((n) => n.id === id);
-    const initial = isValid(selectedNodeId)
-      ? selectedNodeId
-      : isValid(rootId)
-        ? rootId
-        : (nodes.find((n) => n.type === "product") ?? nodes[0])?.id;
+
+    const rfSelected =
+      nodes.find((n) => n.selected && n.type === "product") ??
+      nodes.find((n) => n.selected);
+
+    let initial: string | undefined;
+    if (isValid(selectedNodeId)) initial = selectedNodeId;
+    else if (rfSelected) initial = rfSelected.id;
+    else if (isValid(lastInteractedNodeIdRef.current))
+      initial = lastInteractedNodeIdRef.current;
+    else if (isValid(rootId)) initial = rootId;
+    else initial = (nodes.find((n) => n.type === "product") ?? nodes[0])?.id;
+
     if (!initial) return;
+
+    // Снимаем выделение на полотне: в фокус-режиме select-изменения в store
+    // не проходят, и устаревший флаг иначе перебил бы последний центр при
+    // повторном входе.
+    const currentlySelected = nodes.filter((n) => n.selected);
+    if (currentlySelected.length) {
+      dispatch(
+        onNodesChange(
+          currentlySelected.map((n) => ({
+            id: n.id,
+            type: "select" as const,
+            selected: false,
+          })),
+        ),
+      );
+    }
+
     setIsPanelOpen(false);
     setContextMenu(null);
     setFocusState({ focusId: initial, history: [] });
-  }, [selectedNodeId, rootId]);
+  }, [selectedNodeId, rootId, dispatch]);
 
   const exitFocusMode = useCallback(() => setFocusState(null), []);
 
@@ -546,6 +582,7 @@ export const Flow = ({
       // делаем его новым центром, поиск работает как навигация. Если узел уже
       // в центре, просто возвращаем камеру к окрестности (панель поиска
       // успела улететь setCenter'ом к позиции узла в полном графе).
+      lastInteractedNodeIdRef.current = id;
       const fs = focusStateRef.current;
       if (fs) {
         if (fs.focusId !== id) {
@@ -619,6 +656,7 @@ export const Flow = ({
       // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+      lastInteractedNodeIdRef.current = node.id;
       // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
       // навигации, узел становится новым центром. Карточка узла — по клику
       // на сам центр или на преобразование.
@@ -653,6 +691,7 @@ export const Flow = ({
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      lastInteractedNodeIdRef.current = node.id;
       // Вариант 1: ПКМ по ноде вне текущего выделения сбрасывает выделение
       // до этой одной ноды, чтобы подсветка совпадала с целью меню.
       const currentlySelected = data.nodes.filter((n) => n.selected);

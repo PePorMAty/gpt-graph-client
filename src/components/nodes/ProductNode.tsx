@@ -196,7 +196,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
             zIndex: 11,
           }}
         >
-          +{focusMore}
+          ещё {focusMore}
         </div>
       )}
 
