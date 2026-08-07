@@ -4,7 +4,9 @@ export type AiModelOption = { value: string; label: string; hint?: string };
 export type AiConfig = { provider: string; model: string };
 
 export const AI_PROVIDERS: AiModelOption[] = [
-  { value: "qwen", label: "Qwen (DashScope)" },
+  // Значение "qwen" — ключ провайдера на сервере (DashScope-совместимый шлюз),
+  // менять его нельзя; через него же идут DeepSeek-модели тарифного плана.
+  { value: "qwen", label: "DashScope (Qwen / DeepSeek)" },
   { value: "openai", label: "OpenAI" },
 ];
 
@@ -12,32 +14,37 @@ export const AI_PROVIDERS: AiModelOption[] = [
 // лишние варианты в выпадашке дают 403 AccessDenied уже после отправки запроса.
 // Первая модель в списке — дефолт провайдера (см. defaultModelFor).
 export const AI_MODELS: Record<string, AiModelOption[]> = {
+  // Состав списка — под тарифный план подписки (Token Plan). qwen-plus и
+  // qwen-flash убраны: по подписке они не обслуживаются.
+  // qwen3.8-max-preview и kimi-k2.7-code не добавлены: обе отдают
+  // access_denied. glm-5.2 не добавлена: не поддерживает enable_search, то
+  // есть непригодна для поиска источников.
   qwen: [
     {
-      value: "qwen-plus",
-      label: "Qwen Plus",
-      hint: "По умолчанию: проверена на схеме, баланс качества, скорости и цены",
+      value: "qwen3.7-plus",
+      label: "Qwen3.7 Plus",
+      hint: "По умолчанию: баланс качества, скорости и цены",
     },
-    {
-      value: "qwen-flash",
-      label: "Qwen Flash",
-      hint: "Быстрая и дешёвая, для простых задач",
-    },
-    // qwen3.8-max-preview убрана намеренно: ключу отдаётся access_denied на
-    // любой запрос к ней. Вернуть, когда на аккаунте появится доступ.
     {
       value: "qwen3.7-max",
       label: "Qwen3.7 Max",
       hint: "Флагман: лучшее качество и глубокие рассуждения, дороже",
     },
     {
-      value: "qwen3.7-plus",
-      label: "Qwen3.7 Plus",
-      hint: "Баланс качества, скорости и цены — универсальный выбор",
+      value: "qwen3.6-flash",
+      label: "Qwen3.6 Flash",
+      hint: "Быстрая и дешёвая, соблюдает JSON-схему",
     },
-    // qwen3.6-flash убрана намеренно: не соблюдает json_schema даже со
-    // strict: true (на тестовой схеме возвращала [1] и свободный текст),
-    // а поиск источников и построение шага разбирают ответ по схеме.
+    {
+      value: "deepseek-v4-pro",
+      label: "DeepSeek V4 Pro",
+      hint: "Сильные рассуждения; ответ может целиком уходить в размышления",
+    },
+    {
+      value: "deepseek-v4-flash-0731",
+      label: "DeepSeek V4 Flash",
+      hint: "Быстрая версия DeepSeek",
+    },
   ],
   openai: [
     {
@@ -58,7 +65,7 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
 // (AI_PROVIDER / gpt-5-mini) на стадии шага не применяется.
 export const DEFAULT_AI_CONFIG: AiConfig = {
   provider: "qwen",
-  model: "qwen-plus",
+  model: "qwen3.7-plus",
 };
 
 function defaultModelFor(provider: string): string {
