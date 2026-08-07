@@ -51,6 +51,12 @@ import {
   buildFocusSubgraph,
   type FocusSubgraphResult,
 } from "./utils/focusSubgraph";
+import {
+  animateFocusTransition,
+  nodesBounds,
+  FOCUS_TRANSITION_MS,
+  type FocusTransitionHandle,
+} from "./utils/focusTransition";
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
 import { FocusModeHud } from "./components/focus-mode-hud";
 import styles from "./styles/Flow.module.css";
@@ -123,7 +129,7 @@ export const Flow = ({
   );
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const { fitView, fitBounds, screenToFlowPosition } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
 
@@ -200,6 +206,12 @@ export const Flow = ({
   // Разложенная окрестность фокуса (готовые позиции + рёбра с хэндлами).
   const [focusView, setFocusView] = useState<FocusSubgraphResult | null>(null);
   const focusOn = focusState !== null;
+  // Живой ref текущей (в т.ч. промежуточной, во время анимации) проекции —
+  // новый переход стартует ровно с того кадра, на котором прервали старый.
+  const focusViewRef = useRef(focusView);
+  focusViewRef.current = focusView;
+  // Идущая анимация перехода между окрестностями.
+  const focusAnimRef = useRef<FocusTransitionHandle | null>(null);
   // Живой ref для обработчиков, подписанных один раз (highlight-node, клики).
   const focusStateRef = useRef(focusState);
   focusStateRef.current = focusState;
@@ -232,6 +244,8 @@ export const Flow = ({
   const focusFitKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!focusState) {
+      focusAnimRef.current?.cancel();
+      focusAnimRef.current = null;
       setFocusView(null);
       focusFitKeyRef.current = null;
       return;
@@ -260,33 +274,69 @@ export const Flow = ({
       );
       if (cancelled) return;
       const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
-      setFocusView({
+      const next: FocusSubgraphResult = {
         nodes: centered,
         // Хэндлы из store соответствуют геометрии полного графа —
         // переназначаем по позициям фокус-раскладки.
         edges: applyHandlesByGeometry(centered, sub.edges),
         moreCountByNodeId: sub.moreCountByNodeId,
+      };
+
+      focusAnimRef.current?.cancel();
+      focusAnimRef.current = null;
+
+      const prev = focusViewRef.current;
+      const reduceMotion =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // Камера: границы целевой окрестности считаем сами (nodesBounds), не
+      // полагаясь на внутренний стор React Flow — иначе fitView до коммита
+      // новых нод подгонял бы камеру под старую раскладку. Двигаем только при
+      // смене фокуса/глубины, а не на каждое фоновое обновление данных.
+      const fitKey = `${focusState.focusId}::${focusDepth}`;
+      const cameraMoves = focusFitKeyRef.current !== fitKey;
+      focusFitKeyRef.current = fitKey;
+
+      // Первый показ окрестности (вход в режим) или запрет анимаций в системе —
+      // мгновенный показ без анимации узлов.
+      if (!prev || reduceMotion) {
+        setFocusView(next);
+        if (cameraMoves) {
+          fitBounds(nodesBounds(next.nodes), {
+            padding: 0.25,
+            duration: reduceMotion ? 0 : 400,
+          });
+        }
+        return;
+      }
+
+      // Переход между окрестностями: остающиеся узлы переезжают, уходящие
+      // гаснут, новые расцветают из точки клика. Камера едет к новой
+      // окрестности одновременно с узлами.
+      if (cameraMoves) {
+        fitBounds(nodesBounds(next.nodes), {
+          padding: 0.25,
+          duration: FOCUS_TRANSITION_MS,
+        });
+      }
+      focusAnimRef.current = animateFocusTransition(prev, next, {
+        focusId: focusState.focusId,
+        onFrame: (view) => setFocusView(view),
+        onDone: () => {
+          focusAnimRef.current = null;
+          setFocusView(next);
+        },
       });
     })();
     return () => {
       cancelled = true;
+      // Смена цели во время полёта: текущий кадр остаётся на экране, новый
+      // переход подхватит его из focusViewRef как стартовый.
+      focusAnimRef.current?.cancel();
+      focusAnimRef.current = null;
     };
-  }, [focusState, focusDepth, data.nodes, data.edges]);
-
-  // Подгонка камеры под окрестность — отдельным эффектом ПОСЛЕ коммита новых
-  // нод в React Flow (rAF из async-колбэка выше стрелял до re-render и
-  // подгонял камеру под старый граф). Двигаем камеру только при смене
-  // фокуса/глубины, а не на каждое фоновое обновление данных.
-  useEffect(() => {
-    if (!focusView || !focusState) return;
-    const fitKey = `${focusState.focusId}::${focusDepth}`;
-    if (focusFitKeyRef.current === fitKey) return;
-    focusFitKeyRef.current = fitKey;
-    const id = requestAnimationFrame(() =>
-      fitView({ padding: 0.25, duration: 400 }),
-    );
-    return () => cancelAnimationFrame(id);
-  }, [focusView, focusState, focusDepth, fitView]);
+  }, [focusState, focusDepth, data.nodes, data.edges, fitBounds]);
 
   // После смены состава фокус-окрестности даём React Flow измерить ноды в DOM
   // и переставляем хэндлы (тот же приём, что для полного графа выше).
@@ -1060,14 +1110,11 @@ export const Flow = ({
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       // В фокус-режиме на полотне проекция со своей раскладкой, а id узлов
-      // совпадают со store — позиции/выделение не применяем, иначе затёрли бы
-      // сохранённые позиции полного графа. Замеры размеров (dimensions)
-      // пропускаем: они не зависят от раскладки.
-      if (focusOn) {
-        const safe = changes.filter((c) => c.type === "dimensions");
-        if (safe.length) dispatch(onNodesChange(safe));
-        return;
-      }
+      // совпадают со store — изменения не применяем вовсе: позиции/выделение
+      // затёрли бы полный граф, а замеры размеров (dimensions) меняли бы
+      // data.nodes посреди анимации перехода и перезапускали её. React Flow
+      // держит замеры во внутреннем сторе, для рендера их достаточно.
+      if (focusOn) return;
       dispatch(onNodesChange(changes));
     },
     [dispatch, focusOn],
