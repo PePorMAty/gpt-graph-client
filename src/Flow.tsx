@@ -440,9 +440,18 @@ export const Flow = ({
   const exitFocusMode = useCallback(() => setFocusState(null), []);
 
   // Сделать узел новым центром (клик по продукту / выбор в поиске).
+  // Если узел уже есть в пути (хлебных крошках) — не наращиваем хвост дублями,
+  // а откатываем историю к нему, как при клике по крошке: П1→П2→П3, затем
+  // шаги по графу обратно в П2 и П1 схлопывают путь до одного «П1». То же
+  // при выходе на пройденный продукт другим маршрутом. Дублей в истории при
+  // таком инварианте не бывает, indexOf находит единственное вхождение.
   const focusOnNode = useCallback((nodeId: string) => {
     setFocusState((s) => {
       if (!s || s.focusId === nodeId) return s;
+      const idx = s.history.indexOf(nodeId);
+      if (idx !== -1) {
+        return { focusId: nodeId, history: s.history.slice(0, idx) };
+      }
       return { focusId: nodeId, history: [...s.history, s.focusId] };
     });
   }, []);
