@@ -20,17 +20,37 @@ import type { CustomNode } from "../types";
  *  • neighbors — только родители и дети узла (входящие/исходящие продукты,
  *    эквивалент одного шага);
  *  • chain — вся цепочка узла: все предки и потомки без ограничения глубины,
- *    но НЕ весь граф (несвязанные с узлом ветки не показываются).
+ *    но НЕ весь граф (несвязанные с узлом ветки не показываются);
+ *  • chain-up — только вверх: все входящие связи (предки) до конца;
+ *  • chain-down — только вниз: все исходящие связи (потомки) до конца.
  */
-export type FocusScope = "steps" | "neighbors" | "chain";
+export type FocusScope =
+  | "steps"
+  | "neighbors"
+  | "chain"
+  | "chain-up"
+  | "chain-down";
 
-/** Глубина обхода для заданного охвата. Бесконечность безопасна:
+/** Глубины обхода по направлениям для заданного охвата: up — по входящим
+ *  рёбрам (предки), down — по исходящим (потомки). Бесконечность безопасна:
  *  buildFocusSubgraph дедуплицирует посещения и завершится, обойдя всё
- *  достижимое от фокуса. */
-export function focusScopeDepth(scope: FocusScope, stepsDepth: number): number {
-  if (scope === "neighbors") return 1;
-  if (scope === "chain") return Number.POSITIVE_INFINITY;
-  return stepsDepth;
+ *  достижимое от фокуса; 0 полностью отключает направление. */
+export function focusScopeDepths(
+  scope: FocusScope,
+  stepsDepth: number,
+): { up: number; down: number } {
+  switch (scope) {
+    case "neighbors":
+      return { up: 1, down: 1 };
+    case "chain":
+      return { up: Number.POSITIVE_INFINITY, down: Number.POSITIVE_INFINITY };
+    case "chain-up":
+      return { up: Number.POSITIVE_INFINITY, down: 0 };
+    case "chain-down":
+      return { up: 0, down: Number.POSITIVE_INFINITY };
+    default:
+      return { up: stepsDepth, down: stepsDepth };
+  }
 }
 
 export type FocusSubgraphResult = {
@@ -48,7 +68,7 @@ export function buildFocusSubgraph(
   nodes: CustomNode[],
   edges: Edge[],
   focusId: string,
-  depth: number,
+  depths: { up: number; down: number },
 ): FocusSubgraphResult {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
@@ -66,11 +86,12 @@ export function buildFocusSubgraph(
 
   const allowed = new Set<string>([focusId]);
 
-  // BFS по одному направлению. level — сколько продуктовых шагов уже сделано
-  // до текущего узла. Из продукта уровня level >= depth дальше не идём;
-  // transformation не тратит шаг и включается только вместе со своим
-  // продолжением (та же семантика границы, что у extractSubgraph).
-  const walk = (adj: Map<string, string[]>) => {
+  // BFS по одному направлению с собственной глубиной. level — сколько
+  // продуктовых шагов уже сделано до текущего узла. Из продукта уровня
+  // level >= depth дальше не идём; transformation не тратит шаг и включается
+  // только вместе со своим продолжением (та же семантика границы, что у
+  // extractSubgraph). depth 0 отключает направление целиком.
+  const walk = (adj: Map<string, string[]>, depth: number) => {
     // Лучший (минимальный) достигнутый уровень узла — BFS обходит по слоям,
     // так что первый визит и есть минимум; повторные визиты отсекаем.
     const bestLevel = new Map<string, number>([[focusId, 0]]);
@@ -98,8 +119,9 @@ export function buildFocusSubgraph(
     }
   };
 
-  walk(outAdj);
-  walk(inAdj);
+  // Вниз — по исходящим рёбрам (потомки), вверх — по входящим (предки).
+  walk(outAdj, depths.down);
+  walk(inAdj, depths.up);
 
   const subEdges = edges.filter(
     (e) => allowed.has(e.source) && allowed.has(e.target),

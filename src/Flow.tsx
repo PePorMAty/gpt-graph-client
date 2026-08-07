@@ -14,6 +14,7 @@ import {
   type EdgeChange,
   type NodeTypes,
   useReactFlow,
+  useStoreApi,
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -49,7 +50,7 @@ import { collectSourceGroups } from "./utils/sourceRows";
 import { collapseToProductsView } from "./utils/productsOnlyView";
 import {
   buildFocusSubgraph,
-  focusScopeDepth,
+  focusScopeDepths,
   type FocusScope,
   type FocusSubgraphResult,
 } from "./utils/focusSubgraph";
@@ -62,6 +63,7 @@ import {
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
 import { FocusModeHud } from "./components/focus-mode-hud";
 import styles from "./styles/Flow.module.css";
+import type { CustomNode } from "./types";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
@@ -131,7 +133,9 @@ export const Flow = ({
   );
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
-  const { fitView, fitBounds, screenToFlowPosition } = useReactFlow();
+  const { fitView, fitBounds, setViewport, screenToFlowPosition } =
+    useReactFlow();
+  const rfStore = useStoreApi();
   const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
 
@@ -217,6 +221,46 @@ export const Flow = ({
   focusViewRef.current = focusView;
   // Идущая анимация перехода между окрестностями.
   const focusAnimRef = useRef<FocusTransitionHandle | null>(null);
+  // Обёртка HUD — для замера его высоты при подгонке камеры.
+  const hudWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Подгонка камеры под окрестность с учётом плашки HUD: fitBounds умеет
+  // только равномерный отступ, из-за чего верхний узел раскладки (предок,
+  // к которому чаще всего и шагают) оказывался ровно под центрированной
+  // плашкой, и она перехватывала клики. Считаем вьюпорт сами: равные отступы
+  // по краям + высота HUD дополнительно сверху.
+  const fitFocusCamera = useCallback(
+    (nodes: CustomNode[], duration: number) => {
+      const b = nodesBounds(nodes);
+      const { width, height } = rfStore.getState();
+      if (!width || !height || b.width <= 0 || b.height <= 0) {
+        fitBounds(b, { padding: 0.25, duration });
+        return;
+      }
+      const hud = hudWrapRef.current?.firstElementChild as HTMLElement | null;
+      const pad = Math.max(32, Math.min(width, height) * 0.06);
+      const topPad = (hud ? hud.offsetHeight + 12 : 0) + pad;
+      const zoom = Math.min(
+        1.25,
+        Math.max(
+          0.1,
+          Math.min(
+            (width - pad * 2) / b.width,
+            (height - topPad - pad) / b.height,
+          ),
+        ),
+      );
+      setViewport(
+        {
+          x: pad + (width - pad * 2 - b.width * zoom) / 2 - b.x * zoom,
+          y: topPad + (height - topPad - pad - b.height * zoom) / 2 - b.y * zoom,
+          zoom,
+        },
+        { duration },
+      );
+    },
+    [rfStore, fitBounds, setViewport],
+  );
   // Живой ref для обработчиков, подписанных один раз (highlight-node, клики).
   const focusStateRef = useRef(focusState);
   focusStateRef.current = focusState;
@@ -269,7 +313,7 @@ export const Flow = ({
         data.nodes,
         data.edges,
         focusState.focusId,
-        focusScopeDepth(focusScope, focusDepth),
+        focusScopeDepths(focusScope, focusDepth),
       );
       const laid = await layoutTree(
         sub.nodes,
@@ -308,10 +352,7 @@ export const Flow = ({
       if (!prev || reduceMotion) {
         setFocusView(next);
         if (cameraMoves) {
-          fitBounds(nodesBounds(next.nodes), {
-            padding: 0.25,
-            duration: reduceMotion ? 0 : 400,
-          });
+          fitFocusCamera(next.nodes, reduceMotion ? 0 : 400);
         }
         return;
       }
@@ -320,10 +361,7 @@ export const Flow = ({
       // гаснут, новые расцветают из точки клика. Камера едет к новой
       // окрестности одновременно с узлами.
       if (cameraMoves) {
-        fitBounds(nodesBounds(next.nodes), {
-          padding: 0.25,
-          duration: FOCUS_TRANSITION_MS,
-        });
+        fitFocusCamera(next.nodes, FOCUS_TRANSITION_MS);
       }
       focusAnimRef.current = animateFocusTransition(prev, next, {
         focusId: focusState.focusId,
@@ -341,7 +379,14 @@ export const Flow = ({
       focusAnimRef.current?.cancel();
       focusAnimRef.current = null;
     };
-  }, [focusState, focusScope, focusDepth, data.nodes, data.edges, fitBounds]);
+  }, [
+    focusState,
+    focusScope,
+    focusDepth,
+    data.nodes,
+    data.edges,
+    fitFocusCamera,
+  ]);
 
   // После смены состава фокус-окрестности даём React Flow измерить ноды в DOM
   // и переставляем хэндлы (тот же приём, что для полного графа выше).
@@ -2294,18 +2339,22 @@ export const Flow = ({
         <Background />
       </ReactFlow>
       {readOnly && !isPanelOpen && <GraphLegend />}
+      {/* Обёртка вокруг плашки нужна только для замера её высоты при подгонке
+          камеры (см. fitFocusCamera) — своей геометрии не задаёт. */}
       {focusState && (
-        <FocusModeHud
-          focusLabel={focusLabelById(focusState.focusId)}
-          historyLabels={focusState.history.map(focusLabelById)}
-          scope={focusScope}
-          onScopeChange={setFocusScope}
-          depth={focusDepth}
-          onDepthChange={setFocusDepth}
-          onBack={handleFocusBack}
-          onJumpTo={handleFocusJumpTo}
-          onExit={exitFocusMode}
-        />
+        <div ref={hudWrapRef}>
+          <FocusModeHud
+            focusLabel={focusLabelById(focusState.focusId)}
+            historyLabels={focusState.history.map(focusLabelById)}
+            scope={focusScope}
+            onScopeChange={setFocusScope}
+            depth={focusDepth}
+            onDepthChange={setFocusDepth}
+            onBack={handleFocusBack}
+            onJumpTo={handleFocusJumpTo}
+            onExit={exitFocusMode}
+          />
+        </div>
       )}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
