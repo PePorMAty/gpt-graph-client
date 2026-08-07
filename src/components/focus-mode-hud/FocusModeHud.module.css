@@ -164,23 +164,3 @@
   background: #2563eb;
 }
 
-.exitButton {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid #c9d6e8;
-  border-radius: 7px;
-  background: #fff;
-  color: #6b7f99;
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.exitButton:hover {
-  background: #ffefef;
-  color: #c62828;
-  border-color: #e7b3b3;
-}

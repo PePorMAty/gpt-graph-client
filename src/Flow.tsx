@@ -2352,7 +2352,6 @@ export const Flow = ({
             onDepthChange={setFocusDepth}
             onBack={handleFocusBack}
             onJumpTo={handleFocusJumpTo}
-            onExit={exitFocusMode}
           />
         </div>
       )}

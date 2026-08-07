@@ -16,20 +16,14 @@ import type { CustomNode } from "../types";
 
 /**
  * Охват окрестности фокус-режима:
- *  • steps — N шагов в обе стороны (стандарт, N = 1..3);
- *  • neighbors — только родители и дети узла (входящие/исходящие продукты,
- *    эквивалент одного шага);
+ *  • steps — N шагов в обе стороны (стандарт, N = 1..3; глубина 1 и есть
+ *    «только родители и дети»);
  *  • chain — вся цепочка узла: все предки и потомки без ограничения глубины,
  *    но НЕ весь граф (несвязанные с узлом ветки не показываются);
  *  • chain-up — только вверх: все входящие связи (предки) до конца;
  *  • chain-down — только вниз: все исходящие связи (потомки) до конца.
  */
-export type FocusScope =
-  | "steps"
-  | "neighbors"
-  | "chain"
-  | "chain-up"
-  | "chain-down";
+export type FocusScope = "steps" | "chain" | "chain-up" | "chain-down";
 
 /** Глубины обхода по направлениям для заданного охвата: up — по входящим
  *  рёбрам (предки), down — по исходящим (потомки). Бесконечность безопасна:
@@ -40,8 +34,6 @@ export function focusScopeDepths(
   stepsDepth: number,
 ): { up: number; down: number } {
   switch (scope) {
-    case "neighbors":
-      return { up: 1, down: 1 };
     case "chain":
       return { up: Number.POSITIVE_INFINITY, down: Number.POSITIVE_INFINITY };
     case "chain-up":

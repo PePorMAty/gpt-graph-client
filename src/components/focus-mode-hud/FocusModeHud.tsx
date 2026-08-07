@@ -17,7 +17,6 @@ interface FocusModeHudProps {
   onBack: () => void;
   /** Переход к произвольному элементу истории (индекс в historyLabels). */
   onJumpTo: (index: number) => void;
-  onExit: () => void;
 }
 
 const DEPTH_OPTIONS = [1, 2, 3];
@@ -33,12 +32,6 @@ const SCOPE_OPTIONS: Array<{
     value: "steps",
     label: "Шаги",
     title: "Окрестность узла на 1–3 шага в обе стороны",
-  },
-  {
-    value: "neighbors",
-    label: "Соседи",
-    title:
-      "Только родители и дети узла: входящие и исходящие продукты",
   },
   {
     value: "chain",
@@ -62,7 +55,8 @@ const SCOPE_OPTIONS: Array<{
 
 /**
  * Плашка фокус-режима: путь навигации (хлебные крошки), кнопка «назад»,
- * выбор охвата и глубины окрестности, выход из режима. Поверх полотна.
+ * выбор охвата и глубины окрестности. Поверх полотна. Выход из режима —
+ * та же кнопка на боковой панели, которой в него вошли.
  */
 export const FocusModeHud: React.FC<FocusModeHudProps> = ({
   focusLabel,
@@ -73,7 +67,6 @@ export const FocusModeHud: React.FC<FocusModeHudProps> = ({
   onDepthChange,
   onBack,
   onJumpTo,
-  onExit,
 }) => {
   const hiddenCount = Math.max(0, historyLabels.length - VISIBLE_CRUMBS);
   const visibleCrumbs = historyLabels.slice(-VISIBLE_CRUMBS);
@@ -165,16 +158,6 @@ export const FocusModeHud: React.FC<FocusModeHudProps> = ({
           </React.Fragment>
         ))}
       </div>
-
-      <button
-        type="button"
-        className={styles.exitButton}
-        onClick={onExit}
-        title="Выйти из фокус-режима"
-        aria-label="Выйти из фокус-режима"
-      >
-        ✕
-      </button>
     </div>
   );
 };
