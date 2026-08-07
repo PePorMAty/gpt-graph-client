@@ -47,6 +47,12 @@ import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
 import { collectSourceGroups } from "./utils/sourceRows";
 import { collapseToProductsView } from "./utils/productsOnlyView";
+import {
+  buildFocusSubgraph,
+  type FocusSubgraphResult,
+} from "./utils/focusSubgraph";
+import { applyHandlesByGeometry } from "./utils/normalize-edges";
+import { FocusModeHud } from "./components/focus-mode-hud";
 import styles from "./styles/Flow.module.css";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -182,6 +188,22 @@ export const Flow = ({
   // структурные правки заблокированы (двигать ноды и открывать карточки можно).
   const [productsOnly, setProductsOnly] = useState(false);
 
+  // Фокус-режим («как в TheBrain»): в центре — фокус-узел, вокруг видна
+  // окрестность на focusDepth шагов; клик по видимому продукту делает его
+  // новым центром. Чистая проекция для рендера со СВОЕЙ раскладкой — store
+  // не мутируется, выключение возвращает полный граф с исходными позициями.
+  const [focusState, setFocusState] = useState<{
+    focusId: string;
+    history: string[];
+  } | null>(null);
+  const [focusDepth, setFocusDepth] = useState(2);
+  // Разложенная окрестность фокуса (готовые позиции + рёбра с хэндлами).
+  const [focusView, setFocusView] = useState<FocusSubgraphResult | null>(null);
+  const focusOn = focusState !== null;
+  // Живой ref для обработчиков, подписанных один раз (highlight-node, клики).
+  const focusStateRef = useRef(focusState);
+  focusStateRef.current = focusState;
+
   // При входе/выходе из режима просмотра или «только продукты» размер/состав
   // холста меняется — переавтоцентрируем граф. Первый рендер пропускаем.
   const viewModeFirstRun = useRef(true);
@@ -190,11 +212,83 @@ export const Flow = ({
       viewModeFirstRun.current = false;
       return;
     }
+    // В фокус-режиме камерой управляет эффект раскладки окрестности; сюда
+    // попадаем при выходе из него (focusOn → false) — центрируем полный граф.
+    if (focusOn) return;
     const id = requestAnimationFrame(() =>
       fitView({ padding: 0.2, duration: 300 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [viewMode, productsOnly, fitView]);
+  }, [viewMode, productsOnly, focusOn, fitView]);
+
+  // Перестройка окрестности фокуса: вход в режим, смена фокуса/глубины или
+  // изменение данных графа. Подграф раскладывается заново (dagre/ELK),
+  // позиции узлов в store не трогаются.
+  const focusFitKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusState) {
+      setFocusView(null);
+      focusFitKeyRef.current = null;
+      return;
+    }
+    // Фокус-узел мог исчезнуть из store (undo шага и т.п.) — выходим из режима.
+    if (!data.nodes.some((n) => n.id === focusState.focusId)) {
+      setFocusState(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const sub = buildFocusSubgraph(
+        data.nodes,
+        data.edges,
+        focusState.focusId,
+        focusDepth,
+      );
+      const laid = await layoutTree(
+        sub.nodes,
+        sub.edges,
+        focusState.focusId,
+        "TB",
+      );
+      if (cancelled) return;
+      const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
+      setFocusView({
+        nodes: centered,
+        // Хэндлы из store соответствуют геометрии полного графа —
+        // переназначаем по позициям фокус-раскладки.
+        edges: applyHandlesByGeometry(centered, sub.edges),
+        moreCountByNodeId: sub.moreCountByNodeId,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusState, focusDepth, data.nodes, data.edges]);
+
+  // Подгонка камеры под окрестность — отдельным эффектом ПОСЛЕ коммита новых
+  // нод в React Flow (rAF из async-колбэка выше стрелял до re-render и
+  // подгонял камеру под старый граф). Двигаем камеру только при смене
+  // фокуса/глубины, а не на каждое фоновое обновление данных.
+  useEffect(() => {
+    if (!focusView || !focusState) return;
+    const fitKey = `${focusState.focusId}::${focusDepth}`;
+    if (focusFitKeyRef.current === fitKey) return;
+    focusFitKeyRef.current = fitKey;
+    const id = requestAnimationFrame(() =>
+      fitView({ padding: 0.25, duration: 400 }),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [focusView, focusState, focusDepth, fitView]);
+
+  // После смены состава фокус-окрестности даём React Flow измерить ноды в DOM
+  // и переставляем хэндлы (тот же приём, что для полного графа выше).
+  useEffect(() => {
+    if (!focusView) return;
+    const timer = setTimeout(() => {
+      updateNodeInternals(focusView.nodes.map((n) => n.id));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [focusView, updateNodeInternals]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
@@ -230,6 +324,9 @@ export const Flow = ({
   // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
   // (viewMode приходит пропсом и управляется кнопкой-глазом из FullApp).
   const readOnly = sharedView || viewMode;
+  // Структурные правки заблокированы: просмотр, «только продукты» или
+  // фокус-режим (последние два — проекции, store в них не редактируется).
+  const structureLocked = readOnly || productsOnly || focusOn;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -266,13 +363,14 @@ export const Flow = ({
     return m;
   }, [data.nodes]);
   const chainSet = useMemo<Set<string> | null>(() => {
-    if (source !== "loaded" || !hoveredChainId) return null;
+    // В фокус-режиме окрестность и так обрезана — hover-затемнение не нужно.
+    if (source !== "loaded" || !hoveredChainId || focusOn) return null;
     return findChainNodeIds(
       data.edges,
       hoveredChainId,
       (id) => nodeTypeById.get(id),
     );
-  }, [source, hoveredChainId, data.edges, nodeTypeById]);
+  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
@@ -283,6 +381,60 @@ export const Flow = ({
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
+  );
+
+  // ===== Фокус-режим: вход/выход/навигация =====
+
+  // Вход: центр — выбранный узел, иначе корень, иначе первый продукт графа.
+  const enterFocusMode = useCallback(() => {
+    const nodes = nodesRef.current;
+    const isValid = (id: string | null | undefined): id is string =>
+      !!id && nodes.some((n) => n.id === id);
+    const initial = isValid(selectedNodeId)
+      ? selectedNodeId
+      : isValid(rootId)
+        ? rootId
+        : (nodes.find((n) => n.type === "product") ?? nodes[0])?.id;
+    if (!initial) return;
+    setIsPanelOpen(false);
+    setContextMenu(null);
+    setFocusState({ focusId: initial, history: [] });
+  }, [selectedNodeId, rootId]);
+
+  const exitFocusMode = useCallback(() => setFocusState(null), []);
+
+  // Сделать узел новым центром (клик по продукту / выбор в поиске).
+  const focusOnNode = useCallback((nodeId: string) => {
+    setFocusState((s) => {
+      if (!s || s.focusId === nodeId) return s;
+      return { focusId: nodeId, history: [...s.history, s.focusId] };
+    });
+  }, []);
+
+  const handleFocusBack = useCallback(() => {
+    setFocusState((s) => {
+      if (!s || !s.history.length) return s;
+      return {
+        focusId: s.history[s.history.length - 1],
+        history: s.history.slice(0, -1),
+      };
+    });
+  }, []);
+
+  // Переход к произвольному шагу истории (клик по хлебной крошке).
+  const handleFocusJumpTo = useCallback((index: number) => {
+    setFocusState((s) => {
+      if (!s || index < 0 || index >= s.history.length) return s;
+      return { focusId: s.history[index], history: s.history.slice(0, index) };
+    });
+  }, []);
+
+  const focusLabelById = useCallback(
+    (id: string) => {
+      const n = data.nodes.find((x) => x.id === id);
+      return String(n?.data?.label ?? id);
+    },
+    [data.nodes],
   );
 
   const [insertTrState, setInsertTrState] = useState<{
@@ -322,17 +474,23 @@ export const Flow = ({
 
   const flowNodes = useMemo(
     () =>
-      (productsView?.nodes ?? data.nodes).map((n) => {
+      // Приоритет проекций: фокус-режим > «только продукты» > полный граф.
+      (focusView?.nodes ?? productsView?.nodes ?? data.nodes).map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
+        const isFocusCenter = n.id === focusState?.focusId;
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
           isDimmed ? "node--dimmed" : "",
+          isFocusCenter ? "node--focus" : "",
         ]
           .filter(Boolean)
           .join(" ");
+
+        // Число обрезанных границей окрестности связей — бейдж «+N».
+        const focusMore = focusView?.moreCountByNodeId[n.id] ?? 0;
 
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
@@ -343,23 +501,34 @@ export const Flow = ({
             sourcesPool[poolKey(lbl, "down")],
             sourcesPool[poolKey(lbl, "up")],
           );
+          const hasBadge = badge.up > 0 || badge.down > 0;
+          if (!hasBadge && focusMore === 0) return { ...n, className: cls };
           return {
             ...n,
             className: cls,
-            data:
-              badge.up > 0 || badge.down > 0
-                ? { ...n.data, sourcesBadge: badge }
-                : n.data,
+            data: {
+              ...n.data,
+              ...(hasBadge ? { sourcesBadge: badge } : {}),
+              ...(focusMore > 0 ? { focusMoreCount: focusMore } : {}),
+            },
           };
         }
 
         return { ...n, className: cls };
       }),
-    [data.nodes, productsView, highlightedId, chainSet, sourcesPool],
+    [
+      data.nodes,
+      productsView,
+      focusView,
+      focusState,
+      highlightedId,
+      chainSet,
+      sourcesPool,
+    ],
   );
 
   const flowEdges = useMemo(() => {
-    const baseEdges = productsView?.edges ?? data.edges;
+    const baseEdges = focusView?.edges ?? productsView?.edges ?? data.edges;
     if (!chainSet) return baseEdges;
     return baseEdges.map((e) => {
       const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
@@ -368,11 +537,25 @@ export const Flow = ({
       const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
       return { ...e, className: cls };
     });
-  }, [data.edges, productsView, chainSet]);
+  }, [data.edges, productsView, focusView, chainSet]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const id = (e as CustomEvent<string>).detail;
+      // В фокус-режиме найденный в поиске узел может быть вне окрестности —
+      // делаем его новым центром, поиск работает как навигация. Если узел уже
+      // в центре, просто возвращаем камеру к окрестности (панель поиска
+      // успела улететь setCenter'ом к позиции узла в полном графе).
+      const fs = focusStateRef.current;
+      if (fs) {
+        if (fs.focusId !== id) {
+          focusOnNode(id);
+        } else {
+          requestAnimationFrame(() =>
+            fitView({ padding: 0.25, duration: 400 }),
+          );
+        }
+      }
       setHighlightedId(id);
 
       setTimeout(() => setHighlightedId(null), 3000);
@@ -380,7 +563,7 @@ export const Flow = ({
 
     window.addEventListener("highlight-node", handler);
     return () => window.removeEventListener("highlight-node", handler);
-  }, []);
+  }, [focusOnNode, fitView]);
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
@@ -431,14 +614,25 @@ export const Flow = ({
   }, [selectedNodeId, isPanelOpen, selectedNode]);
 
   // Обработчик клика по узлу
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
-    // панель редактирования — пользователь выделяет несколько нод.
-    if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-    setSelectedNodeId(node.id);
-    setIsPanelOpen(true);
-    setContextMenu(null);
-  }, []);
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
+      // панель редактирования — пользователь выделяет несколько нод.
+      if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+      // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
+      // навигации, узел становится новым центром. Карточка узла — по клику
+      // на сам центр или на преобразование.
+      const fs = focusStateRef.current;
+      if (fs && node.type === "product" && node.id !== fs.focusId) {
+        focusOnNode(node.id);
+        return;
+      }
+      setSelectedNodeId(node.id);
+      setIsPanelOpen(true);
+      setContextMenu(null);
+    },
+    [focusOnNode],
+  );
 
   // Hover-подсветка цепочки (только для загруженных графов;
   // useMemo сам зануляет chainSet при source !== "loaded").
@@ -817,19 +1011,29 @@ export const Flow = ({
   // Обработчики изменений узлов и ребер
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // В фокус-режиме на полотне проекция со своей раскладкой, а id узлов
+      // совпадают со store — позиции/выделение не применяем, иначе затёрли бы
+      // сохранённые позиции полного графа. Замеры размеров (dimensions)
+      // пропускаем: они не зависят от раскладки.
+      if (focusOn) {
+        const safe = changes.filter((c) => c.type === "dimensions");
+        if (safe.length) dispatch(onNodesChange(safe));
+        return;
+      }
       dispatch(onNodesChange(changes));
     },
-    [dispatch],
+    [dispatch, focusOn],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       // В режиме «только продукты» на полотне синтетические рёбра, которых нет
-      // в сторе — их изменения не применяем.
-      if (productsOnly) return;
+      // в сторе — их изменения не применяем. В фокус-режиме рёбра из стора,
+      // но режим просмотровый — изменения тоже не применяем.
+      if (productsOnly || focusOn) return;
       dispatch(onEdgesChange(changes));
     },
-    [dispatch, productsOnly],
+    [dispatch, productsOnly, focusOn],
   );
 
   const handleConnect: OnConnect = useCallback(
@@ -1804,27 +2008,25 @@ export const Flow = ({
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={readOnly || productsOnly ? undefined : handleConnect}
+        onConnect={structureLocked ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={
-          readOnly || productsOnly ? undefined : onNodeContextMenu
-        }
+        onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
-        nodesConnectable={!readOnly && !productsOnly}
+        nodesConnectable={!structureLocked}
+        // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего.
+        nodesDraggable={!focusOn}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
         // Левая кнопка по-прежнему панорамирует полотно (selectionOnDrag=false).
-        selectionKeyCode={readOnly ? null : "Shift"}
-        multiSelectionKeyCode={readOnly ? null : ["Meta", "Control"]}
+        selectionKeyCode={readOnly || focusOn ? null : "Shift"}
+        multiSelectionKeyCode={readOnly || focusOn ? null : ["Meta", "Control"]}
         selectionOnDrag={false}
-        onReconnect={readOnly || productsOnly ? undefined : handleReconnect}
-        onReconnectStart={
-          readOnly || productsOnly ? undefined : onReconnectStart
-        }
-        onReconnectEnd={readOnly || productsOnly ? undefined : onReconnectEnd}
+        onReconnect={structureLocked ? undefined : handleReconnect}
+        onReconnectStart={structureLocked ? undefined : onReconnectStart}
+        onReconnectEnd={structureLocked ? undefined : onReconnectEnd}
         // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
@@ -1841,7 +2043,7 @@ export const Flow = ({
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
-          {!readOnly && (
+          {!readOnly && !focusOn && (
             <>
           <ControlButton
             onClick={handleSaveToLocalStorage}
@@ -1902,7 +2104,9 @@ export const Flow = ({
             </ControlButton>
           )}
           {/* Тумблер «только продукты»: скрыть преобразования/альтернативы,
-              склеив продукты напрямую. Доступен и в режиме просмотра. */}
+              склеив продукты напрямую. Доступен и в режиме просмотра.
+              В фокус-режиме скрыт: там своя проекция окрестности. */}
+          {!focusOn && (
           <ControlButton
             onClick={() => setProductsOnly((v) => !v)}
             data-tooltip={
@@ -1934,7 +2138,34 @@ export const Flow = ({
               </svg>
             )}
           </ControlButton>
-          {!readOnly && (
+          )}
+          {/* Тумблер фокус-режима («как в TheBrain»): в центре фокус-узел,
+              видна окрестность на 1–3 шага, клик по продукту шагает дальше.
+              Доступен и в режиме просмотра, и на шар-странице. */}
+          <ControlButton
+            onClick={() => (focusOn ? exitFocusMode() : enterFocusMode())}
+            data-tooltip={
+              focusOn ? "Выйти из фокус-режима" : "Фокус-режим (шаги по графу)"
+            }
+            aria-label={
+              focusOn ? "Выйти из фокус-режима" : "Фокус-режим (шаги по графу)"
+            }
+            style={
+              focusOn
+                ? { backgroundColor: "#2563eb", color: "#fff" }
+                : undefined
+            }
+          >
+            {/* Центр с расходящимися связями-спутниками. */}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <circle cx="12" cy="3.5" r="1.5" />
+              <circle cx="4" cy="18.5" r="1.5" />
+              <circle cx="20" cy="18.5" r="1.5" />
+              <path d="M12 9V5M9.9 13.9l-4.7 3.4M14.1 13.9l4.7 3.4" />
+            </svg>
+          </ControlButton>
+          {!readOnly && !focusOn && (
             <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
@@ -1963,6 +2194,17 @@ export const Flow = ({
         <Background />
       </ReactFlow>
       {readOnly && !isPanelOpen && <GraphLegend />}
+      {focusState && (
+        <FocusModeHud
+          focusLabel={focusLabelById(focusState.focusId)}
+          historyLabels={focusState.history.map(focusLabelById)}
+          depth={focusDepth}
+          onDepthChange={setFocusDepth}
+          onBack={handleFocusBack}
+          onJumpTo={handleFocusJumpTo}
+          onExit={exitFocusMode}
+        />
+      )}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
@@ -2004,7 +2246,7 @@ export const Flow = ({
         upTab={upTab}
         hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
         onFetchTransformations={handleOpenFetchTransformations}
-        readOnly={readOnly || productsOnly}
+        readOnly={structureLocked}
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}

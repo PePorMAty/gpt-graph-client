@@ -16,7 +16,11 @@
 
 .container {
   width: 100%;
-  height: 100vh;
+  /* 100% от родителя (flow_border / fullscreen-обёртки), НЕ 100vh: холст
+     выше родителя обрезался его overflow: hidden, и каждый fitView подгонял
+     камеру под частично скрытую область — нижняя часть графа оказывалась
+     за нижней границей рамки. */
+  height: 100%;
   position: relative;
 }
 
@@ -218,6 +222,15 @@
 :global(.react-flow__edge.edge--alt path) {
   stroke: #a855f7 !important;
   stroke-width: 2px;
+}
+
+/* Центр фокус-режима: текущий фокус-узел выделяется рамкой и свечением,
+   чтобы точка отсчёта навигации всегда читалась на полотне. */
+:global(.react-flow__node.node--focus) {
+  outline: 3px solid #2563eb;
+  outline-offset: 4px;
+  border-radius: 10px;
+  box-shadow: 0 0 22px rgba(37, 99, 235, 0.45);
 }
 
 /* Подсветка ближайших соседей по hover (только для объединённых графов):
