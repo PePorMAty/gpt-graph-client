@@ -61,6 +61,7 @@ import {
   type FocusTransitionHandle,
 } from "./utils/focusTransition";
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
+import { inferLayoutDirection } from "./utils/inferLayoutDirection";
 import { FocusModeHud } from "./components/focus-mode-hud";
 import styles from "./styles/Flow.module.css";
 import type { CustomNode } from "./types";
@@ -322,6 +323,13 @@ export const Flow = ({
     return () => cancelAnimationFrame(id);
   }, [viewMode, productsOnly, focusOn, fitView, setCenter, dispatch]);
 
+  // Ориентация раскладки фокус-окрестности — из геометрии текущего графа,
+  // чтобы фокус-вид не переворачивался относительно полотна.
+  const focusLayoutDirection = useMemo(
+    () => inferLayoutDirection(data.nodes, data.edges),
+    [data.nodes, data.edges],
+  );
+
   // Перестройка окрестности фокуса: вход в режим, смена фокуса/глубины или
   // изменение данных графа. Подграф раскладывается заново (dagre/ELK),
   // позиции узлов в store не трогаются.
@@ -344,17 +352,27 @@ export const Flow = ({
     lastInteractedNodeIdRef.current = focusState.focusId;
     let cancelled = false;
     (async () => {
+      // Глубины обхода заданы в терминах рёбер (up — по входящим), а охваты
+      // «↑ Вверх»/«↓ Вниз» пользователь читает визуально. В «вверх»-графе
+      // (rankdir BT) входящие рёбра ведут ВНИЗ полотна, поэтому направления
+      // меняем местами — иначе кнопки работали бы зеркально экрану.
+      const depths = focusScopeDepths(focusScope, focusDepth);
       const sub = buildFocusSubgraph(
         data.nodes,
         data.edges,
         focusState.focusId,
-        focusScopeDepths(focusScope, focusDepth),
+        focusLayoutDirection === "BT"
+          ? { up: depths.down, down: depths.up }
+          : depths,
       );
+      // Ориентацию берём из геометрии полного графа, а не хардкодим: у
+      // «вверх»-графов рёбра идут продукт → сырьё, и жёсткий "TB" переворачивал
+      // окрестность зеркально тому, что видно на полотне вне фокус-режима.
       const laid = await layoutTree(
         sub.nodes,
         sub.edges,
         focusState.focusId,
-        "TB",
+        focusLayoutDirection,
       );
       if (cancelled) return;
       const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
@@ -417,6 +435,7 @@ export const Flow = ({
     focusState,
     focusScope,
     focusDepth,
+    focusLayoutDirection,
     data.nodes,
     data.edges,
     fitFocusCamera,
