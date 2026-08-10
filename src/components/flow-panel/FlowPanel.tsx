@@ -82,6 +82,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepBuiltFromAggregate,
   pendingStep,
   onFetchStepSources,
+  onCancelStepSources,
   onAggregateStepSources,
   onBuildStep,
   onClearStepState,
@@ -251,6 +252,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepBuiltFromAggregate={stepBuiltFromAggregate}
           pendingStep={pendingStep}
           onFetchStepSources={onFetchStepSources}
+          onCancelStepSources={onCancelStepSources}
           onAggregateStepSources={onAggregateStepSources}
           onAddManualSource={onAddManualSource}
           onBuildStep={onBuildStep}
