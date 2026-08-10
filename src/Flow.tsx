@@ -133,7 +133,7 @@ export const Flow = ({
   );
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
-  const { fitView, fitBounds, setViewport, screenToFlowPosition } =
+  const { fitView, fitBounds, setViewport, setCenter, screenToFlowPosition } =
     useReactFlow();
   const rfStore = useStoreApi();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -223,6 +223,10 @@ export const Flow = ({
   const focusAnimRef = useRef<FocusTransitionHandle | null>(null);
   // Обёртка HUD — для замера его высоты при подгонке камеры.
   const hudWrapRef = useRef<HTMLDivElement | null>(null);
+  // Узел, на котором закончилась навигация в фокус-режиме. При выходе камера
+  // подлетает к нему в полном графе, а не разлетается на всё полотно: иначе
+  // на графе в сотни узлов теряется место, откуда вышли.
+  const focusExitNodeIdRef = useRef<string | null>(null);
 
   // Подгонка камеры под окрестность с учётом плашки HUD: fitBounds умеет
   // только равномерный отступ, из-за чего верхний узел раскладки (предок,
@@ -279,13 +283,44 @@ export const Flow = ({
       return;
     }
     // В фокус-режиме камерой управляет эффект раскладки окрестности; сюда
-    // попадаем при выходе из него (focusOn → false) — центрируем полный граф.
+    // попадаем при выходе из него (focusOn → false).
     if (focusOn) return;
+
+    // Выход из фокус-режима: вместо разлёта на всё полотно подлетаем к узлу,
+    // на котором закончили навигацию, и подсвечиваем его — на большом графе
+    // иначе непонятно, откуда вышли. Узел заодно остаётся выделенным.
+    const exitId = focusExitNodeIdRef.current;
+    focusExitNodeIdRef.current = null;
+    if (exitId) {
+      const node = nodesRef.current.find((n) => n.id === exitId);
+      if (node) {
+        const id = requestAnimationFrame(() => {
+          const w = node.measured?.width ?? 0;
+          const h = node.measured?.height ?? 0;
+          setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+            zoom: 1.3,
+            duration: 600,
+          });
+          // Подсветка (снимется сама) + выделение, чтобы узел не потерялся
+          // после того, как подсветка погаснет.
+          window.dispatchEvent(
+            new CustomEvent("highlight-node", { detail: exitId }),
+          );
+          dispatch(
+            onNodesChange([
+              { id: exitId, type: "select" as const, selected: true },
+            ]),
+          );
+        });
+        return () => cancelAnimationFrame(id);
+      }
+    }
+
     const id = requestAnimationFrame(() =>
       fitView({ padding: 0.2, duration: 300 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [viewMode, productsOnly, focusOn, fitView]);
+  }, [viewMode, productsOnly, focusOn, fitView, setCenter, dispatch]);
 
   // Перестройка окрестности фокуса: вход в режим, смена фокуса/глубины или
   // изменение данных графа. Подграф раскладывается заново (dagre/ELK),
@@ -536,7 +571,12 @@ export const Flow = ({
     setFocusState({ focusId: initial, history: [] });
   }, [selectedNodeId, rootId, dispatch]);
 
-  const exitFocusMode = useCallback(() => setFocusState(null), []);
+  // Выход по кнопке: запоминаем последний центр, чтобы камера подлетела
+  // к нему в полном графе (см. эффект переавтоцентровки выше).
+  const exitFocusMode = useCallback(() => {
+    focusExitNodeIdRef.current = focusStateRef.current?.focusId ?? null;
+    setFocusState(null);
+  }, []);
 
   // Сделать узел новым центром (клик по продукту / выбор в поиске).
   // Если узел уже есть в пути (хлебных крошках) — не наращиваем хвост дублями,
