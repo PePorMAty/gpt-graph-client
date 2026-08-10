@@ -1,5 +1,6 @@
 import { useEffect, useState, type FC } from "react";
 import styles from "./SelectNeighborModal.module.css";
+import { AiModelSelect } from "../ai-model-select";
 import type { DirectProductNeighbor } from "../../utils/getDirectProductNeighbors";
 
 interface SelectNeighborModalProps {
@@ -86,6 +87,7 @@ export const SelectNeighborModal: FC<SelectNeighborModalProps> = ({
           </button>
           {isPromptOpen && (
             <>
+              <AiModelSelect />
               <textarea
                 className={styles.promptTextarea}
                 value={displayedPrompt}

@@ -18,6 +18,7 @@ import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 
 import styles from "./FlowPanel.module.css";
+import { AiModelSelect } from "../ai-model-select";
 
 // ─────────────────────────────────────────────────
 // DirectionContent — reusable block for "down" / "up" tab
@@ -377,6 +378,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
               {aggPromptOpen && (
                 <div className={styles.promptEditor}>
+                  <AiModelSelect />
                   <label className={styles.promptLabel}>
                     Системный + пользовательский промпт обобщения:
                   </label>
@@ -1274,6 +1276,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     </div>
 
                     {/* prompt textarea */}
+                    <AiModelSelect />
                     <label className={styles.promptLabel}>
                       Системный промпт:
                     </label>

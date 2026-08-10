@@ -349,6 +349,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
         {buildPromptOpen && (
           <div className={styles.promptEditor}>
+            {renderAiSelect()}
             <label className={styles.promptLabel}>
               Системный промпт построения шага:
             </label>
@@ -374,8 +375,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             )}
           </div>
         )}
-
-        {renderAiSelect()}
 
         {buildLoading && (
           <div className={styles.tabLoader}>
@@ -510,8 +509,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {/* Редактор поиска: промпт + белый список доменов (3.3) */}
           {searchPromptEditor}
 
-          {renderAiSelect()}
-
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -564,6 +561,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
           {aggPromptOpen && (
             <div className={styles.promptEditor}>
+              {renderAiSelect()}
               <label className={styles.promptLabel}>
                 Системный + пользовательский промпт обобщения:
               </label>
@@ -589,8 +587,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
-
-          {renderAiSelect()}
 
           {aggregateLoading && (
             <div className={styles.tabLoader}>
@@ -697,6 +693,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
           {buildPromptOpen && (
             <div className={styles.promptEditor}>
+              {renderAiSelect()}
               <label className={styles.promptLabel}>
                 Системный промпт построения шага:
               </label>
@@ -722,8 +719,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
-
-          {renderAiSelect()}
 
           {buildLoading && (
             <div className={styles.tabLoader}>

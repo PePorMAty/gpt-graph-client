@@ -101,8 +101,6 @@ export const RequestPanel = () => {
       {/* CREATE TAB */}
       {activeTab === "create" && (
         <div className={styles.input_wrapper}>
-          {/* Выбор общий: действует на все запросы к LLM, не только на создание. */}
-          <AiModelSelect warnIfNoSearch />
           {/* Accordion header */}
           <div
             className={styles.accordionHeader}
@@ -126,6 +124,8 @@ export const RequestPanel = () => {
               showPromptEditor ? styles.open : ""
             }`}
           >
+            {/* Выбор общий: действует на все запросы к LLM, не только на создание графа. */}
+            <AiModelSelect warnIfNoSearch />
             <button
               className={styles.resetButton}
               onClick={resetPromptLayout}
