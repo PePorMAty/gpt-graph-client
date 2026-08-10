@@ -15,7 +15,6 @@ import {
   AI_MODELS,
   AI_PROVIDERS,
   getAiRequestFields,
-  isSearchCapable,
   useAiConfig,
 } from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
@@ -236,13 +235,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </select>
         </div>
         {hint && <div className={styles.aiConfigHint}>{hint}</div>}
-        {searchModelSubstituted && (
-          <div className={styles.aiConfigHint}>
-            Для поиска источников эта модель не годится — поиск пойдёт на{" "}
-            {searchFields.model || "модель по умолчанию"}. Обобщение и
-            построение шага останутся на выбранной.
-          </div>
-        )}
       </div>
     );
   };
@@ -251,7 +243,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   // Поиск источников: модель с noSearch (qwen3.6-flash) сюда не отправляем —
   // запрос уйдёт и вернётся пустым. Подменяем пригодной и говорим об этом.
   const searchFields = getAiRequestFields({ forSearch: true });
-  const searchModelSubstituted = !isSearchCapable(aiConfig);
 
   const handleFetchSources = () => {
     const allowedDomains = parseDomainsInput(domainsText);

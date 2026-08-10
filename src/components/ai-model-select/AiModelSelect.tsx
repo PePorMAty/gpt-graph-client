@@ -1,17 +1,16 @@
 import type { FC } from "react";
-import {
-  AI_MODELS,
-  AI_PROVIDERS,
-  isSearchCapable,
-  useAiConfig,
-} from "../../hooks/useAiConfig";
+import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
 import styles from "./AiModelSelect.module.css";
 
 type Props = {
   /** Подпись над селектами; пусто — без подписи. */
   label?: string;
-  /** Показать предупреждение, если модель непригодна для поиска источников. */
-  warnIfNoSearch?: boolean;
+  /**
+   * Селект стоит на стадии поиска источников: модели, которые искать не умеют,
+   * в списке не показываем. Так пользователю не приходится читать оговорки
+   * там, где они не к месту, — непригодного варианта просто нет.
+   */
+  forSearch?: boolean;
 };
 
 /**
@@ -21,12 +20,18 @@ type Props = {
  */
 export const AiModelSelect: FC<Props> = ({
   label = "Модель для запросов:",
-  warnIfNoSearch = false,
+  forSearch = false,
 }) => {
   const { config, setProvider, setModel } = useAiConfig();
-  const models = AI_MODELS[config.provider] ?? [];
-  const hint = models.find((m) => m.value === config.model)?.hint;
-  const showWarning = warnIfNoSearch && !isSearchCapable(config);
+  const all = AI_MODELS[config.provider] ?? [];
+  const models = forSearch ? all.filter((m) => !m.noSearch) : all;
+
+  // Если общий выбор пал на модель без поиска, здесь показываем ту, что
+  // реально уйдёт в запрос, — иначе селект был бы пустым.
+  const value = models.some((m) => m.value === config.model)
+    ? config.model
+    : (models[0]?.value ?? "");
+  const hint = models.find((m) => m.value === value)?.hint;
 
   return (
     <div className={styles.block}>
@@ -44,7 +49,7 @@ export const AiModelSelect: FC<Props> = ({
           ))}
         </select>
         <select
-          value={config.model}
+          value={value}
           onChange={(e) => setModel(e.target.value)}
           className={styles.select}
         >
@@ -56,11 +61,6 @@ export const AiModelSelect: FC<Props> = ({
         </select>
       </div>
       {hint && <div className={styles.hint}>{hint}</div>}
-      {showWarning && (
-        <div className={styles.warning}>
-          Эта модель не ищет источники — на поиске будет подставлена другая.
-        </div>
-      )}
     </div>
   );
 };
