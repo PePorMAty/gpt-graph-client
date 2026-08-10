@@ -48,12 +48,6 @@ export function focusScopeDepths(
 export type FocusSubgraphResult = {
   nodes: CustomNode[];
   edges: Edge[];
-  /**
-   * Число «обрезанных» связей по видимым узлам: сколько рёбер ведёт из узла
-   * к узлам ЗА границей окрестности. Для бейджа «+N» на крайних продуктах —
-   * подсказка, что за ними есть продолжение и туда можно шагнуть.
-   */
-  moreCountByNodeId: Record<string, number>;
 };
 
 export function buildFocusSubgraph(
@@ -115,23 +109,10 @@ export function buildFocusSubgraph(
   walk(outAdj, depths.down);
   walk(inAdj, depths.up);
 
-  const subEdges = edges.filter(
-    (e) => allowed.has(e.source) && allowed.has(e.target),
-  );
-
-  // Сколько связей каждого видимого узла обрезано границей окрестности.
-  const moreCountByNodeId: Record<string, number> = {};
-  for (const e of edges) {
-    if (allowed.has(e.source) && !allowed.has(e.target)) {
-      moreCountByNodeId[e.source] = (moreCountByNodeId[e.source] ?? 0) + 1;
-    } else if (allowed.has(e.target) && !allowed.has(e.source)) {
-      moreCountByNodeId[e.target] = (moreCountByNodeId[e.target] ?? 0) + 1;
-    }
-  }
-
   return {
     nodes: nodes.filter((n) => allowed.has(n.id)),
-    edges: subEdges,
-    moreCountByNodeId,
+    edges: edges.filter(
+      (e) => allowed.has(e.source) && allowed.has(e.target),
+    ),
   };
 }

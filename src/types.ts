@@ -76,12 +76,6 @@ export interface CustomNodeData {
    *  не попадает. */
   sourcesBadge?: { up: number; down: number };
 
-  // --- focus mode badge (производное, НЕ персистится) ---
-  /** Число связей узла, обрезанных границей окрестности в фокус-режиме
-   *  (см. buildFocusSubgraph). Кладётся только в копию данных для рендера —
-   *  бейдж «+N» подсказывает, что за узлом есть продолжение. */
-  focusMoreCount?: number;
-
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }

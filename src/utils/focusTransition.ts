@@ -130,7 +130,7 @@ export function animateFocusTransition(
       })),
     ];
 
-    opts.onFrame({ nodes, edges, moreCountByNodeId: to.moreCountByNodeId });
+    opts.onFrame({ nodes, edges });
     raf = requestAnimationFrame(frame);
   };
 

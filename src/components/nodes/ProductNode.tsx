@@ -118,12 +118,6 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
   const upCount = typeof badge?.up === "number" ? badge.up : 0;
   const downCount = typeof badge?.down === "number" ? badge.down : 0;
 
-  // Фокус-режим: число связей узла, обрезанных границей видимой окрестности
-  // (см. buildFocusSubgraph). «+N» подсказывает, что за узлом есть
-  // продолжение — клик сделает его новым центром и покажет скрытое.
-  const focusMore =
-    typeof data.focusMoreCount === "number" ? data.focusMoreCount : 0;
-
   return (
     <div
       style={{
@@ -174,31 +168,6 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
       )}
 
       <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
-
-      {focusMore > 0 && (
-        <div
-          title={`Скрытых связей за границей видимости: ${focusMore}. Кликните по узлу, чтобы перейти к ним.`}
-          style={{
-            position: "absolute",
-            bottom: -10,
-            left: "50%",
-            transform: "translateX(-50%)",
-            padding: "2px 8px",
-            borderRadius: 999,
-            background: "#64748b",
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: 700,
-            lineHeight: 1.2,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-            pointerEvents: "none",
-            whiteSpace: "nowrap",
-            zIndex: 11,
-          }}
-        >
-          ещё {focusMore}
-        </div>
-      )}
 
       <Handle
         id="bottom"

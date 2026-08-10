@@ -328,7 +328,6 @@ export const Flow = ({
         // Хэндлы из store соответствуют геометрии полного графа —
         // переназначаем по позициям фокус-раскладки.
         edges: applyHandlesByGeometry(centered, sub.edges),
-        moreCountByNodeId: sub.moreCountByNodeId,
       };
 
       focusAnimRef.current?.cancel();
@@ -634,9 +633,6 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
-        // Число обрезанных границей окрестности связей — бейдж «+N».
-        const focusMore = focusView?.moreCountByNodeId[n.id] ?? 0;
-
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
         // объединённый граф. Кладём только в копию data для рендера.
@@ -646,16 +642,13 @@ export const Flow = ({
             sourcesPool[poolKey(lbl, "down")],
             sourcesPool[poolKey(lbl, "up")],
           );
-          const hasBadge = badge.up > 0 || badge.down > 0;
-          if (!hasBadge && focusMore === 0) return { ...n, className: cls };
           return {
             ...n,
             className: cls,
-            data: {
-              ...n.data,
-              ...(hasBadge ? { sourcesBadge: badge } : {}),
-              ...(focusMore > 0 ? { focusMoreCount: focusMore } : {}),
-            },
+            data:
+              badge.up > 0 || badge.down > 0
+                ? { ...n.data, sourcesBadge: badge }
+                : n.data,
           };
         }
 
