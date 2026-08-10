@@ -1,5 +1,6 @@
 import { useMemo, type FC } from "react";
 import styles from "./FlowPanel.module.css";
+import { AiModelSelect } from "../ai-model-select";
 import {
   MAX_SEARCH_DOMAINS,
   parseDomainsInput,
@@ -52,6 +53,8 @@ export const SearchPromptEditor: FC<{
 
       {open && (
         <div className={styles.promptEditor}>
+          {/* Модель поиска: непригодных для поиска в списке нет. */}
+          <AiModelSelect stage="search" />
           {/* Белый список доменов web_search (3.3) */}
           <label className={styles.promptLabel}>
             Искать ТОЛЬКО на этих доменах:

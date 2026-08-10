@@ -13,6 +13,7 @@ import type {
   ChainTransformNode,
 } from "../../utils/chainToFlow";
 import { pickPid } from "../../utils/pickPid";
+import { getAiRequestFields } from "../../hooks/useAiConfig";
 
 export type FetchTransformationBetweenArgs = {
   fromNodeId: string;
@@ -39,6 +40,7 @@ export const fetchTransformationBetween = createAsyncThunk<
     const res = await axios.post<TransformationBetweenResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/transformation-between`,
       {
+        ...getAiRequestFields(),
         fromProduct: args.fromProduct,
         toProduct: args.toProduct,
         ...(args.customSystemPrompt
@@ -94,6 +96,7 @@ export const fetchTransformationsForNeighbors = createAsyncThunk<
     const res = await axios.post<TransformationsForNeighborsResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/transformation-between`,
       {
+        ...getAiRequestFields(),
         "Цепочка": args.chain,
         "Связи": args.links,
         ...(args.customSystemPrompt

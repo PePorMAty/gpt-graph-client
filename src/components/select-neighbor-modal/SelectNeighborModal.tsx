@@ -1,5 +1,6 @@
 import { useEffect, useState, type FC } from "react";
 import styles from "./SelectNeighborModal.module.css";
+import { AiModelSelect } from "../ai-model-select";
 import type { DirectProductNeighbor } from "../../utils/getDirectProductNeighbors";
 
 interface SelectNeighborModalProps {
@@ -31,24 +32,22 @@ export const SelectNeighborModal: FC<SelectNeighborModalProps> = ({
 }) => {
   const [isPromptOpen, setIsPromptOpen] = useState(false);
 
+  // Закрывать можно и во время запроса: он идёт минутами, держать
+  // пользователя в модалке незачем. Запрос продолжается в фоне, о результате
+  // сообщит тост.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !loading) onClose();
+      if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, loading]);
+  }, [onClose]);
 
   const isEmpty = neighbors.length === 0;
   const displayedPrompt = customSystemPrompt || defaultSystemPrompt;
 
   return (
-    <div
-      className={styles.overlay}
-      onClick={() => {
-        if (!loading) onClose();
-      }}
-    >
+    <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <h3 className={styles.title}>
           Получить преобразования к соседним продуктам
@@ -86,6 +85,7 @@ export const SelectNeighborModal: FC<SelectNeighborModalProps> = ({
           </button>
           {isPromptOpen && (
             <>
+              <AiModelSelect />
               <textarea
                 className={styles.promptTextarea}
                 value={displayedPrompt}
@@ -116,12 +116,8 @@ export const SelectNeighborModal: FC<SelectNeighborModalProps> = ({
         )}
 
         <div className={styles.actions}>
-          <button
-            className={styles.close}
-            onClick={onClose}
-            disabled={loading}
-          >
-            Отмена
+          <button className={styles.close} onClick={onClose}>
+            {loading ? "Свернуть" : "Отмена"}
           </button>
           <button
             className={styles.primary}

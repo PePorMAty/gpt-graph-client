@@ -9,6 +9,7 @@ import {
 import styles from "./RequsetPanel.module.css";
 import { SavedGraph } from "../saved-graph";
 import { UploadGraphTab } from "../upload-graph";
+import { AiModelSelect } from "../ai-model-select";
 
 export const RequestPanel = () => {
   const dispatch = useAppDispatch();
@@ -123,6 +124,8 @@ export const RequestPanel = () => {
               showPromptEditor ? styles.open : ""
             }`}
           >
+            {/* Выбор общий: действует на все запросы к LLM, не только на создание графа. */}
+            <AiModelSelect stage="graph" />
             <button
               className={styles.resetButton}
               onClick={resetPromptLayout}
