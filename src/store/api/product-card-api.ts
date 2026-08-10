@@ -46,7 +46,7 @@ export const fetchProductCard = createAsyncThunk<
     const res = await axios.post<ProductCardResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/fill-card`,
       {
-        ...getAiRequestFields(),
+        ...getAiRequestFields({ stage: "card" }),
         nodeType,
         productName,
         node: nodePayload,

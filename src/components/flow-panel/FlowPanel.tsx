@@ -1276,7 +1276,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     </div>
 
                     {/* prompt textarea */}
-                    <AiModelSelect />
+                    <AiModelSelect stage="card" />
                     <label className={styles.promptLabel}>
                       Системный промпт:
                     </label>

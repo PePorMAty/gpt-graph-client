@@ -29,7 +29,7 @@ export const fetchSources = createAsyncThunk<
 >("sources/fetchSources", async (payload, thunkApi) => {
   try {
     const res = await api.post<SourcesSearchResponse>(`/graphs/gpt/sources`, {
-      ...getAiRequestFields({ forSearch: true }),
+      ...getAiRequestFields({ stage: "search" }),
       productName: payload.productName,
       maxItems: payload.maxItems ?? 5,
       direction: payload.direction,

@@ -54,7 +54,7 @@ export const SearchPromptEditor: FC<{
       {open && (
         <div className={styles.promptEditor}>
           {/* Модель поиска: непригодных для поиска в списке нет. */}
-          <AiModelSelect forSearch />
+          <AiModelSelect stage="search" />
           {/* Белый список доменов web_search (3.3) */}
           <label className={styles.promptLabel}>
             Искать ТОЛЬКО на этих доменах:

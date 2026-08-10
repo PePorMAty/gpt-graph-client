@@ -240,9 +240,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   };
 
   // ── Handlers with prompt support ──
-  // Поиск источников: модель с noSearch (qwen3.6-flash) сюда не отправляем —
-  // запрос уйдёт и вернётся пустым. Подменяем пригодной и говорим об этом.
-  const searchFields = getAiRequestFields({ forSearch: true });
+  // Поиск источников: непригодную для этой стадии модель не отправляем —
+  // запрос уйдёт и вернётся пустым. Подменяем пригодной.
+  const searchFields = getAiRequestFields({ stage: "search" });
 
   const handleFetchSources = () => {
     const allowedDomains = parseDomainsInput(domainsText);

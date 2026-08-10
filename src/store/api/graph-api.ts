@@ -30,7 +30,7 @@ export const getGraphData = createAsyncThunk<
       const response = await axios.post<GraphApiResponse>(
         `${import.meta.env.VITE_API_URL}/graphs/gpt`,
         {
-          ...getAiRequestFields(),
+          ...getAiRequestFields({ stage: "graph" }),
           userPrompt: promptValue,
           promptLayout,
         },
@@ -70,7 +70,7 @@ export const continueGraph = createAsyncThunk<
       const response = await axios.post<GPTGraphResponse>(
         `${import.meta.env.VITE_API_URL}/graphs/gpt/continue`,
         {
-          ...getAiRequestFields(),
+          ...getAiRequestFields({ stage: "graph" }),
           originalPrompt: state.originalPrompt,
           existingGraph: state.data,
           leafNodes: selectedLeafNodes,

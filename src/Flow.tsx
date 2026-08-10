@@ -2277,9 +2277,9 @@ export const Flow = ({
             )
           }
           onConfirm={handleFetchTransformations}
-          onClose={() =>
-            !insertTrState.loading && setInsertTrState(null)
-          }
+          // Закрытие во время запроса разрешено: он идёт минутами, а
+          // результат применится и при закрытой модалке — о нём сообщит тост.
+          onClose={() => setInsertTrState(null)}
         />
       )}
     </div>

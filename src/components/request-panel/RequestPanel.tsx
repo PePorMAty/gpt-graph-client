@@ -125,7 +125,7 @@ export const RequestPanel = () => {
             }`}
           >
             {/* Выбор общий: действует на все запросы к LLM, не только на создание графа. */}
-            <AiModelSelect />
+            <AiModelSelect stage="graph" />
             <button
               className={styles.resetButton}
               onClick={resetPromptLayout}

@@ -1,16 +1,21 @@
 import type { FC } from "react";
-import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
+import {
+  AI_MODELS,
+  AI_PROVIDERS,
+  useAiConfig,
+  type AiStage,
+} from "../../hooks/useAiConfig";
 import styles from "./AiModelSelect.module.css";
 
 type Props = {
   /** Подпись над селектами; пусто — без подписи. */
   label?: string;
   /**
-   * Селект стоит на стадии поиска источников: модели, которые искать не умеют,
-   * в списке не показываем. Так пользователю не приходится читать оговорки
-   * там, где они не к месту, — непригодного варианта просто нет.
+   * Стадия, на которой стоит селект. Модели, не работающие на ней, в списке не
+   * показываем — так пользователю не приходится читать оговорки там, где они
+   * не к месту: непригодного варианта просто нет.
    */
-  forSearch?: boolean;
+  stage?: AiStage;
 };
 
 /**
@@ -20,14 +25,16 @@ type Props = {
  */
 export const AiModelSelect: FC<Props> = ({
   label = "Модель для запросов:",
-  forSearch = false,
+  stage,
 }) => {
   const { config, setProvider, setModel } = useAiConfig();
   const all = AI_MODELS[config.provider] ?? [];
-  const models = forSearch ? all.filter((m) => !m.noSearch) : all;
+  const models = stage
+    ? all.filter((m) => !m.unsupportedIn?.includes(stage))
+    : all;
 
-  // Если общий выбор пал на модель без поиска, здесь показываем ту, что
-  // реально уйдёт в запрос, — иначе селект был бы пустым.
+  // Если общий выбор пал на модель, непригодную для этой стадии, показываем
+  // ту, что реально уйдёт в запрос, — иначе селект был бы пустым.
   const value = models.some((m) => m.value === config.model)
     ? config.model
     : (models[0]?.value ?? "");
