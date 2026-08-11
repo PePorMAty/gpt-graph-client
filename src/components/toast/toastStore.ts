@@ -1,5 +1,11 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { isSoundEnabled, playChime, setSoundEnabled } from "./chime";
+import {
+  getSoundVolume,
+  isSoundEnabled,
+  playChime,
+  setSoundEnabled,
+  setSoundVolume,
+} from "./chime";
 
 export type ToastKind = "success" | "error" | "info";
 export type Toast = { id: number; kind: ToastKind; text: string };
@@ -81,4 +87,33 @@ export function useSoundToggle(): [boolean, () => void] {
     soundListeners.forEach((l) => l());
   }, []);
   return [enabled, toggle];
+}
+
+// Громкость звука (0..1) — ползунок живёт в тосте рядом с колокольчиком.
+let soundVolume = getSoundVolume();
+const volumeListeners = new Set<() => void>();
+
+function subscribeVolume(listener: () => void) {
+  volumeListeners.add(listener);
+  return () => {
+    volumeListeners.delete(listener);
+  };
+}
+
+function getVolumeSnapshot() {
+  return soundVolume;
+}
+
+export function useSoundVolume(): [number, (volume: number) => void] {
+  const volume = useSyncExternalStore(
+    subscribeVolume,
+    getVolumeSnapshot,
+    getVolumeSnapshot,
+  );
+  const setVolume = useCallback((next: number) => {
+    soundVolume = Math.min(1, Math.max(0, next));
+    setSoundVolume(soundVolume);
+    volumeListeners.forEach((l) => l());
+  }, []);
+  return [volume, setVolume];
 }

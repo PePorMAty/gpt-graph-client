@@ -18,6 +18,7 @@ import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 
 import styles from "./FlowPanel.module.css";
+import { AiModelSelect } from "../ai-model-select";
 
 // ─────────────────────────────────────────────────
 // DirectionContent — reusable block for "down" / "up" tab
@@ -81,13 +82,13 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepBuiltFromAggregate,
   pendingStep,
   onFetchStepSources,
+  onCancelStepSources,
   onAggregateStepSources,
   onBuildStep,
   onClearStepState,
   onForceStepPreview,
   onAcceptStep,
   onRejectStep,
-  onRetryStep,
 
   isAlternativeNode,
   altDescription,
@@ -251,6 +252,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepBuiltFromAggregate={stepBuiltFromAggregate}
           pendingStep={pendingStep}
           onFetchStepSources={onFetchStepSources}
+          onCancelStepSources={onCancelStepSources}
           onAggregateStepSources={onAggregateStepSources}
           onAddManualSource={onAddManualSource}
           onBuildStep={onBuildStep}
@@ -258,7 +260,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onForceStepPreview={onForceStepPreview}
           onAcceptStep={onAcceptStep}
           onRejectStep={onRejectStep}
-          onRetryStep={onRetryStep}
           onChangeStepAggregatedText={onChangeStepAggregatedText}
           isAlternativeNode={isAlternativeNode}
           altDescription={altDescription}
@@ -379,6 +380,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
               {aggPromptOpen && (
                 <div className={styles.promptEditor}>
+                  <AiModelSelect />
                   <label className={styles.promptLabel}>
                     Системный + пользовательский промпт обобщения:
                   </label>
@@ -807,6 +809,8 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   hasOutgoingProductNeighbors = false,
   onFetchTransformations,
+  linkedProducts = [],
+  onFocusLinkedProduct,
   readOnly = false,
   nodeId,
   sourceGroups = [],
@@ -1138,6 +1142,52 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   )}
               </div>
 
+              {/* ── Связанные продукты: ссылки-соседи (напрямую или через
+                  преобразование). Клик закрывает карточку и фокусирует полотно
+                  на выбранной ноде. ── */}
+              {effectiveNodeType === "product" &&
+                linkedProducts.length > 0 && (
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>
+                      Связанные продукты:
+                    </label>
+                    <div className={styles.linkedProducts}>
+                      {linkedProducts.map((p) => (
+                        <button
+                          key={`${p.role}-${p.nodeId}`}
+                          type="button"
+                          className={styles.linkedProductBtn}
+                          onClick={() => onFocusLinkedProduct?.(p.nodeId)}
+                          title={
+                            (p.role === "incoming"
+                              ? "Входящая связь"
+                              : "Исходящая связь") +
+                            (p.viaTransformation
+                              ? ` через «${p.viaTransformation}»`
+                              : "") +
+                            " — показать на графе"
+                          }
+                        >
+                          <span
+                            className={styles.linkedProductArrow}
+                            aria-hidden
+                          >
+                            {p.role === "incoming" ? "←" : "→"}
+                          </span>
+                          <span className={styles.linkedProductLabel}>
+                            {p.label || p.nodeId}
+                          </span>
+                          {p.viaTransformation && (
+                            <span className={styles.linkedProductVia}>
+                              {p.viaTransformation}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               {/* ── PRODUCT CARD (скрыто в режиме просмотра) ── */}
               {!readOnly && (
               <div className={styles.formGroup}>
@@ -1228,6 +1278,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     </div>
 
                     {/* prompt textarea */}
+                    <AiModelSelect stage="card" />
                     <label className={styles.promptLabel}>
                       Системный промпт:
                     </label>

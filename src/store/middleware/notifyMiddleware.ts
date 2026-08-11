@@ -4,6 +4,11 @@ import {
   buildStep,
   fetchStepSourcesV2,
 } from "../api/step-chain-api";
+import {
+  fetchTransformationBetween,
+  fetchTransformationsForNeighbors,
+} from "../api/transformation-between-api";
+import { fetchProductCard } from "../api/product-card-api";
 import { showToast } from "../../components/toast/toastStore";
 
 function errorText(payload: unknown, fallback: string): string {
@@ -67,6 +72,38 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
   } else if (buildStep.rejected.match(action)) {
     if (!action.meta.aborted) {
       showToast("error", errorText(action.payload, "Построение не удалось"));
+    }
+  }
+
+  // ── Преобразования между продуктами ──
+  // Модалку можно закрыть, не дожидаясь ответа, поэтому уведомление
+  // обязательно: иначе о готовности узнать неоткуда.
+  else if (
+    fetchTransformationsForNeighbors.fulfilled.match(action) ||
+    fetchTransformationBetween.fulfilled.match(action)
+  ) {
+    showToast("success", "Преобразования получены");
+  } else if (
+    fetchTransformationsForNeighbors.rejected.match(action) ||
+    fetchTransformationBetween.rejected.match(action)
+  ) {
+    if (!action.meta.aborted) {
+      showToast(
+        "error",
+        errorText(action.payload, "Не удалось получить преобразования"),
+      );
+    }
+  }
+
+  // ── Карточка продукта ──
+  else if (fetchProductCard.fulfilled.match(action)) {
+    showToast("success", "Карточка продукта заполнена");
+  } else if (fetchProductCard.rejected.match(action)) {
+    if (!action.meta.aborted) {
+      showToast(
+        "error",
+        errorText(action.payload, "Не удалось заполнить карточку"),
+      );
     }
   }
 

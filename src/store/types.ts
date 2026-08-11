@@ -318,6 +318,16 @@ export interface StepRecord {
   // Шаг — материализация альтернативы: ключ её содержимого (alternativeKey).
   // Нужен, чтобы undo шага снял пометку «принята» и вернул alt-ноду.
   altAcceptKey?: string;
+  // Преобразование шага переиспользовано (существующее с тем же именем от того
+  // же якоря) — undo не должен удалять сам узел, только добавленные рёбра.
+  transformationReused?: boolean;
+  // Узлы, которым шаг расширил список презентаций (перекрасил в общий цвет
+  // легенды при схождении деревьев) — undo возвращает прежние значения.
+  recoloredMergedNodes?: Array<{
+    nodeId: string;
+    presentations: string[];
+    presentationColor?: string;
+  }>;
 }
 
 export type StepChainStatus =

@@ -29,11 +29,16 @@ import {
   removeNodes,
   addNode,
   setGraphData,
+  loadGraphFromFile,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   insertTransformationsForNeighbors,
   addSourcesToPool,
 } from "./store/slices/gptSlice";
+import {
+  clearOpenedGraph,
+  setOpenedGraph,
+} from "./store/slices/savedGraphSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -41,7 +46,11 @@ import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
 import { ShareGraphModal } from "./components/share-graph-modal";
+import { SaveGraphModal } from "./components/save-graph-modal";
 import { GraphLegend } from "./components/graph-legend";
+import { useSaveGraph } from "./hooks/useSaveGraph";
+import { buildSaveGraphPayload } from "./utils/buildSaveGraphPayload";
+import { getLeafNodes } from "./utils/getLeafNodes";
 import { layoutTree } from "./utils/layoutTree";
 import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
@@ -104,6 +113,7 @@ import {
   getDirectProductNeighbors,
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
+import { getLinkedProducts } from "./utils/getLinkedProducts";
 import { fetchTransformationsForNeighbors } from "./store/api/transformation-between-api";
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
@@ -113,6 +123,10 @@ const nodeTypes: NodeTypes = {
   product: ProductNode,
   transformation: TransformationNode,
 };
+
+// Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
+// вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
+const AUTOSAVE_KEY = "autosave-graph";
 
 interface FlowProps {
   /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
@@ -129,9 +143,17 @@ export const Flow = ({
   onToggleViewMode,
 }: FlowProps = {}) => {
   const dispatch = useAppDispatch();
-  const { data, isLoading, error, rootId, source, chainBuild } = useAppSelector(
-    (store) => store.graph,
-  );
+  const {
+    data,
+    isLoading,
+    error,
+    rootId,
+    source,
+    chainBuild,
+    leafNodes,
+    hasMore,
+    originalPrompt,
+  } = useAppSelector((store) => store.graph);
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
   const { fitView, fitBounds, setViewport, setCenter, screenToFlowPosition } =
@@ -142,14 +164,40 @@ export const Flow = ({
 
   useEffect(() => {
     // В режиме просмотра по ссылке граф приходит с сервера — не перетираем его
-    // содержимым из localStorage.
+    // содержимым автосейва.
     if (sharedView) return;
     try {
-      const raw = localStorage.getItem("saved-graph");
+      // Автосейв текущей сессии приоритетнее устаревшего ручного
+      // localStorage-сейва (кнопка теперь сохраняет на сервер, но старый
+      // сейв у пользователей мог остаться — не теряем его).
+      const raw =
+        sessionStorage.getItem(AUTOSAVE_KEY) ??
+        localStorage.getItem("saved-graph");
       if (!raw) return;
-      const { nodes, edges } = JSON.parse(raw);
-      if (Array.isArray(nodes) && nodes.length) {
-        dispatch(setGraphData({ nodes, edges }));
+      const saved = JSON.parse(raw);
+      const nodes = saved.nodes;
+      const edges = Array.isArray(saved.edges) ? saved.edges : [];
+      if (!Array.isArray(nodes) || !nodes.length) return;
+      // loadGraphFromFile (а не setGraphData): восстанавливает rootId, пул
+      // источников и реестр цветов легенды по данным узлов.
+      dispatch(
+        loadGraphFromFile({
+          nodes,
+          edges,
+          leafNodes: Array.isArray(saved.leaf_nodes)
+            ? saved.leaf_nodes
+            : getLeafNodes(nodes, edges),
+          hasMore: !!saved.has_more,
+          originalPrompt:
+            typeof saved.prompt === "string" ? saved.prompt : null,
+          sourcesPool: saved.sources?.pool,
+          sourcesSeqCounter: saved.sources?.seqCounter,
+        }),
+      );
+      // Привязка к открытому сохранённому графу переживает перезагрузку —
+      // «Обновить …» продолжит писать в тот же файл.
+      if (saved.openedGraph?.id) {
+        dispatch(setOpenedGraph(saved.openedGraph));
       }
     } catch { /* ignore corrupted data */ }
   }, []);
@@ -660,6 +708,7 @@ export const Flow = ({
     (s) => s.graph.stepChainSessions,
   );
   const sourcesPool = useAppSelector((s) => s.graph.sourcesPool);
+  const sourcesSeqCounter = useAppSelector((s) => s.graph.sourcesSeqCounter);
   const needsFreshSources = useAppSelector((s) => s.graph.needsFreshSources);
   const stepSessionKey = (nodeId: string, dir: BuildDirection) =>
     `step::${nodeId}::${dir}`;
@@ -1156,6 +1205,53 @@ export const Flow = ({
       setInitialDescription("");
     }, 300);
   }, [saveChanges]);
+
+  // ─── Ссылки на связанные продукты в карточке ───
+  // Соседние продукты выбранной ноды (напрямую или через преобразование) —
+  // рендерятся в карточке продукта как кликабельные ссылки.
+  const linkedProducts = useMemo(
+    () =>
+      selectedNodeId
+        ? getLinkedProducts(selectedNodeId, data.nodes, data.edges)
+        : [],
+    [selectedNodeId, data.nodes, data.edges],
+  );
+
+  // Клик по ссылке-соседу: закрыть карточку текущего продукта (с сохранением
+  // правок), перелететь к выбранной ноде, выделить и подсветить её.
+  const handleFocusLinkedProduct = useCallback(
+    (nodeId: string) => {
+      const node = data.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+
+      closePanel();
+
+      // «Поймать фокус»: снять выделение с остальных нод, выделить цель.
+      const changes: NodeChange[] = [
+        ...data.nodes
+          .filter((n) => n.selected && n.id !== nodeId)
+          .map((n) => ({
+            id: n.id,
+            type: "select" as const,
+            selected: false,
+          })),
+        { id: nodeId, type: "select" as const, selected: true },
+      ];
+      dispatch(onNodesChange(changes));
+
+      // Перелёт к ноде: центр с учётом измеренных размеров (как в поиске).
+      const w = node.measured?.width ?? 0;
+      const h = node.measured?.height ?? 0;
+      setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+        zoom: 1.3,
+        duration: 600,
+      });
+      window.dispatchEvent(
+        new CustomEvent("highlight-node", { detail: nodeId }),
+      );
+    },
+    [data.nodes, dispatch, closePanel, setCenter],
+  );
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
@@ -1894,7 +1990,6 @@ export const Flow = ({
         onAcceptStep: handleAcceptStep(direction),
         onRejectStep: () => dispatch(rejectPendingStep(sKeyStep)),
         onForceStepPreview: () => dispatch(forceStepPreview(sKeyStep)),
-        onRetryStep: handleBuildStep(direction),
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
         pendingStep: stepSession?.pendingStep ?? null,
@@ -1992,7 +2087,12 @@ export const Flow = ({
           baseResult.stepChainStatus =
             rootStepSession?.status ?? "idle";
 
-          baseResult.onBuildStep = (customText?: string, customSystemPrompt?: string) => {
+          baseResult.onBuildStep = (
+            customText?: string,
+            customSystemPrompt?: string,
+            provider?: string,
+            model?: string,
+          ) => {
             const sKey = stepSessionKey(rootNodeId, direction);
             if (!stepChainSessions[sKey]) {
               dispatch(
@@ -2021,6 +2121,11 @@ export const Flow = ({
                 techText: customText || altDesc,
                 existingSources: poolSrcs.length ? poolSrcs : undefined,
                 ...(customSystemPrompt ? { customSystemPrompt } : {}),
+                // Выбор провайдера/модели из панели: раньше override для
+                // alt-нод обрезал эти аргументы, и построение альтернативы
+                // всегда уходило на дефолтный провайдер.
+                ...(provider ? { provider } : {}),
+                ...(model ? { model } : {}),
               }),
             );
           };
@@ -2055,8 +2160,6 @@ export const Flow = ({
             const sKey = stepSessionKey(rootNodeId, direction);
             dispatch(rejectPendingStep(sKey));
           };
-
-          baseResult.onRetryStep = baseResult.onBuildStep;
         }
       }
 
@@ -2147,23 +2250,92 @@ export const Flow = ({
     [dispatch, selectedNodeId],
   );
 
+  // ─── Сохранение на сервер (боковая кнопка) ───
+  // Та же логика, что у кнопки во вкладке «Сохранённые»: если открыт
+  // сохранённый граф — модалка предложит обновить его или сохранить как новый.
+  const {
+    openedGraphId,
+    openedGraphName,
+    defaultName: saveDefaultName,
+    saveNew: saveGraphAsNew,
+    updateOpened: updateOpenedGraph,
+  } = useSaveGraph();
+  const [showSaveGraphModal, setShowSaveGraphModal] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
-  const handleSaveToLocalStorage = useCallback(() => {
-    localStorage.setItem(
-      "saved-graph",
-      JSON.stringify({
-        // не сохраняем флаг выделения, чтобы граф не открывался «предвыделенным»
-        nodes: data.nodes.map((n) => {
-          const copy = { ...n };
-          delete copy.selected;
-          return copy;
-        }),
-        edges: data.edges,
-      }),
-    );
+  const flashSaveButton = useCallback(() => {
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
-  }, [data.nodes, data.edges]);
+  }, []);
+
+  const handleSaveGraphAsNew = useCallback(
+    async (name?: string) => {
+      if (await saveGraphAsNew(name)) {
+        setShowSaveGraphModal(false);
+        flashSaveButton();
+      }
+    },
+    [saveGraphAsNew, flashSaveButton],
+  );
+
+  const handleUpdateOpenedGraph = useCallback(async () => {
+    if (await updateOpenedGraph()) {
+      setShowSaveGraphModal(false);
+      flashSaveButton();
+    }
+  }, [updateOpenedGraph, flashSaveButton]);
+
+  // ─── Автосейв в sessionStorage ───
+  // Каждое изменение графа (с debounce — drag генерирует десятки событий в
+  // секунду) пишем в sessionStorage: перезагрузка/зависание вкладки не теряет
+  // результат. Сериализация графа на сотни узлов занимает единицы миллисекунд,
+  // с debounce 600 мс это незаметно.
+  useEffect(() => {
+    if (sharedView) return;
+    const timer = setTimeout(() => {
+      try {
+        if (!data.nodes.length) {
+          // Пустое полотно (например, после очистки) — автосейв не нужен.
+          sessionStorage.removeItem(AUTOSAVE_KEY);
+          return;
+        }
+        const payload = buildSaveGraphPayload({
+          originalPrompt,
+          nodes: data.nodes,
+          edges: data.edges,
+          leafNodes,
+          hasMore,
+          sourcesPool,
+          sourcesSeqCounter,
+        });
+        sessionStorage.setItem(
+          AUTOSAVE_KEY,
+          JSON.stringify({
+            ...payload,
+            ...(openedGraphId
+              ? {
+                  openedGraph: {
+                    id: openedGraphId,
+                    name: openedGraphName ?? "",
+                  },
+                }
+              : {}),
+          }),
+        );
+      } catch { /* квота/приватный режим — автосейв не критичен */ }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [
+    sharedView,
+    data.nodes,
+    data.edges,
+    leafNodes,
+    hasMore,
+    originalPrompt,
+    sourcesPool,
+    sourcesSeqCounter,
+    openedGraphId,
+    openedGraphName,
+  ]);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -2171,7 +2343,11 @@ export const Flow = ({
 
   const handleClearCanvas = useCallback(() => {
     dispatch(setGraphData({ nodes: [], edges: [] }));
+    // Очищенное полотно больше не привязано к сохранённому файлу — иначе
+    // «Сохранить» предложил бы перезаписать сейв пустым графом.
+    dispatch(clearOpenedGraph());
     localStorage.removeItem("saved-graph");
+    sessionStorage.removeItem(AUTOSAVE_KEY);
     setShowClearConfirm(false);
   }, [dispatch]);
 
@@ -2243,9 +2419,14 @@ export const Flow = ({
           {!readOnly && !focusOn && (
             <>
           <ControlButton
-            onClick={handleSaveToLocalStorage}
-            data-tooltip="Сохранить граф"
-            aria-label="Сохранить граф"
+            onClick={() => setShowSaveGraphModal(true)}
+            disabled={!data.nodes.length}
+            data-tooltip={
+              openedGraphId
+                ? `Сохранить граф (открыт «${openedGraphName}»)`
+                : "Сохранить граф на сервер"
+            }
+            aria-label="Сохранить граф на сервер"
             style={saveFlash ? { backgroundColor: "#4caf50", color: "#fff" } : undefined}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -2419,6 +2600,14 @@ export const Flow = ({
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
       />
+      <SaveGraphModal
+        isOpen={showSaveGraphModal}
+        onClose={() => setShowSaveGraphModal(false)}
+        onSave={handleSaveGraphAsNew}
+        defaultName={saveDefaultName}
+        openedName={openedGraphId ? openedGraphName : null}
+        onUpdate={openedGraphId ? handleUpdateOpenedGraph : undefined}
+      />
       {contextMenu && (
         <NodeContextMenu
           x={contextMenu.x}
@@ -2448,6 +2637,8 @@ export const Flow = ({
         upTab={upTab}
         hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
         onFetchTransformations={handleOpenFetchTransformations}
+        linkedProducts={linkedProducts}
+        onFocusLinkedProduct={handleFocusLinkedProduct}
         readOnly={structureLocked}
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
@@ -2530,9 +2721,9 @@ export const Flow = ({
             )
           }
           onConfirm={handleFetchTransformations}
-          onClose={() =>
-            !insertTrState.loading && setInsertTrState(null)
-          }
+          // Закрытие во время запроса разрешено: он идёт минутами, а
+          // результат применится и при закрытой модалке — о нём сообщит тост.
+          onClose={() => setInsertTrState(null)}
         />
       )}
     </div>

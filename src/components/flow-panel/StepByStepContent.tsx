@@ -11,7 +11,12 @@ import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
-import { AI_MODELS, AI_PROVIDERS, useAiConfig } from "../../hooks/useAiConfig";
+import {
+  AI_MODELS,
+  AI_PROVIDERS,
+  getAiRequestFields,
+  useAiConfig,
+} from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
 
 type StepByStepContentProps = Pick<
@@ -48,7 +53,6 @@ type StepByStepContentProps = Pick<
   | "onClearStepState"
   | "onAcceptStep"
   | "onRejectStep"
-  | "onRetryStep"
   | "onChangeStepAggregatedText"
   | "isAlternativeNode"
   | "altDescription"
@@ -89,7 +93,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onForceStepPreview,
   onAcceptStep,
   onRejectStep,
-  onRetryStep,
   onChangeStepAggregatedText,
 
   isAlternativeNode = false,
@@ -203,7 +206,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const aiModel = aiConfig.model || undefined;
 
   const renderAiSelect = () => {
-    const models = AI_MODELS[aiConfig.provider] ?? AI_MODELS[""];
+    const models = AI_MODELS[aiConfig.provider] ?? [];
     const hint = models.find((m) => m.value === aiConfig.model)?.hint;
     return (
       <div className={styles.aiConfigBlock}>
@@ -237,14 +240,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   };
 
   // ── Handlers with prompt support ──
+  // Поиск источников: непригодную для этой стадии модель не отправляем —
+  // запрос уйдёт и вернётся пустым. Подменяем пригодной.
+  const searchFields = getAiRequestFields({ stage: "search" });
+
   const handleFetchSources = () => {
     const allowedDomains = parseDomainsInput(domainsText);
     onFetchStepSources?.({
       maxItems,
       customSystemPrompt: isSrcPromptDirty ? displayedSrcPrompt : undefined,
       ...(allowedDomains.length ? { allowedDomains } : {}),
-      ...(aiProvider ? { provider: aiProvider } : {}),
-      ...(aiModel ? { model: aiModel } : {}),
+      ...searchFields,
     });
   };
 
@@ -334,6 +340,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
         {buildPromptOpen && (
           <div className={styles.promptEditor}>
+            {renderAiSelect()}
             <label className={styles.promptLabel}>
               Системный промпт построения шага:
             </label>
@@ -359,8 +366,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             )}
           </div>
         )}
-
-        {renderAiSelect()}
 
         {buildLoading && (
           <div className={styles.tabLoader}>
@@ -405,7 +410,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
             onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
-            onRetry={() => onRetryStep?.()}
+            // Перестроение — тем же путём, что и кнопка построения: с текущим
+            // промптом и выбранными провайдером/моделью (onRetryStep без
+            // аргументов терял выбор модели — запрос уходил на дефолтную).
+            onRetry={() => handleBuild(editedAltDesc)}
             onReject={() => onRejectStep?.()}
           />
         )}
@@ -492,8 +500,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {/* Редактор поиска: промпт + белый список доменов (3.3) */}
           {searchPromptEditor}
 
-          {renderAiSelect()}
-
           {sourcesLoading && (
             <div className={styles.tabLoader}>
               <div className={styles.tabSpinner} />
@@ -546,6 +552,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
           {aggPromptOpen && (
             <div className={styles.promptEditor}>
+              {renderAiSelect()}
               <label className={styles.promptLabel}>
                 Системный + пользовательский промпт обобщения:
               </label>
@@ -571,8 +578,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
-
-          {renderAiSelect()}
 
           {aggregateLoading && (
             <div className={styles.tabLoader}>
@@ -679,6 +684,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
           {buildPromptOpen && (
             <div className={styles.promptEditor}>
+              {renderAiSelect()}
               <label className={styles.promptLabel}>
                 Системный промпт построения шага:
               </label>
@@ -704,8 +710,6 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               )}
             </div>
           )}
-
-          {renderAiSelect()}
 
           {buildLoading && (
             <div className={styles.tabLoader}>
@@ -897,7 +901,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
-          onRetry={() => onRetryStep?.()}
+          // Перестроение тем же путём, что и «Построить шаг»: с текущим
+          // промптом и выбранными провайдером/моделью.
+          onRetry={() => handleBuild()}
           onReject={() => onRejectStep?.()}
         />
       )}
