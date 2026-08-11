@@ -51,11 +51,32 @@ export const fetchSources = createAsyncThunk<
         ? "sourcesAggregatedUp"
         : "sourcesAggregatedDown";
 
+    // Найденное заменяет прошлую выдачу, но ручные источники сохраняем:
+    // иначе добавленная пользователем ссылка исчезала из списка (оставаясь
+    // в пуле, из-за чего повторный ввод ловил «URL уже есть»).
+    const state = thunkApi.getState() as {
+      graph: { data: { nodes: Array<{ id: string; data?: Record<string, unknown> }> } };
+    };
+    const prevSources =
+      (state.graph.data.nodes.find((n) => n.id === payload.nodeId)?.data?.[
+        dirField
+      ] as TechnologySource[] | undefined) ?? [];
+    const found = res.data.sources ?? [];
+    const foundUrls = new Set(
+      found.map((s) => String(s.url || "").trim().toLowerCase()),
+    );
+    const keptManual = prevSources.filter(
+      (s) =>
+        s.isManual &&
+        !foundUrls.has(String(s.url || "").trim().toLowerCase()),
+    );
+    const nextSources = [...found, ...keptManual];
+
     thunkApi.dispatch(
       updateNodeData({
         nodeId: payload.nodeId,
         data: {
-          [dirField]: res.data.sources,
+          [dirField]: nextSources,
           [aggField]: false,
           sources_meta: {
             product: res.data.product,
@@ -66,10 +87,11 @@ export const fetchSources = createAsyncThunk<
       }),
     );
 
-    // возвращаем составной ключ для sourcesSlice
+    // возвращаем составной ключ для sourcesSlice; список — с сохранёнными
+    // ручными источниками, чтобы они не пропадали и из панели источников
     return {
       nodeId: sourcesKey(payload.nodeId, payload.direction),
-      data: res.data,
+      data: { ...res.data, sources: nextSources },
     };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {

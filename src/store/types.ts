@@ -174,6 +174,12 @@ export type TechnologySource = {
   technology_description: string;
   inputs_outputs_hint: string[];
   evidence_snippets: string[];
+  /**
+   * Источник добавлен пользователем вручную. Поиск перезаписывает набор
+   * источников узла целиком, и без этой пометки ручные ссылки пропадали из
+   * списка (оставаясь в пуле — оттуда и «URL уже есть» при повторном вводе).
+   */
+  isManual?: boolean;
 };
 
 export type SourcesSearchResponse = {

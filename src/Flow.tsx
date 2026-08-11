@@ -1224,7 +1224,13 @@ export const Flow = ({
       const node = data.nodes.find((n) => n.id === nodeId);
       if (!node) return;
 
-      closePanel();
+      // Карточку не закрываем, а ПЕРЕКЛЮЧАЕМ на выбранный продукт: переход по
+      // ссылке — это продолжение чтения, а не выход из него. saveChanges
+      // фиксирует правки текущего узла до смены (закрывать панель незачем).
+      saveChanges();
+      setSelectedNodeId(nodeId);
+      setIsPanelOpen(true);
+      lastInteractedNodeIdRef.current = nodeId;
 
       // «Поймать фокус»: снять выделение с остальных нод, выделить цель.
       const changes: NodeChange[] = [
@@ -1250,7 +1256,7 @@ export const Flow = ({
         new CustomEvent("highlight-node", { detail: nodeId }),
       );
     },
-    [data.nodes, dispatch, closePanel, setCenter],
+    [data.nodes, dispatch, saveChanges, setCenter],
   );
 
   // Обработчик изменения имени узла
@@ -1712,6 +1718,9 @@ export const Flow = ({
           technology_description: src.description?.trim() ?? "",
           inputs_outputs_hint: [],
           evidence_snippets: [],
+          // Пометка переживает поиск: fetchSources переносит ручные источники
+          // в новый набор, иначе они пропадали из списка узла.
+          isManual: true,
         };
         const next = [...merged, manual];
 
@@ -2571,7 +2580,12 @@ export const Flow = ({
         </Controls>
         <Background />
       </ReactFlow>
-      {readOnly && !isPanelOpen && <GraphLegend />}
+      {/* Легенда доступна в любом режиме, а не только в просмотре: после
+          открытия сохранённого объединённого графа полотно оказывается в
+          режиме редактирования, и легенда выглядела «потерянной», хотя реестр
+          цветов восстанавливался. Сама она не рендерится, когда презентаций
+          нет, так что на обычных графах не появляется. */}
+      {!isPanelOpen && <GraphLegend />}
       {/* Обёртка вокруг плашки нужна только для замера её высоты при подгонке
           камеры (см. fitFocusCamera) — своей геометрии не задаёт. */}
       {focusState && (

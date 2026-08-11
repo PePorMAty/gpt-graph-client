@@ -1159,20 +1159,22 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           className={styles.linkedProductBtn}
                           onClick={() => onFocusLinkedProduct?.(p.nodeId)}
                           title={
-                            (p.role === "incoming"
-                              ? "Входящая связь"
-                              : "Исходящая связь") +
+                            (p.screenDirection === "up"
+                              ? "Выше по графу"
+                              : "Ниже по графу") +
                             (p.viaTransformation
                               ? ` через «${p.viaTransformation}»`
                               : "") +
-                            " — показать на графе"
+                            " — открыть карточку и показать на графе"
                           }
                         >
+                          {/* Стрелка по РЕАЛЬНОМУ расположению соседа на
+                              полотне (screenDirection), а не по роли ребра. */}
                           <span
                             className={styles.linkedProductArrow}
                             aria-hidden
                           >
-                            {p.role === "incoming" ? "←" : "→"}
+                            {p.screenDirection === "up" ? "↑" : "↓"}
                           </span>
                           <span className={styles.linkedProductLabel}>
                             {p.label || p.nodeId}
