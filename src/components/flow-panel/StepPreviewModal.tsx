@@ -39,6 +39,13 @@ interface StepPreviewModalProps {
   step: StepChainApiStep;
   anchorProductName: string;
   stepNumber: number;
+  /**
+   * Направление шага. Определяет, чем является добавленный вручную продукт:
+   * при построении вниз новые продукты — выходы преобразования, при
+   * построении вверх — входы (сырьё). Выбора стороны в форме нет: шаг
+   * однонаправленный, и сторону задаёт именно направление.
+   */
+  direction: "up" | "down";
   onAccept: (filteredStep: StepChainApiStep) => void;
   onRetry: () => void;
   onReject: () => void;
@@ -48,10 +55,14 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   step,
   anchorProductName,
   stepNumber,
+  direction,
   onAccept,
   onRetry,
   onReject,
 }) => {
+  // Куда попадёт свой продукт: вниз строим — он выход, вверх — вход (сырьё).
+  const customSide: "input" | "output" =
+    direction === "up" ? "input" : "output";
   const anchorNorm = useMemo(
     () => normalizeProductName(anchorProductName),
     [anchorProductName],
@@ -76,11 +87,8 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   const [excludedOutputs, setExcludedOutputs] = useState<Set<number>>(new Set());
 
   // Продукты, добавленные пользователем вручную (модель их не предлагала).
-  const [customProducts, setCustomProducts] = useState<
-    Array<{ side: "input" | "output"; product: StepProduct }>
-  >([]);
+  const [customProducts, setCustomProducts] = useState<StepProduct[]>([]);
   const [formOpen, setFormOpen] = useState(false);
-  const [formSide, setFormSide] = useState<"input" | "output">("output");
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -99,9 +107,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     const clash =
       step.inputProducts.some((p) => normalizeProductName(p.name) === norm) ||
       step.outputProducts.some((p) => normalizeProductName(p.name) === norm) ||
-      customProducts.some(
-        (c) => normalizeProductName(c.product.name) === norm,
-      );
+      customProducts.some((p) => normalizeProductName(p.name) === norm);
     if (clash) {
       setFormError("Такой продукт уже есть в шаге");
       return;
@@ -109,13 +115,10 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     setCustomProducts((prev) => [
       ...prev,
       {
-        side: formSide,
-        product: {
-          name,
-          description: formDescription.trim() || undefined,
-          isExisting: false,
-          isUserAdded: true,
-        },
+        name,
+        description: formDescription.trim() || undefined,
+        isExisting: false,
+        isUserAdded: true,
       },
     ]);
     setFormName("");
@@ -126,12 +129,6 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   const removeCustomProduct = (index: number) => {
     setCustomProducts((prev) => prev.filter((_, i) => i !== index));
   };
-
-  /** Свои продукты одной стороны + их индексы в общем списке (для удаления). */
-  const customBySide = (side: "input" | "output") =>
-    customProducts
-      .map((c, index) => ({ ...c, index }))
-      .filter((c) => c.side === side);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -164,11 +161,11 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
       ...step,
       inputProducts: [
         ...step.inputProducts.filter((_, i) => !excludedInputs.has(i)),
-        ...customBySide("input").map((c) => c.product),
+        ...(customSide === "input" ? customProducts : []),
       ],
       outputProducts: [
         ...step.outputProducts.filter((_, i) => !excludedOutputs.has(i)),
-        ...customBySide("output").map((c) => c.product),
+        ...(customSide === "output" ? customProducts : []),
       ],
     };
     onAccept(filteredStep);
@@ -189,7 +186,8 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           </div>
         )}
 
-        {(visibleInputs.length > 0 || customBySide("input").length > 0) && (
+        {(visibleInputs.length > 0 ||
+          (customSide === "input" && customProducts.length > 0)) && (
           <>
             <p className={styles.sectionTitle}>Входы:</p>
             <ul className={styles.productList}>
@@ -214,18 +212,20 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
                   </span>
                 </li>
               ))}
-              {customBySide("input").map((c) => (
-                <CustomProductItem
-                  key={`custom-in-${c.index}`}
-                  product={c.product}
-                  onRemove={() => removeCustomProduct(c.index)}
-                />
-              ))}
+              {customSide === "input" &&
+                customProducts.map((p, i) => (
+                  <CustomProductItem
+                    key={`custom-in-${i}`}
+                    product={p}
+                    onRemove={() => removeCustomProduct(i)}
+                  />
+                ))}
             </ul>
           </>
         )}
 
-        {(visibleOutputs.length > 0 || customBySide("output").length > 0) && (
+        {(visibleOutputs.length > 0 ||
+          (customSide === "output" && customProducts.length > 0)) && (
           <>
             <p className={styles.sectionTitle}>Выходы:</p>
             <ul className={styles.productList}>
@@ -250,13 +250,14 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
                   </span>
                 </li>
               ))}
-              {customBySide("output").map((c) => (
-                <CustomProductItem
-                  key={`custom-out-${c.index}`}
-                  product={c.product}
-                  onRemove={() => removeCustomProduct(c.index)}
-                />
-              ))}
+              {customSide === "output" &&
+                customProducts.map((p, i) => (
+                  <CustomProductItem
+                    key={`custom-out-${i}`}
+                    product={p}
+                    onRemove={() => removeCustomProduct(i)}
+                  />
+                ))}
             </ul>
           </>
         )}
@@ -275,24 +276,13 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             </button>
           ) : (
             <div className={styles.customForm}>
+              {/* Сторону не выбираем: шаг строится в одну сторону, и продукт
+                  встаёт туда же, куда идёт построение. */}
               <div className={styles.customSideRow}>
-                <span className={styles.customSideLabel}>Куда:</span>
-                <label className={styles.customRadio}>
-                  <input
-                    type="radio"
-                    checked={formSide === "input"}
-                    onChange={() => setFormSide("input")}
-                  />
-                  во входы
-                </label>
-                <label className={styles.customRadio}>
-                  <input
-                    type="radio"
-                    checked={formSide === "output"}
-                    onChange={() => setFormSide("output")}
-                  />
-                  в выходы
-                </label>
+                Продукт добавится
+                {customSide === "input"
+                  ? " во входы (построение вверх — сырьё)"
+                  : " в выходы (построение вниз — продукт)"}
               </div>
               <input
                 type="text"

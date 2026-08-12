@@ -409,6 +409,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             step={pendingStep}
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
+            direction={direction}
             onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
             // Перестроение — тем же путём, что и кнопка построения: с текущим
             // промптом и выбранными провайдером/моделью (onRetryStep без
@@ -900,6 +901,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           step={pendingStep}
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
+          direction={direction}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.

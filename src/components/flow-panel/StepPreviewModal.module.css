@@ -222,23 +222,11 @@
   gap: 8px;
 }
 
+/* Пояснение, куда встанет продукт (сторону задаёт направление шага). */
 .customSideRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   font-size: 12px;
-  color: #475569;
-}
-
-.customSideLabel {
   color: #64748b;
-}
-
-.customRadio {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
+  line-height: 1.4;
 }
 
 .customInput,
