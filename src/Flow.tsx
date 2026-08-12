@@ -71,6 +71,7 @@ import {
 } from "./utils/focusTransition";
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
 import { inferLayoutDirection } from "./utils/inferLayoutDirection";
+import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
 import { FocusModeHud } from "./components/focus-mode-hud";
 import styles from "./styles/Flow.module.css";
 import type { CustomNode } from "./types";
@@ -1640,11 +1641,15 @@ export const Flow = ({
       );
 
       // Отмеченное чекбоксами подмножество (3.1) имеет приоритет над полным пулом.
-      const poolSources =
+      const rawSources =
         selectedSources && selectedSources.length
           ? selectedSources
           : (sourcesPool[poolKey(productName, direction)]?.sources ?? []);
-      if (!poolSources.length) return;
+      if (!rawSources.length) return;
+      // В пуле из сейва/автосейва лежат только title+url — содержимое
+      // подтягиваем из узлов, иначе сервер отвергнет обобщение как «нет ни
+      // одного technology_description».
+      const poolSources = enrichSourcesFromNodes(rawSources, data.nodes);
 
       const descField =
         direction === "up" ? "upDescription" : "downDescription";
@@ -1673,6 +1678,7 @@ export const Flow = ({
       selectedNodeId,
       selectedNode,
       sourcesPool,
+      data.nodes,
     ],
   );
 

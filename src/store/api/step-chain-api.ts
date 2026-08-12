@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import type { TechChain } from "../../utils/chainToFlow";
 import { addSourcesToPool, sourcesPoolKey } from "../slices/gptSlice";
+import { enrichSourcesFromNodes } from "../../utils/enrichSourcesFromNodes";
 import { getAncestorProductLabels } from "../../utils/graphReachability";
 
 export const fetchChainStep = createAsyncThunk<
@@ -210,7 +211,10 @@ export const fetchStepSourcesV2 = createAsyncThunk<
             nodeId: args.nodeId,
             productName: args.productName,
             direction: args.direction,
-            sources: poolSources,
+            // Пул мог прийти облегчённым из сейва (только title+url) —
+            // содержимое подтягиваем из узлов, иначе сервер отвергнет
+            // обобщение как «нет ни одного technology_description».
+            sources: enrichSourcesFromNodes(poolSources, graph.data.nodes),
             existingChain,
           }),
         );
