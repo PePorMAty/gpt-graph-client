@@ -57,6 +57,12 @@ export interface CustomNodeData {
   // --- step-by-step chain ---
   stepChainSessionKey?: string;
   stepChainStepNumber?: number;
+  /**
+   * Продукт добавлен пользователем вручную в превью шага. Пока описание
+   * пустое, узел показывается как «не заполнен» (пунктирная рамка + значок);
+   * заполнение описания снимает пометку само, отдельного флага не нужно.
+   */
+  isUserAdded?: boolean;
 
   // --- multi-source upload (presentation tracking) ---
   presentations?: string[];

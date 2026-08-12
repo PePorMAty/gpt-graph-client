@@ -294,6 +294,12 @@ export type StepProduct = {
   description?: string;
   isExisting: boolean;
   existingNodeLabel?: string;
+  /**
+   * Продукт добавлен пользователем вручную в превью шага, а не предложен
+   * моделью. Такие продукты не проходили заполнение (описание/карточку),
+   * поэтому узел помечается «не заполнен», пока описание пустое.
+   */
+  isUserAdded?: boolean;
 };
 
 export type StepChainApiStep = {

@@ -2658,6 +2658,10 @@ export const Flow = ({
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}
         isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        isUnfilledUserProduct={
+          selectedNode?.data?.isUserAdded === true &&
+          !String(selectedNode?.data?.description ?? "").trim()
+        }
         altDirection={
           selectedNode?.data?.stepAltDirection as BuildDirection | undefined
         }

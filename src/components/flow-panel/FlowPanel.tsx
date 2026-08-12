@@ -816,6 +816,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   sourceGroups = [],
   sourcesCurrentProduct = "",
   isAltNode = false,
+  isUnfilledUserProduct = false,
   altDirection,
   aggregatedDescription,
   onCommitDescription,
@@ -1091,6 +1092,14 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 ) : (
                   <>
                     <label className={styles.formLabel}>Описание:</label>
+                    {/* Ручной продукт из превью шага ждёт описания — говорим
+                        об этом прямо у поля; заполнение снимет пометку с узла. */}
+                    {isUnfilledUserProduct && (
+                      <div className={styles.unfilledHint}>
+                        ✎ Продукт добавлен вручную — описание не заполнено.
+                        Заполните его здесь, и пометка с узла снимется.
+                      </div>
+                    )}
                     <textarea
                       value={descriptionValue}
                       onChange={onChangeDescription}
