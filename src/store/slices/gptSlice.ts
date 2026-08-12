@@ -646,6 +646,26 @@ const gptSlice = createSlice({
             state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
             continue;
           }
+          if (newNode?.data?.isUserAdded === true) {
+            // Продукт добавлен пользователем вручную: он не выведен из
+            // источников родителя (назвать его можно как угодно), поэтому
+            // наследовать их нельзя — иначе обобщение следующего шага пошло бы
+            // по материалу, который об этом продукте ничего не говорит.
+            // Маркер ставим, только если своих источников ещё нет: продукт мог
+            // попасть в шаг повторно (схождение) уже после собственного поиска.
+            const own = state.sourcesPool[newKey];
+            const hasOwnSources =
+              !!own &&
+              own.sources.length > 0 &&
+              normalizeProductName(own.originProduct ?? "") === normalized;
+            if (!hasOwnSources) {
+              state.needsFreshSources[newKey] = {
+                fromProduct: anchorLabel,
+                reason: "manual",
+              };
+            }
+            continue;
+          }
           if (
             isAlternativeFirstStep &&
             stepRecord.newProductNodeIds.includes(nid)
