@@ -1,0 +1,166 @@
+.hud {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: min(92%, 860px);
+
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(15, 40, 80, 0.14);
+  font-size: 13px;
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+
+  padding: 5px 10px;
+  border: 1px solid #c9d6e8;
+  border-radius: 7px;
+  background: #fff;
+  color: #1f4e96;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.backButton:hover:not(:disabled) {
+  background: #eaf2ff;
+}
+
+.backButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.crumb {
+  padding: 3px 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #4a6a99;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+  transition: background 120ms ease;
+}
+
+.crumb:hover {
+  background: #eaf2ff;
+  text-decoration: underline;
+}
+
+.crumbSep {
+  color: #9db2cc;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.crumbEllipsis {
+  color: #9db2cc;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.crumbCurrent {
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.scope {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding-left: 8px;
+  border-left: 1px solid #e2e9f3;
+}
+
+.scopeButton {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid #c9d6e8;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f4e96;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.scopeButton:hover {
+  background: #eaf2ff;
+}
+
+.scopeButtonActive {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.scopeButtonActive:hover {
+  background: #2563eb;
+}
+
+.depthButton {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #c9d6e8;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f4e96;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.depthButton:hover {
+  background: #eaf2ff;
+}
+
+.depthButtonActive {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.depthButtonActive:hover {
+  background: #2563eb;
+}
+

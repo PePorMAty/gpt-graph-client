@@ -146,3 +146,145 @@
 .acceptBtn:hover {
   background: #1d4ed8;
 }
+
+/* ===== Свой продукт (добавленный вручную в превью шага) ===== */
+
+.customName {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* Заполнен — нейтральный бейдж, как у обычных продуктов. */
+.badgeCustom {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: #5b21b6;
+  white-space: nowrap;
+}
+
+/* Без описания — янтарная пометка: тот же смысл, что и на узле графа. */
+.badgeUnfilled {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  white-space: nowrap;
+}
+
+.customRemove {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.customRemove:hover {
+  background: #ffefef;
+  color: #c62828;
+}
+
+.customBox {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.customToggle {
+  padding: 6px 10px;
+  border: 1px dashed #c9d6e8;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #1f4e96;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.customToggle:hover {
+  background: #eef2ff;
+}
+
+.customForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Пояснение, куда встанет продукт (сторону задаёт направление шага). */
+.customSideRow {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.customInput,
+.customTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: #1f2933;
+  outline: none;
+  resize: vertical;
+}
+
+.customInput:focus,
+.customTextarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.customError {
+  color: #c62828;
+  font-size: 12px;
+}
+
+.customFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.customCancel {
+  padding: 6px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.customCancel:hover {
+  background: #f1f5f9;
+}
+
+.customAdd {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.customAdd:hover {
+  background: #1d4ed8;
+}

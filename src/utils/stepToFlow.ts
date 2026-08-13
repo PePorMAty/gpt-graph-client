@@ -271,6 +271,9 @@ export function stepToFlow(
           chainDirection: direction,
           stepChainSessionKey: sessionKey,
           stepChainStepNumber: stepNumber,
+          // Ручной продукт из превью шага: пока описание пустое, узел
+          // помечается «не заполнен» (см. ProductNode).
+          ...(product.isUserAdded ? { isUserAdded: true } : {}),
         },
       });
       newProductNodeIds.push(pFlowId);

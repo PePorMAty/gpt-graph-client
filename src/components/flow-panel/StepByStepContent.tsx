@@ -409,6 +409,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             step={pendingStep}
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
+            direction={direction}
             onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
             // Перестроение — тем же путём, что и кнопка построения: с текущим
             // промптом и выбранными провайдером/моделью (onRetryStep без
@@ -460,6 +461,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               Это первый продукт альтернативы. Источники основного пути не
               унаследованы намеренно — чтобы альтернатива не свелась к основному
               маршруту, найдите свежие источники именно для «{productName}».
+            </>
+          ) : stepNeedsFreshSources.reason === "manual" ? (
+            <>
+              Продукт «{productName}» добавлен вручную, поэтому источники «
+              {stepNeedsFreshSources.fromProduct}» ему не унаследованы: они о
+              нём ничего не говорят. Найдите свежие источники именно для этого
+              продукта — по ним и пойдёт обобщение следующего шага.
             </>
           ) : (
             <>
@@ -900,6 +908,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           step={pendingStep}
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
+          direction={direction}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.

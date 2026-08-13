@@ -6,6 +6,14 @@ export type LinkedProduct = {
   label: string;
   /** Направление связи относительно текущего продукта (по рёбрам графа). */
   role: "incoming" | "outgoing";
+  /**
+   * Где сосед реально лежит на полотне относительно текущего узла.
+   * Считается по позициям, а не по роли: у «вверх»-графов рёбра идут
+   * продукт → сырьё, поэтому входящая связь может быть визуально снизу.
+   * Стрелка в карточке рисуется именно по этому полю, чтобы совпадать с
+   * тем, что пользователь видит на графе.
+   */
+  screenDirection: "up" | "down";
   /** Имя преобразования-посредника, если связь идёт через него (не напрямую). */
   viaTransformation?: string;
 };
@@ -48,10 +56,16 @@ export function getLinkedProducts(
     const key = `${role}::${node.id}`;
     if (seen.has(key)) return;
     seen.add(key);
+    // Ниже по полотну = «вниз». Равные y (один ярус) относим к роли:
+    // исходящая — вниз, входящая — вверх.
+    const dy = (node.position?.y ?? 0) - (me.position?.y ?? 0);
+    const screenDirection: "up" | "down" =
+      dy > 1 ? "down" : dy < -1 ? "up" : role === "outgoing" ? "down" : "up";
     result.push({
       nodeId: node.id,
       label: String(node.data?.label ?? ""),
       role,
+      screenDirection,
       ...(via ? { viaTransformation: via } : {}),
     });
   };

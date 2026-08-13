@@ -103,10 +103,11 @@ export interface DirectionTabProps {
   stepSourcesOrigin?: string | null;
   /** Источники закончились — повторный поиск не дал новых сверх уже найденных. */
   stepSourcesExhausted?: boolean;
-  /** Маркер с build родителя: источников для этого продукта не хватает — нужен свежий поиск. */
+  /** Маркер с build родителя: продукту нужен свежий поиск источников.
+   *  Причины — см. InitialGraphStateI.needsFreshSources в store/types.ts. */
   stepNeedsFreshSources?: {
     fromProduct: string;
-    reason?: "insufficient" | "cycle" | "alternative";
+    reason?: "insufficient" | "cycle" | "alternative" | "manual";
     loopOn?: string[];
   } | null;
 
@@ -166,6 +167,12 @@ export interface FlowPanelProps {
 
   /** Нода — альтернатива (chainVariant === "alt"): описание рендерим как markdown. */
   isAltNode?: boolean;
+  /**
+   * Продукт добавлен вручную в превью шага и ещё без описания — показываем
+   * подсказку у поля «Описание». Пометка снимается сама, как только описание
+   * заполнено (флага «заполнен» не храним).
+   */
+  isUnfilledUserProduct?: boolean;
   /** Направление альтернативного шага (alt-нода) — для кнопки «Построить альтернативу». */
   altDirection?: BuildDirection;
   /** Обобщённое описание преобразования (markdown) — для тумблера в карточке. */
