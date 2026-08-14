@@ -18,6 +18,7 @@ import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 
 import styles from "./FlowPanel.module.css";
+import { AiModelSelect } from "../ai-model-select";
 
 // ─────────────────────────────────────────────────
 // DirectionContent — reusable block for "down" / "up" tab
@@ -81,6 +82,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepBuiltFromAggregate,
   pendingStep,
   onFetchStepSources,
+  onCancelStepSources,
   onAggregateStepSources,
   onBuildStep,
   onClearStepState,
@@ -250,6 +252,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepBuiltFromAggregate={stepBuiltFromAggregate}
           pendingStep={pendingStep}
           onFetchStepSources={onFetchStepSources}
+          onCancelStepSources={onCancelStepSources}
           onAggregateStepSources={onAggregateStepSources}
           onAddManualSource={onAddManualSource}
           onBuildStep={onBuildStep}
@@ -377,6 +380,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
               {aggPromptOpen && (
                 <div className={styles.promptEditor}>
+                  <AiModelSelect />
                   <label className={styles.promptLabel}>
                     Системный + пользовательский промпт обобщения:
                   </label>
@@ -812,6 +816,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   sourceGroups = [],
   sourcesCurrentProduct = "",
   isAltNode = false,
+  isUnfilledUserProduct = false,
   altDirection,
   aggregatedDescription,
   onCommitDescription,
@@ -1087,6 +1092,14 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                 ) : (
                   <>
                     <label className={styles.formLabel}>Описание:</label>
+                    {/* Ручной продукт из превью шага ждёт описания — говорим
+                        об этом прямо у поля; заполнение снимет пометку с узла. */}
+                    {isUnfilledUserProduct && (
+                      <div className={styles.unfilledHint}>
+                        ✎ Продукт добавлен вручную — описание не заполнено.
+                        Заполните его здесь, и пометка с узла снимется.
+                      </div>
+                    )}
                     <textarea
                       value={descriptionValue}
                       onChange={onChangeDescription}
@@ -1155,20 +1168,22 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           className={styles.linkedProductBtn}
                           onClick={() => onFocusLinkedProduct?.(p.nodeId)}
                           title={
-                            (p.role === "incoming"
-                              ? "Входящая связь"
-                              : "Исходящая связь") +
+                            (p.screenDirection === "up"
+                              ? "Выше по графу"
+                              : "Ниже по графу") +
                             (p.viaTransformation
                               ? ` через «${p.viaTransformation}»`
                               : "") +
-                            " — показать на графе"
+                            " — открыть карточку и показать на графе"
                           }
                         >
+                          {/* Стрелка по РЕАЛЬНОМУ расположению соседа на
+                              полотне (screenDirection), а не по роли ребра. */}
                           <span
                             className={styles.linkedProductArrow}
                             aria-hidden
                           >
-                            {p.role === "incoming" ? "←" : "→"}
+                            {p.screenDirection === "up" ? "↑" : "↓"}
                           </span>
                           <span className={styles.linkedProductLabel}>
                             {p.label || p.nodeId}
@@ -1274,6 +1289,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                     </div>
 
                     {/* prompt textarea */}
+                    <AiModelSelect stage="card" />
                     <label className={styles.promptLabel}>
                       Системный промпт:
                     </label>

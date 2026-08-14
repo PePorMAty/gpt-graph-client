@@ -646,6 +646,26 @@ const gptSlice = createSlice({
             state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
             continue;
           }
+          if (newNode?.data?.isUserAdded === true) {
+            // Продукт добавлен пользователем вручную: он не выведен из
+            // источников родителя (назвать его можно как угодно), поэтому
+            // наследовать их нельзя — иначе обобщение следующего шага пошло бы
+            // по материалу, который об этом продукте ничего не говорит.
+            // Маркер ставим, только если своих источников ещё нет: продукт мог
+            // попасть в шаг повторно (схождение) уже после собственного поиска.
+            const own = state.sourcesPool[newKey];
+            const hasOwnSources =
+              !!own &&
+              own.sources.length > 0 &&
+              normalizeProductName(own.originProduct ?? "") === normalized;
+            if (!hasOwnSources) {
+              state.needsFreshSources[newKey] = {
+                fromProduct: anchorLabel,
+                reason: "manual",
+              };
+            }
+            continue;
+          }
           if (
             isAlternativeFirstStep &&
             stepRecord.newProductNodeIds.includes(nid)
@@ -776,9 +796,23 @@ const gptSlice = createSlice({
       // Замена, а не merge: каждый успешный поиск источников полностью затирает
       // pool именно этого (productName, direction). Pool братьев / предков /
       // потомков не трогается — у них другие ключи.
-      const { productName, direction, sources } = action.payload;
+      // Исключение — источники, добавленные пользователем вручную: их поиск не
+      // вправе удалять (иначе ссылка пропадала из списка, но продолжала ловиться
+      // проверкой дублей как «URL уже есть»).
+      const { productName, direction } = action.payload;
       const key = sourcesPoolKey(productName, direction);
       const prev = state.sourcesPool[key];
+      const incomingUrls = new Set(
+        action.payload.sources.map((s) =>
+          String(s.url || "").trim().toLowerCase(),
+        ),
+      );
+      const keptManual = (prev?.sources ?? []).filter(
+        (s) =>
+          s.isManual &&
+          !incomingUrls.has(String(s.url || "").trim().toLowerCase()),
+      );
+      const sources = [...action.payload.sources, ...keptManual];
       // Номер бейджа — глобальный сквозной (per-direction). Присваивается при
       // ПЕРВОМ собственном поиске продукта; повторный поиск/добор того же
       // продукта (у него уже свой номер) номер НЕ меняет. Унаследованный пул
@@ -791,8 +825,10 @@ const gptSlice = createSlice({
       // По умолчанию сохраняем прежний номер. Новый номер выдаём только если
       // источники реально найдены и это не «своё» (иначе пустой/повторный поиск
       // съедал бы номер и создавал дыры в нумерации).
+      // Считаем именно НАЙДЕННОЕ (payload), а не итоговый набор: перенесённые
+      // ручные источники не должны выдавать номер пустому поиску.
       let seq = prev?.seq;
-      if (sources.length > 0 && !owned) {
+      if (action.payload.sources.length > 0 && !owned) {
         state.sourcesSeqCounter[direction] += 1;
         seq = state.sourcesSeqCounter[direction];
       }
@@ -806,6 +842,47 @@ const gptSlice = createSlice({
       };
       // Свежий поиск снимает маркер «нужны свежие источники».
       delete state.needsFreshSources[key];
+    },
+
+    /**
+     * Переименование презентации (пункта легенды). Имя презентации хранится не
+     * только в реестре цветов, но и в каждом узле (data.presentations и ключи
+     * data.labelsByPresentation), поэтому правим всё разом — иначе узлы
+     * ссылались бы на исчезнувшее имя и выпадали из легенды.
+     * Цвет сохраняется за переименованным пунктом.
+     */
+    renamePresentation: (
+      state,
+      action: PayloadAction<{ from: string; to: string }>,
+    ) => {
+      const from = action.payload.from.trim();
+      const to = action.payload.to.trim();
+      if (!from || !to || from === to) return;
+      if (!(from in state.presentationColors)) return;
+      // Слияние с существующим именем не делаем — оно потеряло бы цвет одной
+      // из презентаций и смешало бы источники; такое переименование отклоняем.
+      if (to in state.presentationColors) return;
+
+      // Реестр: сохраняем порядок ключей, чтобы легенда не перетасовывалась.
+      state.presentationColors = Object.fromEntries(
+        Object.entries(state.presentationColors).map(([name, color]) =>
+          name === from ? [to, color] : [name, color],
+        ),
+      );
+
+      for (const node of state.data.nodes) {
+        const pres = node.data?.presentations;
+        if (Array.isArray(pres) && pres.includes(from)) {
+          node.data.presentations = pres.map((p) => (p === from ? to : p));
+        }
+        const labels = node.data?.labelsByPresentation as
+          | Record<string, string>
+          | undefined;
+        if (labels && from in labels) {
+          const { [from]: moved, ...rest } = labels;
+          node.data.labelsByPresentation = { ...rest, [to]: moved };
+        }
+      }
     },
 
     clearSourcesPool: (
@@ -1497,6 +1574,7 @@ export const {
   setStepChainContinueProduct,
   addSourcesToPool,
   clearSourcesPool,
+  renamePresentation,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   insertTransformationBetween,

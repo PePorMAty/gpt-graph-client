@@ -118,13 +118,23 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
   const upCount = typeof badge?.up === "number" ? badge.up : 0;
   const downCount = typeof badge?.down === "number" ? badge.down : 0;
 
+  // Продукт добавлен вручную в превью шага и ещё не описан. Пометку не храним
+  // отдельным флагом: как только описание заполнено (в карточке узла), она
+  // снимается сама.
+  const description =
+    typeof data.description === "string" ? data.description.trim() : "";
+  const isUnfilled = data.isUserAdded === true && !description;
+
   return (
     <div
+      title={isUnfilled ? "Продукт добавлен вручную, описание не заполнено" : undefined}
       style={{
         background,
         padding: "15px",
         borderRadius: "8px",
-        border: `2px solid ${color}`,
+        // Незаполненный ручной продукт — пунктирная янтарная рамка: видно
+        // прямо на полотне, что узел ждёт описания.
+        border: isUnfilled ? "2px dashed #d97706" : `2px solid ${color}`,
         minWidth: "180px",
         maxWidth: "250px",
         textAlign: "center",
@@ -164,6 +174,32 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
           {downCount > 0 && (
             <SourcesPill direction="down" count={downCount} color={color} />
           )}
+        </div>
+      )}
+
+      {isUnfilled && (
+        <div
+          style={{
+            position: "absolute",
+            top: -9,
+            left: -9,
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            padding: "2px 7px",
+            borderRadius: 999,
+            background: "#d97706",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 700,
+            lineHeight: 1.2,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+            zIndex: 11,
+          }}
+        >
+          ✎ не заполнен
         </div>
       )}
 

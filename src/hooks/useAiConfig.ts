@@ -1,20 +1,67 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export type AiModelOption = { value: string; label: string; hint?: string };
+/** Стадии, где модель может оказаться непригодной. */
+export type AiStage = "search" | "card" | "graph";
+
+export type AiModelOption = {
+  value: string;
+  label: string;
+  hint?: string;
+  /** Стадии, на которых модель не работает: там её не показываем в списке и
+   *  не отправляем в запрос. Пусто/нет поля — модель годится везде. */
+  unsupportedIn?: AiStage[];
+};
 export type AiConfig = { provider: string; model: string };
 
 export const AI_PROVIDERS: AiModelOption[] = [
-  { value: "", label: "По умолчанию (сервер)" },
+  // Значение "qwen" — ключ провайдера на сервере (DashScope-совместимый шлюз),
+  // менять его нельзя; через него же идут DeepSeek-модели тарифного плана.
+  { value: "qwen", label: "DashScope (Qwen / DeepSeek)" },
   { value: "openai", label: "OpenAI" },
-  { value: "qwen", label: "Qwen (DashScope)" },
 ];
 
 // Списки моделей ограничены теми, что реально доступны нашим ключам:
 // лишние варианты в выпадашке дают 403 AccessDenied уже после отправки запроса.
+// Первая модель в списке — дефолт провайдера (см. defaultModelFor).
 export const AI_MODELS: Record<string, AiModelOption[]> = {
-  "": [{ value: "", label: "По умолчанию" }],
+  // Состав списка — под тарифный план подписки (Token Plan). qwen-plus и
+  // qwen-flash убраны: по подписке они не обслуживаются.
+  // qwen3.8-max-preview и kimi-k2.7-code не добавлены: обе отдают
+  // access_denied. glm-5.2 не добавлена: не поддерживает enable_search, то
+  // есть непригодна для поиска источников.
+  qwen: [
+    {
+      value: "qwen3.7-plus",
+      label: "Qwen3.7 Plus",
+      hint: "По умолчанию: баланс качества, скорости и цены",
+    },
+    {
+      value: "qwen3.7-max",
+      label: "Qwen3.7 Max",
+      hint: "Флагман: лучшее качество и глубокие рассуждения, дороже",
+    },
+    {
+      value: "qwen3.6-flash",
+      label: "Qwen3.6 Flash",
+      hint: "Быстрая и дешёвая, для простых задач",
+      // Весь бюджет токенов уходит в размышления, и content приходит пустым:
+      // воспроизведено на поиске источников, заполнении карточки и построении
+      // графа целиком. На этих стадиях модель просто не показывается в списке;
+      // оговорку в подсказку не выносим — на остальных она сбивает с толку.
+      unsupportedIn: ["search", "card", "graph"],
+    },
+    {
+      value: "deepseek-v4-pro",
+      label: "DeepSeek V4 Pro",
+      hint: "Сильные рассуждения; ответ может целиком уходить в размышления",
+    },
+    {
+      value: "deepseek-v4-flash-0731",
+      label: "DeepSeek V4 Flash",
+      hint: "Быстрая версия DeepSeek",
+    },
+  ],
   openai: [
-    { value: "", label: "По умолчанию (сервер)" },
     {
       value: "gpt-5-mini",
       label: "GPT-5 Mini",
@@ -26,61 +73,47 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
       hint: "Максимальное качество, сложные рассуждения, дороже",
     },
   ],
-  qwen: [
-    { value: "", label: "По умолчанию (сервер)" },
-    // qwen3.8-max-preview убрана намеренно: ключу отдаётся access_denied на
-    // любой запрос к ней. Вернуть, когда на аккаунте появится доступ.
-    {
-      value: "qwen3.7-max",
-      label: "Qwen3.7 Max",
-      hint: "Флагман: лучшее качество и глубокие рассуждения, дороже",
-    },
-    {
-      value: "qwen3.7-plus",
-      label: "Qwen3.7 Plus",
-      hint: "Баланс качества, скорости и цены — универсальный выбор",
-    },
-    // qwen3.6-flash убрана намеренно: не соблюдает json_schema даже со
-    // strict: true (на тестовой схеме возвращала [1] и свободный текст),
-    // а поиск источников и построение шага разбирают ответ по схеме.
-    {
-      value: "qwen-plus",
-      label: "Qwen Plus",
-      hint: "Проверена на схеме: баланс качества, скорости и цены",
-    },
-    {
-      value: "qwen-flash",
-      label: "Qwen Flash",
-      hint: "Быстрая и дешёвая, для простых задач",
-    },
-  ],
 };
 
-const STORAGE_KEY = "ai-model-config";
-const EMPTY: AiConfig = { provider: "", model: "" };
+// Пресет: провайдер и модель выбраны всегда, пункта «по умолчанию» больше нет.
+// Клиент теперь ВСЕГДА шлёт provider и model, поэтому серверный дефолт
+// (AI_PROVIDER / gpt-5-mini) на стадии шага не применяется.
+export const DEFAULT_AI_CONFIG: AiConfig = {
+  provider: "qwen",
+  model: "qwen3.7-plus",
+};
 
-// Провайдер/модель из localStorage могли устареть (список моделей меняется),
-// поэтому любое значение извне прогоняем через каталог.
+function defaultModelFor(provider: string): string {
+  return AI_MODELS[provider]?.[0]?.value ?? DEFAULT_AI_CONFIG.model;
+}
+
+const STORAGE_KEY = "ai-model-config";
+
+// Провайдер/модель из localStorage могли устареть (список моделей меняется,
+// пункт «по умолчанию» с пустым значением убран), поэтому любое значение
+// извне прогоняем через каталог и подменяем негодное пресетом.
 function normalize(cfg: AiConfig): AiConfig {
   const provider = AI_PROVIDERS.some((p) => p.value === cfg.provider)
     ? cfg.provider
-    : "";
-  const models = AI_MODELS[provider] ?? AI_MODELS[""];
-  const model = models.some((m) => m.value === cfg.model) ? cfg.model : "";
+    : DEFAULT_AI_CONFIG.provider;
+  const models = AI_MODELS[provider] ?? [];
+  const model = models.some((m) => m.value === cfg.model)
+    ? cfg.model
+    : defaultModelFor(provider);
   return { provider, model };
 }
 
 function load(): AiConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return EMPTY;
+    if (!raw) return DEFAULT_AI_CONFIG;
     const parsed = JSON.parse(raw);
     return normalize({
       provider: String(parsed?.provider ?? ""),
       model: String(parsed?.model ?? ""),
     });
   } catch {
-    return EMPTY;
+    return DEFAULT_AI_CONFIG;
   }
 }
 
@@ -118,14 +151,57 @@ export function setAiConfig(next: AiConfig) {
   listeners.forEach((l) => l());
 }
 
+/**
+ * Текущий выбор без хука — для thunk-ов: они шлют запросы к LLM и должны
+ * уважать выбранную модель, не протаскивая её пропсами через все панели.
+ */
+export function getAiConfig(): AiConfig {
+  return current;
+}
+
+/**
+ * provider/model для тела запроса. Если на этой стадии выбранная модель не
+ * работает, подставляем пригодную: иначе запрос уйдёт и вернётся пустым.
+ */
+export function getAiRequestFields(opts?: { stage?: AiStage }): {
+  provider?: string;
+  model?: string;
+} {
+  const { provider, model } = current;
+  if (!provider) return {};
+  if (!opts?.stage) return { provider, model: model || undefined };
+
+  const models = AI_MODELS[provider] ?? [];
+  const chosen = models.find((m) => m.value === model);
+  if (!chosen?.unsupportedIn?.includes(opts.stage)) {
+    return { provider, model: model || undefined };
+  }
+
+  const fallback = models.find((m) => !m.unsupportedIn?.includes(opts.stage!));
+  return { provider, model: fallback?.value || undefined };
+}
+
+/** Работает ли выбранная модель на этой стадии. */
+export function isModelUsableIn(
+  stage: AiStage,
+  cfg: AiConfig = current,
+): boolean {
+  const models = AI_MODELS[cfg.provider] ?? [];
+  const chosen = models.find((m) => m.value === cfg.model);
+  return !chosen?.unsupportedIn?.includes(stage);
+}
+
 export function useAiConfig() {
   const config = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const setProvider = useCallback((provider: string) => {
-    // у провайдеров разные каталоги моделей — при смене сбрасываем модель
+    // у провайдеров разные каталоги моделей — при смене берём дефолт нового
     setAiConfig({
       provider,
-      model: provider === current.provider ? current.model : "",
+      model:
+        provider === current.provider
+          ? current.model
+          : defaultModelFor(provider),
     });
   }, []);
 

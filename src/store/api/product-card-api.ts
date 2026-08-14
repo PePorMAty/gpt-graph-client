@@ -2,6 +2,7 @@ import { createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 import type { RootState } from "../store";
 import type { ProductCardResponse } from "../types";
+import { getAiRequestFields } from "../../hooks/useAiConfig";
 
 export const fetchProductCard = createAsyncThunk<
   { nodeId: string; data: ProductCardResponse },
@@ -45,6 +46,7 @@ export const fetchProductCard = createAsyncThunk<
     const res = await axios.post<ProductCardResponse>(
       `${import.meta.env.VITE_API_URL}/graphs/gpt/fill-card`,
       {
+        ...getAiRequestFields({ stage: "card" }),
         nodeType,
         productName,
         node: nodePayload,

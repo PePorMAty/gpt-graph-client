@@ -14,6 +14,7 @@ import {
   type EdgeChange,
   type NodeTypes,
   useReactFlow,
+  useStoreApi,
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -56,7 +57,24 @@ import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
 import { collectSourceGroups } from "./utils/sourceRows";
 import { collapseToProductsView } from "./utils/productsOnlyView";
+import {
+  buildFocusSubgraph,
+  focusScopeDepths,
+  type FocusScope,
+  type FocusSubgraphResult,
+} from "./utils/focusSubgraph";
+import {
+  animateFocusTransition,
+  nodesBounds,
+  FOCUS_TRANSITION_MS,
+  type FocusTransitionHandle,
+} from "./utils/focusTransition";
+import { applyHandlesByGeometry } from "./utils/normalize-edges";
+import { inferLayoutDirection } from "./utils/inferLayoutDirection";
+import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
+import { FocusModeHud } from "./components/focus-mode-hud";
 import styles from "./styles/Flow.module.css";
+import type { CustomNode } from "./types";
 import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
@@ -139,7 +157,9 @@ export const Flow = ({
   } = useAppSelector((store) => store.graph);
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
-  const { fitView, screenToFlowPosition, setCenter } = useReactFlow();
+  const { fitView, fitBounds, setViewport, setCenter, screenToFlowPosition } =
+    useReactFlow();
+  const rfStore = useStoreApi();
   const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
 
@@ -230,6 +250,80 @@ export const Flow = ({
   // структурные правки заблокированы (двигать ноды и открывать карточки можно).
   const [productsOnly, setProductsOnly] = useState(false);
 
+  // Фокус-режим («как в TheBrain»): в центре — фокус-узел, вокруг видна
+  // окрестность на focusDepth шагов; клик по видимому продукту делает его
+  // новым центром. Чистая проекция для рендера со СВОЕЙ раскладкой — store
+  // не мутируется, выключение возвращает полный граф с исходными позициями.
+  const [focusState, setFocusState] = useState<{
+    focusId: string;
+    history: string[];
+  } | null>(null);
+  const [focusDepth, setFocusDepth] = useState(2);
+  // Охват окрестности: шаги (стандарт) / только родители и дети / вся
+  // цепочка узла. Переживает навигацию и повторный вход в режим.
+  const [focusScope, setFocusScope] = useState<FocusScope>("steps");
+  // Разложенная окрестность фокуса (готовые позиции + рёбра с хэндлами).
+  const [focusView, setFocusView] = useState<FocusSubgraphResult | null>(null);
+  const focusOn = focusState !== null;
+  // Живой ref текущей (в т.ч. промежуточной, во время анимации) проекции —
+  // новый переход стартует ровно с того кадра, на котором прервали старый.
+  const focusViewRef = useRef(focusView);
+  focusViewRef.current = focusView;
+  // Идущая анимация перехода между окрестностями.
+  const focusAnimRef = useRef<FocusTransitionHandle | null>(null);
+  // Обёртка HUD — для замера его высоты при подгонке камеры.
+  const hudWrapRef = useRef<HTMLDivElement | null>(null);
+  // Узел, на котором закончилась навигация в фокус-режиме. При выходе камера
+  // подлетает к нему в полном графе, а не разлетается на всё полотно: иначе
+  // на графе в сотни узлов теряется место, откуда вышли.
+  const focusExitNodeIdRef = useRef<string | null>(null);
+
+  // Подгонка камеры под окрестность с учётом плашки HUD: fitBounds умеет
+  // только равномерный отступ, из-за чего верхний узел раскладки (предок,
+  // к которому чаще всего и шагают) оказывался ровно под центрированной
+  // плашкой, и она перехватывала клики. Считаем вьюпорт сами: равные отступы
+  // по краям + высота HUD дополнительно сверху.
+  const fitFocusCamera = useCallback(
+    (nodes: CustomNode[], duration: number) => {
+      const b = nodesBounds(nodes);
+      const { width, height } = rfStore.getState();
+      if (!width || !height || b.width <= 0 || b.height <= 0) {
+        fitBounds(b, { padding: 0.25, duration });
+        return;
+      }
+      const hud = hudWrapRef.current?.firstElementChild as HTMLElement | null;
+      const pad = Math.max(32, Math.min(width, height) * 0.06);
+      const topPad = (hud ? hud.offsetHeight + 12 : 0) + pad;
+      const zoom = Math.min(
+        1.25,
+        Math.max(
+          0.1,
+          Math.min(
+            (width - pad * 2) / b.width,
+            (height - topPad - pad) / b.height,
+          ),
+        ),
+      );
+      setViewport(
+        {
+          x: pad + (width - pad * 2 - b.width * zoom) / 2 - b.x * zoom,
+          y: topPad + (height - topPad - pad - b.height * zoom) / 2 - b.y * zoom,
+          zoom,
+        },
+        { duration },
+      );
+    },
+    [rfStore, fitBounds, setViewport],
+  );
+  // Живой ref для обработчиков, подписанных один раз (highlight-node, клики).
+  const focusStateRef = useRef(focusState);
+  focusStateRef.current = focusState;
+  // Последний узел, с которым взаимодействовал пользователь (клик, контекстное
+  // меню, выбор в поиске, навигация в фокус-режиме). В отличие от
+  // selectedNodeId переживает закрытие карточки (closePanel его зануляет) —
+  // именно от этого узла отталкивается вход в фокус-режим.
+  const lastInteractedNodeIdRef = useRef<string | null>(null);
+
   // При входе/выходе из режима просмотра или «только продукты» размер/состав
   // холста меняется — переавтоцентрируем граф. Первый рендер пропускаем.
   const viewModeFirstRun = useRef(true);
@@ -238,11 +332,173 @@ export const Flow = ({
       viewModeFirstRun.current = false;
       return;
     }
+    // В фокус-режиме камерой управляет эффект раскладки окрестности; сюда
+    // попадаем при выходе из него (focusOn → false).
+    if (focusOn) return;
+
+    // Выход из фокус-режима: вместо разлёта на всё полотно подлетаем к узлу,
+    // на котором закончили навигацию, и подсвечиваем его — на большом графе
+    // иначе непонятно, откуда вышли. Узел заодно остаётся выделенным.
+    const exitId = focusExitNodeIdRef.current;
+    focusExitNodeIdRef.current = null;
+    if (exitId) {
+      const node = nodesRef.current.find((n) => n.id === exitId);
+      if (node) {
+        const id = requestAnimationFrame(() => {
+          const w = node.measured?.width ?? 0;
+          const h = node.measured?.height ?? 0;
+          setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+            zoom: 1.3,
+            duration: 600,
+          });
+          // Подсветка (снимется сама) + выделение, чтобы узел не потерялся
+          // после того, как подсветка погаснет.
+          window.dispatchEvent(
+            new CustomEvent("highlight-node", { detail: exitId }),
+          );
+          dispatch(
+            onNodesChange([
+              { id: exitId, type: "select" as const, selected: true },
+            ]),
+          );
+        });
+        return () => cancelAnimationFrame(id);
+      }
+    }
+
     const id = requestAnimationFrame(() =>
       fitView({ padding: 0.2, duration: 300 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [viewMode, productsOnly, fitView]);
+  }, [viewMode, productsOnly, focusOn, fitView, setCenter, dispatch]);
+
+  // Ориентация раскладки фокус-окрестности — из геометрии текущего графа,
+  // чтобы фокус-вид не переворачивался относительно полотна.
+  const focusLayoutDirection = useMemo(
+    () => inferLayoutDirection(data.nodes, data.edges),
+    [data.nodes, data.edges],
+  );
+
+  // Перестройка окрестности фокуса: вход в режим, смена фокуса/глубины или
+  // изменение данных графа. Подграф раскладывается заново (dagre/ELK),
+  // позиции узлов в store не трогаются.
+  const focusFitKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusState) {
+      focusAnimRef.current?.cancel();
+      focusAnimRef.current = null;
+      setFocusView(null);
+      focusFitKeyRef.current = null;
+      return;
+    }
+    // Фокус-узел мог исчезнуть из store (undo шага и т.п.) — выходим из режима.
+    if (!data.nodes.some((n) => n.id === focusState.focusId)) {
+      setFocusState(null);
+      return;
+    }
+    // Любая смена фокуса (клик, «назад», крошки, поиск) — это взаимодействие:
+    // повторный вход в режим продолжит с последнего центра.
+    lastInteractedNodeIdRef.current = focusState.focusId;
+    let cancelled = false;
+    (async () => {
+      // Глубины обхода заданы в терминах рёбер (up — по входящим), а охваты
+      // «↑ Вверх»/«↓ Вниз» пользователь читает визуально. В «вверх»-графе
+      // (rankdir BT) входящие рёбра ведут ВНИЗ полотна, поэтому направления
+      // меняем местами — иначе кнопки работали бы зеркально экрану.
+      const depths = focusScopeDepths(focusScope, focusDepth);
+      const sub = buildFocusSubgraph(
+        data.nodes,
+        data.edges,
+        focusState.focusId,
+        focusLayoutDirection === "BT"
+          ? { up: depths.down, down: depths.up }
+          : depths,
+      );
+      // Ориентацию берём из геометрии полного графа, а не хардкодим: у
+      // «вверх»-графов рёбра идут продукт → сырьё, и жёсткий "TB" переворачивал
+      // окрестность зеркально тому, что видно на полотне вне фокус-режима.
+      const laid = await layoutTree(
+        sub.nodes,
+        sub.edges,
+        focusState.focusId,
+        focusLayoutDirection,
+      );
+      if (cancelled) return;
+      const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
+      const next: FocusSubgraphResult = {
+        nodes: centered,
+        // Хэндлы из store соответствуют геометрии полного графа —
+        // переназначаем по позициям фокус-раскладки.
+        edges: applyHandlesByGeometry(centered, sub.edges),
+      };
+
+      focusAnimRef.current?.cancel();
+      focusAnimRef.current = null;
+
+      const prev = focusViewRef.current;
+      const reduceMotion =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // Камера: границы целевой окрестности считаем сами (nodesBounds), не
+      // полагаясь на внутренний стор React Flow — иначе fitView до коммита
+      // новых нод подгонял бы камеру под старую раскладку. Двигаем только при
+      // смене фокуса/охвата/глубины, а не на каждое фоновое обновление данных.
+      const fitKey = `${focusState.focusId}::${focusScope}::${focusDepth}`;
+      const cameraMoves = focusFitKeyRef.current !== fitKey;
+      focusFitKeyRef.current = fitKey;
+
+      // Первый показ окрестности (вход в режим) или запрет анимаций в системе —
+      // мгновенный показ без анимации узлов.
+      if (!prev || reduceMotion) {
+        setFocusView(next);
+        if (cameraMoves) {
+          fitFocusCamera(next.nodes, reduceMotion ? 0 : 400);
+        }
+        return;
+      }
+
+      // Переход между окрестностями: остающиеся узлы переезжают, уходящие
+      // гаснут, новые расцветают из точки клика. Камера едет к новой
+      // окрестности одновременно с узлами.
+      if (cameraMoves) {
+        fitFocusCamera(next.nodes, FOCUS_TRANSITION_MS);
+      }
+      focusAnimRef.current = animateFocusTransition(prev, next, {
+        focusId: focusState.focusId,
+        onFrame: (view) => setFocusView(view),
+        onDone: () => {
+          focusAnimRef.current = null;
+          setFocusView(next);
+        },
+      });
+    })();
+    return () => {
+      cancelled = true;
+      // Смена цели во время полёта: текущий кадр остаётся на экране, новый
+      // переход подхватит его из focusViewRef как стартовый.
+      focusAnimRef.current?.cancel();
+      focusAnimRef.current = null;
+    };
+  }, [
+    focusState,
+    focusScope,
+    focusDepth,
+    focusLayoutDirection,
+    data.nodes,
+    data.edges,
+    fitFocusCamera,
+  ]);
+
+  // После смены состава фокус-окрестности даём React Flow измерить ноды в DOM
+  // и переставляем хэндлы (тот же приём, что для полного графа выше).
+  useEffect(() => {
+    if (!focusView) return;
+    const timer = setTimeout(() => {
+      updateNodeInternals(focusView.nodes.map((n) => n.id));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [focusView, updateNodeInternals]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
@@ -278,6 +534,9 @@ export const Flow = ({
   // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
   // (viewMode приходит пропсом и управляется кнопкой-глазом из FullApp).
   const readOnly = sharedView || viewMode;
+  // Структурные правки заблокированы: просмотр, «только продукты» или
+  // фокус-режим (последние два — проекции, store в них не редактируется).
+  const structureLocked = readOnly || productsOnly || focusOn;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -314,13 +573,14 @@ export const Flow = ({
     return m;
   }, [data.nodes]);
   const chainSet = useMemo<Set<string> | null>(() => {
-    if (source !== "loaded" || !hoveredChainId) return null;
+    // В фокус-режиме окрестность и так обрезана — hover-затемнение не нужно.
+    if (source !== "loaded" || !hoveredChainId || focusOn) return null;
     return findChainNodeIds(
       data.edges,
       hoveredChainId,
       (id) => nodeTypeById.get(id),
     );
-  }, [source, hoveredChainId, data.edges, nodeTypeById]);
+  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
@@ -331,6 +591,102 @@ export const Flow = ({
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
+  );
+
+  // ===== Фокус-режим: вход/выход/навигация =====
+
+  // Вход. Центр подбираем от «на чём был фокус пользователя», по приоритету:
+  // открытая карточка → выделенный на полотне узел → последний узел, с
+  // которым взаимодействовали (переживает закрытие карточки) → корень →
+  // первый продукт графа.
+  const enterFocusMode = useCallback(() => {
+    const nodes = nodesRef.current;
+    const isValid = (id: string | null | undefined): id is string =>
+      !!id && nodes.some((n) => n.id === id);
+
+    const rfSelected =
+      nodes.find((n) => n.selected && n.type === "product") ??
+      nodes.find((n) => n.selected);
+
+    let initial: string | undefined;
+    if (isValid(selectedNodeId)) initial = selectedNodeId;
+    else if (rfSelected) initial = rfSelected.id;
+    else if (isValid(lastInteractedNodeIdRef.current))
+      initial = lastInteractedNodeIdRef.current;
+    else if (isValid(rootId)) initial = rootId;
+    else initial = (nodes.find((n) => n.type === "product") ?? nodes[0])?.id;
+
+    if (!initial) return;
+
+    // Снимаем выделение на полотне: в фокус-режиме select-изменения в store
+    // не проходят, и устаревший флаг иначе перебил бы последний центр при
+    // повторном входе.
+    const currentlySelected = nodes.filter((n) => n.selected);
+    if (currentlySelected.length) {
+      dispatch(
+        onNodesChange(
+          currentlySelected.map((n) => ({
+            id: n.id,
+            type: "select" as const,
+            selected: false,
+          })),
+        ),
+      );
+    }
+
+    setIsPanelOpen(false);
+    setContextMenu(null);
+    setFocusState({ focusId: initial, history: [] });
+  }, [selectedNodeId, rootId, dispatch]);
+
+  // Выход по кнопке: запоминаем последний центр, чтобы камера подлетела
+  // к нему в полном графе (см. эффект переавтоцентровки выше).
+  const exitFocusMode = useCallback(() => {
+    focusExitNodeIdRef.current = focusStateRef.current?.focusId ?? null;
+    setFocusState(null);
+  }, []);
+
+  // Сделать узел новым центром (клик по продукту / выбор в поиске).
+  // Если узел уже есть в пути (хлебных крошках) — не наращиваем хвост дублями,
+  // а откатываем историю к нему, как при клике по крошке: П1→П2→П3, затем
+  // шаги по графу обратно в П2 и П1 схлопывают путь до одного «П1». То же
+  // при выходе на пройденный продукт другим маршрутом. Дублей в истории при
+  // таком инварианте не бывает, indexOf находит единственное вхождение.
+  const focusOnNode = useCallback((nodeId: string) => {
+    setFocusState((s) => {
+      if (!s || s.focusId === nodeId) return s;
+      const idx = s.history.indexOf(nodeId);
+      if (idx !== -1) {
+        return { focusId: nodeId, history: s.history.slice(0, idx) };
+      }
+      return { focusId: nodeId, history: [...s.history, s.focusId] };
+    });
+  }, []);
+
+  const handleFocusBack = useCallback(() => {
+    setFocusState((s) => {
+      if (!s || !s.history.length) return s;
+      return {
+        focusId: s.history[s.history.length - 1],
+        history: s.history.slice(0, -1),
+      };
+    });
+  }, []);
+
+  // Переход к произвольному шагу истории (клик по хлебной крошке).
+  const handleFocusJumpTo = useCallback((index: number) => {
+    setFocusState((s) => {
+      if (!s || index < 0 || index >= s.history.length) return s;
+      return { focusId: s.history[index], history: s.history.slice(0, index) };
+    });
+  }, []);
+
+  const focusLabelById = useCallback(
+    (id: string) => {
+      const n = data.nodes.find((x) => x.id === id);
+      return String(n?.data?.label ?? id);
+    },
+    [data.nodes],
   );
 
   const [insertTrState, setInsertTrState] = useState<{
@@ -371,14 +727,17 @@ export const Flow = ({
 
   const flowNodes = useMemo(
     () =>
-      (productsView?.nodes ?? data.nodes).map((n) => {
+      // Приоритет проекций: фокус-режим > «только продукты» > полный граф.
+      (focusView?.nodes ?? productsView?.nodes ?? data.nodes).map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
+        const isFocusCenter = n.id === focusState?.focusId;
 
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
           isDimmed ? "node--dimmed" : "",
+          isFocusCenter ? "node--focus" : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -404,11 +763,19 @@ export const Flow = ({
 
         return { ...n, className: cls };
       }),
-    [data.nodes, productsView, highlightedId, chainSet, sourcesPool],
+    [
+      data.nodes,
+      productsView,
+      focusView,
+      focusState,
+      highlightedId,
+      chainSet,
+      sourcesPool,
+    ],
   );
 
   const flowEdges = useMemo(() => {
-    const baseEdges = productsView?.edges ?? data.edges;
+    const baseEdges = focusView?.edges ?? productsView?.edges ?? data.edges;
     if (!chainSet) return baseEdges;
     return baseEdges.map((e) => {
       const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
@@ -417,11 +784,26 @@ export const Flow = ({
       const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
       return { ...e, className: cls };
     });
-  }, [data.edges, productsView, chainSet]);
+  }, [data.edges, productsView, focusView, chainSet]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const id = (e as CustomEvent<string>).detail;
+      // В фокус-режиме найденный в поиске узел может быть вне окрестности —
+      // делаем его новым центром, поиск работает как навигация. Если узел уже
+      // в центре, просто возвращаем камеру к окрестности (панель поиска
+      // успела улететь setCenter'ом к позиции узла в полном графе).
+      lastInteractedNodeIdRef.current = id;
+      const fs = focusStateRef.current;
+      if (fs) {
+        if (fs.focusId !== id) {
+          focusOnNode(id);
+        } else {
+          requestAnimationFrame(() =>
+            fitView({ padding: 0.25, duration: 400 }),
+          );
+        }
+      }
       setHighlightedId(id);
 
       setTimeout(() => setHighlightedId(null), 3000);
@@ -429,7 +811,7 @@ export const Flow = ({
 
     window.addEventListener("highlight-node", handler);
     return () => window.removeEventListener("highlight-node", handler);
-  }, []);
+  }, [focusOnNode, fitView]);
 
   // Находим выбранный узел
   const selectedNode = data.nodes?.find(
@@ -480,14 +862,26 @@ export const Flow = ({
   }, [selectedNodeId, isPanelOpen, selectedNode]);
 
   // Обработчик клика по узлу
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
-    // панель редактирования — пользователь выделяет несколько нод.
-    if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-    setSelectedNodeId(node.id);
-    setIsPanelOpen(true);
-    setContextMenu(null);
-  }, []);
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
+      // панель редактирования — пользователь выделяет несколько нод.
+      if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+      lastInteractedNodeIdRef.current = node.id;
+      // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
+      // навигации, узел становится новым центром. Карточка узла — по клику
+      // на сам центр или на преобразование.
+      const fs = focusStateRef.current;
+      if (fs && node.type === "product" && node.id !== fs.focusId) {
+        focusOnNode(node.id);
+        return;
+      }
+      setSelectedNodeId(node.id);
+      setIsPanelOpen(true);
+      setContextMenu(null);
+    },
+    [focusOnNode],
+  );
 
   // Hover-подсветка цепочки (только для загруженных графов;
   // useMemo сам зануляет chainSet при source !== "loaded").
@@ -508,6 +902,7 @@ export const Flow = ({
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      lastInteractedNodeIdRef.current = node.id;
       // Вариант 1: ПКМ по ноде вне текущего выделения сбрасывает выделение
       // до этой одной ноды, чтобы подсветка совпадала с целью меню.
       const currentlySelected = data.nodes.filter((n) => n.selected);
@@ -830,7 +1225,13 @@ export const Flow = ({
       const node = data.nodes.find((n) => n.id === nodeId);
       if (!node) return;
 
-      closePanel();
+      // Карточку не закрываем, а ПЕРЕКЛЮЧАЕМ на выбранный продукт: переход по
+      // ссылке — это продолжение чтения, а не выход из него. saveChanges
+      // фиксирует правки текущего узла до смены (закрывать панель незачем).
+      saveChanges();
+      setSelectedNodeId(nodeId);
+      setIsPanelOpen(true);
+      lastInteractedNodeIdRef.current = nodeId;
 
       // «Поймать фокус»: снять выделение с остальных нод, выделить цель.
       const changes: NodeChange[] = [
@@ -856,7 +1257,7 @@ export const Flow = ({
         new CustomEvent("highlight-node", { detail: nodeId }),
       );
     },
-    [data.nodes, dispatch, closePanel, setCenter],
+    [data.nodes, dispatch, saveChanges, setCenter],
   );
 
   // Обработчик изменения имени узла
@@ -913,19 +1314,26 @@ export const Flow = ({
   // Обработчики изменений узлов и ребер
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // В фокус-режиме на полотне проекция со своей раскладкой, а id узлов
+      // совпадают со store — изменения не применяем вовсе: позиции/выделение
+      // затёрли бы полный граф, а замеры размеров (dimensions) меняли бы
+      // data.nodes посреди анимации перехода и перезапускали её. React Flow
+      // держит замеры во внутреннем сторе, для рендера их достаточно.
+      if (focusOn) return;
       dispatch(onNodesChange(changes));
     },
-    [dispatch],
+    [dispatch, focusOn],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       // В режиме «только продукты» на полотне синтетические рёбра, которых нет
-      // в сторе — их изменения не применяем.
-      if (productsOnly) return;
+      // в сторе — их изменения не применяем. В фокус-режиме рёбра из стора,
+      // но режим просмотровый — изменения тоже не применяем.
+      if (productsOnly || focusOn) return;
       dispatch(onEdgesChange(changes));
     },
-    [dispatch, productsOnly],
+    [dispatch, productsOnly, focusOn],
   );
 
   const handleConnect: OnConnect = useCallback(
@@ -1233,11 +1641,15 @@ export const Flow = ({
       );
 
       // Отмеченное чекбоксами подмножество (3.1) имеет приоритет над полным пулом.
-      const poolSources =
+      const rawSources =
         selectedSources && selectedSources.length
           ? selectedSources
           : (sourcesPool[poolKey(productName, direction)]?.sources ?? []);
-      if (!poolSources.length) return;
+      if (!rawSources.length) return;
+      // В пуле из сейва/автосейва лежат только title+url — содержимое
+      // подтягиваем из узлов, иначе сервер отвергнет обобщение как «нет ни
+      // одного technology_description».
+      const poolSources = enrichSourcesFromNodes(rawSources, data.nodes);
 
       const descField =
         direction === "up" ? "upDescription" : "downDescription";
@@ -1266,6 +1678,7 @@ export const Flow = ({
       selectedNodeId,
       selectedNode,
       sourcesPool,
+      data.nodes,
     ],
   );
 
@@ -1311,6 +1724,9 @@ export const Flow = ({
           technology_description: src.description?.trim() ?? "",
           inputs_outputs_hint: [],
           evidence_snippets: [],
+          // Пометка переживает поиск: fetchSources переносит ручные источники
+          // в новый набор, иначе они пропадали из списка узла.
+          isManual: true,
         };
         const next = [...merged, manual];
 
@@ -1980,27 +2396,25 @@ export const Flow = ({
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={readOnly || productsOnly ? undefined : handleConnect}
+        onConnect={structureLocked ? undefined : handleConnect}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={
-          readOnly || productsOnly ? undefined : onNodeContextMenu
-        }
+        onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
-        nodesConnectable={!readOnly && !productsOnly}
+        nodesConnectable={!structureLocked}
+        // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего.
+        nodesDraggable={!focusOn}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
         // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
         // Левая кнопка по-прежнему панорамирует полотно (selectionOnDrag=false).
-        selectionKeyCode={readOnly ? null : "Shift"}
-        multiSelectionKeyCode={readOnly ? null : ["Meta", "Control"]}
+        selectionKeyCode={readOnly || focusOn ? null : "Shift"}
+        multiSelectionKeyCode={readOnly || focusOn ? null : ["Meta", "Control"]}
         selectionOnDrag={false}
-        onReconnect={readOnly || productsOnly ? undefined : handleReconnect}
-        onReconnectStart={
-          readOnly || productsOnly ? undefined : onReconnectStart
-        }
-        onReconnectEnd={readOnly || productsOnly ? undefined : onReconnectEnd}
+        onReconnect={structureLocked ? undefined : handleReconnect}
+        onReconnectStart={structureLocked ? undefined : onReconnectStart}
+        onReconnectEnd={structureLocked ? undefined : onReconnectEnd}
         // Удаление обрабатываем сами (через подтверждение), отключаем нативное.
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
@@ -2017,7 +2431,7 @@ export const Flow = ({
         }}
       >
         <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
-          {!readOnly && (
+          {!readOnly && !focusOn && (
             <>
           <ControlButton
             onClick={() => setShowSaveGraphModal(true)}
@@ -2083,7 +2497,9 @@ export const Flow = ({
             </ControlButton>
           )}
           {/* Тумблер «только продукты»: скрыть преобразования/альтернативы,
-              склеив продукты напрямую. Доступен и в режиме просмотра. */}
+              склеив продукты напрямую. Доступен и в режиме просмотра.
+              В фокус-режиме скрыт: там своя проекция окрестности. */}
+          {!focusOn && (
           <ControlButton
             onClick={() => setProductsOnly((v) => !v)}
             data-tooltip={
@@ -2115,7 +2531,34 @@ export const Flow = ({
               </svg>
             )}
           </ControlButton>
-          {!readOnly && (
+          )}
+          {/* Тумблер фокус-режима («как в TheBrain»): в центре фокус-узел,
+              видна окрестность на 1–3 шага, клик по продукту шагает дальше.
+              Доступен и в режиме просмотра, и на шар-странице. */}
+          <ControlButton
+            onClick={() => (focusOn ? exitFocusMode() : enterFocusMode())}
+            data-tooltip={
+              focusOn ? "Выйти из фокус-режима" : "Фокус-режим (шаги по графу)"
+            }
+            aria-label={
+              focusOn ? "Выйти из фокус-режима" : "Фокус-режим (шаги по графу)"
+            }
+            style={
+              focusOn
+                ? { backgroundColor: "#2563eb", color: "#fff" }
+                : undefined
+            }
+          >
+            {/* Центр с расходящимися связями-спутниками. */}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <circle cx="12" cy="3.5" r="1.5" />
+              <circle cx="4" cy="18.5" r="1.5" />
+              <circle cx="20" cy="18.5" r="1.5" />
+              <path d="M12 9V5M9.9 13.9l-4.7 3.4M14.1 13.9l4.7 3.4" />
+            </svg>
+          </ControlButton>
+          {!readOnly && !focusOn && (
             <>
           <ControlButton
             onClick={() => setShowClearConfirm(true)}
@@ -2143,7 +2586,28 @@ export const Flow = ({
         </Controls>
         <Background />
       </ReactFlow>
-      {readOnly && !isPanelOpen && <GraphLegend />}
+      {/* Легенда доступна в любом режиме, а не только в просмотре: после
+          открытия сохранённого объединённого графа полотно оказывается в
+          режиме редактирования, и легенда выглядела «потерянной», хотя реестр
+          цветов восстанавливался. Сама она не рендерится, когда презентаций
+          нет, так что на обычных графах не появляется. */}
+      {!isPanelOpen && <GraphLegend />}
+      {/* Обёртка вокруг плашки нужна только для замера её высоты при подгонке
+          камеры (см. fitFocusCamera) — своей геометрии не задаёт. */}
+      {focusState && (
+        <div ref={hudWrapRef}>
+          <FocusModeHud
+            focusLabel={focusLabelById(focusState.focusId)}
+            historyLabels={focusState.history.map(focusLabelById)}
+            scope={focusScope}
+            onScopeChange={setFocusScope}
+            depth={focusDepth}
+            onDepthChange={setFocusDepth}
+            onBack={handleFocusBack}
+            onJumpTo={handleFocusJumpTo}
+          />
+        </div>
+      )}
       {isSearchOpen && (
         <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
       )}
@@ -2195,11 +2659,15 @@ export const Flow = ({
         onFetchTransformations={handleOpenFetchTransformations}
         linkedProducts={linkedProducts}
         onFocusLinkedProduct={handleFocusLinkedProduct}
-        readOnly={readOnly || productsOnly}
+        readOnly={structureLocked}
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}
         isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        isUnfilledUserProduct={
+          selectedNode?.data?.isUserAdded === true &&
+          !String(selectedNode?.data?.description ?? "").trim()
+        }
         altDirection={
           selectedNode?.data?.stepAltDirection as BuildDirection | undefined
         }
@@ -2277,9 +2745,9 @@ export const Flow = ({
             )
           }
           onConfirm={handleFetchTransformations}
-          onClose={() =>
-            !insertTrState.loading && setInsertTrState(null)
-          }
+          // Закрытие во время запроса разрешено: он идёт минутами, а
+          // результат применится и при закрытой модалке — о нём сообщит тост.
+          onClose={() => setInsertTrState(null)}
         />
       )}
     </div>

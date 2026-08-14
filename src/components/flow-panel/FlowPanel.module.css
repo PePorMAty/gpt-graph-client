@@ -972,3 +972,15 @@
   text-overflow: ellipsis;
   max-width: 45%;
 }
+
+/* Подсказка у поля «Описание» для ручного продукта без описания. */
+.unfilledHint {
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.4;
+}
