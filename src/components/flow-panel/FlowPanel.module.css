@@ -984,3 +984,28 @@
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* ── Вкладка «Технологическое описание» в карточке преобразования ── */
+.techTab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Пояснение к направлению шага и к плейсхолдерам промпта. */
+.techHint {
+  padding: 7px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #f5f9ff;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Поле готового описания: 2–4 предложения, поэтому ниже общего .formTextarea —
+   иначе элементы управления вкладки уезжают за экран. */
+.techTextarea {
+  min-height: 150px;
+  resize: vertical;
+}

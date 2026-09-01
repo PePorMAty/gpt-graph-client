@@ -119,6 +119,9 @@ import { fetchTransformationsForNeighbors } from "./store/api/transformation-bet
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
+import { fetchTechDescription } from "./store/api/tech-description-api";
+import { buildTechDescriptionContext } from "./utils/buildTechDescriptionContext";
+import type { TechDescriptionRequest } from "./components/flow-panel/TechDescriptionTab";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -1309,6 +1312,44 @@ export const Flow = ({
       showSavedNotification();
     },
     [selectedNodeId, dispatch, showSavedNotification],
+  );
+
+  // ── Технологическое описание шага (карточка преобразования) ──
+  // Переменные промпта считаем из графа по требованию вкладки: направление она
+  // может переключать сама, и продукты/сведения при этом меняются ролями.
+  const getTechDescriptionContext = useCallback(
+    (direction?: BuildDirection) =>
+      selectedNodeId
+        ? buildTechDescriptionContext(
+            selectedNodeId,
+            data.nodes,
+            data.edges,
+            direction,
+          )
+        : null,
+    [selectedNodeId, data.nodes, data.edges],
+  );
+
+  const handleCommitTechDescription = useCallback(
+    (text: string) => {
+      if (!selectedNodeId) return;
+      dispatch(
+        updateNodeData({
+          nodeId: selectedNodeId,
+          data: { techDescription: text },
+        }),
+      );
+      showSavedNotification();
+    },
+    [selectedNodeId, dispatch, showSavedNotification],
+  );
+
+  const handleRequestTechDescription = useCallback(
+    (req: TechDescriptionRequest) => {
+      if (!selectedNodeId) return;
+      dispatch(fetchTechDescription({ nodeId: selectedNodeId, ...req }));
+    },
+    [selectedNodeId, dispatch],
   );
 
   // Обработчики изменений узлов и ребер
@@ -2676,6 +2717,14 @@ export const Flow = ({
         }
         onCommitDescription={handleCommitDescription}
         onCommitAggregatedDescription={handleCommitAggregatedDescription}
+        techDescription={
+          (selectedNode?.data?.techDescription as string | undefined) ?? ""
+        }
+        techDescriptionStatus={selectedNode?.data?.techDescriptionStatus}
+        techDescriptionError={selectedNode?.data?.techDescriptionError}
+        getTechDescriptionContext={getTechDescriptionContext}
+        onCommitTechDescription={handleCommitTechDescription}
+        onRequestTechDescription={handleRequestTechDescription}
       />
 
       <Notification

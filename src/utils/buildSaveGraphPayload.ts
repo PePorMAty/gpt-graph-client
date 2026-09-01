@@ -51,6 +51,20 @@ export function buildSaveGraphPayload({
     nodes: nodes.map((n) => {
       const copy = { ...n };
       delete copy.selected;
+      // Статус запроса технологического описания — состояние текущего сеанса.
+      // Сохранённый на лету «loading» после перезагрузки оставил бы вкладку
+      // в вечном ожидании; само описание (techDescription) сохраняем.
+      if (
+        copy.data?.techDescriptionStatus !== undefined ||
+        copy.data?.techDescriptionError !== undefined
+      ) {
+        const {
+          techDescriptionStatus: _status,
+          techDescriptionError: _error,
+          ...data
+        } = copy.data;
+        copy.data = data;
+      }
       return copy;
     }),
     edges,
