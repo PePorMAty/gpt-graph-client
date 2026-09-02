@@ -16,6 +16,7 @@ import {
   techDirectionLabel,
 } from "../../prompts/techDescriptionPrompt";
 import { AiModelSelect } from "../ai-model-select";
+import { MarkdownEditor } from "../markdown-editor";
 
 import styles from "./FlowPanel.module.css";
 
@@ -171,11 +172,13 @@ export const TechDescriptionTab: FC<TechDescriptionTabProps> = ({
       </div>
 
       <div className={styles.techHint}>
+        {/* Вкладка берёт продукты своей стороны: ВНИЗ — выходы (ниже),
+            ВВЕРХ — входы (выше). Подсказка описывает именно эти роли. */}
         {direction === "down"
-          ? "ВНИЗ: «{current}» — входное сырьё, «{additional}» — выход переработки."
+          ? "ВНИЗ: «{current}» получают из «{additional}»."
               .replace("{current}", currentProduct || "—")
               .replace("{additional}", additionalProduct || "—")
-          : "ВВЕРХ: «{additional}» — входное сырьё, из которого получают «{current}»."
+          : "ВВЕРХ: «{current}» — входное сырьё, из которого получают «{additional}»."
               .replace("{current}", currentProduct || "—")
               .replace("{additional}", additionalProduct || "—")}
       </div>
@@ -184,16 +187,15 @@ export const TechDescriptionTab: FC<TechDescriptionTabProps> = ({
       <label className={styles.formLabel}>
         Технологическое описание ({techDirectionLabel(direction)}):
       </label>
-      <textarea
+      <MarkdownEditor
         value={localText}
-        onChange={(e) => setLocalText(e.target.value)}
-        onBlur={() => {
-          if (localText !== value) onCommit(localText, direction);
+        onChange={(text) => {
+          setLocalText(text);
+          if (text !== value) onCommit(text, direction);
         }}
-        className={`${styles.formTextarea} ${styles.techTextarea}`}
-        placeholder="Описание шага появится здесь после запроса — его можно отредактировать вручную"
-        rows={6}
+        rows={10}
         readOnly={readOnly}
+        placeholder="Описание шага появится здесь после запроса — его можно отредактировать вручную"
       />
 
       {loading && (
