@@ -10,6 +10,8 @@ import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
 import type { SourceGroup } from "../../utils/sourceRows";
 import type { LinkedProduct } from "../../utils/getLinkedProducts";
+import type { TechDescriptionContext } from "../../utils/buildTechDescriptionContext";
+import type { TechDescriptionRequest } from "./TechDescriptionTab";
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
@@ -181,6 +183,20 @@ export interface FlowPanelProps {
   onCommitDescription?: (text: string) => void;
   /** Коммит обобщённого описания преобразования → node.data.aggregatedDescription. */
   onCommitAggregatedDescription?: (text: string) => void;
+
+  // ── Вкладка «Технологическое описание» (карточка преобразования) ──
+  /** Текущее технологическое описание шага (node.data.techDescription). */
+  techDescription?: string;
+  techDescriptionStatus?: Status;
+  techDescriptionError?: string | null;
+  /** Переменные промпта из графа для выбранного направления шага. */
+  getTechDescriptionContext?: (
+    direction?: BuildDirection,
+  ) => TechDescriptionContext | null;
+  /** Ручная правка описания → node.data.techDescription. */
+  onCommitTechDescription?: (text: string) => void;
+  /** Запрос описания на /gpt/tech-description. */
+  onRequestTechDescription?: (req: TechDescriptionRequest) => void;
 
   nodeId?: string | null;
   nodeType?: string;

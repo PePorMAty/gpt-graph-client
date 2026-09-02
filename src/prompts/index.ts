@@ -16,3 +16,9 @@ export {
   type FillCardField,
 } from "./fillCardPrompts";
 export { getDefaultTransformationsBetweenPrompt } from "./transformationsBetweenPrompt";
+export {
+  getDefaultTechDescriptionPrompt,
+  techDirectionLabel,
+  TECH_DESCRIPTION_INPUT_MARKER,
+  TECH_DESCRIPTION_PLACEHOLDERS,
+} from "./techDescriptionPrompt";
