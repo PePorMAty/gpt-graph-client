@@ -778,7 +778,10 @@ const PanelBuildView: FC<{
               ? `Построить вниз от «${productName}»`
               : `Построить вверх от «${productName}»`}
           </div>
-          <DirectionContent {...(dir === "down" ? downTab : upTab)} />
+          {/* key по направлению: без него React переиспользует тот же
+              экземпляр, и состояние вкладки (правленый промпт, домены,
+              число источников) переезжает с «вверх» на «вниз». */}
+          <DirectionContent key={dir} {...(dir === "down" ? downTab : upTab)} />
         </>
       )}
     </>
