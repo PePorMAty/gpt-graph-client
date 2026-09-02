@@ -826,9 +826,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onCommitDescription,
   onCommitAggregatedDescription,
 
-  techDescription = "",
-  techDescriptionStatus,
-  techDescriptionError,
+  techDescriptionByDirection,
+  techDescriptionStatusByDirection,
+  techDescriptionErrorByDirection,
   getTechDescriptionContext,
   onCommitTechDescription,
   onRequestTechDescription,
@@ -1101,7 +1101,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           title="Краткое технологическое описание продуктового шага"
                         >
                           Технологическое
-                          {techDescriptionStatus === "loading" && " …"}
+                          {(techDescriptionStatusByDirection?.up ===
+                            "loading" ||
+                            techDescriptionStatusByDirection?.down ===
+                              "loading") &&
+                            " …"}
                         </button>
                       )}
                       {hasAggregatedDesc && (
@@ -1129,11 +1133,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                       <TechDescriptionTab
                         key={nodeId ?? "tech"}
                         getContext={getTechDescriptionContext!}
-                        value={techDescription}
+                        valueByDirection={techDescriptionByDirection}
                         onCommit={onCommitTechDescription!}
                         onRequest={onRequestTechDescription!}
-                        status={techDescriptionStatus}
-                        error={techDescriptionError}
+                        statusByDirection={techDescriptionStatusByDirection}
+                        errorByDirection={techDescriptionErrorByDirection}
                         readOnly={readOnly}
                       />
                     )}

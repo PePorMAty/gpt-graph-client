@@ -36,7 +36,7 @@ export interface FetchTechDescriptionArgs {
 }
 
 export const fetchTechDescription = createAsyncThunk<
-  { nodeId: string; techDescription: string },
+  { nodeId: string; techDescription: string; direction: BuildDirection },
   FetchTechDescriptionArgs,
   { state: RootState; rejectValue: string }
 >("graph/fetchTechDescription", async (args, thunkApi) => {
@@ -63,7 +63,11 @@ export const fetchTechDescription = createAsyncThunk<
       );
     }
 
-    return { nodeId: args.nodeId, techDescription: res.data.techDescription };
+    return {
+      nodeId: args.nodeId,
+      techDescription: res.data.techDescription,
+      direction: args.direction,
+    };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
       const errObj = e.response?.data?.error;
