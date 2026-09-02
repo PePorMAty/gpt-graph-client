@@ -45,23 +45,30 @@ function clip(text: string, limit: number): string {
 
 /**
  * Продукты по обе стороны преобразования при заданном направлении.
- * ВНИЗ: существующий продукт — вход (сырьё), дополнительный — выход.
- * ВВЕРХ: дополнительный продукт — вход (сырьё), существующий — выход.
+ *
+ * Вкладка направления берёт продукт со СВОЕЙ стороны полотна:
+ * ВВЕРХ — продукты выше преобразования (его входы, сырьё),
+ * ВНИЗ  — продукты ниже преобразования (его выходы).
+ * Раньше стороны были переставлены: «вниз» брала вход (продукт сверху),
+ * «вверх» — выход (продукт снизу).
+ *
+ * Если с одной стороны продуктов несколько, в запрос идут ВСЕ: раньше
+ * брался только первый, и остальные продукты преобразования не описывались.
  */
 export function pickProductsForDirection(
   direction: BuildDirection,
   inputProducts: string[],
   outputProducts: string[],
 ): { currentProduct: string; additionalProduct: string } {
-  const first = (arr: string[]) => arr[0] ?? "";
+  const join = (arr: string[]) => arr.filter(Boolean).join(", ");
   return direction === "up"
     ? {
-        currentProduct: first(outputProducts),
-        additionalProduct: first(inputProducts),
+        currentProduct: join(inputProducts),
+        additionalProduct: join(outputProducts),
       }
     : {
-        currentProduct: first(inputProducts),
-        additionalProduct: first(outputProducts),
+        currentProduct: join(outputProducts),
+        additionalProduct: join(inputProducts),
       };
 }
 
