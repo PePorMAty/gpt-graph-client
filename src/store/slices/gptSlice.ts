@@ -41,6 +41,7 @@ import { normalizeProductName } from "../../utils/normalizeProductName";
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
+import { fetchTechDescription } from "../api/tech-description-api";
 import { parseAlternatives, alternativeKey } from "../../utils/parseAlternatives";
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
 import {
@@ -1453,6 +1454,36 @@ const gptSlice = createSlice({
           node.data.productCardStatus = "failed";
           node.data.productCardError =
             (action.payload as string) || "product-card failed";
+        }
+      });
+    // ── Технологическое описание шага (карточка преобразования) ──
+    builder
+      .addCase(fetchTechDescription.pending, (state, action) => {
+        const node = state.data.nodes.find(
+          (n) => n.id === action.meta.arg.nodeId,
+        );
+        if (node) {
+          node.data.techDescriptionStatus = "loading";
+          node.data.techDescriptionError = null;
+        }
+      })
+      .addCase(fetchTechDescription.fulfilled, (state, action) => {
+        const { nodeId, techDescription } = action.payload;
+        const node = state.data.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          node.data.techDescription = techDescription;
+          node.data.techDescriptionStatus = "succeeded";
+          node.data.techDescriptionError = null;
+        }
+      })
+      .addCase(fetchTechDescription.rejected, (state, action) => {
+        const node = state.data.nodes.find(
+          (n) => n.id === action.meta.arg.nodeId,
+        );
+        if (node) {
+          node.data.techDescriptionStatus = "failed";
+          node.data.techDescriptionError =
+            (action.payload as string) || "tech-description failed";
         }
       });
     // ── Step-by-step chain ──

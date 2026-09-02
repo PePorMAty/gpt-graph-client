@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { BuildDirection } from "../../store/types";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { StepByStepContent } from "./StepByStepContent";
+import { TechDescriptionTab } from "./TechDescriptionTab";
 import { MarkdownEditor } from "../markdown-editor";
 import {
   getDefaultFillCardSystemPrompt,
@@ -821,6 +822,13 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   aggregatedDescription,
   onCommitDescription,
   onCommitAggregatedDescription,
+
+  techDescription = "",
+  techDescriptionStatus,
+  techDescriptionError,
+  getTechDescriptionContext,
+  onCommitTechDescription,
+  onRequestTechDescription,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
@@ -828,8 +836,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   // Построение и таблица источников открываются в модальных окнах.
   const [dBuildOpen, setDBuildOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  // Вкладка описания в карточке преобразования: обычное описание ↔ обобщённое.
-  const [descTab, setDescTab] = useState<"plain" | "aggregated">("plain");
+  // Вкладка описания в карточке преобразования: обычное описание ↔
+  // технологическое описание шага ↔ обобщённое описание шага.
+  const [descTab, setDescTab] = useState<"plain" | "tech" | "aggregated">(
+    "plain",
+  );
   // Сброс при смене выбранной ноды.
   useEffect(() => {
     setDBuildOpen(false);
@@ -840,6 +851,23 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   const hasAggregatedDesc =
     typeof aggregatedDescription === "string" &&
     aggregatedDescription.trim().length > 0;
+
+  // Технологическое описание — только у преобразований (шаг «продукт →
+  // преобразование → продукт»), и только если карточка знает контекст графа.
+  const showTechTab =
+    effectiveNodeType === "transformation" &&
+    !isAltNode &&
+    !!getTechDescriptionContext &&
+    !!onRequestTechDescription &&
+    !!onCommitTechDescription;
+
+  // Выбранная вкладка может стать недоступной (сменился узел, обобщение ещё не
+  // пришло) — тогда показываем обычное описание, а не пустоту.
+  const activeDescTab =
+    (descTab === "tech" && !showTechTab) ||
+    (descTab === "aggregated" && !hasAggregatedDesc)
+      ? "plain"
+      : descTab;
 
   // Счётчик на кнопке «Источники» — всего источников в таблице (по «своим»
   // группам; унаследованные не считаем, чтобы не задваивать набор предка).
@@ -1049,27 +1077,41 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                       placeholder="Введите описание (Markdown)"
                     />
                   </>
-                ) : hasAggregatedDesc ? (
-                  /* Задача №2: у преобразования есть обобщённое описание —
-                     переключатель «Описание ↔ Обобщённое» (обобщённое = markdown). */
+                ) : showTechTab || hasAggregatedDesc ? (
+                  /* У преобразования описание разложено по вкладкам:
+                     «Описание» ↔ «Технологическое» (запрос к серверу по
+                     промпту шага) ↔ «Обобщённое» (markdown, если есть). */
                   <>
                     <div className={styles.modeToggleRow}>
                       <button
                         type="button"
-                        className={`${styles.modeToggleBtn} ${descTab === "plain" ? styles.modeToggleBtnActive : ""}`}
+                        className={`${styles.modeToggleBtn} ${activeDescTab === "plain" ? styles.modeToggleBtnActive : ""}`}
                         onClick={() => setDescTab("plain")}
                       >
                         Описание
                       </button>
-                      <button
-                        type="button"
-                        className={`${styles.modeToggleBtn} ${descTab === "aggregated" ? styles.modeToggleBtnActive : ""}`}
-                        onClick={() => setDescTab("aggregated")}
-                      >
-                        Обобщённое
-                      </button>
+                      {showTechTab && (
+                        <button
+                          type="button"
+                          className={`${styles.modeToggleBtn} ${activeDescTab === "tech" ? styles.modeToggleBtnActive : ""}`}
+                          onClick={() => setDescTab("tech")}
+                          title="Краткое технологическое описание продуктового шага"
+                        >
+                          Технологическое
+                          {techDescriptionStatus === "loading" && " …"}
+                        </button>
+                      )}
+                      {hasAggregatedDesc && (
+                        <button
+                          type="button"
+                          className={`${styles.modeToggleBtn} ${activeDescTab === "aggregated" ? styles.modeToggleBtnActive : ""}`}
+                          onClick={() => setDescTab("aggregated")}
+                        >
+                          Обобщённое
+                        </button>
+                      )}
                     </div>
-                    {descTab === "plain" ? (
+                    {activeDescTab === "plain" && (
                       <textarea
                         value={descriptionValue}
                         onChange={onChangeDescription}
@@ -1079,7 +1121,20 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                         rows={4}
                         readOnly={readOnly}
                       />
-                    ) : (
+                    )}
+                    {activeDescTab === "tech" && (
+                      <TechDescriptionTab
+                        key={nodeId ?? "tech"}
+                        getContext={getTechDescriptionContext!}
+                        value={techDescription}
+                        onCommit={onCommitTechDescription!}
+                        onRequest={onRequestTechDescription!}
+                        status={techDescriptionStatus}
+                        error={techDescriptionError}
+                        readOnly={readOnly}
+                      />
+                    )}
+                    {activeDescTab === "aggregated" && (
                       <MarkdownEditor
                         value={aggregatedDescription ?? ""}
                         onChange={

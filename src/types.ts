@@ -17,6 +17,14 @@ export interface CustomNodeData {
    * карточке преобразования через переключатель «Описание ↔ Обобщённое».
    */
   aggregatedDescription?: string;
+  /**
+   * Технологическое описание продуктового шага (обычный текст, 2–4
+   * предложения) — вкладка «Технологическое описание» в карточке
+   * преобразования. Запрашивается на /gpt/tech-description и правится вручную.
+   */
+  techDescription?: string;
+  techDescriptionStatus?: "idle" | "loading" | "succeeded" | "failed";
+  techDescriptionError?: string | null;
 
   // --- product card ---
   productCard?: ProductCard;
