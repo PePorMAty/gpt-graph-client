@@ -185,16 +185,19 @@ export interface FlowPanelProps {
   onCommitAggregatedDescription?: (text: string) => void;
 
   // ── Вкладка «Технологическое описание» (карточка преобразования) ──
-  /** Текущее технологическое описание шага (node.data.techDescription). */
-  techDescription?: string;
-  techDescriptionStatus?: Status;
-  techDescriptionError?: string | null;
+  /** Техописание по направлениям: у «вверх» и «вниз» разные продукты, поэтому
+   *  и описание у каждой вкладки своё. */
+  techDescriptionByDirection?: Record<BuildDirection, string>;
+  techDescriptionStatusByDirection?: Partial<Record<BuildDirection, Status>>;
+  techDescriptionErrorByDirection?: Partial<
+    Record<BuildDirection, string | null>
+  >;
   /** Переменные промпта из графа для выбранного направления шага. */
   getTechDescriptionContext?: (
     direction?: BuildDirection,
   ) => TechDescriptionContext | null;
-  /** Ручная правка описания → node.data.techDescription. */
-  onCommitTechDescription?: (text: string) => void;
+  /** Ручная правка описания → техописание своего направления. */
+  onCommitTechDescription?: (text: string, direction: BuildDirection) => void;
   /** Запрос описания на /gpt/tech-description. */
   onRequestTechDescription?: (req: TechDescriptionRequest) => void;
 

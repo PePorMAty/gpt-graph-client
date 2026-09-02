@@ -32,22 +32,25 @@ export interface TechDescriptionRequest {
 export interface TechDescriptionTabProps {
   /** Переменные промпта из графа; direction — выбранное направление шага. */
   getContext: (direction?: BuildDirection) => TechDescriptionContext | null;
-  /** Готовое описание из node.data (правится вручную). */
-  value: string;
-  onCommit: (text: string) => void;
+  /** Готовые описания по направлениям (правятся вручную): у «вверх» и «вниз»
+   *  разные продукты, поэтому и описание у каждой вкладки своё. */
+  valueByDirection?: Partial<Record<BuildDirection, string>>;
+  onCommit: (text: string, direction: BuildDirection) => void;
   onRequest: (req: TechDescriptionRequest) => void;
-  status?: "idle" | "loading" | "succeeded" | "failed";
-  error?: string | null;
+  statusByDirection?: Partial<
+    Record<BuildDirection, "idle" | "loading" | "succeeded" | "failed">
+  >;
+  errorByDirection?: Partial<Record<BuildDirection, string | null>>;
   readOnly?: boolean;
 }
 
 export const TechDescriptionTab: FC<TechDescriptionTabProps> = ({
   getContext,
-  value,
+  valueByDirection,
   onCommit,
   onRequest,
-  status = "idle",
-  error,
+  statusByDirection,
+  errorByDirection,
   readOnly = false,
 }) => {
   // Направление шага из графа — дефолт переключателя ВНИЗ/ВВЕРХ.
@@ -78,10 +81,16 @@ export const TechDescriptionTab: FC<TechDescriptionTabProps> = ({
     setManualAdditional(null);
   }, [direction]);
 
+  // Описание, статус и ошибка — своего направления.
+  const value = valueByDirection?.[direction] ?? "";
+  const status = statusByDirection?.[direction] ?? "idle";
+  const error = errorByDirection?.[direction] ?? null;
+
   // Правка описания живёт локально до потери фокуса — как поле «Описание».
-  const [localText, setLocalText] = useState(value ?? "");
+  // Смена направления меняет value, и текст перечитывается из своего поля.
+  const [localText, setLocalText] = useState(value);
   useEffect(() => {
-    setLocalText(value ?? "");
+    setLocalText(value);
   }, [value]);
 
   const currentProduct = manualCurrent ?? context?.currentProduct ?? "";
@@ -179,7 +188,7 @@ export const TechDescriptionTab: FC<TechDescriptionTabProps> = ({
         value={localText}
         onChange={(e) => setLocalText(e.target.value)}
         onBlur={() => {
-          if (localText !== (value ?? "")) onCommit(localText);
+          if (localText !== value) onCommit(localText, direction);
         }}
         className={`${styles.formTextarea} ${styles.techTextarea}`}
         placeholder="Описание шага появится здесь после запроса — его можно отредактировать вручную"

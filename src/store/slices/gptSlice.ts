@@ -1463,17 +1463,26 @@ const gptSlice = createSlice({
           (n) => n.id === action.meta.arg.nodeId,
         );
         if (node) {
-          node.data.techDescriptionStatus = "loading";
-          node.data.techDescriptionError = null;
+          const up = action.meta.arg.direction === "up";
+          node.data[up ? "techDescriptionStatusUp" : "techDescriptionStatusDown"] =
+            "loading";
+          node.data[up ? "techDescriptionErrorUp" : "techDescriptionErrorDown"] =
+            null;
         }
       })
       .addCase(fetchTechDescription.fulfilled, (state, action) => {
-        const { nodeId, techDescription } = action.payload;
+        const { nodeId, techDescription, direction } = action.payload;
         const node = state.data.nodes.find((n) => n.id === nodeId);
         if (node) {
-          node.data.techDescription = techDescription;
-          node.data.techDescriptionStatus = "succeeded";
-          node.data.techDescriptionError = null;
+          const up = direction === "up";
+          // Пишем в поле своего направления: у «вверх» и «вниз» разные продукты,
+          // и общее поле затирало бы описание соседней вкладки.
+          node.data[up ? "techDescriptionUp" : "techDescriptionDown"] =
+            techDescription;
+          node.data[up ? "techDescriptionStatusUp" : "techDescriptionStatusDown"] =
+            "succeeded";
+          node.data[up ? "techDescriptionErrorUp" : "techDescriptionErrorDown"] =
+            null;
         }
       })
       .addCase(fetchTechDescription.rejected, (state, action) => {
@@ -1481,8 +1490,10 @@ const gptSlice = createSlice({
           (n) => n.id === action.meta.arg.nodeId,
         );
         if (node) {
-          node.data.techDescriptionStatus = "failed";
-          node.data.techDescriptionError =
+          const up = action.meta.arg.direction === "up";
+          node.data[up ? "techDescriptionStatusUp" : "techDescriptionStatusDown"] =
+            "failed";
+          node.data[up ? "techDescriptionErrorUp" : "techDescriptionErrorDown"] =
             (action.payload as string) || "tech-description failed";
         }
       });

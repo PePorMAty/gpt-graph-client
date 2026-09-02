@@ -778,7 +778,10 @@ const PanelBuildView: FC<{
               ? `Построить вниз от «${productName}»`
               : `Построить вверх от «${productName}»`}
           </div>
-          <DirectionContent {...(dir === "down" ? downTab : upTab)} />
+          {/* key по направлению: без него React переиспользует тот же
+              экземпляр, и состояние вкладки (правленый промпт, домены,
+              число источников) переезжает с «вверх» на «вниз». */}
+          <DirectionContent key={dir} {...(dir === "down" ? downTab : upTab)} />
         </>
       )}
     </>
@@ -823,9 +826,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   onCommitDescription,
   onCommitAggregatedDescription,
 
-  techDescription = "",
-  techDescriptionStatus,
-  techDescriptionError,
+  techDescriptionByDirection,
+  techDescriptionStatusByDirection,
+  techDescriptionErrorByDirection,
   getTechDescriptionContext,
   onCommitTechDescription,
   onRequestTechDescription,
@@ -1098,7 +1101,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           title="Краткое технологическое описание продуктового шага"
                         >
                           Технологическое
-                          {techDescriptionStatus === "loading" && " …"}
+                          {(techDescriptionStatusByDirection?.up ===
+                            "loading" ||
+                            techDescriptionStatusByDirection?.down ===
+                              "loading") &&
+                            " …"}
                         </button>
                       )}
                       {hasAggregatedDesc && (
@@ -1126,11 +1133,11 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                       <TechDescriptionTab
                         key={nodeId ?? "tech"}
                         getContext={getTechDescriptionContext!}
-                        value={techDescription}
+                        valueByDirection={techDescriptionByDirection}
                         onCommit={onCommitTechDescription!}
                         onRequest={onRequestTechDescription!}
-                        status={techDescriptionStatus}
-                        error={techDescriptionError}
+                        statusByDirection={techDescriptionStatusByDirection}
+                        errorByDirection={techDescriptionErrorByDirection}
                         readOnly={readOnly}
                       />
                     )}

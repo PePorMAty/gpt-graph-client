@@ -1330,13 +1330,35 @@ export const Flow = ({
     [selectedNodeId, data.nodes, data.edges],
   );
 
+  // Техописание теперь раздельное по направлениям. Старое общее поле
+  // показываем только в том направлении, в котором строилось преобразование:
+  // отдавать его обеим вкладкам — значит вернуть ту же путаницу.
+  const techDescriptionByDirection = useMemo(() => {
+    const d = selectedNode?.data;
+    const legacy = (d?.techDescription as string | undefined) ?? "";
+    const legacyDir = (d?.chainDirection ?? d?.stepAltDirection) as
+      | BuildDirection
+      | undefined;
+    return {
+      up:
+        (d?.techDescriptionUp as string | undefined) ??
+        (legacyDir === "up" ? legacy : ""),
+      down:
+        (d?.techDescriptionDown as string | undefined) ??
+        (legacyDir === "down" ? legacy : ""),
+    };
+  }, [selectedNode]);
+
   const handleCommitTechDescription = useCallback(
-    (text: string) => {
+    (text: string, direction: BuildDirection) => {
       if (!selectedNodeId) return;
       dispatch(
         updateNodeData({
           nodeId: selectedNodeId,
-          data: { techDescription: text },
+          data:
+            direction === "up"
+              ? { techDescriptionUp: text }
+              : { techDescriptionDown: text },
         }),
       );
       showSavedNotification();
@@ -2717,11 +2739,15 @@ export const Flow = ({
         }
         onCommitDescription={handleCommitDescription}
         onCommitAggregatedDescription={handleCommitAggregatedDescription}
-        techDescription={
-          (selectedNode?.data?.techDescription as string | undefined) ?? ""
-        }
-        techDescriptionStatus={selectedNode?.data?.techDescriptionStatus}
-        techDescriptionError={selectedNode?.data?.techDescriptionError}
+        techDescriptionByDirection={techDescriptionByDirection}
+        techDescriptionStatusByDirection={{
+          up: selectedNode?.data?.techDescriptionStatusUp,
+          down: selectedNode?.data?.techDescriptionStatusDown,
+        }}
+        techDescriptionErrorByDirection={{
+          up: selectedNode?.data?.techDescriptionErrorUp,
+          down: selectedNode?.data?.techDescriptionErrorDown,
+        }}
         getTechDescriptionContext={getTechDescriptionContext}
         onCommitTechDescription={handleCommitTechDescription}
         onRequestTechDescription={handleRequestTechDescription}

@@ -22,9 +22,20 @@ export interface CustomNodeData {
    * предложения) — вкладка «Технологическое описание» в карточке
    * преобразования. Запрашивается на /gpt/tech-description и правится вручную.
    */
+  /** Техописание, сохранённое до разделения по направлениям. Читается как
+   *  запасной вариант для направления, в котором строилось преобразование. */
   techDescription?: string;
   techDescriptionStatus?: "idle" | "loading" | "succeeded" | "failed";
   techDescriptionError?: string | null;
+
+  // --- техописание по направлениям: у вкладок «вверх» и «вниз» разные
+  //     продукты, поэтому и описание у каждой своё ---
+  techDescriptionUp?: string;
+  techDescriptionDown?: string;
+  techDescriptionStatusUp?: "idle" | "loading" | "succeeded" | "failed";
+  techDescriptionStatusDown?: "idle" | "loading" | "succeeded" | "failed";
+  techDescriptionErrorUp?: string | null;
+  techDescriptionErrorDown?: string | null;
 
   // --- product card ---
   productCard?: ProductCard;
