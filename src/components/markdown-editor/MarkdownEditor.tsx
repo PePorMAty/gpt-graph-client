@@ -10,6 +10,8 @@ interface MarkdownEditorProps {
   onChange?: (value: string) => void;
   rows?: number;
   placeholder?: string;
+  /** Только просмотр: показываем превью без переключателя и правки. */
+  readOnly?: boolean;
 }
 
 type Mode = "preview" | "edit";
@@ -19,6 +21,7 @@ export const MarkdownEditor: FC<MarkdownEditorProps> = ({
   onChange,
   rows = 8,
   placeholder = "Введите текст (Markdown)",
+  readOnly = false,
 }) => {
   const [mode, setMode] = useState<Mode>("preview");
   const [localText, setLocalText] = useState(value ?? "");
@@ -41,27 +44,36 @@ export const MarkdownEditor: FC<MarkdownEditorProps> = ({
 
   const hasContent = (value ?? "").trim().length > 0;
 
+  // В режиме просмотра редактор не предлагаем: правка всё равно не сохранится.
+  const editable = !readOnly;
+  const showEditor = editable && mode === "edit";
+
   return (
     <div className={styles.wrapper}>
-      <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={`${styles.tab} ${mode === "preview" ? styles.tabActive : ""}`}
-          onClick={switchToPreview}
-        >
-          Превью
-        </button>
-        <button
-          type="button"
-          className={`${styles.tab} ${mode === "edit" ? styles.tabActive : ""}`}
-          onClick={() => setMode("edit")}
-        >
-          Редактор
-        </button>
-      </div>
+      {editable && (
+        <div className={styles.toolbar}>
+          <button
+            type="button"
+            className={`${styles.tab} ${mode === "preview" ? styles.tabActive : ""}`}
+            onClick={switchToPreview}
+          >
+            Превью
+          </button>
+          <button
+            type="button"
+            className={`${styles.tab} ${mode === "edit" ? styles.tabActive : ""}`}
+            onClick={() => setMode("edit")}
+          >
+            Редактор
+          </button>
+        </div>
+      )}
 
-      {mode === "preview" ? (
-        <div className={styles.preview} onDoubleClick={() => setMode("edit")}>
+      {!showEditor ? (
+        <div
+          className={styles.preview}
+          onDoubleClick={editable ? () => setMode("edit") : undefined}
+        >
           {hasContent ? (
             <div className={styles.markdownBody}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
