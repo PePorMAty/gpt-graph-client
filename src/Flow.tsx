@@ -59,11 +59,11 @@ import { collectSourceGroups } from "./utils/sourceRows";
 import { collapseToProductsView } from "./utils/productsOnlyView";
 import {
   buildFocusSubgraph,
-  FOCUS_COMPACT_SPACING,
   focusScopeDepths,
   type FocusScope,
   type FocusSubgraphResult,
 } from "./utils/focusSubgraph";
+import { focusLayoutSpacing } from "./utils/focusLayoutSpacing";
 import {
   animateFocusTransition,
   nodesBounds,
@@ -418,12 +418,14 @@ export const Flow = ({
       // Ориентацию берём из геометрии полного графа, а не хардкодим: у
       // «вверх»-графов рёбра идут продукт → сырьё, и жёсткий "TB" переворачивал
       // окрестность зеркально тому, что видно на полотне вне фокус-режима.
+      // Зазоры зависят от охвата: чем больше рангов в окрестности, тем плотнее
+      // ставим узлы, иначе камера отъезжает и подписи мельчают.
       const laid = await layoutTree(
         sub.nodes,
         sub.edges,
         focusState.focusId,
         focusLayoutDirection,
-        FOCUS_COMPACT_SPACING,
+        focusLayoutSpacing(sub.nodes, sub.edges),
       );
       if (cancelled) return;
       const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);

@@ -57,11 +57,14 @@ export async function layoutWithElk(
       "elk.layered.thoroughness": "10",
       "elk.padding": "[top=20,left=20,bottom=20,right=20]",
     },
-    children: nodes.map((n) => ({
-      id: n.id,
-      width: nodeWidth,
-      height: nodeHeight,
-    })),
+    children: nodes.map((n) => {
+      const size = spacing?.measure?.(n);
+      return {
+        id: n.id,
+        width: size?.width ?? nodeWidth,
+        height: size?.height ?? nodeHeight,
+      };
+    }),
     edges: validEdges.map((e, i) => ({
       id: typeof e.id === "string" && e.id ? e.id : `elk-edge-${i}`,
       sources: [e.source],
