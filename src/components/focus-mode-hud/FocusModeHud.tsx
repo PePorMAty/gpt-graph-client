@@ -20,8 +20,14 @@ interface FocusModeHudProps {
 }
 
 const DEPTH_OPTIONS = [1, 2, 3];
-/** Сколько последних посещённых узлов показывать в крошках. */
-const VISIBLE_CRUMBS = 3;
+/**
+ * Сколько узлов показывать в крошках ВСЕГО, вместе с текущим фокусом.
+ * Больше трёх — строка крошек перестаёт помещаться рядом с кнопкой «Назад»,
+ * и та переносится на строку выше, перекраивая плашку.
+ */
+const MAX_CRUMBS = 3;
+/** Из них на историю приходятся все, кроме текущего узла. */
+const VISIBLE_HISTORY = MAX_CRUMBS - 1;
 
 const SCOPE_OPTIONS: Array<{
   value: FocusScope;
@@ -68,11 +74,15 @@ export const FocusModeHud: React.FC<FocusModeHudProps> = ({
   onBack,
   onJumpTo,
 }) => {
-  const hiddenCount = Math.max(0, historyLabels.length - VISIBLE_CRUMBS);
-  const visibleCrumbs = historyLabels.slice(-VISIBLE_CRUMBS);
+  const hiddenCount = Math.max(0, historyLabels.length - VISIBLE_HISTORY);
+  const visibleCrumbs = historyLabels.slice(-VISIBLE_HISTORY);
 
   return (
     <div className={styles.hud}>
+      {/* Кнопка и крошки — одна неразрывная группа: во flex-раскладке строка
+          крошек не сжимается, а переносится целиком, и «Назад» оставался на
+          строке выше. Внутри группы переноса нет, крошки просто ужимаются. */}
+      <div className={styles.navRow}>
       <button
         type="button"
         className={styles.backButton}
@@ -122,6 +132,7 @@ export const FocusModeHud: React.FC<FocusModeHudProps> = ({
         <span className={styles.crumbCurrent} title={focusLabel}>
           {focusLabel}
         </span>
+      </div>
       </div>
 
       <div className={styles.scope}>
