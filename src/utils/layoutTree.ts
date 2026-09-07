@@ -7,6 +7,30 @@ const NODE_HEIGHT = 80;
 const RANK_SEP = 160;
 const NODE_SEP = 80;
 
+/**
+ * Габариты «ячейки» узла и зазоры для раскладки. Значения по умолчанию —
+ * просторные, под полный граф. Фокус-режим передаёт свои, более плотные:
+ * там весь подграф вписывается в экран целиком, и лишние пустоты между
+ * рангами напрямую съедают масштаб, а с ним и читаемость подписей.
+ */
+export type LayoutSpacing = {
+  nodeWidth?: number;
+  nodeHeight?: number;
+  /** Расстояние между рангами (по направлению раскладки). */
+  rankSep?: number;
+  /** Расстояние между соседями внутри ранга. */
+  nodeSep?: number;
+};
+
+function resolveSpacing(spacing?: LayoutSpacing) {
+  return {
+    nodeWidth: spacing?.nodeWidth ?? NODE_WIDTH,
+    nodeHeight: spacing?.nodeHeight ?? NODE_HEIGHT,
+    rankSep: spacing?.rankSep ?? RANK_SEP,
+    nodeSep: spacing?.nodeSep ?? NODE_SEP,
+  };
+}
+
 export type LayoutTreeResult = {
   nodes: CustomNode[];
   edges: Edge[];
@@ -20,7 +44,9 @@ function hierarchicalLayout(
   nodes: CustomNode[],
   edges: Edge[],
   rankdir: "TB" | "BT",
+  spacing?: LayoutSpacing,
 ): CustomNode[] {
+  const { nodeWidth, nodeHeight, rankSep, nodeSep } = resolveSpacing(spacing);
   const nodeSet = new Set(nodes.map((n) => n.id));
   const children = new Map<string, string[]>();
   const inDegMap = new Map<string, number>(nodes.map((n) => [n.id, 0]));
@@ -72,15 +98,15 @@ function hierarchicalLayout(
 
   for (const [lvl, ids] of byLevel) {
     const n = ids.length;
-    const rowWidth = n * NODE_WIDTH + (n - 1) * NODE_SEP;
-    const startX = -rowWidth / 2 + NODE_WIDTH / 2;
+    const rowWidth = n * nodeWidth + (n - 1) * nodeSep;
+    const startX = -rowWidth / 2 + nodeWidth / 2;
     const y =
       rankdir === "TB"
-        ? lvl * (NODE_HEIGHT + RANK_SEP)
-        : (totalLevels - lvl) * (NODE_HEIGHT + RANK_SEP);
+        ? lvl * (nodeHeight + rankSep)
+        : (totalLevels - lvl) * (nodeHeight + rankSep);
 
     ids.forEach((id, i) => {
-      posMap.set(id, { x: startX + i * (NODE_WIDTH + NODE_SEP), y });
+      posMap.set(id, { x: startX + i * (nodeWidth + nodeSep), y });
     });
   }
 
@@ -97,10 +123,13 @@ export async function layoutTree(
   edges: Edge[],
   rootId?: string,
   direction?: "TB" | "BT",
+  spacing?: LayoutSpacing,
 ): Promise<LayoutTreeResult> {
   if (!nodes.length) {
     return { nodes, edges };
   }
+
+  const { nodeWidth, nodeHeight, rankSep, nodeSep } = resolveSpacing(spacing);
 
   // Если direction явно передан вызывающим — используем его.
   // Иначе: rootId с входящими — sink, rankdir TB; иначе источник — rankdir BT.
@@ -123,7 +152,7 @@ export async function layoutTree(
   if (isComplex) {
     try {
       const { layoutWithElk } = await import("./layoutWithElk");
-      const result = await layoutWithElk(nodes, edges, rankdir);
+      const result = await layoutWithElk(nodes, edges, rankdir, spacing);
       return result;
     } catch (e) {
       console.warn("[layoutTree] ELK failed, fallback to dagre:", e);
@@ -134,15 +163,15 @@ export async function layoutTree(
   const g = new dagre.graphlib.Graph();
   g.setGraph({
     rankdir,
-    nodesep: NODE_SEP,
-    ranksep: RANK_SEP,
+    nodesep: nodeSep,
+    ranksep: rankSep,
     marginx: 20,
     marginy: 20,
   });
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const node of nodes) {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    g.setNode(node.id, { width: nodeWidth, height: nodeHeight });
   }
 
   for (const edge of edges) {
@@ -155,21 +184,21 @@ export async function layoutTree(
     dagre.layout(g);
   } catch {
     // dagre упал — используем hierarchical fallback
-    return { nodes: hierarchicalLayout(nodes, edges, rankdir), edges };
+    return { nodes: hierarchicalLayout(nodes, edges, rankdir, spacing), edges };
   }
 
   // Проверяем валидность позиций от dagre
   const dagrePositions = nodes.map((node) => {
     const pos = g.node(node.id);
     if (!pos || !isFinite(pos.x) || !isFinite(pos.y)) return null;
-    return { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 };
+    return { x: pos.x - nodeWidth / 2, y: pos.y - nodeHeight / 2 };
   });
 
   const validCount = dagrePositions.filter(Boolean).length;
 
   if (validCount < nodes.length) {
     // Часть нод не получила валидных позиций — используем fallback
-    return { nodes: hierarchicalLayout(nodes, edges, rankdir), edges };
+    return { nodes: hierarchicalLayout(nodes, edges, rankdir, spacing), edges };
   }
 
   const layoutedNodes: CustomNode[] = nodes.map((node, i) => ({

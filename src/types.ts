@@ -101,6 +101,12 @@ export interface CustomNodeData {
    *  не попадает. */
   sourcesBadge?: { up: number; down: number };
 
+  // --- плотный вид узла (производное, НЕ персистится) ---
+  /** Узел рисуется в фокус-режиме с охватом больше одного шага: подпись
+   *  крупнее, блок шире и с меньшими полями (см. nodeBox.ts). Ставится в
+   *  Flow.tsx только в копии данных для рендера. */
+  focusCompact?: boolean;
+
   // required by @xyflow/react Node<T extends Record<string, unknown>>
   [key: string]: unknown;
 }

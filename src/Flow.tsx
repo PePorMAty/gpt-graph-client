@@ -59,6 +59,7 @@ import { collectSourceGroups } from "./utils/sourceRows";
 import { collapseToProductsView } from "./utils/productsOnlyView";
 import {
   buildFocusSubgraph,
+  FOCUS_COMPACT_SPACING,
   focusScopeDepths,
   type FocusScope,
   type FocusSubgraphResult,
@@ -422,6 +423,7 @@ export const Flow = ({
         sub.edges,
         focusState.focusId,
         focusLayoutDirection,
+        FOCUS_COMPACT_SPACING,
       );
       if (cancelled) return;
       const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
@@ -742,6 +744,10 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
+        // Крупная подпись — только у фокус-проекции: в полном графе и в
+        // «только продукты» узлы остаются прежними.
+        const compact = !!focusView;
+
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
         // объединённый граф. Кладём только в копию data для рендера.
@@ -751,17 +757,24 @@ export const Flow = ({
             sourcesPool[poolKey(lbl, "down")],
             sourcesPool[poolKey(lbl, "up")],
           );
+          const hasBadge = badge.up > 0 || badge.down > 0;
           return {
             ...n,
             className: cls,
             data:
-              badge.up > 0 || badge.down > 0
-                ? { ...n.data, sourcesBadge: badge }
+              hasBadge || compact
+                ? {
+                    ...n.data,
+                    ...(hasBadge ? { sourcesBadge: badge } : {}),
+                    ...(compact ? { focusCompact: true } : {}),
+                  }
                 : n.data,
           };
         }
 
-        return { ...n, className: cls };
+        return compact
+          ? { ...n, className: cls, data: { ...n.data, focusCompact: true } }
+          : { ...n, className: cls };
       }),
     [
       data.nodes,

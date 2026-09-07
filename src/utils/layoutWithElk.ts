@@ -1,9 +1,12 @@
 import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import type { LayoutSpacing } from "./layoutTree";
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 80;
+const SPACING_NODE_NODE = 60;
+const SPACING_BETWEEN_LAYERS = 100;
 
 const elk = new ELK();
 
@@ -23,10 +26,15 @@ export async function layoutWithElk(
   nodes: CustomNode[],
   edges: Edge[],
   rankdir: "TB" | "BT" = "TB",
+  spacing?: LayoutSpacing,
 ): Promise<ElkLayoutResult> {
   if (!nodes.length) return { nodes, edges };
 
   const direction = rankdir === "TB" ? "DOWN" : "UP";
+  const nodeWidth = spacing?.nodeWidth ?? NODE_WIDTH;
+  const nodeHeight = spacing?.nodeHeight ?? NODE_HEIGHT;
+  const nodeNode = spacing?.nodeSep ?? SPACING_NODE_NODE;
+  const betweenLayers = spacing?.rankSep ?? SPACING_BETWEEN_LAYERS;
 
   const nodeIdSet = new Set(nodes.map((n) => n.id));
   const validEdges = edges.filter(
@@ -41,8 +49,8 @@ export async function layoutWithElk(
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.cycleBreaking.strategy": "GREEDY",
-      "elk.spacing.nodeNode": "60",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "100",
+      "elk.spacing.nodeNode": String(nodeNode),
+      "elk.layered.spacing.nodeNodeBetweenLayers": String(betweenLayers),
       "elk.layered.spacing.edgeNodeBetweenLayers": "40",
       "elk.layered.spacing.edgeEdgeBetweenLayers": "20",
       "elk.layered.mergeEdges": "true",
@@ -51,8 +59,8 @@ export async function layoutWithElk(
     },
     children: nodes.map((n) => ({
       id: n.id,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      width: nodeWidth,
+      height: nodeHeight,
     })),
     edges: validEdges.map((e, i) => ({
       id: typeof e.id === "string" && e.id ? e.id : `elk-edge-${i}`,
