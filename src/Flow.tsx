@@ -63,6 +63,7 @@ import {
   type FocusScope,
   type FocusSubgraphResult,
 } from "./utils/focusSubgraph";
+import { focusLayoutSpacing } from "./utils/focusLayoutSpacing";
 import {
   animateFocusTransition,
   nodesBounds,
@@ -119,9 +120,6 @@ import { fetchTransformationsForNeighbors } from "./store/api/transformation-bet
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
-import { fetchTechDescription } from "./store/api/tech-description-api";
-import { buildTechDescriptionContext } from "./utils/buildTechDescriptionContext";
-import type { TechDescriptionRequest } from "./components/flow-panel/TechDescriptionTab";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -420,11 +418,14 @@ export const Flow = ({
       // Ориентацию берём из геометрии полного графа, а не хардкодим: у
       // «вверх»-графов рёбра идут продукт → сырьё, и жёсткий "TB" переворачивал
       // окрестность зеркально тому, что видно на полотне вне фокус-режима.
+      // Зазоры зависят от охвата: чем больше рангов в окрестности, тем плотнее
+      // ставим узлы, иначе камера отъезжает и подписи мельчают.
       const laid = await layoutTree(
         sub.nodes,
         sub.edges,
         focusState.focusId,
         focusLayoutDirection,
+        focusLayoutSpacing(sub.nodes, sub.edges),
       );
       if (cancelled) return;
       const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
@@ -745,6 +746,10 @@ export const Flow = ({
           .filter(Boolean)
           .join(" ");
 
+        // Крупная подпись — только у фокус-проекции: в полном графе и в
+        // «только продукты» узлы остаются прежними.
+        const compact = !!focusView;
+
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
         // объединённый граф. Кладём только в копию data для рендера.
@@ -754,17 +759,24 @@ export const Flow = ({
             sourcesPool[poolKey(lbl, "down")],
             sourcesPool[poolKey(lbl, "up")],
           );
+          const hasBadge = badge.up > 0 || badge.down > 0;
           return {
             ...n,
             className: cls,
             data:
-              badge.up > 0 || badge.down > 0
-                ? { ...n.data, sourcesBadge: badge }
+              hasBadge || compact
+                ? {
+                    ...n.data,
+                    ...(hasBadge ? { sourcesBadge: badge } : {}),
+                    ...(compact ? { focusCompact: true } : {}),
+                  }
                 : n.data,
           };
         }
 
-        return { ...n, className: cls };
+        return compact
+          ? { ...n, className: cls, data: { ...n.data, focusCompact: true } }
+          : { ...n, className: cls };
       }),
     [
       data.nodes,
@@ -864,6 +876,10 @@ export const Flow = ({
     }
   }, [selectedNodeId, isPanelOpen, selectedNode]);
 
+  // saveChanges объявлен ниже (ему нужны temp-поля), а клик по узлу — здесь:
+  // держим ссылку на актуальную версию, чтобы не тасовать порядок хуков.
+  const saveChangesRef = useRef<() => boolean>(() => false);
+
   // Обработчик клика по узлу
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -879,11 +895,15 @@ export const Flow = ({
         focusOnNode(node.id);
         return;
       }
+      // Карточка больше не блокирует полотно, поэтому по клику она может
+      // ПЕРЕКЛЮЧИТЬСЯ на другой узел — правки предыдущего фиксируем до смены
+      // (blur поля обычно успевает, но на клик мимо полей рассчитывать нельзя).
+      if (node.id !== selectedNodeId) saveChangesRef.current();
       setSelectedNodeId(node.id);
       setIsPanelOpen(true);
       setContextMenu(null);
     },
-    [focusOnNode],
+    [focusOnNode, selectedNodeId],
   );
 
   // Hover-подсветка цепочки (только для загруженных графов;
@@ -1189,6 +1209,10 @@ export const Flow = ({
     dispatch,
   ]);
 
+  useEffect(() => {
+    saveChangesRef.current = saveChanges;
+  }, [saveChanges]);
+
   // Сохранение при потере фокуса поля имени/описания + всплывающая подсказка
   const handleFieldBlur = useCallback(() => {
     if (saveChanges()) {
@@ -1312,66 +1336,6 @@ export const Flow = ({
       showSavedNotification();
     },
     [selectedNodeId, dispatch, showSavedNotification],
-  );
-
-  // ── Технологическое описание шага (карточка преобразования) ──
-  // Переменные промпта считаем из графа по требованию вкладки: направление она
-  // может переключать сама, и продукты/сведения при этом меняются ролями.
-  const getTechDescriptionContext = useCallback(
-    (direction?: BuildDirection) =>
-      selectedNodeId
-        ? buildTechDescriptionContext(
-            selectedNodeId,
-            data.nodes,
-            data.edges,
-            direction,
-          )
-        : null,
-    [selectedNodeId, data.nodes, data.edges],
-  );
-
-  // Техописание теперь раздельное по направлениям. Старое общее поле
-  // показываем только в том направлении, в котором строилось преобразование:
-  // отдавать его обеим вкладкам — значит вернуть ту же путаницу.
-  const techDescriptionByDirection = useMemo(() => {
-    const d = selectedNode?.data;
-    const legacy = (d?.techDescription as string | undefined) ?? "";
-    const legacyDir = (d?.chainDirection ?? d?.stepAltDirection) as
-      | BuildDirection
-      | undefined;
-    return {
-      up:
-        (d?.techDescriptionUp as string | undefined) ??
-        (legacyDir === "up" ? legacy : ""),
-      down:
-        (d?.techDescriptionDown as string | undefined) ??
-        (legacyDir === "down" ? legacy : ""),
-    };
-  }, [selectedNode]);
-
-  const handleCommitTechDescription = useCallback(
-    (text: string, direction: BuildDirection) => {
-      if (!selectedNodeId) return;
-      dispatch(
-        updateNodeData({
-          nodeId: selectedNodeId,
-          data:
-            direction === "up"
-              ? { techDescriptionUp: text }
-              : { techDescriptionDown: text },
-        }),
-      );
-      showSavedNotification();
-    },
-    [selectedNodeId, dispatch, showSavedNotification],
-  );
-
-  const handleRequestTechDescription = useCallback(
-    (req: TechDescriptionRequest) => {
-      if (!selectedNodeId) return;
-      dispatch(fetchTechDescription({ nodeId: selectedNodeId, ...req }));
-    },
-    [selectedNodeId, dispatch],
   );
 
   // Обработчики изменений узлов и ребер
@@ -2739,18 +2703,6 @@ export const Flow = ({
         }
         onCommitDescription={handleCommitDescription}
         onCommitAggregatedDescription={handleCommitAggregatedDescription}
-        techDescriptionByDirection={techDescriptionByDirection}
-        techDescriptionStatusByDirection={{
-          up: selectedNode?.data?.techDescriptionStatusUp,
-          down: selectedNode?.data?.techDescriptionStatusDown,
-        }}
-        techDescriptionErrorByDirection={{
-          up: selectedNode?.data?.techDescriptionErrorUp,
-          down: selectedNode?.data?.techDescriptionErrorDown,
-        }}
-        getTechDescriptionContext={getTechDescriptionContext}
-        onCommitTechDescription={handleCommitTechDescription}
-        onRequestTechDescription={handleRequestTechDescription}
       />
 
       <Notification

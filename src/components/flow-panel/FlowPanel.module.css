@@ -1,17 +1,6 @@
-/* Overlay для блокировки графа */
-.overlay {
-  position: fixed;
-  inset: 0;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 10;
-  pointer-events: auto;
-}
-
-/* Панель редактирования */
+/* Панель редактирования.
+   Оверлея нет намеренно: карточка открыта поверх полотна, но граф остаётся
+   доступным — панель закрывается только крестиком в шапке. */
 .panel {
   position: fixed;
   top: 0;
@@ -1008,4 +997,64 @@
 .techTextarea {
   min-height: 150px;
   resize: vertical;
+}
+
+/* ── Заполненная карточка преобразования (вкладка «Технологическое описание»):
+      блок с описанием технологии и таблица «Основные параметры». ── */
+.cardBlock {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fbfbfc;
+}
+
+.cardBlockTitle {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.cardBlockText {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+  white-space: pre-wrap;
+}
+
+.cardParams {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+/* Пара «параметр → значение»: на узкой панели значение уходит под название. */
+.cardParamRow {
+  display: grid;
+  grid-template-columns: minmax(110px, 30%) 1fr;
+  gap: 4px 14px;
+  align-items: start;
+}
+
+.cardParamName {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #374151;
+}
+
+.cardParamValue {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1d4ed8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .cardParamRow {
+    grid-template-columns: 1fr;
+  }
 }

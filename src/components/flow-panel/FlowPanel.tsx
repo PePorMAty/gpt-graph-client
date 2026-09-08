@@ -2,14 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { BuildDirection } from "../../store/types";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { StepByStepContent } from "./StepByStepContent";
-import { TechDescriptionTab } from "./TechDescriptionTab";
+import { FillCardBlock } from "./FillCardBlock";
 import { MarkdownEditor } from "../markdown-editor";
-import {
-  getDefaultFillCardSystemPrompt,
-  getFieldsForNodeType,
-  labelToKey,
-  type FillCardField,
-} from "../../prompts/fillCardPrompts";
+import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
 import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
@@ -825,13 +820,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
   aggregatedDescription,
   onCommitDescription,
   onCommitAggregatedDescription,
-
-  techDescriptionByDirection,
-  techDescriptionStatusByDirection,
-  techDescriptionErrorByDirection,
-  getTechDescriptionContext,
-  onCommitTechDescription,
-  onRequestTechDescription,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const effectiveNodeType = nodeType || "product";
@@ -855,14 +843,17 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     typeof aggregatedDescription === "string" &&
     aggregatedDescription.trim().length > 0;
 
-  // Технологическое описание — только у преобразований (шаг «продукт →
-  // преобразование → продукт»), и только если карточка знает контекст графа.
-  const showTechTab =
-    effectiveNodeType === "transformation" &&
-    !isAltNode &&
-    !!getTechDescriptionContext &&
-    !!onRequestTechDescription &&
-    !!onCommitTechDescription;
+  // Обобщение шага несёт служебные разделы (раскрываемый продукт, примечания,
+  // родословная) — они нужны построению шага, но в карточке лишние: прячем их
+  // только на показ, сам текст в node.data остаётся полным.
+  const aggregatedPreview = useMemo(
+    () => toTransformationRoutesView(aggregatedDescription ?? ""),
+    [aggregatedDescription],
+  );
+
+  // «Технологическое описание» — вкладка карточки преобразования (шаг «продукт
+  // → преобразование → продукт»); у альтернатив её нет.
+  const showTechTab = effectiveNodeType === "transformation" && !isAltNode;
 
   // Выбранная вкладка может стать недоступной (сменился узел, обобщение ещё не
   // пришло) — тогда показываем обычное описание, а не пустоту.
@@ -883,137 +874,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
     [sourceGroups],
   );
 
-  // ── field selection state ──
-  const predefinedFields = useMemo(
-    () => getFieldsForNodeType(effectiveNodeType),
-    [effectiveNodeType],
-  );
-
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
-    () => new Set(predefinedFields.map((f) => f.key)),
-  );
-  const [customFields, setCustomFields] = useState<FillCardField[]>([]);
-  const [newFieldLabel, setNewFieldLabel] = useState("");
-
-  const activeFields = useMemo(() => {
-    const result: FillCardField[] = [];
-    for (const f of predefinedFields) {
-      if (selectedKeys.has(f.key)) result.push(f);
-    }
-    for (const f of customFields) {
-      if (selectedKeys.has(f.key)) result.push(f);
-    }
-    return result;
-  }, [predefinedFields, customFields, selectedKeys]);
-
-  const allFields = useMemo(
-    () => [...predefinedFields, ...customFields],
-    [predefinedFields, customFields],
-  );
-
-  // ── prompt editor state ──
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [manualPrompt, setManualPrompt] = useState<string | null>(null);
-  const [useWebSearch, setUseWebSearch] = useState(false);
-
-  const autoPrompt = useMemo(
-    () => getDefaultFillCardSystemPrompt(effectiveNodeType, activeFields),
-    [effectiveNodeType, activeFields],
-  );
-
-  const displayedPrompt = manualPrompt ?? autoPrompt;
-  const isPromptDirty = manualPrompt !== null;
-  const fieldsReduced =
-    activeFields.length !== predefinedFields.length || customFields.length > 0;
-
-  // reset when nodeType changes
-  useEffect(() => {
-    const fields = getFieldsForNodeType(effectiveNodeType);
-    setSelectedKeys(new Set(fields.map((f) => f.key)));
-    setCustomFields([]);
-    setManualPrompt(null);
-    setPromptOpen(false);
-    setNewFieldLabel("");
-  }, [effectiveNodeType]);
-
-  const handleToggleField = (key: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-    setManualPrompt(null);
-  };
-
-  const handleSelectAll = () => {
-    setSelectedKeys(new Set(allFields.map((f) => f.key)));
-    setManualPrompt(null);
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedKeys(new Set());
-    setManualPrompt(null);
-  };
-
-  const handleAddField = () => {
-    const label = newFieldLabel.trim();
-    if (!label) return;
-    const key = labelToKey(label);
-    if (!key || allFields.some((f) => f.key === key)) return;
-    const field: FillCardField = { key, label, custom: true };
-    setCustomFields((prev) => [...prev, field]);
-    setSelectedKeys((prev) => new Set([...prev, key]));
-    setNewFieldLabel("");
-    setManualPrompt(null);
-  };
-
-  const handleRemoveCustomField = (key: string) => {
-    setCustomFields((prev) => prev.filter((f) => f.key !== key));
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-    setManualPrompt(null);
-  };
-
-  const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setManualPrompt(e.target.value);
-  };
-
-  const handleResetPrompt = () => {
-    setManualPrompt(null);
-  };
-
-  const handleFillCard = () => {
-    const needCustom = isPromptDirty || fieldsReduced;
-    onBuildProductCard?.({
-      customSystemPrompt: needCustom ? displayedPrompt : undefined,
-      selectedFields: activeFields.map((f) => f.key),
-      useWebSearch,
-    });
-  };
-
-  // ── click outside ──
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // Пока открыта модалка варианта D (построение/источники) — клики
-      // обрабатывает сама модалка; панель не закрываем (модалки рендерятся вне
-      // panelRef, иначе любой клик по ним закрыл бы панель).
-      if (dBuildOpen || sourcesOpen) return;
-      if (
-        panelRef.current &&
-        event.target instanceof Node &&
-        !panelRef.current.contains(event.target)
-      ) {
-        onClose();
-      }
-    };
-
-    if (isOpen) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, onClose, dBuildOpen, sourcesOpen]);
+  // Карточка не перехватывает клики вне себя: граф остаётся живым, пока она
+  // открыта (двигать полотно, выделять и открывать другие узлы). Закрытие —
+  // только крестиком в шапке, поэтому ни оверлея, ни клика-снаружи здесь нет.
 
   // Esc закрывает модалку построения (вариант D). У таблицы источников —
   // собственный обработчик Esc.
@@ -1030,8 +893,6 @@ export const FlowPanel: FC<FlowPanelProps> = ({
 
   return (
     <>
-      {isOpen && <div className={styles.overlay} onClick={onClose} />}
-
       <div
         ref={panelRef}
         className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
@@ -1082,8 +943,9 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   </>
                 ) : showTechTab || hasAggregatedDesc ? (
                   /* У преобразования описание разложено по вкладкам:
-                     «Описание» ↔ «Технологическое» (запрос к серверу по
-                     промпту шага) ↔ «Обобщённое» (markdown, если есть). */
+                     «Краткое описание» ↔ «Технологическое описание» (карточка
+                     технологии) ↔ «Технологические маршруты» (обобщение шага,
+                     markdown — если есть). */
                   <>
                     <div className={styles.modeToggleRow}>
                       <button
@@ -1091,21 +953,17 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                         className={`${styles.modeToggleBtn} ${activeDescTab === "plain" ? styles.modeToggleBtnActive : ""}`}
                         onClick={() => setDescTab("plain")}
                       >
-                        Описание
+                        Краткое описание
                       </button>
                       {showTechTab && (
                         <button
                           type="button"
                           className={`${styles.modeToggleBtn} ${activeDescTab === "tech" ? styles.modeToggleBtnActive : ""}`}
                           onClick={() => setDescTab("tech")}
-                          title="Краткое технологическое описание продуктового шага"
+                          title="Карточка технологии: описание и основные параметры"
                         >
-                          Технологическое
-                          {(techDescriptionStatusByDirection?.up ===
-                            "loading" ||
-                            techDescriptionStatusByDirection?.down ===
-                              "loading") &&
-                            " …"}
+                          Технологическое описание
+                          {productCardStatus === "loading" && " …"}
                         </button>
                       )}
                       {hasAggregatedDesc && (
@@ -1114,7 +972,7 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                           className={`${styles.modeToggleBtn} ${activeDescTab === "aggregated" ? styles.modeToggleBtnActive : ""}`}
                           onClick={() => setDescTab("aggregated")}
                         >
-                          Обобщённое
+                          Технологические маршруты
                         </button>
                       )}
                     </div>
@@ -1130,20 +988,21 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                       />
                     )}
                     {activeDescTab === "tech" && (
-                      <TechDescriptionTab
+                      <FillCardBlock
                         key={nodeId ?? "tech"}
-                        getContext={getTechDescriptionContext!}
-                        valueByDirection={techDescriptionByDirection}
-                        onCommit={onCommitTechDescription!}
-                        onRequest={onRequestTechDescription!}
-                        statusByDirection={techDescriptionStatusByDirection}
-                        errorByDirection={techDescriptionErrorByDirection}
+                        nodeType={effectiveNodeType}
+                        layout="tech"
+                        onBuildProductCard={onBuildProductCard}
+                        productCardStatus={productCardStatus}
+                        productCardError={productCardError}
+                        productCard={productCard}
                         readOnly={readOnly}
                       />
                     )}
                     {activeDescTab === "aggregated" && (
                       <MarkdownEditor
                         value={aggregatedDescription ?? ""}
+                        previewValue={aggregatedPreview}
                         onChange={
                           readOnly ? undefined : onCommitAggregatedDescription
                         }
@@ -1261,186 +1120,17 @@ export const FlowPanel: FC<FlowPanelProps> = ({
                   </div>
                 )}
 
-              {/* ── PRODUCT CARD (скрыто в режиме просмотра) ── */}
-              {!readOnly && (
-              <div className={styles.formGroup}>
-                <button
-                  type="button"
-                  onClick={() => setPromptOpen((v) => !v)}
-                  className={styles.promptToggle}
-                >
-                  {promptOpen ? "Скрыть настройки промпта" : "Настроить промпт"}
-                </button>
-
-                {promptOpen && (
-                  <div className={styles.promptEditor}>
-                    {/* field checkboxes */}
-                    <div className={styles.fieldSection}>
-                      <div className={styles.fieldSectionHeader}>
-                        <span className={styles.fieldSectionTitle}>
-                          Поля карточки
-                        </span>
-                        <div className={styles.fieldBulkActions}>
-                          <button
-                            type="button"
-                            className={styles.fieldBulkBtn}
-                            onClick={handleSelectAll}
-                          >
-                            Все
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.fieldBulkBtn}
-                            onClick={handleDeselectAll}
-                          >
-                            Ничего
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className={styles.fieldGrid}>
-                        {allFields.map((f) => (
-                          <label key={f.key} className={styles.fieldCheckbox}>
-                            <input
-                              type="checkbox"
-                              checked={selectedKeys.has(f.key)}
-                              onChange={() => handleToggleField(f.key)}
-                            />
-                            <span className={styles.fieldLabel}>{f.label}</span>
-                            {f.custom && (
-                              <button
-                                type="button"
-                                className={styles.fieldRemoveBtn}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  handleRemoveCustomField(f.key);
-                                }}
-                                title="Удалить поле"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </label>
-                        ))}
-                      </div>
-
-                      {/* add custom field */}
-                      <div className={styles.addFieldRow}>
-                        <input
-                          type="text"
-                          value={newFieldLabel}
-                          onChange={(e) => setNewFieldLabel(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleAddField();
-                            }
-                          }}
-                          className={styles.addFieldInput}
-                          placeholder="Новое поле..."
-                        />
-                        <button
-                          type="button"
-                          className={styles.addFieldBtn}
-                          onClick={handleAddField}
-                          disabled={!newFieldLabel.trim()}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* prompt textarea */}
-                    <AiModelSelect stage="card" />
-                    <label className={styles.promptLabel}>
-                      Системный промпт:
-                    </label>
-                    <textarea
-                      value={displayedPrompt}
-                      onChange={handlePromptChange}
-                      className={styles.promptTextarea}
-                      rows={12}
-                    />
-                    {isPromptDirty && (
-                      <button
-                        type="button"
-                        className={styles.promptResetBtn}
-                        onClick={handleResetPrompt}
-                      >
-                        Сбросить промпт
-                      </button>
-                    )}
-
-                    <label className={styles.webSearchToggle}>
-                      <input
-                        type="checkbox"
-                        checked={useWebSearch}
-                        onChange={(e) => setUseWebSearch(e.target.checked)}
-                      />
-                      Искать в интернете (web search)
-                    </label>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleFillCard}
-                  disabled={
-                    !onBuildProductCard ||
-                    productCardStatus === "loading" ||
-                    activeFields.length === 0
-                  }
-                  className={styles.findSourcesButton}
-                >
-                  {productCardStatus === "loading"
-                    ? "Заполняю карточку..."
-                    : isPromptDirty || fieldsReduced
-                      ? "Заполнить (свой промпт)"
-                      : "Заполнить карточку"}
-                </button>
-
-                {productCardStatus === "failed" && productCardError && (
-                  <div className={styles.errorText}>
-                    Ошибка: {productCardError}
-                  </div>
-                )}
-
-                {/* card result */}
-                {productCardStatus === "succeeded" && productCard && (
-                  <div className={styles.sourcesBox}>
-                    <div className={styles.sourcesTitle}>Карточка</div>
-                    {allFields.map(({ key, label }) => {
-                      const val = (productCard as Record<string, string>)[key];
-                      if (!val) return null;
-                      return (
-                        <div key={key} style={{ marginTop: 10 }}>
-                          <div style={{ fontSize: 12, opacity: 0.9 }}>
-                            <b>{label}</b>
-                          </div>
-                          <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                            {val}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {/* fallback for unknown keys */}
-                    {Object.entries(productCard as Record<string, string>)
-                      .filter(
-                        ([k, v]) => v && !allFields.some((f) => f.key === k),
-                      )
-                      .map(([k, v]) => (
-                        <div key={k} style={{ marginTop: 10 }}>
-                          <div style={{ fontSize: 12, opacity: 0.9 }}>
-                            <b>{k}</b>
-                          </div>
-                          <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
-                            {v}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
+              {/* ── КАРТОЧКА УЗЛА (скрыта в режиме просмотра) ──
+                  У преобразования блок живёт во вкладке «Технологическое
+                  описание», поэтому здесь его не дублируем. */}
+              {!readOnly && !showTechTab && (
+                <FillCardBlock
+                  nodeType={effectiveNodeType}
+                  onBuildProductCard={onBuildProductCard}
+                  productCardStatus={productCardStatus}
+                  productCardError={productCardError}
+                  productCard={productCard}
+                />
               )}
 
               {/* Кнопки действий: построение (продукт/альтернатива),
