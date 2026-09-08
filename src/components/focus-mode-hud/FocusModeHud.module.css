@@ -46,12 +46,26 @@
   cursor: default;
 }
 
+/* Кнопка «Назад» и крошки: одна строка без переноса. flex-wrap переносит
+   элемент целиком, если он не помещается, — из-за этого при длинных названиях
+   крошки уезжали на свою строку, а кнопка оставалась над ними. Здесь переноса
+   нет: при нехватке места крошки ужимаются (см. flex-shrink ниже). */
+.navRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .crumbs {
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
   overflow: hidden;
+  flex: 0 1 auto;
 }
 
 .crumb {
@@ -66,6 +80,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 130px;
+  /* Крошки истории ужимаются первыми — текущий узел важнее прошлых. */
+  flex: 0 3 auto;
+  min-width: 32px;
   transition: background 120ms ease;
 }
 
@@ -97,6 +114,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+  /* Текущий узел сжимается последним и не исчезает совсем. */
+  flex: 0 1 auto;
+  min-width: 72px;
 }
 
 .scope {

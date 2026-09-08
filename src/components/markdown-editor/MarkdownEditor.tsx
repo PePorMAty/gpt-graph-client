@@ -6,6 +6,12 @@ import styles from "./MarkdownEditor.module.css";
 
 interface MarkdownEditorProps {
   value: string;
+  /**
+   * Текст для «Превью», если показывать нужно не исходник (например, из
+   * обобщённого описания в карточке преобразования прячем служебные разделы).
+   * Редактор всё равно правит и сохраняет полный `value`.
+   */
+  previewValue?: string;
   /** Вызывается при коммите правки (blur или переключение на «Превью»). */
   onChange?: (value: string) => void;
   rows?: number;
@@ -18,6 +24,7 @@ type Mode = "preview" | "edit";
 
 export const MarkdownEditor: FC<MarkdownEditorProps> = ({
   value,
+  previewValue,
   onChange,
   rows = 8,
   placeholder = "Введите текст (Markdown)",
@@ -42,7 +49,8 @@ export const MarkdownEditor: FC<MarkdownEditorProps> = ({
     setMode("preview");
   };
 
-  const hasContent = (value ?? "").trim().length > 0;
+  const previewText = previewValue ?? value ?? "";
+  const hasContent = previewText.trim().length > 0;
 
   // В режиме просмотра редактор не предлагаем: правка всё равно не сохранится.
   const editable = !readOnly;
@@ -76,7 +84,9 @@ export const MarkdownEditor: FC<MarkdownEditorProps> = ({
         >
           {hasContent ? (
             <div className={styles.markdownBody}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {previewText}
+              </ReactMarkdown>
             </div>
           ) : (
             <div className={styles.empty}>{placeholder}</div>

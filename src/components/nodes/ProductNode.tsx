@@ -1,6 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import React from "react";
 import type { ProductNodeProps } from "../../types";
+import { nodeBoxStyle } from "./nodeBox";
 
 const DEFAULT_BORDER = "#2196f3";
 
@@ -125,18 +126,20 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
     typeof data.description === "string" ? data.description.trim() : "";
   const isUnfilled = data.isUserAdded === true && !description;
 
+  const box = nodeBoxStyle(data.focusCompact === true);
+
   return (
     <div
       title={isUnfilled ? "Продукт добавлен вручную, описание не заполнено" : undefined}
       style={{
         background,
-        padding: "15px",
+        padding: box.padding,
         borderRadius: "8px",
         // Незаполненный ручной продукт — пунктирная янтарная рамка: видно
         // прямо на полотне, что узел ждёт описания.
         border: isUnfilled ? "2px dashed #d97706" : `2px solid ${color}`,
-        minWidth: "180px",
-        maxWidth: "250px",
+        minWidth: box.minWidth,
+        maxWidth: box.maxWidth,
         textAlign: "center",
         boxShadow: `0 2px 8px ${shadow}`,
         position: "relative", // Важно для правильного позиционирования
@@ -203,7 +206,9 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         </div>
       )}
 
-      <div style={{ fontSize: "12px", lineHeight: "1.3" }}>{data.label}</div>
+      <div style={{ fontSize: box.fontSize, lineHeight: box.lineHeight }}>
+        {data.label}
+      </div>
 
       <Handle
         id="bottom"

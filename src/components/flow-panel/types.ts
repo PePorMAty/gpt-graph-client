@@ -10,8 +10,6 @@ import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
 import type { SourceGroup } from "../../utils/sourceRows";
 import type { LinkedProduct } from "../../utils/getLinkedProducts";
-import type { TechDescriptionContext } from "../../utils/buildTechDescriptionContext";
-import type { TechDescriptionRequest } from "./TechDescriptionTab";
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
@@ -183,23 +181,6 @@ export interface FlowPanelProps {
   onCommitDescription?: (text: string) => void;
   /** Коммит обобщённого описания преобразования → node.data.aggregatedDescription. */
   onCommitAggregatedDescription?: (text: string) => void;
-
-  // ── Вкладка «Технологическое описание» (карточка преобразования) ──
-  /** Техописание по направлениям: у «вверх» и «вниз» разные продукты, поэтому
-   *  и описание у каждой вкладки своё. */
-  techDescriptionByDirection?: Record<BuildDirection, string>;
-  techDescriptionStatusByDirection?: Partial<Record<BuildDirection, Status>>;
-  techDescriptionErrorByDirection?: Partial<
-    Record<BuildDirection, string | null>
-  >;
-  /** Переменные промпта из графа для выбранного направления шага. */
-  getTechDescriptionContext?: (
-    direction?: BuildDirection,
-  ) => TechDescriptionContext | null;
-  /** Ручная правка описания → техописание своего направления. */
-  onCommitTechDescription?: (text: string, direction: BuildDirection) => void;
-  /** Запрос описания на /gpt/tech-description. */
-  onRequestTechDescription?: (req: TechDescriptionRequest) => void;
 
   nodeId?: string | null;
   nodeType?: string;
