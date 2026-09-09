@@ -64,6 +64,7 @@ const initialState: InitialGraphStateI = {
   leafNodes: [],
   originalPrompt: null,
   source: null,
+  graphLoadSeq: 0,
   chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
   stepChainSessions: {},
@@ -281,6 +282,8 @@ const gptSlice = createSlice({
         sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
+      // Полная загрузка графа: полотно наведётся на него один раз (см. Flow).
+      state.graphLoadSeq += 1;
       const normNodes = normalizeNodes(action.payload.nodes);
       const normEdges = normalizeEdges(action.payload.edges);
       state.data = {

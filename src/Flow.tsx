@@ -16,6 +16,7 @@ import {
   useReactFlow,
   useStoreApi,
   useUpdateNodeInternals,
+  useNodesInitialized,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -164,6 +165,15 @@ export const Flow = ({
   const updateNodeInternals = useUpdateNodeInternals();
   const hasFittedView = useRef(false);
 
+  // ── Наведение на граф после полной загрузки ──
+  // Открытый сохранённый граф часто оказывается за пределами вида, и
+  // приходилось жать «fit view». Ждём, пока React Flow измерит узлы
+  // (useNodesInitialized) — до этого fitView считал бы по нулевым размерам, —
+  // и наводимся ровно один раз на каждую загрузку.
+  const nodesInitialized = useNodesInitialized();
+  const graphLoadSeq = useAppSelector((s) => s.graph.graphLoadSeq);
+  const lastFittedLoadRef = useRef(0);
+
   useEffect(() => {
     // В режиме просмотра по ссылке граф приходит с сервера — не перетираем его
     // содержимым автосейва.
@@ -207,6 +217,14 @@ export const Flow = ({
   // --- keep a live ref so timeouts always see the latest nodes ---
   const nodesRef = useRef(data.nodes);
   nodesRef.current = data.nodes;
+
+  useEffect(() => {
+    if (!graphLoadSeq) return;
+    if (lastFittedLoadRef.current === graphLoadSeq) return;
+    if (!nodesInitialized || !nodesRef.current.length) return;
+    lastFittedLoadRef.current = graphLoadSeq;
+    fitView({ padding: 0.2, duration: 400 });
+  }, [graphLoadSeq, nodesInitialized, fitView]);
 
   // stable key that changes only when the SET of node IDs changes
   const nodeIdsKey = useMemo(

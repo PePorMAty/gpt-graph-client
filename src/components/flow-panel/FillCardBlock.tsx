@@ -51,6 +51,10 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
     [nodeType],
   );
 
+  // В карточке преобразования это не «карточка продукта», а описание шага —
+  // подпись кнопки должна называть то, что реально произойдёт.
+  const isTransformation = nodeType === "transformation";
+
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
     () => new Set(predefinedFields.map((f) => f.key)),
   );
@@ -283,8 +287,12 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
             {productCardStatus === "loading"
               ? "Заполняю карточку..."
               : isPromptDirty || fieldsReduced
-                ? "Заполнить (свой промпт)"
-                : "Заполнить карточку"}
+                ? isTransformation
+                  ? "Получить описание (свой промпт)"
+                  : "Заполнить (свой промпт)"
+                : isTransformation
+                  ? "Получить описание"
+                  : "Заполнить карточку"}
           </button>
 
           {productCardStatus === "failed" && productCardError && (

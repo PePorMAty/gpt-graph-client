@@ -21,6 +21,10 @@ export interface InitialGraphStateI {
   leafNodes: string[];
   originalPrompt: string | null;
   source: "new" | "loaded" | "continued" | null;
+  /** Счётчик загрузок графа целиком (открытие сохранённого, файл, шар-ссылка,
+   *  восстановление автосейва). Растёт на каждую загрузку — по нему полотно
+   *  один раз наводится на граф, чтобы не приходилось жать «fit view». */
+  graphLoadSeq: number;
   chainBuild: {
     status: "idle" | "loading" | "succeeded" | "failed";
     error: string | null;
