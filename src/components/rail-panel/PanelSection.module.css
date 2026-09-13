@@ -46,6 +46,34 @@
   border-radius: var(--r-pill);
 }
 
+/* ─── Сводка по источникам ─── */
+
+.summaryCard {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.summaryIcon {
+  align-self: center;
+  color: var(--c-brand);
+}
+
+.summaryValue {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.summaryLabel {
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+}
+
 /* ─── Счётчики ─── */
 
 .stats {

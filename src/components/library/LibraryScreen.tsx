@@ -1,82 +1,292 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { useAppSelector } from "../../store/hooks";
-import { SavedGraph } from "../saved-graph";
-import { UploadGraphTab } from "../upload-graph";
-import { ContinueGraphButton } from "../continue-graph-button";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import {
+  clearOpenedGraph,
+  deleteSavedGraphThunk,
+  fetchSavedGraphsThunk,
+  loadSavedGraphThunk,
+  markGraphSaved,
+  renameSavedGraphThunk,
+  setOpenedGraph,
+} from "../../store/slices/savedGraphSlice";
+import { loadGraphFromFile } from "../../store/slices/gptSlice";
+import { parseGraphJson } from "../../utils/parseGraphJson";
+import { applyAutoLayout } from "../../utils/applyAutoLayout";
+import { graphSignature } from "../../utils/graphSignature";
+import { useSaveGraph } from "../../hooks/useSaveGraph";
+import type { SavedGraphMeta } from "../../store/types";
+import { showToast } from "../toast/toastStore";
+import { ConfirmUnsavedModal } from "../ui/ConfirmUnsavedModal";
+import { ConfirmDeleteModal } from "../confirm-delete-modal";
+import { SaveGraphModal } from "../save-graph-modal";
+import { GraphList, type SortMode } from "./GraphList";
+import { GraphDetails } from "./GraphDetails";
+import { DatabaseIcon } from "../icons";
 import styles from "./LibraryScreen.module.css";
 
-type Tab = "saved" | "combine" | "continue";
+const SORT_KEY = "library-sort";
 
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "saved", label: "Сохранённые графы" },
-  { id: "combine", label: "Объединение графов" },
-  { id: "continue", label: "Продолжение графа" },
-];
+function readSort(): SortMode {
+  try {
+    const raw = localStorage.getItem(SORT_KEY);
+    if (raw === "updated" || raw === "created" || raw === "name") return raw;
+  } catch {
+    /* приватный режим — берём порядок по умолчанию */
+  }
+  return "updated";
+}
 
 /**
- * Библиотека: сохранённые графы, объединение и продолжение.
+ * Библиотека: список сохранённых графов слева, карточка выбранного справа.
  *
- * Временная раскладка — сюда переехало содержимое прежней нижней панели,
- * чтобы работа с сохранёнными графами не пропала вместе с ней. Собственный
- * дизайн раздела появится отдельно.
+ * Выбор графа в списке не трогает полотно — он только догружает файл, чтобы
+ * показать превью, сводку и источники. На полотно граф попадает кнопкой
+ * «Открыть граф», и она же переводит на вкладку «Граф».
  */
 export const LibraryScreen = () => {
-  const [tab, setTab] = useState<Tab>("saved");
-  const { leafNodes, originalPrompt } = useAppSelector((s) => s.graph);
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+
+  const { list, selectedGraph, isLoading, error, savedSignature, openedGraphId } =
+    useAppSelector((s) => s.savedGraphs);
+  const { nodes: canvasNodes, edges: canvasEdges } = useAppSelector(
+    (s) => s.graph.data,
+  );
+  const { saveNew, updateOpened } = useSaveGraph();
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortMode>(readSort);
+  const [renameTarget, setRenameTarget] = useState<SavedGraphMeta | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SavedGraphMeta | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<SavedGraphMeta | null>(null);
+  const [savingBeforeOpen, setSavingBeforeOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    dispatch(fetchSavedGraphsThunk());
+  }, [dispatch]);
+
+  // Выбор графа в списке — только подгрузка сведений для карточки.
+  useEffect(() => {
+    if (!selectedId) return;
+    dispatch(loadSavedGraphThunk(selectedId));
+  }, [selectedId, dispatch]);
+
+  const changeSort = useCallback((mode: SortMode) => {
+    setSort(mode);
+    try {
+      localStorage.setItem(SORT_KEY, mode);
+    } catch {
+      /* приватный режим — выбор не переживёт перезагрузку */
+    }
+  }, []);
+
+  const selectedMeta = useMemo(
+    () => list.find((g) => g.id === selectedId) ?? null,
+    [list, selectedId],
+  );
+
+  const isDirty =
+    canvasNodes.length > 0 &&
+    graphSignature(canvasNodes, canvasEdges) !== savedSignature;
+
+  /** Положить выбранный граф на полотно и перейти к нему. */
+  const openOnCanvas = useCallback(
+    (meta: SavedGraphMeta) => {
+      const file = selectedGraph;
+      if (!file) return;
+      dispatch(
+        loadGraphFromFile({
+          nodes: file.graph.nodes,
+          edges: file.graph.edges,
+          leafNodes: file.state.leaf_nodes,
+          hasMore: file.state.has_more,
+          originalPrompt: file.meta.prompt ?? null,
+          sourcesPool: file.state.sources?.pool,
+          sourcesSeqCounter: file.state.sources?.seqCounter,
+        }),
+      );
+      dispatch(setOpenedGraph({ id: meta.id, name: meta.name }));
+      dispatch(
+        markGraphSaved({
+          signature: graphSignature(file.graph.nodes, file.graph.edges),
+        }),
+      );
+      navigate("/");
+    },
+    [selectedGraph, dispatch, navigate],
+  );
+
+  const handleOpen = useCallback(() => {
+    if (!selectedMeta) return;
+    // Полотно затирается — при несохранённых правках сначала спрашиваем.
+    if (isDirty) setPendingOpen(selectedMeta);
+    else openOnCanvas(selectedMeta);
+  }, [selectedMeta, isDirty, openOnCanvas]);
+
+  const saveThenOpen = async () => {
+    if (!pendingOpen) return;
+    setSavingBeforeOpen(true);
+    const ok = openedGraphId ? await updateOpened() : await saveNew();
+    setSavingBeforeOpen(false);
+    if (!ok) return;
+    const target = pendingOpen;
+    setPendingOpen(null);
+    openOnCanvas(target);
+  };
+
+  const discardThenOpen = () => {
+    const target = pendingOpen;
+    setPendingOpen(null);
+    if (target) openOnCanvas(target);
+  };
+
+  const handleRename = async (name?: string) => {
+    const trimmed = (name ?? "").trim();
+    if (!renameTarget || !trimmed) return;
+    try {
+      await dispatch(
+        renameSavedGraphThunk({ id: renameTarget.id, name: trimmed }),
+      ).unwrap();
+      setRenameTarget(null);
+    } catch (e) {
+      showToast(
+        "error",
+        "Не удалось переименовать граф: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    }
+  };
+
+  /** Загрузка графа из JSON-файла прямо на полотно. */
+  const handleUploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const { payload, warnings, needsLayout, sources } = parseGraphJson(text);
+      const name = payload.originalPrompt ?? file.name.replace(/\.[^.]+$/, "");
+
+      let finalPayload = {
+        ...payload,
+        originalPrompt: name,
+        sourcesPool: sources?.pool,
+        sourcesSeqCounter: sources?.seqCounter,
+      };
+      if (needsLayout) {
+        const laid = await applyAutoLayout(payload.nodes, payload.edges);
+        finalPayload = { ...finalPayload, nodes: laid.nodes, edges: laid.edges };
+      }
+
+      dispatch(loadGraphFromFile(finalPayload));
+      // Граф из файла не привязан к серверному сейву — «Сохранить» предложит
+      // создать новый, а не перезаписать чужой.
+      dispatch(clearOpenedGraph());
+
+      showToast(
+        warnings.length ? "info" : "success",
+        `Граф загружен: ${finalPayload.nodes.length} узлов, ${finalPayload.edges.length} связей.` +
+          (warnings.length ? ` Предупреждений: ${warnings.length}.` : ""),
+      );
+      navigate("/");
+    } catch (e) {
+      showToast(
+        "error",
+        "Не удалось загрузить граф: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleteTarget(null);
+    try {
+      await dispatch(deleteSavedGraphThunk(id)).unwrap();
+      if (selectedId === id) setSelectedId(null);
+    } catch (e) {
+      showToast(
+        "error",
+        "Не удалось удалить граф: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    }
+  };
 
   return (
     <div className={styles.screen}>
-      <div className={styles.inner}>
-        <div className={styles.tabs}>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`${styles.tab} ${tab === t.id ? styles.tabActive : ""}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <GraphList
+        items={list}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onRename={setRenameTarget}
+        onDelete={setDeleteTarget}
+        sort={sort}
+        onSortChange={changeSort}
+        isLoading={isLoading}
+        onUploadFile={handleUploadFile}
+        uploading={uploading}
+      />
 
-        <div className={styles.panel}>
-          {tab === "saved" && <SavedGraph />}
-          {tab === "combine" && <UploadGraphTab />}
-          {tab === "continue" && (
-            <div className={styles.continue}>
-              {originalPrompt ? (
-                <>
-                  <div className={styles.continueRow}>
-                    <span className={styles.continueLabel}>Текущий запрос</span>
-                    <span className={styles.continueValue}>{originalPrompt}</span>
-                  </div>
-                  <div className={styles.continueRow}>
-                    <span className={styles.continueLabel}>
-                      Узлов для детализации
-                    </span>
-                    <span className={styles.continueValue}>
-                      {leafNodes.length}
-                    </span>
-                  </div>
-                  {leafNodes.length > 0 ? (
-                    <ContinueGraphButton />
-                  ) : (
-                    <div className={styles.note}>
-                      Нет узлов для продолжения — цепочка раскрыта до конца.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className={styles.note}>
-                  Сначала создайте граф на вкладке «Граф».
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      <main className={styles.main}>
+        {selectedMeta ? (
+          <GraphDetails
+            key={selectedMeta.id}
+            meta={selectedMeta}
+            file={selectedGraph?.meta ? selectedGraph : null}
+            isLoading={isLoading}
+            error={error}
+            items={list}
+            onOpen={handleOpen}
+            onRename={() => setRenameTarget(selectedMeta)}
+            onDelete={() => setDeleteTarget(selectedMeta)}
+            onGoToCanvas={() => navigate("/")}
+          />
+        ) : (
+          <div className={styles.empty}>
+            <DatabaseIcon size={34} className={styles.emptyIcon} />
+            <div className={styles.emptyTitle}>Граф не выбран</div>
+            <p className={styles.emptyText}>
+              Выберите граф слева — здесь появятся его схема, сводка, источники
+              и объединение с другими графами.
+            </p>
+          </div>
+        )}
+      </main>
+
+      <ConfirmUnsavedModal
+        open={pendingOpen !== null}
+        action="открытием другого графа"
+        confirmLabel="Сохранить и открыть"
+        saving={savingBeforeOpen}
+        onCancel={() => setPendingOpen(null)}
+        onDiscard={discardThenOpen}
+        onSave={saveThenOpen}
+      />
+
+      <SaveGraphModal
+        isOpen={renameTarget !== null}
+        onClose={() => setRenameTarget(null)}
+        onSave={handleRename}
+        defaultName={renameTarget?.name ?? ""}
+        title="Переименовать граф"
+        confirmLabel="Переименовать"
+      />
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          nodeName={deleteTarget.name}
+          title={`Удалить граф «${deleteTarget.name}»?`}
+          description="Сохранённый файл будет удалён с сервера. Это действие нельзя отменить."
+          confirmLabel="Удалить"
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 };

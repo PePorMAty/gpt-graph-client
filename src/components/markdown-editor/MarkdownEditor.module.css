@@ -1,7 +1,5 @@
 .wrapper {
   width: 100%;
-  max-width: 542px;
-  margin-bottom: 12px;
 }
 
 .toolbar {
@@ -33,14 +31,12 @@
 
 /* ── Preview ── */
 .preview {
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  padding: 10px 12px;
-  min-height: 120px;
-  max-height: 420px;
-  overflow-y: auto;
-  box-sizing: border-box;
-  background: #fff;
+  /* Своей прокрутки у превью нет: текст маршрутов читают целиком, а
+     скроллится карточка. Раньше внутри была вторая полоса прокрутки. */
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  background: var(--c-surface);
   cursor: text;
 }
 
@@ -59,8 +55,7 @@
   font-size: 14px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   resize: vertical;
-  min-height: 200px;
-  max-height: 420px;
+  min-height: 240px;
   line-height: 1.5;
   box-sizing: border-box;
   color: #333;

@@ -56,13 +56,14 @@ function isVisible(node: CustomNode, view: ViewportRect): boolean {
 }
 
 /**
- * Длина самой длинной цепочки продуктов внутри набора видимых узлов.
+ * Длина самой длинной цепочки продуктов внутри набора узлов.
  *
  * Считается по продуктам: преобразования — это переходы, а не шаги, поэтому
- * продукт→преобразование→продукт даёт длину 2, а не 3. Цепочка обрывается на
- * границе видимой области: за её пределы поиск не уходит.
+ * продукт→преобразование→продукт даёт длину 2, а не 3. За пределы набора
+ * `visibleIds` поиск не уходит: для строки состояния это видимая область, для
+ * сводки о графе — все его узлы.
  */
-function longestProductChain(
+export function longestProductChain(
   visibleIds: Set<string>,
   nodes: CustomNode[],
   edges: Edge[],
@@ -153,4 +154,9 @@ export function computeViewportStats(
     chainLength: longestProductChain(visibleIds, nodes, edges),
     confirmed,
   };
+}
+
+/** Длина самой длинной цепочки по всему графу — для сводки в библиотеке. */
+export function graphChainLength(nodes: CustomNode[], edges: Edge[]): number {
+  return longestProductChain(new Set(nodes.map((n) => n.id)), nodes, edges);
 }

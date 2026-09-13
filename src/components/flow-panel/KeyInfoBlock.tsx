@@ -45,8 +45,9 @@ export const KeyInfoBlock = ({ card, onEdit }: KeyInfoBlockProps) => {
     >
       {rows.length === 0 ? (
         <div className={styles.blockEmpty}>
-          Параметры не заполнены. Получите технологическое описание — они
-          придут вместе с ним.
+          Ключевая информация появится позже — под неё будет отдельный промпт.
+          Пока сюда попадают параметры из технологического описания, если оно
+          уже получено.
         </div>
       ) : (
         <dl className={styles.keyInfo}>
