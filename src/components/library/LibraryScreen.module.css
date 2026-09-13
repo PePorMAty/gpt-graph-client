@@ -12,8 +12,10 @@
 .list {
   display: flex;
   flex-direction: column;
-  flex: 0 0 300px;
-  width: 300px;
+  /* Шире, чем в макете: в библиотеке нет левого рельса, и его место отдано
+     списку графов — длинные названия перестали обрезаться. */
+  flex: 0 0 372px;
+  width: 372px;
   min-height: 0;
   background: var(--c-surface);
   border-right: 1px solid var(--c-border);
@@ -390,26 +392,124 @@
 }
 
 .previewCard {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 200px;
-  padding: var(--s-3);
+  min-height: 280px;
   background: var(--c-canvas);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   overflow: hidden;
 }
 
-.preview {
+/* Кадр превью: тянется на всю карточку, ResizeObserver следит за размером. */
+.previewBox {
+  position: relative;
   width: 100%;
   height: 100%;
-  max-height: 220px;
+  min-height: 280px;
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.preview:active {
+  cursor: grabbing;
+}
+
+.previewEdges {
+  stroke: var(--c-border-strong);
+  opacity: 0.55;
+}
+
+.previewLabel {
+  fill: #fff;
+  font-family: inherit;
+  font-weight: var(--fw-medium);
+  pointer-events: none;
+}
+
+/* Кнопки масштаба поверх превью. */
+.previewTools {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--c-border);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.previewTool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--c-surface);
+  border: none;
+  color: var(--c-text-soft);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.previewTool:hover:not(:disabled) {
+  background: var(--c-brand-soft);
+  color: var(--c-brand-strong);
+}
+
+.previewTool:disabled {
+  color: var(--c-text-faint);
+  cursor: default;
 }
 
 .previewEmpty {
   font-size: var(--fs-md);
   color: var(--c-text-muted);
+}
+
+.aboutHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+/* Поле правки описания: занимает место абзаца, высота фиксированная —
+   карточка не должна прыгать при входе в режим правки. */
+.aboutInput {
+  width: 100%;
+  min-height: 96px;
+  padding: var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  resize: vertical;
+}
+
+.aboutInput:focus {
+  outline: none;
+  background: var(--c-surface);
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.aboutActions {
+  display: flex;
+  gap: var(--s-2);
 }
 
 .about {

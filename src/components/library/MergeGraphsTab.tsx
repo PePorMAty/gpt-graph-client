@@ -13,24 +13,39 @@ import {
 import styles from "./LibraryScreen.module.css";
 
 interface MergeGraphsTabProps {
-  /** Граф, к которому присоединяем остальные (уже открыт на полотне). */
-  baseName: string;
-  /** Все сохранённые графы; текущий из списка исключается. */
+  /** Граф-основа: выбранный в библиотеке. */
+  base: SavedGraphMeta;
+  /** Все сохранённые графы; граф-основа из списка исключается. */
   items: SavedGraphMeta[];
-  currentId: string;
-  /** Открыть полотно после объединения. */
+  /** Положить граф-основу на полотно перед объединением. */
+  onOpenBase: () => boolean;
+  /** Перейти на полотно и вписать результат в экран. */
   onDone: () => void;
 }
 
+function formatDate(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 /**
- * Вкладка «Объединить графы»: к открытому графу присоединяются отмеченные
- * сохранённые. Сама логика слияния — общая с загрузкой из файла
- * (см. useMergeGraph), здесь только выбор и запуск.
+ * Вкладка «Объединить графы»: к выбранному в библиотеке графу присоединяются
+ * отмеченные. Основа кладётся на полотно перед слиянием, результат остаётся
+ * там же, и после объединения открывается вкладка «Граф».
+ *
+ * Сама логика слияния — общая с загрузкой из файла (см. useMergeGraph),
+ * здесь только выбор и запуск.
  */
 export const MergeGraphsTab = ({
-  baseName,
+  base,
   items,
-  currentId,
+  onOpenBase,
   onDone,
 }: MergeGraphsTabProps) => {
   const mergeSource = useMergeGraph();
@@ -47,9 +62,9 @@ export const MergeGraphsTab = ({
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items
-      .filter((g) => g.id !== currentId)
+      .filter((g) => g.id !== base.id)
       .filter((g) => !q || g.name.toLowerCase().includes(q));
-  }, [items, currentId, query]);
+  }, [items, base.id, query]);
 
   const toggle = (id: string) => {
     setChecked((prev) => {
@@ -66,9 +81,16 @@ export const MergeGraphsTab = ({
 
     setBusy(true);
     try {
+      // Основа объединения — выбранный в библиотеке граф, а не то, что
+      // случайно осталось на полотне: сначала кладём его туда.
+      if (!onOpenBase()) {
+        showToast("error", "Граф ещё загружается — попробуйте ещё раз");
+        return;
+      }
+
       // Графы присоединяются по очереди: каждый следующий сливается с уже
-      // объединённым результатом, поэтому общие продукты схлопываются across
-      // всех выбранных, а не только попарно.
+      // объединённым результатом, поэтому общие продукты схлопываются по
+      // всем выбранным, а не только попарно.
       let last = null as Awaited<ReturnType<typeof mergeSource>> | null;
       for (const g of picked) {
         const file = await loadSavedGraph(g.id);
@@ -80,6 +102,7 @@ export const MergeGraphsTab = ({
         `Объединено графов: ${picked.length + 1}. Результат на полотне.`,
       );
       setChecked(new Set());
+      onDone();
     } catch (e) {
       showToast(
         "error",
@@ -125,7 +148,7 @@ export const MergeGraphsTab = ({
                   <span className={styles.mergeRowText}>
                     <span className={styles.mergeRowName}>{g.name}</span>
                     <span className={styles.mergeRowMeta}>
-                      Узлов-листьев: {g.leafCount}
+                      Обновлён {formatDate(g.updatedAt || g.createdAt)}
                     </span>
                   </span>
                 </label>
@@ -146,8 +169,7 @@ export const MergeGraphsTab = ({
         </div>
 
         <div className={styles.mergeCount}>
-          К графу «{baseName}» присоединится:{" "}
-          <b>{checked.size}</b>
+          К графу «{base.name}» присоединится: <b>{checked.size}</b>
         </div>
 
         <Button
@@ -158,9 +180,7 @@ export const MergeGraphsTab = ({
         >
           {busy ? "Объединяю…" : "Объединить графы"}
         </Button>
-        <Button block onClick={onDone} disabled={busy}>
-          Перейти к графу
-        </Button>
+
       </aside>
 
       {report && (

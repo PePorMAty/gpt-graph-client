@@ -1,7 +1,9 @@
 import { useCallback } from "react";
+import { useStore } from "react-redux";
 import type { Edge } from "@xyflow/react";
 
-import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { useAppDispatch } from "../store/hooks";
+import type { RootState } from "../store/store";
 import { mergeGraphFromFile } from "../store/slices/gptSlice";
 import { parseGraphJson } from "../utils/parseGraphJson";
 import { applyAutoLayout } from "../utils/applyAutoLayout";
@@ -97,19 +99,25 @@ export const layoutForMergeTab = async (
  */
 export function useMergeGraph() {
   const dispatch = useAppDispatch();
-  const {
-    data,
-    presentationColors,
-    originalPrompt,
-    sourcesPool,
-    sourcesSeqCounter,
-  } = useAppSelector((state) => state.graph);
+  // Состояние читаем из стора в момент вызова, а не через селектор: при
+  // объединении нескольких графов подряд каждый следующий должен видеть
+  // результат предыдущего, а значение из замыкания осталось бы прежним —
+  // и второй граф затирал бы первый.
+  const store = useStore<RootState>();
 
   const mergeSource = useCallback(
     async (
       input: string | unknown,
       fallbackName: string,
     ): Promise<MergeOutcome> => {
+      const {
+        data,
+        presentationColors,
+        originalPrompt,
+        sourcesPool,
+        sourcesSeqCounter,
+      } = store.getState().graph;
+
       const result = parseGraphJson(input);
       const { payload, warnings, presentations, presentationTitle, sources: parsedSources } =
         result;
@@ -291,17 +299,9 @@ export function useMergeGraph() {
             commonNodes: reportRows,
             addedCount,
           },
-        };
+      };
     },
-    [
-        data.nodes,
-        data.edges,
-        dispatch,
-        originalPrompt,
-        presentationColors,
-        sourcesPool,
-        sourcesSeqCounter,
-      ],
+    [store, dispatch],
   );
 
   return mergeSource;

@@ -38,18 +38,6 @@
   pointer-events: none;
 }
 
-/* Мини-карта: скругление и тень как у остальных плавающих панелей. */
-.minimap {
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-sm);
-  overflow: hidden;
-}
-
-:global(.react-flow__minimap) {
-  background: var(--c-surface);
-}
-
 .position_btn {
   background: #007bff;
   color: white;

@@ -2,7 +2,6 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import {
   Background,
-  MiniMap,
   ReactFlow,
   ConnectionLineType,
   type Node,
@@ -49,6 +48,7 @@ import { centerTreeOnRoot } from "./utils/centerTreeOnRoot";
 import { findChainNodeIds } from "./utils/findChainNodeIds";
 import { countProductSourcesByDirection } from "./utils/sourcesBadge";
 import { collectSourceGroups } from "./utils/sourceRows";
+import { onFitViewRequest } from "./utils/requestFitView";
 import { collapseToProductsView } from "./utils/productsOnlyView";
 import {
   buildFocusSubgraph,
@@ -74,7 +74,7 @@ import {
   CanvasTools,
   type CanvasMode,
 } from "./components/canvas-tools/CanvasTools";
-import { minimapNodeColor } from "./utils/minimapNodeColor";
+import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
 import styles from "./styles/Flow.module.css";
 import type { CustomNode } from "./types";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -151,7 +151,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   } = useAppSelector((store) => store.graph);
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
 
-  const { fitView, fitBounds, setViewport, setCenter, screenToFlowPosition } =
+  const { fitView, fitBounds, setViewport, setCenter, screenToFlowPosition, getNodes } =
     useReactFlow();
   const rfStore = useStoreApi();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -799,6 +799,37 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       return { ...e, className: cls };
     });
   }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives]);
+
+  // Просьба извне вписать граф в экран (открытие графа из библиотеки,
+  // объединение). Узлы к моменту события ещё не измерены React Flow, а по
+  // неизмеренным fitView считает границы неверно — ждём измерения, но не
+  // дольше секунды, иначе на пустом графе ждали бы вечно.
+  useEffect(() => {
+    let raf = 0;
+
+    const fitWhenMeasured = (deadline: number) => {
+      const nodes = getNodes();
+      const measured =
+        nodes.length > 0 && nodes.every((n) => n.measured?.width);
+      if (measured || performance.now() > deadline) {
+        if (nodes.length) fitView({ padding: 0.2, duration: 400 });
+        return;
+      }
+      raf = requestAnimationFrame(() => fitWhenMeasured(deadline));
+    };
+
+    const unsubscribe = onFitViewRequest(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() =>
+        fitWhenMeasured(performance.now() + 1000),
+      );
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      unsubscribe();
+    };
+  }, [fitView, getNodes]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -2541,22 +2572,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           color="#c4dcf2"
           style={{ background: "var(--c-canvas)" }}
         />
-        {/* Мини-карта крупнее и контрастнее обычного: на графах в сотни узлов
-            мелкие точки сливались, и было не понять, какая часть графа сейчас
-            в кадре. Кадр выделен затемнением вокруг, без обводки. */}
-        <MiniMap
-          pannable
-          zoomable
-          position="bottom-left"
-          className={styles.minimap}
-          nodeColor={minimapNodeColor}
-          nodeStrokeColor={minimapNodeColor}
-          nodeStrokeWidth={6}
-          nodeBorderRadius={3}
-          maskColor="rgba(71, 85, 105, 0.3)"
-          style={{ width: 260, height: 180 }}
-        />
       </ReactFlow>
+
+      {/* Мини-карта — своя, а не штатная: она следит за камерой и показывает
+          окрестность кадра, иначе на больших графах узлы неразличимы.
+          Живёт вне <ReactFlow>, чтобы её клики не доходили до полотна. */}
+      {data.nodes.length > 0 && <CanvasMinimap nodes={flowNodes} />}
       <SaveGraphModal
         isOpen={showSaveGraphModal}
         onClose={() => setShowSaveGraphModal(false)}

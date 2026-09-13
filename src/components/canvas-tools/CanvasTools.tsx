@@ -4,8 +4,8 @@ import {
   CursorIcon,
   HandIcon,
   MarqueeIcon,
+  ResetCanvasIcon,
   SaveIcon,
-  TrashIcon,
   type IconProps,
 } from "../icons";
 import styles from "./CanvasTools.module.css";
@@ -90,7 +90,7 @@ export const CanvasTools = ({
           aria-label="Очистить полотно"
           data-tooltip="Очистить полотно"
         >
-          <TrashIcon size={18} />
+          <ResetCanvasIcon size={18} />
         </button>
       </div>
     )}

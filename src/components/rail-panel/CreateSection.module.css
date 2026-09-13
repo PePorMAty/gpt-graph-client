@@ -149,3 +149,29 @@
   line-height: var(--lh-normal);
   color: var(--c-text-soft);
 }
+
+/* ─── Каркас раздела в панели ─── */
+
+/* Форма скроллится, кнопка создания всегда на виду внизу. */
+.section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Место для тени фокуса у полей — иначе она обрезается скроллом. */
+  padding: 2px;
+  margin: -2px;
+}
+
+.footer {
+  flex: 0 0 auto;
+  padding-top: var(--s-4);
+  margin-top: var(--s-3);
+  border-top: 1px solid var(--c-border-soft);
+}

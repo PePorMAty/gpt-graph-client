@@ -10,11 +10,13 @@ import {
   markGraphSaved,
   renameSavedGraphThunk,
   setOpenedGraph,
+  updateGraphDescriptionThunk,
 } from "../../store/slices/savedGraphSlice";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
 import { parseGraphJson } from "../../utils/parseGraphJson";
 import { applyAutoLayout } from "../../utils/applyAutoLayout";
 import { graphSignature } from "../../utils/graphSignature";
+import { requestFitView } from "../../utils/requestFitView";
 import { useSaveGraph } from "../../hooks/useSaveGraph";
 import type { SavedGraphMeta } from "../../store/types";
 import { showToast } from "../toast/toastStore";
@@ -49,8 +51,15 @@ export const LibraryScreen = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
-  const { list, selectedGraph, isLoading, error, savedSignature, openedGraphId } =
-    useAppSelector((s) => s.savedGraphs);
+  const {
+    list,
+    selectedGraph,
+    selectedGraphId,
+    isLoading,
+    error,
+    savedSignature,
+    openedGraphId,
+  } = useAppSelector((s) => s.savedGraphs);
   const { nodes: canvasNodes, edges: canvasEdges } = useAppSelector(
     (s) => s.graph.data,
   );
@@ -92,11 +101,17 @@ export const LibraryScreen = () => {
     canvasNodes.length > 0 &&
     graphSignature(canvasNodes, canvasEdges) !== savedSignature;
 
-  /** Положить выбранный граф на полотно и перейти к нему. */
+  /**
+   * Положить выбранный граф на полотно.
+   *
+   * `stay` оставляет пользователя в библиотеке — так вкладка «Объединить
+   * графы» кладёт на полотно основу перед слиянием, не убегая с экрана.
+   * Возвращает false, если файл графа ещё не догружен.
+   */
   const openOnCanvas = useCallback(
-    (meta: SavedGraphMeta) => {
+    (meta: SavedGraphMeta, stay = false): boolean => {
       const file = selectedGraph;
-      if (!file) return;
+      if (!file || selectedGraphId !== meta.id) return false;
       dispatch(
         loadGraphFromFile({
           nodes: file.graph.nodes,
@@ -114,9 +129,14 @@ export const LibraryScreen = () => {
           signature: graphSignature(file.graph.nodes, file.graph.edges),
         }),
       );
-      navigate("/");
+      if (!stay) {
+        navigate("/");
+        // Камера полотна осталась от прежнего графа — вписываем новый в экран.
+        requestFitView();
+      }
+      return true;
     },
-    [selectedGraph, dispatch, navigate],
+    [selectedGraph, selectedGraphId, dispatch, navigate],
   );
 
   const handleOpen = useCallback(() => {
@@ -190,6 +210,7 @@ export const LibraryScreen = () => {
           (warnings.length ? ` Предупреждений: ${warnings.length}.` : ""),
       );
       navigate("/");
+      requestFitView();
     } catch (e) {
       showToast(
         "error",
@@ -200,6 +221,29 @@ export const LibraryScreen = () => {
       setUploading(false);
     }
   };
+
+  /** Сохранить описание выбранного графа. Возвращает успех — карточка по нему
+   *  решает, закрывать ли режим правки. */
+  const handleSaveDescription = useCallback(
+    async (text: string) => {
+      if (!selectedMeta) return false;
+      try {
+        await dispatch(
+          updateGraphDescriptionThunk({ id: selectedMeta.id, description: text }),
+        ).unwrap();
+        showToast("success", "Описание графа сохранено");
+        return true;
+      } catch (e) {
+        showToast(
+          "error",
+          "Не удалось сохранить описание: " +
+            (e instanceof Error ? e.message : String(e)),
+        );
+        return false;
+      }
+    },
+    [selectedMeta, dispatch],
+  );
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -244,7 +288,13 @@ export const LibraryScreen = () => {
             onOpen={handleOpen}
             onRename={() => setRenameTarget(selectedMeta)}
             onDelete={() => setDeleteTarget(selectedMeta)}
-            onGoToCanvas={() => navigate("/")}
+            onOpenBase={() => openOnCanvas(selectedMeta, true)}
+            onSaveDescription={handleSaveDescription}
+            onGoToCanvas={() => {
+              navigate("/");
+              // Результат объединения шире исходного графа — показываем целиком.
+              requestFitView();
+            }}
           />
         ) : (
           <div className={styles.empty}>

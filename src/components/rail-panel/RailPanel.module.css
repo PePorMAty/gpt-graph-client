@@ -84,27 +84,6 @@
   padding: var(--s-4);
 }
 
-/* ─── Заглушки будущих разделов ─── */
-
-.placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-8) var(--s-4);
-  text-align: center;
-}
-
-.placeholderIcon {
-  color: var(--c-text-faint);
-}
-
-.placeholderText {
-  font-size: var(--fs-md);
-  line-height: var(--lh-normal);
-  color: var(--c-text-muted);
-}
-
 @keyframes slideIn {
   from {
     opacity: 0;

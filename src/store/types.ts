@@ -135,6 +135,12 @@ export interface SavedGraphMeta {
   /** Время последнего обновления/переименования (ISO). Может отсутствовать у старых сейвов. */
   updatedAt?: string | null;
   leafCount: number;
+  /**
+   * Описание графа («О графе» в библиотеке) — пользовательский текст, который
+   * правится отдельно от промта. У графов, сохранённых до появления поля, его
+   * нет: там показываем исходный промт.
+   */
+  description?: string | null;
 }
 
 export interface SaveGraphPayload {
@@ -153,6 +159,8 @@ export interface SavedGraphFile {
     name: string;
     prompt: string;
     createdAt: string;
+    /** Описание графа, см. SavedGraphMeta.description. */
+    description?: string | null;
   };
   graph: {
     nodes: CustomNode[];

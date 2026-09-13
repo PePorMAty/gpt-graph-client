@@ -59,3 +59,21 @@ export async function renameSavedGraph(
   );
   return data.data;
 }
+
+/**
+ * Изменить описание графа («О графе» в библиотеке).
+ *
+ * Тот же PATCH, что и переименование: сервер обновляет только переданные поля.
+ * Поле description на бэке появилось позже имени — если ответа с ним ещё нет,
+ * возвращаем то, что пришло, а UI показывает свой текст (см. слайс).
+ */
+export async function updateGraphDescription(
+  id: string,
+  description: string,
+): Promise<SavedGraphMeta> {
+  const { data } = await axios.patch(
+    `${import.meta.env.VITE_API_URL}/graph-files/${id}`,
+    { description },
+  );
+  return data.data;
+}

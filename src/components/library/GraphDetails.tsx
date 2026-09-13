@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { SavedGraphFile, SavedGraphMeta } from "../../store/types";
 import { sourcesPoolKey } from "../../store/slices/gptSlice";
 import { collectGraphSources } from "../../utils/graphSources";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { graphChainLength } from "../../utils/viewportStats";
+import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
-import { Button } from "../ui/Button";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -35,8 +35,12 @@ interface GraphDetailsProps {
   onOpen: () => void;
   onRename: () => void;
   onDelete: () => void;
+  /** Положить выбранный граф на полотно, не уходя из библиотеки. */
+  onOpenBase: () => boolean;
   /** Перейти на полотно (после объединения). */
   onGoToCanvas: () => void;
+  /** Сохранить описание графа на сервере. */
+  onSaveDescription: (text: string) => Promise<boolean>;
 }
 
 function formatDateTime(iso?: string | null): string {
@@ -68,10 +72,16 @@ export const GraphDetails = ({
   onOpen,
   onRename,
   onDelete,
+  onOpenBase,
   onGoToCanvas,
+  onSaveDescription,
 }: GraphDetailsProps) => {
   const [tab, setTab] = useState<Tab>("sources");
   const [query, setQuery] = useState("");
+  const [editingAbout, setEditingAbout] = useState(false);
+  const [aboutDraft, setAboutDraft] = useState("");
+  const [savingAbout, setSavingAbout] = useState(false);
+  const aboutRef = useRef<HTMLTextAreaElement>(null);
 
   const nodes = useMemo(() => file?.graph.nodes ?? [], [file]);
   const edges = useMemo(() => file?.graph.edges ?? [], [file]);
@@ -105,7 +115,36 @@ export const GraphDetails = ({
     );
   }, [sources, query]);
 
-  const description = file?.meta.prompt?.trim();
+  // Описание правится отдельно от промта; у графов, сохранённых до появления
+  // поля, его нет — там показываем исходный промт, как и раньше.
+  const description = (
+    meta.description ??
+    file?.meta.description ??
+    file?.meta.prompt ??
+    ""
+  ).trim();
+
+  useEffect(() => {
+    if (!editingAbout) return;
+    setAboutDraft(description);
+    // Курсор сразу в поле, каретка — в конец текста.
+    requestAnimationFrame(() => {
+      const el = aboutRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    // description намеренно не в зависимостях: черновик берётся один раз, при
+    // входе в правку, иначе ответ сервера затирал бы набранное.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingAbout]);
+
+  const saveAbout = async () => {
+    setSavingAbout(true);
+    const ok = await onSaveDescription(aboutDraft.trim());
+    setSavingAbout(false);
+    if (ok) setEditingAbout(false);
+  };
 
   return (
     <div className={styles.details}>
@@ -147,15 +186,64 @@ export const GraphDetails = ({
           {isLoading ? (
             <div className={styles.previewEmpty}>Загружаю граф…</div>
           ) : (
-            <GraphPreview nodes={nodes} />
+            <GraphPreview nodes={nodes} edges={edges} />
           )}
         </div>
 
         <section className={styles.about}>
-          <h2 className={styles.aboutTitle}>О графе</h2>
-          <p className={styles.aboutText}>
-            {description || "Описание не задано."}
-          </p>
+          <div className={styles.aboutHead}>
+            <h2 className={styles.aboutTitle}>О графе</h2>
+            {!editingAbout && (
+              <button
+                type="button"
+                className={styles.iconBtn}
+                onClick={() => setEditingAbout(true)}
+                aria-label="Изменить описание графа"
+                title="Изменить описание графа"
+              >
+                <PencilIcon size={16} />
+              </button>
+            )}
+          </div>
+
+          {editingAbout ? (
+            <>
+              <textarea
+                ref={aboutRef}
+                className={styles.aboutInput}
+                value={aboutDraft}
+                onChange={(e) => setAboutDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditingAbout(false);
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveAbout();
+                }}
+                placeholder="Чем полезен этот граф, что он описывает, на что обратить внимание…"
+                rows={4}
+              />
+              <div className={styles.aboutActions}>
+                <Button
+                  size="s"
+                  variant="primary"
+                  onClick={saveAbout}
+                  disabled={savingAbout}
+                >
+                  {savingAbout ? "Сохраняю…" : "Сохранить"}
+                </Button>
+                <Button
+                  size="s"
+                  variant="ghost"
+                  onClick={() => setEditingAbout(false)}
+                  disabled={savingAbout}
+                >
+                  Отмена
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className={styles.aboutText}>
+              {description || "Описание не задано."}
+            </p>
+          )}
           <div className={styles.aboutStats}>
             <span className={styles.aboutStat}>
               <NodesCountIcon size={16} className={styles.aboutStatIcon} />
@@ -315,9 +403,9 @@ export const GraphDetails = ({
 
         {tab === "merge" && (
           <MergeGraphsTab
-            baseName={meta.name}
+            base={meta}
             items={items}
-            currentId={meta.id}
+            onOpenBase={onOpenBase}
             onDone={onGoToCanvas}
           />
         )}

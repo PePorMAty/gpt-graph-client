@@ -4,11 +4,14 @@ import { useAppSelector } from "../../store/hooks";
 import type { RailSection } from "../left-rail/LeftRail";
 import { SourcesSection } from "./SourcesSection";
 import { BookmarksSection } from "./BookmarksSection";
+import { CreateSection } from "./CreateSection";
+import { HistorySection } from "./HistorySection";
 import {
   BookmarkIcon,
   ClockIcon,
   CloseIcon,
   DatabaseIcon,
+  PlusIcon,
   type IconProps,
 } from "../icons";
 import styles from "./RailPanel.module.css";
@@ -21,19 +24,13 @@ interface RailPanelProps {
 interface SectionMeta {
   title: string;
   Icon: FC<IconProps>;
-  /** Текст заглушки для разделов, которых ещё нет. */
-  placeholder?: string;
 }
 
 const SECTIONS: Partial<Record<RailSection, SectionMeta>> = {
+  create: { title: "Создание графа", Icon: PlusIcon },
   sources: { title: "Источники графа", Icon: DatabaseIcon },
   bookmarks: { title: "Закладки графа", Icon: BookmarkIcon },
-  history: {
-    title: "История",
-    Icon: ClockIcon,
-    placeholder:
-      "Здесь будет история действий: построенные шаги, удаления, проверки и отменённые операции. Раздел ещё не подключён.",
-  },
+  history: { title: "История действий", Icon: ClockIcon },
 };
 
 /**
@@ -48,8 +45,12 @@ export const RailPanel = ({ section, onClose }: RailPanelProps) => {
 
   if (!meta) return null;
 
-  const { title, Icon, placeholder } = meta;
-  const subtitle = graphName || originalPrompt;
+  const { title, Icon } = meta;
+  // У создания подпись своя: граф на полотне к нему отношения не имеет.
+  const subtitle =
+    section === "create"
+      ? "Построить цепочку по запросу или начать с одного продукта"
+      : graphName || originalPrompt;
 
   return (
     <aside className={styles.panel}>
@@ -61,7 +62,7 @@ export const RailPanel = ({ section, onClose }: RailPanelProps) => {
           <h2 className={styles.title}>{title}</h2>
           {subtitle && (
             <div className={styles.subtitle} title={subtitle}>
-              Граф: {subtitle}
+              {section === "create" ? subtitle : `Граф: ${subtitle}`}
             </div>
           )}
         </div>
@@ -76,15 +77,14 @@ export const RailPanel = ({ section, onClose }: RailPanelProps) => {
       </div>
 
       <div className={styles.body}>
-        {section === "sources" ? (
+        {section === "create" ? (
+          <CreateSection onDone={onClose} />
+        ) : section === "sources" ? (
           <SourcesSection />
         ) : section === "bookmarks" ? (
           <BookmarksSection />
         ) : (
-          <div className={styles.placeholder}>
-            <Icon size={28} className={styles.placeholderIcon} />
-            <div className={styles.placeholderText}>{placeholder}</div>
-          </div>
+          <HistorySection />
         )}
       </div>
     </aside>

@@ -565,8 +565,152 @@
 
 .footer {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
   padding-top: var(--s-2);
   border-top: 1px solid var(--c-border-soft);
   font-size: var(--fs-sm);
   color: var(--c-text-muted);
+}
+
+.footerBtn {
+  flex: 0 0 auto;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.footerBtn:hover {
+  color: var(--c-danger);
+}
+
+/* ─── История действий ─── */
+
+.historyScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-right: calc(var(--s-2) * -1);
+  padding-right: var(--s-2);
+}
+
+.historyDay + .historyDay {
+  margin-top: var(--s-4);
+}
+
+.historyDayTitle {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--s-1) 0 var(--s-2);
+  background: var(--c-surface);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  list-style: none;
+}
+
+.historyItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  border-radius: var(--r-sm);
+}
+
+.historyItem:hover {
+  background: var(--c-surface-hover);
+}
+
+.historyIcon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--c-text-soft);
+  background: var(--c-surface-soft);
+}
+
+/* Цвет иконки говорит о характере действия быстрее, чем текст. */
+.historyIcon_add,
+.historyIcon_create {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.historyIcon_remove,
+.historyIcon_clear {
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+}
+
+.historyIcon_step,
+.historyIcon_merge,
+.historyIcon_open {
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+}
+
+.historyIcon_save {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+}
+
+.historyText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.historyTitle {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.historyDetails {
+  margin-top: 1px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+  overflow-wrap: break-word;
+}
+
+.historyGoto {
+  margin-top: var(--s-1);
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: var(--fs-sm);
+  color: var(--c-brand);
+  cursor: pointer;
+}
+
+.historyGoto:hover {
+  text-decoration: underline;
+}
+
+.historyTime {
+  flex: 0 0 auto;
+  padding-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+  font-variant-numeric: tabular-nums;
 }
