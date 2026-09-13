@@ -18,6 +18,13 @@ interface SavedGraphsState {
   openedGraphId: string | null;
   /** Имя открытого сохранённого графа — для подписи кнопки «Обновить «имя»». */
   openedGraphName: string | null;
+  /** Время последнего сохранения полотна (ISO) — для строки состояния. */
+  savedAt: string | null;
+  /**
+   * Слепок полотна на момент сохранения. Строка состояния сравнивает его с
+   * текущим слепком и по расхождению показывает «изменения не сохранены».
+   */
+  savedSignature: string | null;
 }
 
 const initialState: SavedGraphsState = {
@@ -27,6 +34,8 @@ const initialState: SavedGraphsState = {
   error: null,
   openedGraphId: null,
   openedGraphName: null,
+  savedAt: null,
+  savedSignature: null,
 };
 
 /* =======================
@@ -116,6 +125,13 @@ const savedGraphsSlice = createSlice({
     clearOpenedGraph(state) {
       state.openedGraphId = null;
       state.openedGraphName = null;
+      state.savedAt = null;
+      state.savedSignature = null;
+    },
+    /** Полотно записано (или только что загружено) — запомнить его слепок. */
+    markGraphSaved(state, action: { payload: { signature: string } }) {
+      state.savedAt = new Date().toISOString();
+      state.savedSignature = action.payload.signature;
     },
   },
   extraReducers: (builder) => {
@@ -202,6 +218,10 @@ const savedGraphsSlice = createSlice({
   },
 });
 
-export const { clearSelectedGraph, setOpenedGraph, clearOpenedGraph } =
-  savedGraphsSlice.actions;
+export const {
+  clearSelectedGraph,
+  setOpenedGraph,
+  clearOpenedGraph,
+  markGraphSaved,
+} = savedGraphsSlice.actions;
 export default savedGraphsSlice.reducer;

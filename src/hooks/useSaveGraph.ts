@@ -3,11 +3,13 @@ import { useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   fetchSavedGraphsThunk,
+  markGraphSaved,
   setOpenedGraph,
   updateSavedGraphThunk,
 } from "../store/slices/savedGraphSlice";
 import { saveGraph } from "../store/api/saved-graph-api";
 import { buildSaveGraphPayload } from "../utils/buildSaveGraphPayload";
+import { graphSignature } from "../utils/graphSignature";
 import { showToast } from "../components/toast/toastStore";
 
 // Сохранение текущего полотна на сервер: новый файл или перезапись открытого
@@ -66,6 +68,9 @@ export function useSaveGraph() {
           );
         }
 
+        dispatch(
+          markGraphSaved({ signature: graphSignature(data.nodes, data.edges) }),
+        );
         // обновим список, чтобы новый файл появился
         dispatch(fetchSavedGraphsThunk());
         showToast("success", "Граф сохранён на сервер");
@@ -76,7 +81,7 @@ export function useSaveGraph() {
         return false;
       }
     },
-    [buildPayload, dispatch, originalPrompt],
+    [buildPayload, data.nodes, data.edges, dispatch, originalPrompt],
   );
 
   // Перезаписать открытый сохранённый граф текущим состоянием полотна.
@@ -89,6 +94,9 @@ export function useSaveGraph() {
           payload: buildPayload(openedGraphName ?? undefined),
         }),
       ).unwrap();
+      dispatch(
+        markGraphSaved({ signature: graphSignature(data.nodes, data.edges) }),
+      );
       showToast("success", `Граф «${openedGraphName}» обновлён`);
       return true;
     } catch (e) {
@@ -99,7 +107,14 @@ export function useSaveGraph() {
       );
       return false;
     }
-  }, [buildPayload, dispatch, openedGraphId, openedGraphName]);
+  }, [
+    buildPayload,
+    data.nodes,
+    data.edges,
+    dispatch,
+    openedGraphId,
+    openedGraphName,
+  ]);
 
   return {
     openedGraphId,

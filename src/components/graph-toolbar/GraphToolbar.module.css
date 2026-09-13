@@ -1,0 +1,247 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  min-height: var(--h-toolbar);
+  /* Справа резервируем место под рельс инструментов холста, иначе
+     правая кнопка панели уезжала бы под него. */
+  padding: var(--s-3) 60px var(--s-3) var(--s-4);
+  flex-wrap: wrap;
+  background: transparent;
+  /* Панель лежит над холстом в общем потоке, но её меню выпадают поверх. */
+  position: relative;
+  z-index: var(--z-canvas-ui);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  padding: 0 var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-soft);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--sh-xs);
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+  box-shadow: var(--sh-sm);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chipActive,
+.chipActive:hover:not(:disabled) {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+.chipIcon {
+  flex: 0 0 auto;
+  color: var(--c-brand);
+}
+
+.chipDanger {
+  margin-left: auto;
+}
+
+.chipDanger:hover:not(:disabled) {
+  background: var(--c-danger-soft);
+  border-color: var(--c-danger-border);
+  color: var(--c-danger);
+}
+
+.chipDanger:hover:not(:disabled) .chipIcon {
+  color: var(--c-danger);
+}
+
+/* ─── Фокус: кнопка + стрелка настроек ─── */
+
+.focusGroup {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chipSplit {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+  padding-right: var(--s-2);
+}
+
+.chipCaret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 36px;
+  padding: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-top-right-radius: var(--r-pill);
+  border-bottom-right-radius: var(--r-pill);
+  color: var(--c-text-faint);
+  cursor: pointer;
+  box-shadow: var(--sh-xs);
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.chipCaret:hover {
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+}
+
+.chipCaretOpen svg {
+  transform: rotate(180deg);
+}
+
+.focusMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  width: 276px;
+  padding: var(--s-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+}
+
+.focusMenuHead {
+  padding: var(--s-1) var(--s-2) var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.focusOption {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: var(--s-2);
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.focusOption:hover {
+  background: var(--c-surface-hover);
+}
+
+.focusOptionActive,
+.focusOptionActive:hover {
+  background: var(--c-brand-soft);
+}
+
+.focusOptionLabel {
+  font-size: var(--fs-base);
+  color: var(--c-text);
+}
+
+.focusOptionActive .focusOptionLabel {
+  color: var(--c-brand-strong);
+  font-weight: var(--fw-medium);
+}
+
+.focusOptionHint {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+}
+
+.depthRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+  padding: var(--s-2);
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.depthLabel {
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.depthButtons {
+  display: inline-flex;
+  gap: var(--s-1);
+}
+
+.depthButton {
+  width: 28px;
+  height: 28px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xs);
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+
+.depthButton:hover {
+  border-color: var(--c-border-strong);
+}
+
+.depthButtonActive,
+.depthButtonActive:hover {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+  color: var(--c-text-on-brand);
+}
+
+/* ─── Тумблер внутри чипа ─── */
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 17px;
+  margin-left: var(--s-1);
+  background: var(--c-border-strong);
+  border-radius: var(--r-pill);
+  transition: background var(--t-base) var(--ease);
+}
+
+.switchOn {
+  background: var(--c-brand);
+}
+
+.switchKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  background: var(--c-surface);
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-xs);
+  transition: transform var(--t-base) var(--ease);
+}
+
+.switchOn .switchKnob {
+  transform: translateX(13px);
+}

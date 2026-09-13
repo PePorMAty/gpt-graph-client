@@ -102,6 +102,47 @@ const SourcesPill: React.FC<{
   </div>
 );
 
+/**
+ * Бейдж слоя «Промышленные данные»: сколько производителей продукта нашлось
+ * в ГИСП. Подключения к базе ещё нет — пока `data.gispProducers` никто не
+ * заполняет, бейдж не отрисовывается ни на одном узле.
+ */
+const GispPill: React.FC<{ count: number }> = ({ count }) => (
+  <div
+    title={`Найдено производителей в ГИСП: ${count}`}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 3,
+      padding: "2px 6px",
+      borderRadius: 999,
+      background: "#10b981",
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: 700,
+      lineHeight: 1,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+      pointerEvents: "none",
+      whiteSpace: "nowrap",
+    }}
+  >
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 19V13M10 19V7M15 19v-4M20 19V10" />
+    </svg>
+    {count}
+  </div>
+);
+
 export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
   const color =
     typeof data.presentationColor === "string" && data.presentationColor
@@ -118,6 +159,12 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
       : null;
   const upCount = typeof badge?.up === "number" ? badge.up : 0;
   const downCount = typeof badge?.down === "number" ? badge.down : 0;
+
+  // Бейдж ГИСП — только при включённом слое и только если данные пришли.
+  const gispCount =
+    data.showIndustryData === true && typeof data.gispProducers === "number"
+      ? data.gispProducers
+      : 0;
 
   // Продукт добавлен вручную в превью шага и ещё не описан. Пометку не храним
   // отдельным флагом: как только описание заполнено (в карточке узла), она
@@ -159,7 +206,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
 
-      {(upCount > 0 || downCount > 0) && (
+      {(upCount > 0 || downCount > 0 || gispCount > 0) && (
         <div
           style={{
             position: "absolute",
@@ -177,6 +224,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
           {downCount > 0 && (
             <SourcesPill direction="down" count={downCount} color={color} />
           )}
+          {gispCount > 0 && <GispPill count={gispCount} />}
         </div>
       )}
 

@@ -1,0 +1,68 @@
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  flex: 0 0 var(--w-rail);
+  width: var(--w-rail);
+  padding: var(--s-2) 0;
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  z-index: var(--z-rail);
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.item:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.itemActive,
+.itemActive:hover {
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+}
+
+/* Подсказка справа от кнопки: нативный title на macOS показывается
+   ненадёжно, поэтому рисуем свою (тот же приём, что у кнопок полотна). */
+.item::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  padding: 5px 9px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+  color: var(--c-text-on-brand);
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: var(--r-xs);
+  box-shadow: var(--sh-md);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  z-index: var(--z-tooltip);
+}
+
+.item:hover::after,
+.item:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}

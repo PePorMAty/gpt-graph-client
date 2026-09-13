@@ -1,0 +1,181 @@
+.wrap {
+  position: relative;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 260px;
+  height: 36px;
+  padding: 0 var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+  cursor: pointer;
+  box-shadow: var(--sh-xs);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.chip:hover {
+  border-color: var(--c-border-strong);
+  box-shadow: var(--sh-sm);
+}
+
+.chipOpen {
+  border-color: var(--c-brand-border);
+  box-shadow: var(--sh-sm);
+}
+
+.chipIcon {
+  flex: 0 0 auto;
+  color: var(--c-brand);
+}
+
+.chipText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caret {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.chipOpen .caret {
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  width: 288px;
+  padding: var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+}
+
+.menuTitle {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  word-break: break-word;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-top: var(--s-2);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--c-border-soft);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.sectionHead {
+  margin: var(--s-3) 0 var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-faint);
+}
+
+.legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-1) var(--s-1) 0;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.legendItem:hover {
+  background: var(--c-surface-hover);
+}
+
+.legendItemCommon {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.legendName {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-md);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+}
+
+.nameInput:focus {
+  outline: none;
+  box-shadow: var(--sh-ring);
+}
+
+.renameBtn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  border-radius: var(--r-xs);
+  color: var(--c-text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.legendItem:hover .renameBtn {
+  opacity: 1;
+}
+
+.renameBtn:hover {
+  color: var(--c-brand);
+}
+
+.error {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}

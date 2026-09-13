@@ -1,27 +1,31 @@
-/* Панель редактирования.
+/* Карточка узла.
    Оверлея нет намеренно: карточка открыта поверх полотна, но граф остаётся
-   доступным — панель закрывается только крестиком в шапке. */
+   доступным — панель закрывается только крестиком в шапке.
+
+   Геометрия вписана в каркас приложения: панель занимает рабочую область
+   между шапкой, левым рельсом и строкой состояния, не перекрывая их. */
 .panel {
   position: fixed;
-  top: 0;
-  bottom: 0;
-  left: -600px;
-  width: 600px;
-  height: 100dvh; /* важно */
-  max-height: 100dvh;
+  top: calc(var(--h-topbar) + var(--s-3));
+  bottom: calc(var(--h-statusbar) + var(--s-3));
+  left: calc(var(--w-rail) * -1 - 540px);
+  width: 520px;
+  max-width: calc(100vw - var(--w-rail) - var(--s-6));
   min-height: 0;
   overflow: hidden;
-  background: white;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-  z-index: 20;
-  transition: left 0.3s ease-in-out;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  z-index: var(--z-panel);
+  transition: left var(--t-slow) var(--ease);
   display: flex;
   flex-direction: column;
   pointer-events: auto;
 }
 
 .panelOpen {
-  left: 0;
+  left: calc(var(--w-rail) + var(--s-3));
 }
 
 .panelHeader {
@@ -112,7 +116,6 @@
 }
 
 .formTextarea {
-  max-width: 542px;
   width: 100%;
   padding: 8px;
   border: 1px solid #ddd;

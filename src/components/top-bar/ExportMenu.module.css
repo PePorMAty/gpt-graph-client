@@ -1,0 +1,120 @@
+.wrap {
+  position: relative;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 34px;
+  padding: 0 var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.trigger:hover {
+  background: var(--c-surface-hover);
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+}
+
+.triggerOpen {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+.caret {
+  color: var(--c-text-faint);
+}
+
+.triggerOpen .caret {
+  color: var(--c-brand);
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 300px;
+  padding: var(--s-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+}
+
+.menuHead {
+  padding: var(--s-2) var(--s-3) var(--s-1);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.item:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+}
+
+.item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.itemIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--c-brand);
+}
+
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.itemTitle {
+  font-size: var(--fs-base);
+  color: var(--c-text);
+}
+
+.itemHint {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: var(--lh-tight);
+}
+
+.divider {
+  height: 1px;
+  margin: var(--s-1) var(--s-2);
+  background: var(--c-border-soft);
+}
+
+.emptyNote {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}

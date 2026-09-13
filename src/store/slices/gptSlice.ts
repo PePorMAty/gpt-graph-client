@@ -202,6 +202,12 @@ const gptSlice = createSlice({
       );
     },
     // Экшен для обновления всего графа (например, после применения layout)
+    /** Название графа в панели над холстом.
+     *  Для графа, созданного вручную (без запроса к модели), название вводит
+     *  пользователь; для графа по запросу его ставит сам запрос. */
+    setGraphName: (state, action: PayloadAction<string>) => {
+      state.originalPrompt = action.payload.trim() || null;
+    },
     setGraphData: (
       state,
       action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>,
@@ -1604,6 +1610,7 @@ export const {
   removeNode,
   removeNodes,
   setGraphData,
+  setGraphName,
   addNode,
   loadGraphFromFile,
   mergeGraphFromFile,

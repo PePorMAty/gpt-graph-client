@@ -1,0 +1,129 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex: 0 0 var(--h-statusbar);
+  height: var(--h-statusbar);
+  padding: 0 var(--s-4);
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.stats {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+}
+
+.statIcon {
+  color: var(--c-brand);
+}
+
+.statIconSuccess {
+  color: var(--c-success);
+}
+
+.statValue {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex: 0 0 auto;
+}
+
+/* ─── Масштаб ─── */
+
+.zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.zoomButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.zoomButton:hover {
+  background: var(--c-surface);
+  color: var(--c-brand);
+}
+
+.zoomValue {
+  min-width: 46px;
+  height: 24px;
+  padding: 0 var(--s-1);
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-sm);
+  color: var(--c-text-soft);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.zoomValue:hover {
+  background: var(--c-surface);
+  color: var(--c-brand);
+}
+
+/* ─── Состояние сохранения ─── */
+
+.save {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+  color: var(--c-text-muted);
+}
+
+.saveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--c-success);
+}
+
+.saveDirty .saveDot {
+  background: var(--c-danger);
+}
+
+.saveDirty {
+  color: var(--c-danger);
+}
+
+.saveTime {
+  color: var(--c-text-faint);
+  font-variant-numeric: tabular-nums;
+}

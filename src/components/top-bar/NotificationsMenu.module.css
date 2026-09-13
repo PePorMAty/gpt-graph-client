@@ -1,0 +1,107 @@
+.wrap {
+  position: relative;
+}
+
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.trigger:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.triggerOpen {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+.dot {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  background: var(--c-brand);
+  border: 2px solid var(--c-surface);
+  border-radius: var(--r-pill);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 268px;
+  padding: var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+}
+
+.head {
+  margin-bottom: var(--s-3);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.rowLabel {
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.volumeValue {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.switch {
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--c-brand);
+  cursor: pointer;
+}
+
+.range {
+  width: 100%;
+  margin: 0 0 var(--s-3);
+  accent-color: var(--c-brand);
+  cursor: pointer;
+}
+
+.range:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.note {
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--c-border-soft);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-faint);
+}

@@ -1,0 +1,179 @@
+.box {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  transition: background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.field:hover {
+  background: var(--c-surface);
+  border-color: var(--c-border-strong);
+}
+
+.field:focus-within {
+  background: var(--c-surface);
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+/* Открытый список примыкает к строке снизу — скругление гасим. */
+.fieldOpen {
+  border-bottom-left-radius: var(--r-md);
+  border-bottom-right-radius: var(--r-md);
+}
+
+.fieldIcon {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+}
+
+.input::placeholder {
+  color: var(--c-text-faint);
+}
+
+.input:focus {
+  outline: none;
+}
+
+.hotkey {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-faint);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
+.clear {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: var(--c-text-faint);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.clear:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+/* ─── Выпадающий список результатов ─── */
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-dropdown);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+  overflow: hidden;
+}
+
+.dropdownHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.foundCount {
+  white-space: nowrap;
+}
+
+.empty {
+  padding: var(--s-5) var(--s-3);
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--c-text-faint);
+}
+
+.results {
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.resultActive {
+  background: var(--c-brand-soft);
+}
+
+.resultText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.resultLabel {
+  font-size: var(--fs-base);
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultKind {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.resultArrow {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+}

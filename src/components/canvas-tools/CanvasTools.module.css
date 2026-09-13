@@ -1,0 +1,86 @@
+.rail {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-4);
+  z-index: var(--z-canvas-ui);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-sm);
+}
+
+.button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.buttonActive,
+.buttonActive:hover:not(:disabled) {
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+}
+
+.buttonFlash {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+/* Подсказка слева от кнопки — справа для неё нет места. */
+.button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  max-width: 220px;
+  padding: 5px 9px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-on-brand);
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: var(--r-xs);
+  box-shadow: var(--sh-md);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  z-index: var(--z-tooltip);
+}
+
+.button:hover::after,
+.button:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}

@@ -2,10 +2,9 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import {
   Background,
+  MiniMap,
   ReactFlow,
   ConnectionLineType,
-  Controls,
-  ControlButton,
   type Node,
   type OnConnect,
   type OnReconnect,
@@ -45,9 +44,7 @@ import { Notification } from "./components/notification";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
 import { AddNodeModal } from "./components/add-node-modal";
-import { ShareGraphModal } from "./components/share-graph-modal";
 import { SaveGraphModal } from "./components/save-graph-modal";
-import { GraphLegend } from "./components/graph-legend";
 import { useSaveGraph } from "./hooks/useSaveGraph";
 import { buildSaveGraphPayload } from "./utils/buildSaveGraphPayload";
 import { getLeafNodes } from "./utils/getLeafNodes";
@@ -73,10 +70,14 @@ import {
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
 import { inferLayoutDirection } from "./utils/inferLayoutDirection";
 import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
-import { FocusModeHud } from "./components/focus-mode-hud";
+import { GraphToolbar } from "./components/graph-toolbar/GraphToolbar";
+import {
+  CanvasTools,
+  type CanvasMode,
+} from "./components/canvas-tools/CanvasTools";
+import { minimapNodeColor } from "./utils/minimapNodeColor";
 import styles from "./styles/Flow.module.css";
 import type { CustomNode } from "./types";
-import { SearchGraphPanel } from "./components/search-graph/SearchGraphPanel";
 import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import {
@@ -133,17 +134,9 @@ const AUTOSAVE_KEY = "autosave-graph";
 interface FlowProps {
   /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
   sharedView?: boolean;
-  /** Режим просмотра на главной странице (управляется извне кнопкой-глазом). */
-  viewMode?: boolean;
-  /** Переключение режима просмотра/редактирования на главной странице. */
-  onToggleViewMode?: () => void;
 }
 
-export const Flow = ({
-  sharedView = false,
-  viewMode = false,
-  onToggleViewMode,
-}: FlowProps = {}) => {
+export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const dispatch = useAppDispatch();
   const {
     data,
@@ -250,6 +243,13 @@ export const Flow = ({
   // выключение возвращает полный граф. Пока включён — полу-просмотр:
   // структурные правки заблокированы (двигать ноды и открывать карточки можно).
   const [productsOnly, setProductsOnly] = useState(false);
+  // Режим указателя на полотне (правый рельс): выбор / рука / рамка.
+  const [canvasMode, setCanvasMode] = useState<CanvasMode>("select");
+  // Слой данных ГИСП. Подключения к базе ещё нет, поэтому включённый слой
+  // пока ничего не рисует — узлы не несут признака подтверждения.
+  const [industryData, setIndustryData] = useState(true);
+  // Показывать альтернативные маршруты (alt-узлы и их связи).
+  const [showAlternatives, setShowAlternatives] = useState(true);
 
   // Фокус-режим («как в TheBrain»): в центре — фокус-узел, вокруг видна
   // окрестность на focusDepth шагов; клик по видимому продукту делает его
@@ -272,18 +272,18 @@ export const Flow = ({
   focusViewRef.current = focusView;
   // Идущая анимация перехода между окрестностями.
   const focusAnimRef = useRef<FocusTransitionHandle | null>(null);
-  // Обёртка HUD — для замера его высоты при подгонке камеры.
-  const hudWrapRef = useRef<HTMLDivElement | null>(null);
+  // Обёртка панели над холстом — для замера её высоты при подгонке камеры.
+  const toolbarWrapRef = useRef<HTMLDivElement | null>(null);
   // Узел, на котором закончилась навигация в фокус-режиме. При выходе камера
   // подлетает к нему в полном графе, а не разлетается на всё полотно: иначе
   // на графе в сотни узлов теряется место, откуда вышли.
   const focusExitNodeIdRef = useRef<string | null>(null);
 
-  // Подгонка камеры под окрестность с учётом плашки HUD: fitBounds умеет
-  // только равномерный отступ, из-за чего верхний узел раскладки (предок,
-  // к которому чаще всего и шагают) оказывался ровно под центрированной
-  // плашкой, и она перехватывала клики. Считаем вьюпорт сами: равные отступы
-  // по краям + высота HUD дополнительно сверху.
+  // Подгонка камеры под окрестность с учётом панели над холстом: fitBounds
+  // умеет только равномерный отступ, из-за чего верхний узел раскладки
+  // (предок, к которому чаще всего и шагают) оказывался ровно под панелью, и
+  // она перехватывала клики. Считаем вьюпорт сами: равные отступы по краям +
+  // высота панели дополнительно сверху.
   const fitFocusCamera = useCallback(
     (nodes: CustomNode[], duration: number) => {
       const b = nodesBounds(nodes);
@@ -292,9 +292,9 @@ export const Flow = ({
         fitBounds(b, { padding: 0.25, duration });
         return;
       }
-      const hud = hudWrapRef.current?.firstElementChild as HTMLElement | null;
+      const toolbar = toolbarWrapRef.current;
       const pad = Math.max(32, Math.min(width, height) * 0.06);
-      const topPad = (hud ? hud.offsetHeight + 12 : 0) + pad;
+      const topPad = (toolbar ? toolbar.offsetHeight + 12 : 0) + pad;
       const zoom = Math.min(
         1.25,
         Math.max(
@@ -325,7 +325,7 @@ export const Flow = ({
   // именно от этого узла отталкивается вход в фокус-режим.
   const lastInteractedNodeIdRef = useRef<string | null>(null);
 
-  // При входе/выходе из режима просмотра или «только продукты» размер/состав
+  // При переключении «только продукты» или выходе из фокус-режима состав
   // холста меняется — переавтоцентрируем граф. Первый рендер пропускаем.
   const viewModeFirstRun = useRef(true);
   useEffect(() => {
@@ -371,7 +371,7 @@ export const Flow = ({
       fitView({ padding: 0.2, duration: 300 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [viewMode, productsOnly, focusOn, fitView, setCenter, dispatch]);
+  }, [productsOnly, focusOn, fitView, setCenter, dispatch]);
 
   // Ориентация раскладки фокус-окрестности — из геометрии текущего графа,
   // чтобы фокус-вид не переворачивался относительно полотна.
@@ -536,8 +536,7 @@ export const Flow = ({
   const [initialDescription, setInitialDescription] = useState<string>("");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
-  // (viewMode приходит пропсом и управляется кнопкой-глазом из FullApp).
-  const readOnly = sharedView || viewMode;
+  const readOnly = sharedView;
   // Структурные правки заблокированы: просмотр, «только продукты» или
   // фокус-режим (последние два — проекции, store в них не редактируется).
   const structureLocked = readOnly || productsOnly || focusOn;
@@ -667,32 +666,6 @@ export const Flow = ({
     });
   }, []);
 
-  const handleFocusBack = useCallback(() => {
-    setFocusState((s) => {
-      if (!s || !s.history.length) return s;
-      return {
-        focusId: s.history[s.history.length - 1],
-        history: s.history.slice(0, -1),
-      };
-    });
-  }, []);
-
-  // Переход к произвольному шагу истории (клик по хлебной крошке).
-  const handleFocusJumpTo = useCallback((index: number) => {
-    setFocusState((s) => {
-      if (!s || index < 0 || index >= s.history.length) return s;
-      return { focusId: s.history[index], history: s.history.slice(0, index) };
-    });
-  }, []);
-
-  const focusLabelById = useCallback(
-    (id: string) => {
-      const n = data.nodes.find((x) => x.id === id);
-      return String(n?.data?.label ?? id);
-    },
-    [data.nodes],
-  );
-
   const [insertTrState, setInsertTrState] = useState<{
     nodeId: string;
     productLabel: string;
@@ -732,7 +705,11 @@ export const Flow = ({
   const flowNodes = useMemo(
     () =>
       // Приоритет проекций: фокус-режим > «только продукты» > полный граф.
-      (focusView?.nodes ?? productsView?.nodes ?? data.nodes).map((n) => {
+      // Выключенные альтернативы отсекаются последними — от проекции это не
+      // зависит, alt-узлы одинаковы во всех.
+      (focusView?.nodes ?? productsView?.nodes ?? data.nodes)
+        .filter((n) => showAlternatives || n.data?.chainVariant !== "alt")
+        .map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
         const isFocusCenter = n.id === focusState?.focusId;
@@ -760,17 +737,17 @@ export const Flow = ({
             sourcesPool[poolKey(lbl, "up")],
           );
           const hasBadge = badge.up > 0 || badge.down > 0;
+          // Слой ГИСП: узел сам решает, показывать ли бейдж — пока база не
+          // подключена, gispProducers ни у кого нет и бейдж не появляется.
           return {
             ...n,
             className: cls,
-            data:
-              hasBadge || compact
-                ? {
-                    ...n.data,
-                    ...(hasBadge ? { sourcesBadge: badge } : {}),
-                    ...(compact ? { focusCompact: true } : {}),
-                  }
-                : n.data,
+            data: {
+              ...n.data,
+              ...(hasBadge ? { sourcesBadge: badge } : {}),
+              ...(compact ? { focusCompact: true } : {}),
+              showIndustryData: industryData,
+            },
           };
         }
 
@@ -786,11 +763,19 @@ export const Flow = ({
       highlightedId,
       chainSet,
       sourcesPool,
+      showAlternatives,
+      industryData,
     ],
   );
 
   const flowEdges = useMemo(() => {
-    const baseEdges = focusView?.edges ?? productsView?.edges ?? data.edges;
+    const base = focusView?.edges ?? productsView?.edges ?? data.edges;
+    // Скрытые альтернативы уносят с собой и свои рёбра — иначе связь
+    // повисала бы в пустоте.
+    const visibleIds = new Set(flowNodes.map((n) => n.id));
+    const baseEdges = showAlternatives
+      ? base
+      : base.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
     if (!chainSet) return baseEdges;
     return baseEdges.map((e) => {
       const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
@@ -799,7 +784,7 @@ export const Flow = ({
       const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
       return { ...e, className: cls };
     });
-  }, [data.edges, productsView, focusView, chainSet]);
+  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -2304,6 +2289,12 @@ export const Flow = ({
   } = useSaveGraph();
   const [showSaveGraphModal, setShowSaveGraphModal] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
+
+  // Название графа в панели над холстом: имя сохранённого файла, иначе запрос,
+  // которым граф создавали (он же — имя графа, созданного вручную).
+  const graphDisplayName = openedGraphName || originalPrompt || "";
+  // В режиме рамки протяжка левой кнопкой выделяет, а не панорамирует.
+  const marqueeMode = canvasMode === "marquee" && !readOnly && !focusOn;
   const flashSaveButton = useCallback(() => {
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
@@ -2379,9 +2370,7 @@ export const Flow = ({
     openedGraphName,
   ]);
 
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
 
   const handleClearCanvas = useCallback(() => {
     dispatch(setGraphData({ nodes: [], edges: [] }));
@@ -2418,6 +2407,41 @@ export const Flow = ({
         </div>
       )}
 
+      {/* Панель над холстом. Обёртка нужна для замера высоты при подгонке
+          камеры в фокус-режиме (см. fitFocusCamera). */}
+      {!sharedView && (
+        <div ref={toolbarWrapRef} className={styles.toolbarWrap}>
+          <GraphToolbar
+            graphName={graphDisplayName}
+            productsOnly={productsOnly}
+            onToggleProductsOnly={() => setProductsOnly((v) => !v)}
+            focusOn={focusOn}
+            onToggleFocus={() => (focusOn ? exitFocusMode() : enterFocusMode())}
+            focusScope={focusScope}
+            onFocusScopeChange={setFocusScope}
+            focusDepth={focusDepth}
+            onFocusDepthChange={setFocusDepth}
+            industryData={industryData}
+            onToggleIndustryData={() => setIndustryData((v) => !v)}
+            alternatives={showAlternatives}
+            onToggleAlternatives={() => setShowAlternatives((v) => !v)}
+            onClear={() => setShowClearConfirm(true)}
+            canClear={data.nodes.length > 0}
+            readOnly={readOnly}
+          />
+        </div>
+      )}
+
+      <CanvasTools
+        mode={canvasMode}
+        onModeChange={setCanvasMode}
+        onAddNode={() => setIsTypeSelectorOpen(true)}
+        onSave={() => setShowSaveGraphModal(true)}
+        canSave={data.nodes.length > 0}
+        saveFlash={saveFlash}
+        readOnly={readOnly || focusOn}
+      />
+
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -2430,15 +2454,18 @@ export const Flow = ({
         onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
         nodesConnectable={!structureLocked}
-        // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего.
-        nodesDraggable={!focusOn}
+        // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
+        // в режиме «рука» узлы тоже неподвижны, тянется только холст.
+        nodesDraggable={!focusOn && canvasMode !== "pan"}
         connectionLineType={ConnectionLineType.Straight}
         snapToGrid
-        // Shift+протяжка — рамка выделения; Ctrl/Cmd+клик — добавить ноду.
-        // Левая кнопка по-прежнему панорамирует полотно (selectionOnDrag=false).
+        // Режим указателя из правого рельса: «рамка» отдаёт протяжку левой
+        // кнопкой выделению, остальные два — панорамированию. Shift+протяжка
+        // и Ctrl/Cmd+клик работают в любом режиме, как раньше.
         selectionKeyCode={readOnly || focusOn ? null : "Shift"}
         multiSelectionKeyCode={readOnly || focusOn ? null : ["Meta", "Control"]}
-        selectionOnDrag={false}
+        selectionOnDrag={marqueeMode}
+        panOnDrag={!marqueeMode}
         onReconnect={structureLocked ? undefined : handleReconnect}
         onReconnectStart={structureLocked ? undefined : onReconnectStart}
         onReconnectEnd={structureLocked ? undefined : onReconnectEnd}
@@ -2457,195 +2484,29 @@ export const Flow = ({
           type: "straight",
         }}
       >
-        <Controls position="bottom-left" style={{ bottom: "25%" }} showInteractive={false}>
-          {!readOnly && !focusOn && (
-            <>
-          <ControlButton
-            onClick={() => setShowSaveGraphModal(true)}
-            disabled={!data.nodes.length}
-            data-tooltip={
-              openedGraphId
-                ? `Сохранить граф (открыт «${openedGraphName}»)`
-                : "Сохранить граф на сервер"
-            }
-            aria-label="Сохранить граф на сервер"
-            style={saveFlash ? { backgroundColor: "#4caf50", color: "#fff" } : undefined}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-              <path fillRule="evenodd" clipRule="evenodd" d="M18.1716 1C18.702 1 19.2107 1.21071 19.5858 1.58579L22.4142 4.41421C22.7893 4.78929 23 5.29799 23 5.82843V20C23 21.6569 21.6569 23 20 23H4C2.34315 23 1 21.6569 1 20V4C1 2.34315 2.34315 1 4 1H18.1716ZM4 3C3.44772 3 3 3.44772 3 4V20C3 20.5523 3.44772 21 4 21L5 21L5 15C5 13.3431 6.34315 12 8 12L16 12C17.6569 12 19 13.3431 19 15V21H20C20.5523 21 21 20.5523 21 20V6.82843C21 6.29799 20.7893 5.78929 20.4142 5.41421L18.5858 3.58579C18.2107 3.21071 17.702 3 17.1716 3H17V5C17 6.65685 15.6569 8 14 8H10C8.34315 8 7 6.65685 7 5V3H4ZM17 21V15C17 14.4477 16.5523 14 16 14L8 14C7.44772 14 7 14.4477 7 15L7 21L17 21ZM9 3H15V5C15 5.55228 14.5523 6 14 6H10C9.44772 6 9 5.55228 9 5V3Z" />
-            </svg>
-          </ControlButton>
-          <ControlButton
-            onClick={() => setIsTypeSelectorOpen(true)}
-            data-tooltip="Добавить узел"
-            aria-label="Добавить узел"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M15 12L12 12M12 12L9 12M12 12L12 9M12 12L12 15" />
-              <path d="M22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C21.5093 4.43821 21.8356 5.80655 21.9449 8" />
-            </svg>
-          </ControlButton>
-            </>
-          )}
-          <ControlButton
-            onClick={() => setIsSearchOpen((v) => !v)}
-            data-tooltip="Поиск по графу"
-            aria-label="Поиск по графу"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 6C13.7614 6 16 8.23858 16 11M16.6588 16.6549L21 21M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" />
-            </svg>
-          </ControlButton>
-          {/* Тумблер режима просмотра/редактирования (только на главной, не на шар-странице). */}
-          {!sharedView && (
-            <ControlButton
-              onClick={() => onToggleViewMode?.()}
-              data-tooltip={viewMode ? "Режим редактирования" : "Режим просмотра"}
-              aria-label={viewMode ? "Режим редактирования" : "Режим просмотра"}
-              style={
-                viewMode
-                  ? { backgroundColor: "#2563eb", color: "#fff" }
-                  : undefined
-              }
-            >
-              {viewMode ? (
-                // Открытый глаз — сейчас режим просмотра.
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              ) : (
-                // Перечёркнутый глаз — сейчас режим редактирования.
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                  <path d="M1 1l22 22" />
-                </svg>
-              )}
-            </ControlButton>
-          )}
-          {/* Тумблер «только продукты»: скрыть преобразования/альтернативы,
-              склеив продукты напрямую. Доступен и в режиме просмотра.
-              В фокус-режиме скрыт: там своя проекция окрестности. */}
-          {!focusOn && (
-          <ControlButton
-            onClick={() => setProductsOnly((v) => !v)}
-            data-tooltip={
-              productsOnly ? "Вернуть преобразования" : "Только продукты"
-            }
-            aria-label={
-              productsOnly ? "Вернуть преобразования" : "Только продукты"
-            }
-            style={
-              productsOnly
-                ? { backgroundColor: "#2563eb", color: "#fff" }
-                : undefined
-            }
-          >
-            {productsOnly ? (
-              // Сейчас только продукты: два круга, склеенные напрямую.
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="5" r="3" />
-                <circle cx="12" cy="19" r="3" />
-                <path d="M12 8v8" />
-              </svg>
-            ) : (
-              // Сейчас полный граф: круг — квадрат (преобразование) — круг.
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="4" r="2.5" />
-                <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
-                <circle cx="12" cy="20" r="2.5" />
-                <path d="M12 6.5v3M12 14.5v3" />
-              </svg>
-            )}
-          </ControlButton>
-          )}
-          {/* Тумблер фокус-режима («как в TheBrain»): в центре фокус-узел,
-              видна окрестность на 1–3 шага, клик по продукту шагает дальше.
-              Доступен и в режиме просмотра, и на шар-странице. */}
-          <ControlButton
-            onClick={() => (focusOn ? exitFocusMode() : enterFocusMode())}
-            data-tooltip={
-              focusOn ? "Выйти из фокус-режима" : "Фокус-режим (шаги по графу)"
-            }
-            aria-label={
-              focusOn ? "Выйти из фокус-режима" : "Фокус-режим (шаги по графу)"
-            }
-            style={
-              focusOn
-                ? { backgroundColor: "#2563eb", color: "#fff" }
-                : undefined
-            }
-          >
-            {/* Центр с расходящимися связями-спутниками. */}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <circle cx="12" cy="3.5" r="1.5" />
-              <circle cx="4" cy="18.5" r="1.5" />
-              <circle cx="20" cy="18.5" r="1.5" />
-              <path d="M12 9V5M9.9 13.9l-4.7 3.4M14.1 13.9l4.7 3.4" />
-            </svg>
-          </ControlButton>
-          {!readOnly && !focusOn && (
-            <>
-          <ControlButton
-            onClick={() => setShowClearConfirm(true)}
-            data-tooltip="Очистить полотно"
-            aria-label="Очистить полотно"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920" fill="currentColor">
-              <path d="M960 0v112.941c467.125 0 847.059 379.934 847.059 847.059 0 467.125-379.934 847.059-847.059 847.059-467.125 0-847.059-379.934-847.059-847.059 0-267.106 126.607-515.915 338.824-675.727v393.374h112.94V112.941H0v112.941h342.89C127.058 407.38 0 674.711 0 960c0 529.355 430.645 960 960 960s960-430.645 960-960S1489.355 0 960 0" fillRule="evenodd" />
-            </svg>
-          </ControlButton>
-          <ControlButton
-            onClick={() => setShowShareModal(true)}
-            data-tooltip="Поделиться"
-            aria-label="Поделиться"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={{ fill: 'none' }} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <path d="M8.59 13.51L15.42 17.49M15.41 6.51L8.59 10.49" />
-            </svg>
-          </ControlButton>
-            </>
-          )}
-        </Controls>
-        <Background />
+        {/* Цвет точек — литералом: var() в SVG-атрибуте не раскрывается,
+            токен здесь применим только к CSS-свойству фона. */}
+        <Background
+          gap={22}
+          size={1.4}
+          color="#c4dcf2"
+          style={{ background: "var(--c-canvas)" }}
+        />
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-left"
+          className={styles.minimap}
+          nodeColor={minimapNodeColor}
+          nodeStrokeWidth={0}
+          maskColor="rgba(148, 163, 184, 0.18)"
+          style={{ width: 180, height: 120 }}
+        />
       </ReactFlow>
-      {/* Легенда доступна в любом режиме, а не только в просмотре: после
-          открытия сохранённого объединённого графа полотно оказывается в
-          режиме редактирования, и легенда выглядела «потерянной», хотя реестр
-          цветов восстанавливался. Сама она не рендерится, когда презентаций
-          нет, так что на обычных графах не появляется. */}
-      {!isPanelOpen && <GraphLegend />}
-      {/* Обёртка вокруг плашки нужна только для замера её высоты при подгонке
-          камеры (см. fitFocusCamera) — своей геометрии не задаёт. */}
-      {focusState && (
-        <div ref={hudWrapRef}>
-          <FocusModeHud
-            focusLabel={focusLabelById(focusState.focusId)}
-            historyLabels={focusState.history.map(focusLabelById)}
-            scope={focusScope}
-            onScopeChange={setFocusScope}
-            depth={focusDepth}
-            onDepthChange={setFocusDepth}
-            onBack={handleFocusBack}
-            onJumpTo={handleFocusJumpTo}
-          />
-        </div>
-      )}
-      {isSearchOpen && (
-        <SearchGraphPanel onClose={() => setIsSearchOpen(false)} />
-      )}
       <AddNodeModal
         isOpen={isTypeSelectorOpen}
         onClose={() => setIsTypeSelectorOpen(false)}
         onSelect={handleAddNode}
-      />
-      <ShareGraphModal
-        isOpen={showShareModal}
-        onClose={() => setShowShareModal(false)}
       />
       <SaveGraphModal
         isOpen={showSaveGraphModal}
