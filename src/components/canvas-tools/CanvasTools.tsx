@@ -20,13 +20,9 @@ interface ModeItem {
 }
 
 const MODES: ModeItem[] = [
-  {
-    id: "select",
-    Icon: CursorIcon,
-    title: "Выбор: клик открывает карточку, узлы можно двигать",
-  },
-  { id: "pan", Icon: HandIcon, title: "Рука: панорамирование холста" },
-  { id: "marquee", Icon: MarqueeIcon, title: "Выделение области рамкой" },
+  { id: "select", Icon: CursorIcon, title: "Взаимодействие с графом" },
+  { id: "pan", Icon: HandIcon, title: "Панорамирование" },
+  { id: "marquee", Icon: MarqueeIcon, title: "Выделение области" },
 ];
 
 interface CanvasToolsProps {

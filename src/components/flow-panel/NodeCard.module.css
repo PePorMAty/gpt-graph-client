@@ -1,0 +1,682 @@
+/* Карточка узла.
+   Оверлея нет намеренно: карточка открыта поверх полотна, но граф остаётся
+   доступным — она закрывается только крестиком в шапке.
+
+   Геометрия вписана в каркас приложения: карточка занимает рабочую область
+   между шапкой, левым рельсом и строкой состояния, не перекрывая их. */
+
+.card {
+  position: fixed;
+  top: calc(var(--h-topbar) + var(--s-3));
+  bottom: calc(var(--h-statusbar) + var(--s-3));
+  left: calc(var(--w-rail) * -1 - var(--w-panel) - 40px);
+  width: var(--w-panel);
+  max-width: calc(100vw - var(--w-rail) - var(--s-6));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  z-index: var(--z-panel);
+  transition: left var(--t-slow) var(--ease);
+}
+
+.cardOpen {
+  left: calc(var(--w-rail) + var(--s-3));
+}
+
+/* ─── Шапка ─── */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  flex: 0 0 auto;
+  padding: var(--s-4);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-md);
+}
+
+.avatarProduct {
+  color: var(--c-product);
+  background: var(--c-product-soft);
+}
+
+.avatarTransform {
+  color: var(--c-transform);
+  background: var(--c-transform-soft);
+}
+
+.headerMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/* Название правится прямо в шапке: отдельного поля «Название узла» больше нет. */
+.titleInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px var(--s-2);
+  margin-left: calc(var(--s-2) * -1);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.titleInput:hover:not([readonly]) {
+  background: var(--c-surface-hover);
+}
+
+.titleInput:focus {
+  outline: none;
+  background: var(--c-surface);
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.kindBadge {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.kindProduct {
+  color: var(--c-brand-strong);
+  background: var(--c-product-soft);
+}
+
+.kindTransform {
+  color: #b45309;
+  background: var(--c-transform-soft);
+}
+
+.nodeId {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: 0 0 auto;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.iconBtn:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.menuWrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 280px;
+  padding: var(--s-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: var(--c-brand-soft);
+  color: var(--c-brand-strong);
+}
+
+.menuNote {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-faint);
+}
+
+/* ─── Вкладки ─── */
+
+.tabs {
+  display: flex;
+  gap: var(--s-4);
+  flex: 0 0 auto;
+  padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--c-border-soft);
+  overflow-x: auto;
+}
+
+.tab {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0 0 var(--s-3);
+  background: none;
+  border: none;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease);
+}
+
+.tab:hover {
+  color: var(--c-text);
+}
+
+.tabActive,
+.tabActive:hover {
+  color: var(--c-brand);
+}
+
+.tabActive::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--c-brand);
+  border-radius: var(--r-pill);
+}
+
+/* ─── Содержимое ─── */
+
+.content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* ─── Сворачиваемый блок ─── */
+
+.block {
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  overflow: hidden;
+}
+
+.blockHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+}
+
+.blockToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.blockIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--c-brand);
+}
+
+.blockTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blockCaret {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.blockCaretClosed {
+  transform: rotate(-90deg);
+}
+
+.blockActions {
+  flex: 0 0 auto;
+}
+
+.blockAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  background: none;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.blockAction:hover {
+  background: var(--c-brand-soft);
+}
+
+.blockBody {
+  padding: var(--s-3);
+}
+
+.blockEmpty {
+  font-size: var(--fs-md);
+  color: var(--c-text-faint);
+}
+
+.hintWarning {
+  margin-bottom: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--r-sm);
+}
+
+.descriptionText {
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+  white-space: pre-wrap;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: var(--s-3);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+/* ─── Связанные продукты ─── */
+
+.linked {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.linkedItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.linkedItem:hover {
+  background: var(--c-brand-soft);
+  color: var(--c-brand-strong);
+}
+
+.linkedIcon {
+  flex: 0 0 auto;
+  color: var(--c-product);
+}
+
+.linkedLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkedVia {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
+.linkedArrow {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+}
+
+/* ─── Кнопка построения ─── */
+
+.buildButton {
+  width: 100%;
+  height: var(--h-control);
+  background: var(--c-brand);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-on-brand);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.buildButton:hover {
+  background: var(--c-brand-strong);
+}
+
+/* ─── Таблица источников узла ─── */
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--h-control-sm);
+  margin-bottom: var(--s-2);
+  padding: 0 var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.search:focus-within {
+  background: var(--c-surface);
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.searchIcon {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+}
+
+.searchInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-size: var(--fs-md);
+}
+
+.searchInput:focus {
+  outline: none;
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+}
+
+.colDirection {
+  width: 20%;
+}
+
+.colTitle {
+  width: 50%;
+}
+
+.colLink {
+  width: 30%;
+}
+
+.table thead th {
+  padding: var(--s-2);
+  text-align: left;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.table tbody td {
+  padding: var(--s-2);
+  vertical-align: top;
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dirBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.dirUp {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.dirDown {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+}
+
+.titleCell {
+  color: var(--c-text-soft);
+  overflow-wrap: break-word;
+}
+
+.inherited {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  font-style: italic;
+  color: var(--c-text-faint);
+}
+
+.link {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-1);
+  min-width: 0;
+  color: var(--c-brand-strong);
+}
+
+.linkText {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.linkIcon {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--c-text-faint);
+}
+
+.sourceLinks {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+}
+
+.sourceLinks a {
+  word-break: break-all;
+}
+
+/* ─── Промышленные данные (заглушка до подключения ГИСП) ─── */
+
+.industry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-8) var(--s-4);
+  text-align: center;
+}
+
+.industryIcon {
+  color: var(--c-text-faint);
+}
+
+.industryTitle {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.industryText {
+  max-width: 420px;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.industryBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-pill);
+}
+
+/* ─── Окно построения ─── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-5);
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.modalWindow {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  max-height: calc(100vh - var(--s-10));
+  background: var(--c-surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-xl);
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex: 0 0 auto;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.modalTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.modalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-5);
+}

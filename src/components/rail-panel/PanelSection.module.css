@@ -206,7 +206,10 @@
 .tableWrap {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  /* Колонки заданы долями и всегда помещаются по ширине — горизонтальная
+     полоса прокрутки внизу была бы только помехой. */
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--c-border-soft);
   border-radius: var(--r-md);
 }
@@ -443,8 +446,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   background: none;
   border: none;
   border-radius: var(--r-xs);

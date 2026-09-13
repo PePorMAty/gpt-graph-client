@@ -904,9 +904,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setSelectedNodeId(node.id);
       setIsPanelOpen(true);
       setContextMenu(null);
-      // Карточка и панель раздела (источники, закладки, история) занимают
-      // одно и то же место слева — открывшаяся карточка закрывает панель.
-      window.dispatchEvent(new CustomEvent("node-card-opened"));
     },
     [focusOnNode, selectedNodeId],
   );
@@ -950,6 +947,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [data.nodes, dispatch],
   );
+
+  // Карточка узла и панель раздела (источники, закладки, история) занимают
+  // одно место слева, и панель над холстом сдвигается на их ширину. Каркас
+  // живёт выше Flow, поэтому состояние карточки уходит ему событием.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("node-card-toggle", { detail: { open: isPanelOpen } }),
+    );
+  }, [isPanelOpen]);
 
   // Клик по пустому пространству — закрыть контекстные меню
   const onPaneClick = useCallback(() => {
@@ -2535,15 +2541,22 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           color="#c4dcf2"
           style={{ background: "var(--c-canvas)" }}
         />
+        {/* Мини-карта крупнее и контрастнее обычного: на графах в сотни узлов
+            мелкие точки сливались, и было не понять, какая часть графа сейчас
+            в кадре. Рамку кадра дополнительно обводим. */}
         <MiniMap
           pannable
           zoomable
           position="bottom-left"
           className={styles.minimap}
           nodeColor={minimapNodeColor}
-          nodeStrokeWidth={0}
-          maskColor="rgba(148, 163, 184, 0.18)"
-          style={{ width: 180, height: 120 }}
+          nodeStrokeColor={minimapNodeColor}
+          nodeStrokeWidth={6}
+          nodeBorderRadius={3}
+          maskColor="rgba(71, 85, 105, 0.3)"
+          maskStrokeColor="#2563eb"
+          maskStrokeWidth={3}
+          style={{ width: 260, height: 180 }}
         />
       </ReactFlow>
       <SaveGraphModal

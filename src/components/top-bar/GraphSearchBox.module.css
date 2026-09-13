@@ -1,14 +1,14 @@
 .box {
   position: relative;
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
 }
 
 .field {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  height: 40px;
+  height: var(--h-control);
   padding: 0 var(--s-4);
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border);

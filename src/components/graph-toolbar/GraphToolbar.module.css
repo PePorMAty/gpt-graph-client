@@ -11,9 +11,17 @@
   flex-wrap: wrap;
   transition: padding-left var(--t-base) var(--ease);
   background: transparent;
+  /* Полоса растянута на всю ширину холста, но событий не ловит: иначе в
+     верхней части полотна не работали ни клик по узлу, ни выделение рамкой —
+     их съедал прозрачный фон панели. Кликабельны только сами чипы. */
+  pointer-events: none;
   /* Панель лежит над холстом в общем потоке, но её меню выпадают поверх. */
   position: relative;
   z-index: var(--z-canvas-ui);
+}
+
+.bar > * {
+  pointer-events: auto;
 }
 
 .chip {
@@ -78,7 +86,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
+  width: 38px;
   height: var(--h-chip);
   padding: 0;
   background: var(--c-surface);
@@ -180,8 +188,8 @@
 }
 
 .depthButton {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-xs);

@@ -40,14 +40,22 @@ function Workspace() {
 
   // Карточка узла выезжает на то же место слева, что и панель раздела —
   // открывшаяся карточка её закрывает, иначе они наложились бы друг на друга.
+  // Её состояние приходит событием из Flow: сама карточка живёт ниже каркаса.
+  const [cardOpen, setCardOpen] = useState(false);
   useEffect(() => {
-    const onCardOpened = () => setSection("graph");
-    window.addEventListener("node-card-opened", onCardOpened);
-    return () => window.removeEventListener("node-card-opened", onCardOpened);
+    const onToggle = (e: Event) => {
+      const open = (e as CustomEvent<{ open: boolean }>).detail?.open === true;
+      setCardOpen(open);
+      if (open) setSection("graph");
+    };
+    window.addEventListener("node-card-toggle", onToggle);
+    return () => window.removeEventListener("node-card-toggle", onToggle);
   }, []);
 
   const panelSection = PANEL_SECTIONS.includes(section) ? section : null;
   const panelOpen = isGraphScreen && panelSection !== null;
+  // Панель над холстом сдвигается и под карточку узла, и под панель раздела.
+  const leftOccupied = isGraphScreen && (panelOpen || cardOpen);
 
   return (
     <div className={styles.shell}>
@@ -62,7 +70,7 @@ function Workspace() {
         <div
           className={styles.content}
           style={
-            panelOpen
+            leftOccupied
               ? ({ "--panel-offset": "var(--w-panel)" } as React.CSSProperties)
               : undefined
           }

@@ -1,7 +1,7 @@
 // src/components/flow-panel/FillCardBlock.tsx
 //
-// Блок «Заполнить карточку»: выбор полей, редактор системного промпта и вывод
-// заполненной карточки.
+// Блок «Технологическое описание»: выбор полей, редактор системного промпта и
+// вывод заполненной карточки.
 //
 // У продукта блок живёт внизу карточки и выводит поля списком (как раньше).
 // У преобразования он переехал во вкладку «Технологическое описание» и выводит
@@ -278,13 +278,13 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
               productCardStatus === "loading" ||
               activeFields.length === 0
             }
-            className={styles.findSourcesButton}
+            className={`${styles.findSourcesButton} ${styles.primaryButton}`}
           >
             {productCardStatus === "loading"
-              ? "Заполняю карточку..."
+              ? "Получаю описание…"
               : isPromptDirty || fieldsReduced
-                ? "Заполнить (свой промпт)"
-                : "Заполнить карточку"}
+                ? "Получить описание (свой промпт)"
+                : "Получить описание"}
           </button>
 
           {productCardStatus === "failed" && productCardError && (
