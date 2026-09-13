@@ -101,7 +101,7 @@ export const StatusBar = () => {
             onClick={() => zoomOut({ duration: 150 })}
             aria-label="Уменьшить масштаб"
           >
-            <ZoomOutIcon size={15} />
+            <ZoomOutIcon size={18} />
           </button>
           <button
             type="button"
@@ -117,7 +117,7 @@ export const StatusBar = () => {
             onClick={() => zoomIn({ duration: 150 })}
             aria-label="Увеличить масштаб"
           >
-            <ZoomInIcon size={15} />
+            <ZoomInIcon size={18} />
           </button>
           <button
             type="button"
@@ -125,7 +125,7 @@ export const StatusBar = () => {
             onClick={() => fitView({ duration: 300, padding: 0.15 })}
             aria-label="Вписать граф в экран"
           >
-            <FitViewIcon size={15} />
+            <FitViewIcon size={18} />
           </button>
         </div>
 

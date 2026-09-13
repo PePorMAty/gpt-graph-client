@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 
@@ -38,7 +38,16 @@ function Workspace() {
     setSection((prev) => (prev === next ? "graph" : next));
   }, []);
 
+  // Карточка узла выезжает на то же место слева, что и панель раздела —
+  // открывшаяся карточка её закрывает, иначе они наложились бы друг на друга.
+  useEffect(() => {
+    const onCardOpened = () => setSection("graph");
+    window.addEventListener("node-card-opened", onCardOpened);
+    return () => window.removeEventListener("node-card-opened", onCardOpened);
+  }, []);
+
   const panelSection = PANEL_SECTIONS.includes(section) ? section : null;
+  const panelOpen = isGraphScreen && panelSection !== null;
 
   return (
     <div className={styles.shell}>
@@ -47,13 +56,23 @@ function Workspace() {
       <div className={styles.main}>
         <LeftRail active={createOpen ? "create" : section} onSelect={handleRailSelect} />
 
-        <div className={styles.content}>
+        {/* --panel-offset: ширина открытой панели. Панель над холстом
+            сдвигается на неё вправо, чтобы её кнопки не оказались под
+            панелью раздела. */}
+        <div
+          className={styles.content}
+          style={
+            panelOpen
+              ? ({ "--panel-offset": "var(--w-panel)" } as React.CSSProperties)
+              : undefined
+          }
+        >
           <Routes>
             <Route path="/" element={<Flow />} />
             <Route path="/library" element={<LibraryScreen />} />
           </Routes>
 
-          {isGraphScreen && panelSection && (
+          {panelOpen && panelSection && (
             <RailPanel
               section={panelSection}
               onClose={() => setSection("graph")}

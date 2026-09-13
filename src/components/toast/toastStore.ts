@@ -9,6 +9,8 @@ import {
 
 export type ToastKind = "success" | "error" | "info";
 export type Toast = { id: number; kind: ToastKind; text: string };
+/** Запись в ленте уведомлений: тот же тост, но со временем и без автоскрытия. */
+export type NotificationRecord = Toast & { at: string };
 
 // Ошибку держим дольше: её нужно успеть прочитать.
 const AUTO_HIDE_MS: Record<ToastKind, number> = {
@@ -50,6 +52,7 @@ export function showToast(kind: ToastKind, text: string): number {
   // Больше трёх одновременно — стена вместо уведомлений.
   toasts = [...toasts, { id, kind, text }].slice(-3);
   emit();
+  pushHistory({ id, kind, text, at: new Date().toISOString() });
   playChime(kind);
   setTimeout(() => dismissToast(id), AUTO_HIDE_MS[kind]);
   return id;
@@ -57,6 +60,47 @@ export function showToast(kind: ToastKind, text: string): number {
 
 export function useToasts(): Toast[] {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+// ─── Лента уведомлений ───
+// Тост живёт несколько секунд, а длинные запросы к моделям идут минутами: за
+// это время пользователь успевает уйти в другую вкладку и пропустить ответ.
+// Поэтому каждое уведомление дополнительно ложится в ленту под колокольчиком.
+
+const HISTORY_LIMIT = 50;
+
+let history: NotificationRecord[] = [];
+const historyListeners = new Set<() => void>();
+
+function subscribeHistory(listener: () => void) {
+  historyListeners.add(listener);
+  return () => {
+    historyListeners.delete(listener);
+  };
+}
+
+function getHistorySnapshot(): NotificationRecord[] {
+  return history;
+}
+
+function pushHistory(record: NotificationRecord) {
+  // Новые сверху; храним ограниченное число — лента не должна расти вечно.
+  history = [record, ...history].slice(0, HISTORY_LIMIT);
+  historyListeners.forEach((l) => l());
+}
+
+export function useNotificationHistory(): NotificationRecord[] {
+  return useSyncExternalStore(
+    subscribeHistory,
+    getHistorySnapshot,
+    getHistorySnapshot,
+  );
+}
+
+export function clearNotificationHistory() {
+  if (!history.length) return;
+  history = [];
+  historyListeners.forEach((l) => l());
 }
 
 // Переключатель звука живёт рядом с тостами: включают/выключают его ровно в

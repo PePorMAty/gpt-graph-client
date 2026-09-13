@@ -5,7 +5,7 @@ import {
   HandIcon,
   MarqueeIcon,
   SaveIcon,
-  AddNodeIcon,
+  TrashIcon,
   type IconProps,
 } from "../icons";
 import styles from "./CanvasTools.module.css";
@@ -32,9 +32,10 @@ const MODES: ModeItem[] = [
 interface CanvasToolsProps {
   mode: CanvasMode;
   onModeChange: (mode: CanvasMode) => void;
-  onAddNode: () => void;
   onSave: () => void;
   canSave: boolean;
+  onClear: () => void;
+  canClear: boolean;
   /** Подсветка кнопки сохранения после успешной записи. */
   saveFlash?: boolean;
   /** Режим просмотра: доступен только выбор режима указателя. */
@@ -42,16 +43,17 @@ interface CanvasToolsProps {
 }
 
 /**
- * Правый рельс холста: режим указателя, добавление узла и сохранение.
- * Масштаб и вписывание графа переехали в нижнюю строку состояния,
- * публикация по ссылке — в меню «Экспорт» в шапке.
+ * Правый рельс холста: режим указателя, сохранение и очистка полотна.
+ * Масштаб и вписывание графа живут в нижней строке состояния, публикация по
+ * ссылке — в меню «Экспорт», а узел добавляется правым кликом по полотну.
  */
 export const CanvasTools = ({
   mode,
   onModeChange,
-  onAddNode,
   onSave,
   canSave,
+  onClear,
+  canClear,
   saveFlash = false,
   readOnly = false,
 }: CanvasToolsProps) => (
@@ -76,15 +78,6 @@ export const CanvasTools = ({
       <div className={styles.group}>
         <button
           type="button"
-          className={styles.button}
-          onClick={onAddNode}
-          aria-label="Добавить узел"
-          data-tooltip="Добавить узел"
-        >
-          <AddNodeIcon size={18} />
-        </button>
-        <button
-          type="button"
           className={`${styles.button} ${saveFlash ? styles.buttonFlash : ""}`}
           onClick={onSave}
           disabled={!canSave}
@@ -92,6 +85,16 @@ export const CanvasTools = ({
           data-tooltip="Сохранить граф"
         >
           <SaveIcon size={18} />
+        </button>
+        <button
+          type="button"
+          className={`${styles.button} ${styles.buttonDanger}`}
+          onClick={onClear}
+          disabled={!canClear}
+          aria-label="Очистить полотно"
+          data-tooltip="Очистить полотно"
+        >
+          <TrashIcon size={18} />
         </button>
       </div>
     )}

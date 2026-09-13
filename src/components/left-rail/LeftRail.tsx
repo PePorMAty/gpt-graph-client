@@ -4,13 +4,12 @@ import {
   BookmarkIcon,
   ClockIcon,
   DatabaseIcon,
-  GraphIcon,
   PlusIcon,
   type IconProps,
 } from "../icons";
 import styles from "./LeftRail.module.css";
 
-/** Разделы левого рельса. `graph` — основной режим без дополнительных панелей. */
+/** Разделы левого рельса. `graph` — полотно без открытых панелей. */
 export type RailSection = "create" | "graph" | "sources" | "bookmarks" | "history";
 
 interface RailItem {
@@ -21,7 +20,6 @@ interface RailItem {
 
 const ITEMS: RailItem[] = [
   { id: "create", Icon: PlusIcon, title: "Создать граф" },
-  { id: "graph", Icon: GraphIcon, title: "Граф" },
   { id: "sources", Icon: DatabaseIcon, title: "База данных: источники графа" },
   { id: "bookmarks", Icon: BookmarkIcon, title: "Закладки" },
   { id: "history", Icon: ClockIcon, title: "История действий" },
@@ -33,9 +31,9 @@ interface LeftRailProps {
 }
 
 /**
- * Левый вертикальный рельс: переключение режимов работы с графом.
- * Сам по себе ничего не рисует поверх холста — выбранный раздел открывает
- * соответствующую панель (см. App).
+ * Левый вертикальный рельс: создание графа и разделы-панели.
+ * Повторный клик по открытому разделу закрывает панель и возвращает
+ * полотно без «обвеса» (см. App).
  */
 export const LeftRail = ({ active, onSelect }: LeftRailProps) => (
   <nav className={styles.rail} aria-label="Разделы">

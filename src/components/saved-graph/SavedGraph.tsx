@@ -15,11 +15,15 @@ import {
   deleteSavedGraphThunk,
   fetchSavedGraphsThunk,
   loadSavedGraphThunk,
+  markGraphSaved,
   renameSavedGraphThunk,
   setOpenedGraph,
 } from "../../store/slices/savedGraphSlice";
 
 import { useSaveGraph } from "../../hooks/useSaveGraph";
+import { useNavigate } from "react-router-dom";
+
+import { graphSignature } from "../../utils/graphSignature";
 import { SaveGraphModal } from "../save-graph-modal";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
 import { extractSubgraph } from "../../utils/extractSubgraph";
@@ -89,6 +93,7 @@ export const SavedGraph = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const navigate = useNavigate();
 
   // Промис загрузки выбранного файла графа. «Открыть полностью/узел» ждут его
   // вместо чтения selectedGraph из стора: раньше первый клик попадал на ещё
@@ -133,8 +138,18 @@ export const SavedGraph = () => {
     if (pendingOpen) {
       dispatch(setOpenedGraph(pendingOpen));
     }
+    // Только что открытый граф совпадает с сейвом — строка состояния не должна
+    // сразу показывать «изменения не сохранены».
+    dispatch(
+      markGraphSaved({
+        signature: graphSignature(graph.graph.nodes, graph.graph.edges),
+      }),
+    );
 
     setShowOpenModal(false);
+    // Граф лежит на полотне — показываем его: список сохранённых живёт в
+    // «Библиотеке», а полотно на отдельной вкладке.
+    navigate("/");
   };
 
   const openPartial = async () => {
@@ -176,6 +191,7 @@ export const SavedGraph = () => {
 
     setShowSelectDepth(false);
     setSelectedNodeId(null);
+    navigate("/");
   };
 
   /* =======================
@@ -286,6 +302,7 @@ export const SavedGraph = () => {
       dispatch(loadGraphFromFile(finalPayload));
       // Загруженный из локального файла граф не привязан к серверному сейву.
       dispatch(clearOpenedGraph());
+      navigate("/");
 
       const summary = `Загружено узлов: ${finalPayload.nodes.length}, рёбер: ${finalPayload.edges.length}.`;
       if (warnings.length) {
@@ -412,7 +429,7 @@ export const SavedGraph = () => {
           renameCandidate && handleRename(renameCandidate.id, newName)
         }
         defaultName={renameCandidate?.name ?? ""}
-        title="✏️ Переименовать граф"
+        title="Переименовать граф"
         confirmLabel="Переименовать"
       />
 

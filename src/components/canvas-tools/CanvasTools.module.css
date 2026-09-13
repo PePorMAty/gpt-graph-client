@@ -55,6 +55,11 @@
   color: var(--c-success);
 }
 
+.buttonDanger:hover:not(:disabled) {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
 /* Подсказка слева от кнопки — справа для неё нет места. */
 .button::after {
   content: attr(data-tooltip);

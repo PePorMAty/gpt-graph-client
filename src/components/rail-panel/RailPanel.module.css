@@ -19,11 +19,27 @@
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--s-3);
   flex: 0 0 auto;
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--c-border-soft);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-md);
+}
+
+.headerText {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .title {
@@ -31,12 +47,22 @@
   font-weight: var(--fw-semibold);
 }
 
+.subtitle {
+  margin-top: 1px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .close {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   background: none;
   border: none;
   border-radius: var(--r-sm);
@@ -53,140 +79,9 @@
 .body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   padding: var(--s-4);
-}
-
-/* ─── Поиск ─── */
-
-.search {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  height: 34px;
-  padding: 0 var(--s-3);
-  background: var(--c-surface-soft);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-sm);
-}
-
-.search:focus-within {
-  border-color: var(--c-brand);
-  background: var(--c-surface);
-  box-shadow: var(--sh-ring);
-}
-
-.searchIcon {
-  flex: 0 0 auto;
-  color: var(--c-text-faint);
-}
-
-.searchInput {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: none;
-  background: none;
-  font-size: var(--fs-md);
-}
-
-.searchInput:focus {
-  outline: none;
-}
-
-.meta {
-  margin: var(--s-3) 0;
-  font-size: var(--fs-md);
-  color: var(--c-text-muted);
-}
-
-.empty {
-  padding: var(--s-6) var(--s-3);
-  text-align: center;
-  font-size: var(--fs-md);
-  line-height: var(--lh-normal);
-  color: var(--c-text-faint);
-}
-
-/* ─── Группы источников ─── */
-
-.groups {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-}
-
-.group {
-  padding: var(--s-3);
-  background: var(--c-surface-soft);
-  border: 1px solid var(--c-border-soft);
-  border-radius: var(--r-md);
-}
-
-.groupHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  margin-bottom: var(--s-2);
-}
-
-.groupProduct {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dirBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex: 0 0 auto;
-  padding: 2px 7px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  border-radius: var(--r-pill);
-}
-
-.dirUp {
-  color: var(--c-success);
-  background: var(--c-success-soft);
-}
-
-.dirDown {
-  color: var(--c-brand-strong);
-  background: var(--c-brand-soft);
-}
-
-.inherited {
-  margin-bottom: var(--s-2);
-  font-size: var(--fs-sm);
-  color: var(--c-text-muted);
-  font-style: italic;
-}
-
-.sources {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-}
-
-.source {
-  font-size: var(--fs-md);
-  line-height: var(--lh-tight);
-}
-
-.sourceTitle {
-  color: var(--c-brand-strong);
-  word-break: break-word;
 }
 
 /* ─── Заглушки будущих разделов ─── */

@@ -9,7 +9,7 @@
   align-items: center;
   gap: var(--s-2);
   height: 36px;
-  padding: 0 var(--s-2) 0 var(--s-3);
+  padding: 0 var(--s-3);
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border);
   border-radius: var(--r-pill);
@@ -54,18 +54,6 @@
 
 .input:focus {
   outline: none;
-}
-
-.hotkey {
-  flex: 0 0 auto;
-  padding: 2px 7px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  color: var(--c-text-faint);
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-xs);
-  white-space: nowrap;
 }
 
 .clear {

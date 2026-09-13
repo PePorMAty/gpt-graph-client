@@ -1,9 +1,5 @@
 .bar {
-  /* Три колонки, а не flex: иначе поиск смещается тем сильнее, чем длиннее
-     логотип и вкладки слева. Боковые колонки одинаковой доли — центр
-     остаётся центром экрана. */
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
   gap: var(--s-4);
   height: var(--h-topbar);
@@ -82,9 +78,12 @@
 
 .center {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
+  /* Поиск прижат к правой группе: auto-отступ съедает всё свободное место
+     слева от него. */
+  margin-left: auto;
   min-width: 0;
-  width: 440px;
+  width: 380px;
   max-width: 100%;
 }
 

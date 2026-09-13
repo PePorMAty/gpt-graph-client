@@ -18,7 +18,7 @@ const NODE_KIND: Record<string, string> = {
  * центрирует камеру на узле и подсвечивает его (событие `highlight-node`,
  * которое слушает Flow).
  *
- * Открывается и с клавиатуры — ⌘K / Ctrl+K, как подсказывает чип в строке.
+ * Фокус в строку ставится и с клавиатуры — ⌘K / Ctrl+K.
  */
 export const GraphSearchBox = () => {
   const [value, setValue] = useState("");
@@ -104,7 +104,7 @@ export const GraphSearchBox = () => {
           placeholder="Поиск по узлам, технологиям, веществам…"
           aria-label="Поиск по графу"
         />
-        {hasQuery ? (
+        {hasQuery && (
           <button
             type="button"
             className={styles.clear}
@@ -116,10 +116,6 @@ export const GraphSearchBox = () => {
           >
             <CloseIcon size={14} />
           </button>
-        ) : (
-          <span className={styles.hotkey} aria-hidden>
-            ⌘ K
-          </span>
         )}
       </div>
 

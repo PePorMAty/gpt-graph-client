@@ -4,10 +4,12 @@
   gap: var(--s-2);
   flex: 0 0 auto;
   min-height: var(--h-toolbar);
-  /* Справа резервируем место под рельс инструментов холста, иначе
-     правая кнопка панели уезжала бы под него. */
-  padding: var(--s-3) 60px var(--s-3) var(--s-4);
+  /* Справа резервируем место под рельс инструментов холста, слева — под
+     открытую боковую панель (её ширину каркас кладёт в --panel-offset). */
+  padding: var(--s-3) 60px var(--s-3)
+    calc(var(--s-4) + var(--panel-offset, 0px));
   flex-wrap: wrap;
+  transition: padding-left var(--t-base) var(--ease);
   background: transparent;
   /* Панель лежит над холстом в общем потоке, но её меню выпадают поверх. */
   position: relative;
@@ -56,19 +58,6 @@
   color: var(--c-brand);
 }
 
-.chipDanger {
-  margin-left: auto;
-}
-
-.chipDanger:hover:not(:disabled) {
-  background: var(--c-danger-soft);
-  border-color: var(--c-danger-border);
-  color: var(--c-danger);
-}
-
-.chipDanger:hover:not(:disabled) .chipIcon {
-  color: var(--c-danger);
-}
 
 /* ─── Фокус: кнопка + стрелка настроек ─── */
 

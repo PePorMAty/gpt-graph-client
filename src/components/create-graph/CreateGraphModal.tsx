@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
@@ -6,7 +6,9 @@ import {
   getPromptLayoutFromServer,
 } from "../../store/api/graph-api";
 import { addNode, setGraphName } from "../../store/slices/gptSlice";
-import { clearOpenedGraph } from "../../store/slices/savedGraphSlice";
+import { useSaveGraph } from "../../hooks/useSaveGraph";
+import { graphSignature } from "../../utils/graphSignature";
+import { clearCanvas } from "../../utils/clearCanvas";
 import { AiModelSelect } from "../ai-model-select";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
@@ -30,6 +32,9 @@ interface CreateGraphModalProps {
  * на полотно кладётся один продуктовый узел без обращения к модели; дальше
  * граф достраивается по шагам из карточки узла. В обоих случаях введённый
  * текст становится названием графа в панели над холстом.
+ *
+ * Новый граф затирает текущий, поэтому при несохранённых правках сначала
+ * спрашиваем, сохранять ли их.
  */
 export const CreateGraphModal = ({
   open,
@@ -38,15 +43,25 @@ export const CreateGraphModal = ({
 }: CreateGraphModalProps) => {
   const dispatch = useAppDispatch();
   const isLoading = useAppSelector((s) => s.graph.isLoading);
-  const hasNodes = useAppSelector((s) => s.graph.data.nodes.length > 0);
+  const { nodes, edges } = useAppSelector((s) => s.graph.data);
+  const savedSignature = useAppSelector((s) => s.savedGraphs.savedSignature);
+  const { saveNew, updateOpened, openedGraphId, defaultName } = useSaveGraph();
 
   const [mode, setMode] = useState<Mode>("prompt");
   const [prompt, setPrompt] = useState("");
   const [manualName, setManualName] = useState("");
   const [promptLayout, setPromptLayout] = useState("");
   const [layoutOpen, setLayoutOpen] = useState(false);
+  // Запрошенное создание ждёт ответа на вопрос о несохранённых правках.
+  const [pending, setPending] = useState<(() => void) | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const dirty = useMemo(
+    () => nodes.length > 0 && graphSignature(nodes, edges) !== savedSignature,
+    [nodes, edges, savedSignature],
+  );
 
   // Шаблон промта приходит с сервера один раз при первом открытии окна.
   const layoutLoaded = useRef(false);
@@ -66,24 +81,84 @@ export const CreateGraphModal = ({
     el.style.height = `${el.scrollHeight}px`;
   }, [promptLayout, layoutOpen]);
 
-  const submitPrompt = () => {
-    const value = prompt.trim();
-    if (!value || isLoading) return;
+  const createByPrompt = (value: string) => {
+    clearCanvas(dispatch);
     dispatch(getGraphData({ promptValue: value, promptLayout }));
     onClose();
   };
 
-  const submitManual = () => {
-    const name = manualName.trim();
-    if (!name) return;
-    // Новый граф с нуля: привязку к сохранённому файлу снимаем, иначе
-    // «Сохранить» перезаписал бы чужой граф.
-    dispatch(clearOpenedGraph());
+  const createManually = (name: string) => {
+    clearCanvas(dispatch);
     dispatch(setGraphName(name));
     dispatch(addNode({ type: "product", label: name, position: { x: 0, y: 0 } }));
     onClose();
     onCreated?.();
   };
+
+  /** Создание, отложенное до ответа на вопрос о несохранённых правках. */
+  const run = (action: () => void) => {
+    if (dirty) setPending(() => action);
+    else action();
+  };
+
+  const submitPrompt = () => {
+    const value = prompt.trim();
+    if (!value || isLoading) return;
+    run(() => createByPrompt(value));
+  };
+
+  const submitManual = () => {
+    const name = manualName.trim();
+    if (!name) return;
+    run(() => createManually(name));
+  };
+
+  const saveThenCreate = async () => {
+    setSaving(true);
+    const ok = openedGraphId ? await updateOpened() : await saveNew(defaultName);
+    setSaving(false);
+    if (!ok) return; // ошибку показал тост — остаёмся в вопросе
+    const action = pending;
+    setPending(null);
+    action?.();
+  };
+
+  const discardAndCreate = () => {
+    const action = pending;
+    setPending(null);
+    action?.();
+  };
+
+  // ── Вопрос о несохранённых правках ──
+  if (pending) {
+    return (
+      <Modal
+        open
+        onClose={() => setPending(null)}
+        title="Текущий граф не сохранён"
+        size="s"
+        subtitle="Новый граф заменит то, что сейчас на полотне."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPending(null)}>
+              Отмена
+            </Button>
+            <Button onClick={discardAndCreate} disabled={saving}>
+              Не сохранять
+            </Button>
+            <Button variant="primary" onClick={saveThenCreate} disabled={saving}>
+              {saving ? "Сохраняю…" : "Сохранить и создать"}
+            </Button>
+          </>
+        }
+      >
+        <p className={styles.confirmText}>
+          На полотне есть изменения, которых нет в сохранённом графе. Сохранить
+          их перед созданием нового графа?
+        </p>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -139,10 +214,10 @@ export const CreateGraphModal = ({
         </button>
       </div>
 
-      {hasNodes && (
+      {nodes.length > 0 && (
         <div className={styles.warning}>
-          На полотне уже есть граф. Создание нового добавит узлы к текущему —
-          при необходимости сначала очистите полотно.
+          Новый граф заменит текущий на полотне.
+          {dirty && " Несохранённые изменения будут потеряны — спросим перед созданием."}
         </div>
       )}
 

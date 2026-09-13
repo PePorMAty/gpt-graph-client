@@ -1,52 +1,65 @@
 .menu {
   position: fixed;
-  z-index: 25;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  padding: 4px 0;
-  min-width: 200px;
+  z-index: var(--z-dropdown);
+  min-width: 210px;
+  padding: var(--s-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
   user-select: none;
 }
 
 .item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   width: 100%;
-  padding: 8px 16px;
+  padding: var(--s-2) var(--s-3);
   background: none;
   border: none;
+  border-radius: var(--r-sm);
   text-align: left;
-  font-size: 14px;
-  cursor: pointer;
-  color: #333;
+  font-size: var(--fs-base);
+  color: var(--c-text-soft);
   white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
 .item:hover {
-  background: #f0f4ff;
-  color: #2563eb;
+  background: var(--c-brand-soft);
+  color: var(--c-brand-strong);
+}
+
+.itemIcon {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+}
+
+.item:hover .itemIcon {
+  color: currentColor;
 }
 
 .itemDanger {
-  color: #dc2626;
+  color: var(--c-danger);
 }
 
 .itemDanger:hover {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
 }
 
 .separator {
   height: 1px;
-  background: #e0e0e0;
-  margin: 4px 0;
+  margin: var(--s-1) var(--s-2);
+  background: var(--c-border-soft);
 }
 
 .header {
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
+  padding: var(--s-2) var(--s-3) var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
   white-space: nowrap;
 }

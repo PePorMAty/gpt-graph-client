@@ -44,19 +44,118 @@
   top: calc(100% + 6px);
   right: 0;
   z-index: var(--z-dropdown);
-  width: 268px;
-  padding: var(--s-3);
+  width: 340px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
   box-shadow: var(--sh-lg);
+  overflow: hidden;
 }
 
 .head {
-  margin-bottom: var(--s-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.headTitle {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   color: var(--c-text);
+}
+
+.headActions {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.headBtn {
+  padding: var(--s-1) var(--s-2);
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.headBtn:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-brand);
+}
+
+.settings {
+  padding: var(--s-3);
+  background: var(--c-surface-soft);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.empty {
+  padding: var(--s-5) var(--s-4);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text-faint);
+  text-align: center;
+}
+
+.list {
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+}
+
+.item:hover {
+  background: var(--c-surface-hover);
+}
+
+.marker {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  transform: translateY(-1px);
+}
+
+.marker_success {
+  background: var(--c-success);
+}
+
+.marker_error {
+  background: var(--c-danger);
+}
+
+.marker_info {
+  background: var(--c-brand);
+}
+
+.itemText {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
+  color: var(--c-text-soft);
+  word-break: break-word;
+}
+
+.itemTime {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .row {
@@ -98,10 +197,4 @@
   cursor: not-allowed;
 }
 
-.note {
-  padding-top: var(--s-2);
-  border-top: 1px solid var(--c-border-soft);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-tight);
-  color: var(--c-text-faint);
-}
+

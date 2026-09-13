@@ -34,16 +34,12 @@ import {
   insertTransformationsForNeighbors,
   addSourcesToPool,
 } from "./store/slices/gptSlice";
-import {
-  clearOpenedGraph,
-  setOpenedGraph,
-} from "./store/slices/savedGraphSlice";
+import { setOpenedGraph } from "./store/slices/savedGraphSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
-import { AddNodeModal } from "./components/add-node-modal";
 import { SaveGraphModal } from "./components/save-graph-modal";
 import { useSaveGraph } from "./hooks/useSaveGraph";
 import { buildSaveGraphPayload } from "./utils/buildSaveGraphPayload";
@@ -70,6 +66,9 @@ import {
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
 import { inferLayoutDirection } from "./utils/inferLayoutDirection";
 import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
+// Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
+// вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
+import { clearCanvas, AUTOSAVE_KEY } from "./utils/clearCanvas";
 import { GraphToolbar } from "./components/graph-toolbar/GraphToolbar";
 import {
   CanvasTools,
@@ -110,6 +109,7 @@ import {
   alternativeKey,
 } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
+import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { SelectNeighborModal } from "./components/select-neighbor-modal";
 import {
@@ -126,10 +126,6 @@ const nodeTypes: NodeTypes = {
   product: ProductNode,
   transformation: TransformationNode,
 };
-
-// Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
-// вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
-const AUTOSAVE_KEY = "autosave-graph";
 
 interface FlowProps {
   /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
@@ -245,6 +241,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [productsOnly, setProductsOnly] = useState(false);
   // Режим указателя на полотне (правый рельс): выбор / рука / рамка.
   const [canvasMode, setCanvasMode] = useState<CanvasMode>("select");
+  // Живой ref: обработчики полотна создаются один раз и иначе видели бы
+  // режим, актуальный на момент их создания.
+  const canvasModeRef = useRef(canvasMode);
+  canvasModeRef.current = canvasMode;
+  // Меню по правому клику на пустом месте (добавление узла).
+  const [paneMenu, setPaneMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   // Слой данных ГИСП. Подключения к базе ещё нет, поэтому включённый слой
   // пока ничего не рисует — узлы не несут признака подтверждения.
   const [industryData, setIndustryData] = useState(true);
@@ -534,7 +538,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [tempNodeDescription, setTempNodeDescription] = useState<string>("");
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
-  const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
   const readOnly = sharedView;
   // Структурные правки заблокированы: просмотр, «только продукты» или
@@ -868,6 +871,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Обработчик клика по узлу
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      // Режим «рука» — только панорамирование: карточку не открываем, иначе
+      // она выскакивает при каждой попытке подвинуть холст «за узел».
+      if (canvasModeRef.current === "pan") return;
       // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
@@ -887,6 +893,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setSelectedNodeId(node.id);
       setIsPanelOpen(true);
       setContextMenu(null);
+      // Карточка и панель раздела (источники, закладки, история) занимают
+      // одно и то же место слева — открывшаяся карточка закрывает панель.
+      window.dispatchEvent(new CustomEvent("node-card-opened"));
     },
     [focusOnNode, selectedNodeId],
   );
@@ -931,10 +940,38 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [data.nodes, dispatch],
   );
 
-  // Клик по пустому пространству — закрыть контекстное меню
+  // Клик по пустому пространству — закрыть контекстные меню
   const onPaneClick = useCallback(() => {
     setContextMenu(null);
+    setPaneMenu(null);
   }, []);
+
+  // Правый клик по пустому месту — меню добавления узла. В режиме рамки
+  // правая кнопка не занята меню: там ею удобно доводить выделение.
+  const onPaneContextMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent) => {
+      if (readOnly || focusOn || canvasModeRef.current === "marquee") return;
+      event.preventDefault();
+      setContextMenu(null);
+      setPaneMenu({ x: event.clientX, y: event.clientY });
+    },
+    [readOnly, focusOn],
+  );
+
+  // Узел появляется там, где вызвали меню, а не в центре экрана.
+  const handleAddNodeAt = useCallback(
+    (type: "product" | "transformation") => {
+      if (!paneMenu) return;
+      dispatch(
+        addNode({
+          type,
+          position: screenToFlowPosition({ x: paneMenu.x, y: paneMenu.y }),
+        }),
+      );
+      setPaneMenu(null);
+    },
+    [paneMenu, dispatch, screenToFlowPosition],
+  );
 
   // Из контекстного меню → показать модалку подтверждения удаления.
   // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
@@ -1376,24 +1413,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [dispatch],
   );
-
-  const handleAddNode = (selectedType: "product" | "transformation") => {
-    const screenCenter = {
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
-    };
-
-    const flowPosition = screenToFlowPosition(screenCenter);
-
-    dispatch(
-      addNode({
-        type: selectedType,
-        position: flowPosition,
-      }),
-    );
-
-    setIsTypeSelectorOpen(false);
-  };
 
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
@@ -2373,12 +2392,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleClearCanvas = useCallback(() => {
-    dispatch(setGraphData({ nodes: [], edges: [] }));
-    // Очищенное полотно больше не привязано к сохранённому файлу — иначе
-    // «Сохранить» предложил бы перезаписать сейв пустым графом.
-    dispatch(clearOpenedGraph());
-    localStorage.removeItem("saved-graph");
-    sessionStorage.removeItem(AUTOSAVE_KEY);
+    clearCanvas(dispatch);
     setShowClearConfirm(false);
   }, [dispatch]);
 
@@ -2425,9 +2439,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             onToggleIndustryData={() => setIndustryData((v) => !v)}
             alternatives={showAlternatives}
             onToggleAlternatives={() => setShowAlternatives((v) => !v)}
-            onClear={() => setShowClearConfirm(true)}
-            canClear={data.nodes.length > 0}
-            readOnly={readOnly}
           />
         </div>
       )}
@@ -2435,9 +2446,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       <CanvasTools
         mode={canvasMode}
         onModeChange={setCanvasMode}
-        onAddNode={() => setIsTypeSelectorOpen(true)}
         onSave={() => setShowSaveGraphModal(true)}
         canSave={data.nodes.length > 0}
+        onClear={() => setShowClearConfirm(true)}
+        canClear={data.nodes.length > 0}
         saveFlash={saveFlash}
         readOnly={readOnly || focusOn}
       />
@@ -2453,6 +2465,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
+        onPaneContextMenu={structureLocked ? undefined : onPaneContextMenu}
         nodesConnectable={!structureLocked}
         // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
         // в режиме «рука» узлы тоже неподвижны, тянется только холст.
@@ -2503,11 +2516,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           style={{ width: 180, height: 120 }}
         />
       </ReactFlow>
-      <AddNodeModal
-        isOpen={isTypeSelectorOpen}
-        onClose={() => setIsTypeSelectorOpen(false)}
-        onSelect={handleAddNode}
-      />
       <SaveGraphModal
         isOpen={showSaveGraphModal}
         onClose={() => setShowSaveGraphModal(false)}
@@ -2516,6 +2524,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         openedName={openedGraphId ? openedGraphName : null}
         onUpdate={openedGraphId ? handleUpdateOpenedGraph : undefined}
       />
+      {paneMenu && (
+        <PaneContextMenu
+          x={paneMenu.x}
+          y={paneMenu.y}
+          onAdd={handleAddNodeAt}
+          onClose={() => setPaneMenu(null)}
+        />
+      )}
       {contextMenu && (
         <NodeContextMenu
           x={contextMenu.x}

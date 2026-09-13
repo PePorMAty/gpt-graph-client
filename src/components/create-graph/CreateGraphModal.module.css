@@ -143,3 +143,9 @@
   background: var(--c-surface);
   box-shadow: var(--sh-ring);
 }
+
+.confirmText {
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+}

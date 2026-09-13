@@ -1,4 +1,7 @@
 import { useEffect, useState, type FC } from "react";
+
+import { Modal } from "../ui/Modal";
+import { Button } from "../ui/Button";
 import styles from "./SaveGraphModal.module.css";
 
 interface SaveGraphModalProps {
@@ -23,7 +26,7 @@ export const SaveGraphModal: FC<SaveGraphModalProps> = ({
   onSave,
   openedName,
   onUpdate,
-  title = "💾 Сохранить граф",
+  title = "Сохранить граф",
   confirmLabel,
 }) => {
   const [name, setName] = useState(defaultName);
@@ -33,41 +36,51 @@ export const SaveGraphModal: FC<SaveGraphModalProps> = ({
     if (isOpen) setName(defaultName);
   }, [isOpen, defaultName]);
 
-  if (!isOpen) return null;
-
   const canUpdate = !!openedName && !!onUpdate;
 
   return (
-    <div className={styles.backdrop}>
-      <div className={styles.modal}>
-        <h3>{title}</h3>
-
-        {canUpdate && (
-          <p className={styles.hint}>
-            Открыт сохранённый граф «{openedName}». Обновить его или сохранить
-            как новый?
-          </p>
-        )}
-
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Название нового графа (необязательно)"
-        />
-
-        <div className={styles.actions}>
-          <button onClick={onClose}>Отмена</button>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title={title}
+      size="s"
+      subtitle={
+        canUpdate
+          ? `Открыт сохранённый граф «${openedName}». Обновить его или сохранить как новый?`
+          : undefined
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Отмена
+          </Button>
           {canUpdate && (
-            <button className={styles.primary} onClick={onUpdate}>
-              Обновить «{openedName}»
-            </button>
+            <Button onClick={() => onSave(name)}>Сохранить как новый</Button>
           )}
-          <button onClick={() => onSave(name)}>
-            {confirmLabel ?? (canUpdate ? "Сохранить как новый" : "Сохранить")}
-          </button>
-        </div>
-      </div>
-    </div>
+          <Button
+            variant="primary"
+            onClick={canUpdate ? onUpdate : () => onSave(name)}
+          >
+            {canUpdate
+              ? `Обновить «${openedName}»`
+              : (confirmLabel ?? "Сохранить")}
+          </Button>
+        </>
+      }
+    >
+      <label className={styles.label} htmlFor="save-graph-name">
+        Название графа
+      </label>
+      <input
+        id="save-graph-name"
+        className={styles.input}
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onSave(name)}
+        placeholder="Название нового графа (необязательно)"
+        autoFocus
+      />
+    </Modal>
   );
 };

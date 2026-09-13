@@ -8,7 +8,6 @@ import {
   FilterIcon,
   FocusIcon,
   IndustryDataIcon,
-  TrashIcon,
 } from "../icons";
 import { GraphNameMenu } from "./GraphNameMenu";
 import styles from "./GraphToolbar.module.css";
@@ -40,18 +39,13 @@ export interface GraphToolbarProps {
 
   alternatives: boolean;
   onToggleAlternatives: () => void;
-
-  onClear: () => void;
-  canClear: boolean;
-
-  /** Режим просмотра: действия, меняющие граф, скрыты. */
-  readOnly?: boolean;
 }
 
 /**
  * Панель над холстом: название графа и переключатели представления.
  * Заменила вертикальную панель Controls из React Flow — там эти же режимы
- * были безымянными иконками.
+ * были безымянными иконками. Действия над самим графом (сохранение,
+ * очистка) живут в правом рельсе.
  */
 export const GraphToolbar = ({
   graphName,
@@ -67,9 +61,6 @@ export const GraphToolbar = ({
   onToggleIndustryData,
   alternatives,
   onToggleAlternatives,
-  onClear,
-  canClear,
-  readOnly = false,
 }: GraphToolbarProps) => {
   const [focusMenuOpen, setFocusMenuOpen] = useState(false);
   const focusRef = useRef<HTMLDivElement>(null);
@@ -80,16 +71,20 @@ export const GraphToolbar = ({
     <div className={styles.bar}>
       <GraphNameMenu name={graphName} />
 
-      <button
-        type="button"
-        className={`${styles.chip} ${productsOnly ? styles.chipActive : ""}`}
-        onClick={onToggleProductsOnly}
-        aria-pressed={productsOnly}
-        title="Скрыть преобразования и соединить продукты напрямую"
-      >
-        <FilterIcon size={16} className={styles.chipIcon} />
-        Только продукты
-      </button>
+      {/* В фокус-режиме окрестность строит своя проекция — «только продукты»
+          там неприменимо, поэтому кнопку убираем совсем. */}
+      {!focusOn && (
+        <button
+          type="button"
+          className={`${styles.chip} ${productsOnly ? styles.chipActive : ""}`}
+          onClick={onToggleProductsOnly}
+          aria-pressed={productsOnly}
+          title="Скрыть преобразования и соединить продукты напрямую"
+        >
+          <FilterIcon size={16} className={styles.chipIcon} />
+          Только продукты
+        </button>
+      )}
 
       {/* Фокус-режим: сама кнопка включает режим, стрелка открывает
           настройки охвата — раньше они жили в плашке поверх полотна. */}
@@ -193,18 +188,6 @@ export const GraphToolbar = ({
         </span>
       </button>
 
-      {!readOnly && (
-        <button
-          type="button"
-          className={`${styles.chip} ${styles.chipDanger}`}
-          onClick={onClear}
-          disabled={!canClear}
-          title="Удалить все узлы и связи с полотна"
-        >
-          <TrashIcon size={16} className={styles.chipIcon} />
-          Очистить
-        </button>
-      )}
     </div>
   );
 };

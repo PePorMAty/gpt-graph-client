@@ -64,8 +64,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   background: none;
   border: none;
   border-radius: var(--r-xs);
@@ -80,8 +80,8 @@
 }
 
 .zoomValue {
-  min-width: 46px;
-  height: 24px;
+  min-width: 48px;
+  height: 28px;
   padding: 0 var(--s-1);
   background: none;
   border: none;
