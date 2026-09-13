@@ -1,15 +1,15 @@
 .box {
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
 }
 
 .field {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  height: 36px;
-  padding: 0 var(--s-3);
+  height: 40px;
+  padding: 0 var(--s-4);
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border);
   border-radius: var(--r-pill);

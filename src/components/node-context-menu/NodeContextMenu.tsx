@@ -1,4 +1,7 @@
-import { useEffect, useRef, type FC } from "react";
+import { useCallback, useEffect, useRef, type FC } from "react";
+
+import { useDismiss } from "../../hooks/useDismiss";
+import { BookmarkIcon, TrashIcon } from "../icons";
 import styles from "./NodeContextMenu.module.css";
 
 interface NodeContextMenuProps {
@@ -7,6 +10,9 @@ interface NodeContextMenuProps {
   onDelete: () => void;
   /** Кол-во выделенных нод. Если > 1 — меню показывает групповое удаление. */
   selectedCount?: number;
+  /** Узел уже в закладках — пункт меняется на «убрать». */
+  isBookmarked?: boolean;
+  onToggleBookmark?: () => void;
   onClose: () => void;
 }
 
@@ -15,17 +21,21 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   y,
   onDelete,
   selectedCount,
+  isBookmarked = false,
+  onToggleBookmark,
   onClose,
 }) => {
   const isMultiSelection = !!selectedCount && selectedCount > 1;
   const menuRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => onClose(), [onClose]);
 
-  // Viewport boundary adjustment
+  useDismiss(menuRef, close, true);
+
+  // Меню не должно вылезать за край окна.
   useEffect(() => {
-    if (!menuRef.current) return;
-    const rect = menuRef.current.getBoundingClientRect();
     const el = menuRef.current;
-
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
     if (x + rect.width > window.innerWidth) {
       el.style.left = `${window.innerWidth - rect.width - 8}px`;
     }
@@ -34,16 +44,7 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
     }
   }, [x, y]);
 
-  // Close on Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  // Close on scroll / wheel (captures panning and zooming)
+  // Закрываем и при панорамировании/зуме: меню привязано к точке экрана.
   useEffect(() => {
     const handle = () => onClose();
     window.addEventListener("wheel", handle, { passive: true });
@@ -54,47 +55,31 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
     };
   }, [onClose]);
 
-  // Close on click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [onClose]);
-
   return (
-    <div
-      ref={menuRef}
-      className={styles.menu}
-      style={{ top: y, left: x }}
-    >
-      {isMultiSelection ? (
+    <div ref={menuRef} className={styles.menu} style={{ top: y, left: x }}>
+      {isMultiSelection && (
         <>
           <div className={styles.header}>Выделено нод: {selectedCount}</div>
           <div className={styles.separator} />
-          <button
-            className={`${styles.item} ${styles.itemDanger}`}
-            onClick={onDelete}
-          >
-            Удалить выбранные ({selectedCount})
-          </button>
         </>
-      ) : (
-        <button
-          className={`${styles.item} ${styles.itemDanger}`}
-          onClick={onDelete}
-        >
-          Удалить
+      )}
+
+      {/* Закладка ставится на один узел: групповое выделение сюда не идёт. */}
+      {!isMultiSelection && onToggleBookmark && (
+        <button type="button" className={styles.item} onClick={onToggleBookmark}>
+          <BookmarkIcon size={16} className={styles.itemIcon} />
+          {isBookmarked ? "Убрать из закладок" : "Добавить в закладки"}
         </button>
       )}
+
+      <button
+        type="button"
+        className={`${styles.item} ${styles.itemDanger}`}
+        onClick={onDelete}
+      >
+        <TrashIcon size={16} className={styles.itemIcon} />
+        {isMultiSelection ? `Удалить выбранные (${selectedCount})` : "Удалить"}
+      </button>
     </div>
   );
 };

@@ -24,6 +24,7 @@ import { useSaveGraph } from "../../hooks/useSaveGraph";
 import { useNavigate } from "react-router-dom";
 
 import { graphSignature } from "../../utils/graphSignature";
+import { ConfirmUnsavedModal } from "../ui/ConfirmUnsavedModal";
 import { SaveGraphModal } from "../save-graph-modal";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
 import { extractSubgraph } from "../../utils/extractSubgraph";
@@ -94,6 +95,42 @@ export const SavedGraph = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const navigate = useNavigate();
+
+  // Открытие сейва затирает полотно, поэтому при несохранённых правках
+  // сначала спрашиваем — так же, как перед созданием нового графа.
+  const { nodes: currentNodes, edges: currentEdges } = useAppSelector(
+    (s) => s.graph.data,
+  );
+  const savedSignature = useAppSelector((s) => s.savedGraphs.savedSignature);
+  const isDirty =
+    currentNodes.length > 0 &&
+    graphSignature(currentNodes, currentEdges) !== savedSignature;
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [savingBeforeOpen, setSavingBeforeOpen] = useState(false);
+
+  /** Выполнить действие, спросив про несохранённые правки. */
+  const guardUnsaved = (action: () => void) => {
+    if (isDirty) setPendingAction(() => action);
+    else action();
+  };
+
+  const saveThenRun = async () => {
+    setSavingBeforeOpen(true);
+    // updateOpened/saveNew возвращают успех; handleUpdateGraph — нет, поэтому
+    // здесь работаем с хуком напрямую.
+    const ok = openedGraphId ? await updateOpened() : await saveNew();
+    setSavingBeforeOpen(false);
+    if (!ok) return;
+    const action = pendingAction;
+    setPendingAction(null);
+    action?.();
+  };
+
+  const discardThenRun = () => {
+    const action = pendingAction;
+    setPendingAction(null);
+    action?.();
+  };
 
   // Промис загрузки выбранного файла графа. «Открыть полностью/узел» ждут его
   // вместо чтения selectedGraph из стора: раньше первый клик попадал на ещё
@@ -266,14 +303,16 @@ export const SavedGraph = () => {
   };
 
   const handleLoadGraph = (g: SavedGraphMeta) => {
-    setPendingOpen({ id: g.id, name: g.name });
-    const request = dispatch(loadSavedGraphThunk(g.id)).unwrap();
-    loadRequestRef.current = request;
-    // Ошибку показываем в момент открытия (awaitSelectedGraph) — тут только
-    // глушим unhandled rejection.
-    request.catch(() => {});
+    guardUnsaved(() => {
+      setPendingOpen({ id: g.id, name: g.name });
+      const request = dispatch(loadSavedGraphThunk(g.id)).unwrap();
+      loadRequestRef.current = request;
+      // Ошибку показываем в момент открытия (awaitSelectedGraph) — тут только
+      // глушим unhandled rejection.
+      request.catch(() => {});
 
-    setShowOpenModal(true);
+      setShowOpenModal(true);
+    });
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -324,6 +363,16 @@ export const SavedGraph = () => {
 
   return (
     <div className={styles.container}>
+      <ConfirmUnsavedModal
+        open={pendingAction !== null}
+        action="открытием другого графа"
+        confirmLabel="Сохранить и открыть"
+        saving={savingBeforeOpen}
+        onCancel={() => setPendingAction(null)}
+        onDiscard={discardThenRun}
+        onSave={saveThenRun}
+      />
+
       <OpenGraphModal
         isOpen={showOpenModal}
         onFull={openFull}

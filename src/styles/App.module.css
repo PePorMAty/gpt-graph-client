@@ -23,3 +23,13 @@
   min-width: 0;
   min-height: 0;
 }
+
+/* Экран поверх полотна («Библиотека»). Полотно под ним остаётся
+   смонтированным, поэтому камера и содержимое графа не сбрасываются. */
+.screenOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-panel);
+  background: var(--c-app);
+  overflow: hidden;
+}

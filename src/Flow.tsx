@@ -109,6 +109,10 @@ import {
   alternativeKey,
 } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
+import {
+  addBookmark,
+  removeBookmark,
+} from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { SelectNeighborModal } from "./components/select-neighbor-modal";
@@ -594,6 +598,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     x: number;
     y: number;
   } | null>(null);
+
+  // Узлы с закладкой — для пункта контекстного меню «убрать/добавить».
+  const bookmarks = useAppSelector((s) => s.bookmarks.items);
+  const bookmarkedIds = useMemo(
+    () => new Set(bookmarks.map((b) => b.nodeId)),
+    [bookmarks],
+  );
   // Узлы, ожидающие подтверждения удаления (одна нода или группа выделенных).
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(
     null,
@@ -972,6 +983,25 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [paneMenu, dispatch, screenToFlowPosition],
   );
+
+  // Закладка узла из контекстного меню.
+  const handleToggleBookmark = useCallback(() => {
+    if (!contextMenu) return;
+    const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+    if (!node) return;
+    if (bookmarkedIds.has(node.id)) {
+      dispatch(removeBookmark(node.id));
+    } else {
+      dispatch(
+        addBookmark({
+          nodeId: node.id,
+          label: String(node.data?.label ?? ""),
+          kind: node.type === "transformation" ? "transformation" : "product",
+        }),
+      );
+    }
+    setContextMenu(null);
+  }, [contextMenu, data.nodes, bookmarkedIds, dispatch]);
 
   // Из контекстного меню → показать модалку подтверждения удаления.
   // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
@@ -2538,6 +2568,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           y={contextMenu.y}
           onDelete={handleContextDelete}
           selectedCount={selectedNodes.length}
+          isBookmarked={bookmarkedIds.has(contextMenu.nodeId)}
+          onToggleBookmark={handleToggleBookmark}
           onClose={() => setContextMenu(null)}
         />
       )}

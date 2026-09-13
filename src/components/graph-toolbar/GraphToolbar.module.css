@@ -20,8 +20,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
-  height: 36px;
-  padding: 0 var(--s-3);
+  height: var(--h-chip);
+  padding: 0 var(--s-4);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-pill);
@@ -78,8 +78,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 36px;
+  width: 34px;
+  height: var(--h-chip);
   padding: 0;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -180,8 +180,8 @@
 }
 
 .depthButton {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-xs);
@@ -207,8 +207,8 @@
 .switch {
   position: relative;
   display: inline-block;
-  width: 30px;
-  height: 17px;
+  width: 34px;
+  height: 19px;
   margin-left: var(--s-1);
   background: var(--c-border-strong);
   border-radius: var(--r-pill);
@@ -223,8 +223,8 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   background: var(--c-surface);
   border-radius: var(--r-pill);
   box-shadow: var(--sh-xs);
@@ -232,5 +232,5 @@
 }
 
 .switchOn .switchKnob {
-  transform: translateX(13px);
+  transform: translateX(15px);
 }

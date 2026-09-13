@@ -8,7 +8,7 @@
 
 .input {
   width: 100%;
-  height: 40px;
+  height: var(--h-control);
   padding: 0 var(--s-3);
   background: var(--c-surface);
   border: 1px solid var(--c-border);

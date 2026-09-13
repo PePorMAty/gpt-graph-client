@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useReactFlow } from "@xyflow/react";
 
 import type { CustomNode } from "../../types";
 import { useAppSelector } from "../../store/hooks";
 import { useGraphSearch } from "../../hooks/useGraphSearch";
+import { useFocusNode } from "../../hooks/useFocusNode";
 import { useDismiss } from "../../hooks/useDismiss";
 import { SearchIcon, CloseIcon, ChevronRightIcon } from "../icons";
 import styles from "./GraphSearchBox.module.css";
@@ -30,7 +30,7 @@ export const GraphSearchBox = () => {
 
   const nodes = useAppSelector((s) => s.graph.data.nodes);
   const results = useGraphSearch(nodes, value, 200);
-  const { setCenter } = useReactFlow();
+  const focusNode = useFocusNode();
 
   const close = useCallback(() => setOpen(false), []);
   useDismiss(boxRef, close, open);
@@ -54,14 +54,13 @@ export const GraphSearchBox = () => {
 
   const selectNode = useCallback(
     (node: CustomNode) => {
-      setCenter(node.position.x, node.position.y, { zoom: 1.3, duration: 600 });
-      window.dispatchEvent(
-        new CustomEvent("highlight-node", { detail: node.id }),
-      );
+      // Узел не только оказывается в центре, но и выделяется — как будто по
+      // нему кликнули: иначе на плотном графе не видно, который нашёлся.
+      focusNode(node.id);
       setOpen(false);
       inputRef.current?.blur();
     },
-    [setCenter],
+    [focusNode],
   );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

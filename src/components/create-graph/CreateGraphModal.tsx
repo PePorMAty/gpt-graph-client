@@ -12,6 +12,7 @@ import { clearCanvas } from "../../utils/clearCanvas";
 import { AiModelSelect } from "../ai-model-select";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
+import { ConfirmUnsavedModal } from "../ui/ConfirmUnsavedModal";
 import { ChevronDownIcon } from "../icons";
 import styles from "./CreateGraphModal.module.css";
 
@@ -132,31 +133,15 @@ export const CreateGraphModal = ({
   // ── Вопрос о несохранённых правках ──
   if (pending) {
     return (
-      <Modal
+      <ConfirmUnsavedModal
         open
-        onClose={() => setPending(null)}
-        title="Текущий граф не сохранён"
-        size="s"
-        subtitle="Новый граф заменит то, что сейчас на полотне."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setPending(null)}>
-              Отмена
-            </Button>
-            <Button onClick={discardAndCreate} disabled={saving}>
-              Не сохранять
-            </Button>
-            <Button variant="primary" onClick={saveThenCreate} disabled={saving}>
-              {saving ? "Сохраняю…" : "Сохранить и создать"}
-            </Button>
-          </>
-        }
-      >
-        <p className={styles.confirmText}>
-          На полотне есть изменения, которых нет в сохранённом графе. Сохранить
-          их перед созданием нового графа?
-        </p>
-      </Modal>
+        action="созданием нового графа"
+        confirmLabel="Сохранить и создать"
+        saving={saving}
+        onCancel={() => setPending(null)}
+        onDiscard={discardAndCreate}
+        onSave={saveThenCreate}
+      />
     );
   }
 

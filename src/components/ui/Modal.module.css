@@ -24,11 +24,11 @@
 }
 
 .size_s {
-  max-width: 400px;
+  max-width: 440px;
 }
 
 .size_m {
-  max-width: 560px;
+  max-width: 600px;
 }
 
 .size_l {
@@ -93,6 +93,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  /* Три кнопки в ряд не всегда помещаются по ширине окна — тогда переносим,
+     иначе крайняя уезжала за край и обрезалась. */
+  flex-wrap: wrap;
   gap: var(--s-2);
   flex: 0 0 auto;
   padding: var(--s-3) var(--s-5);

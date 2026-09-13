@@ -43,7 +43,7 @@ export const SaveGraphModal: FC<SaveGraphModalProps> = ({
       open={isOpen}
       onClose={onClose}
       title={title}
-      size="s"
+      size={canUpdate ? "m" : "s"}
       subtitle={
         canUpdate
           ? `Открыт сохранённый граф «${openedName}». Обновить его или сохранить как новый?`

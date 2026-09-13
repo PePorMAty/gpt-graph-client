@@ -96,7 +96,7 @@
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  height: 36px;
+  height: var(--h-control);
   padding: 0 var(--s-3);
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border);
@@ -135,7 +135,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
-  height: 32px;
+  height: var(--h-control-sm);
   padding: 0 var(--s-3);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -221,37 +221,36 @@
 }
 
 .colObject {
-  width: 26%;
+  width: 28%;
 }
 
 .colDirection {
-  width: 18%;
+  width: 15%;
 }
 
 .colTitle {
-  width: 33%;
+  width: 32%;
 }
 
 .colLink {
-  width: 23%;
+  width: 25%;
 }
 
 .table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: var(--s-2) var(--s-3);
+  padding: var(--s-2);
   text-align: left;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--c-text-muted);
   background: var(--c-surface-soft);
   border-bottom: 1px solid var(--c-border-soft);
-  white-space: nowrap;
 }
 
 .table tbody td {
-  padding: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-2);
   border-bottom: 1px solid var(--c-border-soft);
   vertical-align: top;
 }
@@ -266,25 +265,27 @@
 
 .object {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-2);
   min-width: 0;
 }
 
 .objectIconProduct {
   flex: 0 0 auto;
+  margin-top: 2px;
   color: var(--c-product);
 }
 
 .objectIconTransform {
   flex: 0 0 auto;
+  margin-top: 2px;
   color: var(--c-transform);
 }
 
 .objectLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Перенос, а не многоточие: в узкой колонке «Жидкая …» ничего не говорит. */
+  overflow-wrap: break-word;
+  hyphens: auto;
   color: var(--c-text);
 }
 
@@ -332,7 +333,7 @@
 
 .link {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-1);
   min-width: 0;
   color: var(--c-brand-strong);
@@ -340,14 +341,126 @@
 
 .linkText {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 .linkIcon {
   flex: 0 0 auto;
+  margin-top: 3px;
   color: var(--c-text-faint);
+}
+
+/* ─── Таблица закладок ─── */
+
+.colBookmarkObject {
+  width: 34%;
+}
+
+.colBookmarkKind {
+  width: 25%;
+}
+
+.colBookmarkNote {
+  width: 29%;
+}
+
+.colBookmarkActions {
+  width: 12%;
+}
+
+.objectLink {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: inherit;
+  color: var(--c-text);
+  cursor: pointer;
+}
+
+.objectLink:hover .objectLinkLabel {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+.objectLinkLabel {
+  overflow-wrap: break-word;
+}
+
+.kindBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.kindProduct {
+  color: var(--c-brand-strong);
+  background: var(--c-product-soft);
+}
+
+.kindTransform {
+  color: #b45309;
+  background: var(--c-transform-soft);
+}
+
+.noteCell {
+  color: var(--c-text-soft);
+  overflow-wrap: break-word;
+}
+
+.notePlaceholder {
+  color: var(--c-text-faint);
+}
+
+.noteInput {
+  width: 100%;
+  padding: 4px var(--s-2);
+  font-size: var(--fs-md);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+}
+
+.noteInput:focus {
+  outline: none;
+  box-shadow: var(--sh-ring);
+}
+
+.actionsCell {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.rowBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  color: var(--c-text-faint);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.rowBtn:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-brand);
+}
+
+.rowBtnDanger:hover {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
 }
 
 /* ─── Группировка по объектам ─── */

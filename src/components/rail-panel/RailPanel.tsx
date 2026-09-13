@@ -3,6 +3,7 @@ import type { FC } from "react";
 import { useAppSelector } from "../../store/hooks";
 import type { RailSection } from "../left-rail/LeftRail";
 import { SourcesSection } from "./SourcesSection";
+import { BookmarksSection } from "./BookmarksSection";
 import {
   BookmarkIcon,
   ClockIcon,
@@ -26,12 +27,7 @@ interface SectionMeta {
 
 const SECTIONS: Partial<Record<RailSection, SectionMeta>> = {
   sources: { title: "Источники графа", Icon: DatabaseIcon },
-  bookmarks: {
-    title: "Закладки",
-    Icon: BookmarkIcon,
-    placeholder:
-      "Здесь будут сохранённые узлы и участки графа, чтобы быстро к ним возвращаться. Раздел ещё не подключён.",
-  },
+  bookmarks: { title: "Закладки графа", Icon: BookmarkIcon },
   history: {
     title: "История",
     Icon: ClockIcon,
@@ -82,6 +78,8 @@ export const RailPanel = ({ section, onClose }: RailPanelProps) => {
       <div className={styles.body}>
         {section === "sources" ? (
           <SourcesSection />
+        ) : section === "bookmarks" ? (
+          <BookmarksSection />
         ) : (
           <div className={styles.placeholder}>
             <Icon size={28} className={styles.placeholderIcon} />

@@ -18,9 +18,8 @@ import {
   LinkIcon,
   SearchIcon,
 } from "../icons";
-import styles from "./SourcesSection.module.css";
+import styles from "./PanelSection.module.css";
 
-type Tab = "all" | "byObject";
 type KindFilter = "all" | "product" | "transformation";
 
 const KIND_LABEL: Record<KindFilter, string> = {
@@ -84,7 +83,6 @@ const SourceLink = ({ url }: { url: string }) => (
  * База ГИСП сюда ещё не подключена — появится отдельной группой.
  */
 export const SourcesSection = () => {
-  const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [kindOpen, setKindOpen] = useState(false);
@@ -111,39 +109,10 @@ export const SourcesSection = () => {
     });
   }, [summary.rows, query, kind]);
 
-  // Группировка для вкладки «По объектам графа»: порядок групп — как в списке.
-  const grouped = useMemo(() => {
-    const map = new Map<string, GraphSourceRow[]>();
-    for (const row of filtered) {
-      const key = `${row.objectKind}::${row.objectLabel}`;
-      const arr = map.get(key) ?? [];
-      arr.push(row);
-      map.set(key, arr);
-    }
-    return [...map.values()];
-  }, [filtered]);
-
   const isEmpty = summary.rows.length === 0;
 
   return (
     <div className={styles.section}>
-      <div className={styles.tabs}>
-        <button
-          type="button"
-          className={`${styles.tab} ${tab === "all" ? styles.tabActive : ""}`}
-          onClick={() => setTab("all")}
-        >
-          Все источники ({summary.total})
-        </button>
-        <button
-          type="button"
-          className={`${styles.tab} ${tab === "byObject" ? styles.tabActive : ""}`}
-          onClick={() => setTab("byObject")}
-        >
-          По объектам графа
-        </button>
-      </div>
-
       <div className={styles.stats}>
         <div className={styles.stat}>
           <DatabaseIcon size={18} className={styles.statIcon} />
@@ -213,7 +182,7 @@ export const SourcesSection = () => {
         </div>
       ) : filtered.length === 0 ? (
         <div className={styles.empty}>Ничего не найдено.</div>
-      ) : tab === "all" ? (
+      ) : (
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <colgroup>
@@ -255,37 +224,6 @@ export const SourcesSection = () => {
             </tbody>
           </table>
         </div>
-      ) : (
-        <ul className={styles.groups}>
-          {grouped.map((rows) => (
-            <li key={rows[0].id} className={styles.group}>
-              <div className={styles.groupHead}>
-                <ObjectCell row={rows[0]} />
-                <DirectionBadge direction={rows[0].direction} />
-              </div>
-              {rows[0].inheritedFrom && (
-                <div className={styles.groupInherited}>
-                  Источники унаследованы от «{rows[0].inheritedFrom}»
-                </div>
-              )}
-              <ul className={styles.groupList}>
-                {rows.map((row) => (
-                  <li key={row.id} className={styles.groupItem}>
-                    <a
-                      href={row.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={styles.groupLink}
-                      title={row.url}
-                    >
-                      {row.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
       )}
 
       {!isEmpty && (

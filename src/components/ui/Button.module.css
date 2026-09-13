@@ -19,13 +19,13 @@
 }
 
 .size_m {
-  height: 38px;
+  height: var(--h-control);
   padding: 0 var(--s-4);
   font-size: var(--fs-base);
 }
 
 .size_s {
-  height: 30px;
+  height: var(--h-control-sm);
   padding: 0 var(--s-3);
   font-size: var(--fs-md);
 }

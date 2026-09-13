@@ -67,16 +67,24 @@ function Workspace() {
               : undefined
           }
         >
-          <Routes>
-            <Route path="/" element={<Flow />} />
-            <Route path="/library" element={<LibraryScreen />} />
-          </Routes>
+          {/* Полотно смонтировано всегда, «Библиотека» ложится поверх него.
+              Через роутер оно размонтировалось бы при каждом переходе, а на
+              обратном монтировании Flow поднимает граф из автосейва — из-за
+              этого только что открытый сохранённый граф подменялся прежним,
+              а камера улетала в другое место. */}
+          <Flow />
 
           {panelOpen && panelSection && (
             <RailPanel
               section={panelSection}
               onClose={() => setSection("graph")}
             />
+          )}
+
+          {!isGraphScreen && (
+            <div className={styles.screenOverlay}>
+              <LibraryScreen />
+            </div>
           )}
         </div>
       </div>
