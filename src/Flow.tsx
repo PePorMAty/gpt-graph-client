@@ -1347,7 +1347,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setTempNodeLabel(event.target.value);
     },
     [],
@@ -2543,7 +2543,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         />
         {/* Мини-карта крупнее и контрастнее обычного: на графах в сотни узлов
             мелкие точки сливались, и было не понять, какая часть графа сейчас
-            в кадре. Рамку кадра дополнительно обводим. */}
+            в кадре. Кадр выделен затемнением вокруг, без обводки. */}
         <MiniMap
           pannable
           zoomable
@@ -2554,8 +2554,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           nodeStrokeWidth={6}
           nodeBorderRadius={3}
           maskColor="rgba(71, 85, 105, 0.3)"
-          maskStrokeColor="#2563eb"
-          maskStrokeWidth={3}
           style={{ width: 260, height: 180 }}
         />
       </ReactFlow>

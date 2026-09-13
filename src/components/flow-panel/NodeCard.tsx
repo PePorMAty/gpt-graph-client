@@ -4,6 +4,8 @@ import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { FillCardBlock } from "./FillCardBlock";
 import { CollapsibleBlock } from "./CollapsibleBlock";
 import { NodeSourcesBlock } from "./NodeSourcesBlock";
+import { CardTitleField } from "./CardTitleField";
+import { KeyInfoBlock } from "./KeyInfoBlock";
 import { MarkdownEditor } from "../markdown-editor";
 import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
 import { useDismiss } from "../../hooks/useDismiss";
@@ -34,18 +36,23 @@ interface NodeCardProps extends FlowPanelProps {
   }>;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Короткий читаемый идентификатор узла.
+ * Идентификатор узла для шапки карточки.
  *
- * В данных у узлов UUID — показывать его целиком в шапке смысла нет. Берём
- * префикс по типу и первые шесть знаков идентификатора: это по-прежнему
- * настоящий id узла, просто в удобочитаемом виде.
+ * Узлы, пришедшие с сервера, несут UUID — целиком он в шапке не нужен, берём
+ * префикс по типу и первые шесть знаков. Узлы пошагового построения несут
+ * говорящий id (`tech_step::…`) — его показываем как есть, только укорачивая.
+ * В обоих случаях это настоящий id, а не выдуманный номер.
  */
 function shortNodeId(nodeId: string | null | undefined, type: string): string {
   if (!nodeId) return "—";
-  const prefix = type === "transformation" ? "tech" : "prod";
-  const tail = nodeId.replace(/-/g, "").slice(0, 6);
-  return `${prefix}_${tail}`;
+  if (UUID_RE.test(nodeId)) {
+    const prefix = type === "transformation" ? "tech" : "prod";
+    return `${prefix}_${nodeId.replace(/-/g, "").slice(0, 6)}`;
+  }
+  return nodeId.length > 26 ? `${nodeId.slice(0, 25)}…` : nodeId;
 }
 
 export const NodeCard: FC<NodeCardProps> = ({
@@ -88,6 +95,18 @@ export const NodeCard: FC<NodeCardProps> = ({
 }) => {
   const effectiveNodeType = nodeType || "product";
   const isProduct = effectiveNodeType === "product";
+  // Альтернатива — тоже узел-преобразование, но со своей семантикой:
+  // фиолетовая пробирка вместо оранжевой шестерёнки, как и на полотне.
+  const kind: "product" | "transformation" | "alt" = isAltNode
+    ? "alt"
+    : isProduct
+      ? "product"
+      : "transformation";
+  const KIND_LABEL = {
+    product: "Продукт",
+    transformation: "Технология",
+    alt: "Альтернатива",
+  } as const;
 
   const [tab, setTab] = useState<CardTab>("brief");
   const [buildOpen, setBuildOpen] = useState(false);
@@ -128,13 +147,17 @@ export const NodeCard: FC<NodeCardProps> = ({
   const tabs = useMemo(() => {
     const list: Array<{ id: CardTab; label: string }> = [
       { id: "brief", label: "Краткое описание" },
-      { id: "tech", label: "Технологическое описание" },
     ];
+    // У альтернативы нет ни карточки технологии, ни обобщения шага: её
+    // содержимое — одно markdown-описание варианта.
+    if (kind === "alt") return list;
+
+    list.push({ id: "tech", label: "Технологическое описание" });
     if (isProduct) list.push({ id: "industry", label: "Промышленные данные" });
     else if (hasAggregatedDesc)
       list.push({ id: "routes", label: "Технологические маршруты" });
     return list;
-  }, [isProduct, hasAggregatedDesc]);
+  }, [kind, isProduct, hasAggregatedDesc]);
 
   // Выбранная вкладка могла исчезнуть (сменился узел, обобщение не пришло).
   const activeTab = tabs.some((t) => t.id === tab) ? tab : "brief";
@@ -149,34 +172,29 @@ export const NodeCard: FC<NodeCardProps> = ({
         {/* ── Шапка ── */}
         <header className={styles.header}>
           <span
-            className={`${styles.avatar} ${
-              isProduct ? styles.avatarProduct : styles.avatarTransform
-            }`}
+            className={`${styles.avatar} ${styles[`avatar_${kind}`]}`}
             aria-hidden
           >
-            {isProduct ? <FlaskIcon size={22} /> : <GearIcon size={22} />}
+            {kind === "transformation" ? (
+              <GearIcon size={22} />
+            ) : (
+              <FlaskIcon size={22} />
+            )}
           </span>
 
           <div className={styles.headerMain}>
             <div className={styles.titleRow}>
-              <input
-                className={styles.titleInput}
+              <CardTitleField
                 value={value}
                 onChange={onChangeValue}
                 onBlur={onFieldBlur}
-                placeholder="Название узла"
                 readOnly={readOnly}
-                title="Название узла — можно править прямо здесь"
               />
-              <span
-                className={`${styles.kindBadge} ${
-                  isProduct ? styles.kindProduct : styles.kindTransform
-                }`}
-              >
-                {isProduct ? "Продукт" : "Технология"}
+              <span className={`${styles.kindBadge} ${styles[`kind_${kind}`]}`}>
+                {KIND_LABEL[kind]}
               </span>
             </div>
-            <div className={styles.nodeId}>
+            <div className={styles.nodeId} title={nodeId ?? undefined}>
               ID: {shortNodeId(nodeId, effectiveNodeType)}
             </div>
           </div>
@@ -304,6 +322,15 @@ export const NodeCard: FC<NodeCardProps> = ({
                   </div>
                 )}
               </CollapsibleBlock>
+
+              {/* Ключевая информация — параметры карточки технологии.
+                  У продукта их место занимают «Промышленные данные». */}
+              {kind === "transformation" && (
+                <KeyInfoBlock
+                  card={productCard}
+                  onEdit={() => setTab("tech")}
+                />
+              )}
 
               {/* Связанные продукты — только у продукта и только если есть. */}
               {isProduct && linkedProducts.length > 0 && (

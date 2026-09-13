@@ -1,12 +1,14 @@
 // src/components/flow-panel/FillCardBlock.tsx
 //
-// Блок «Технологическое описание»: выбор полей, редактор системного промпта и
-// вывод заполненной карточки.
+// Вкладка «Технологическое описание»: настройка запроса к модели и результат.
 //
-// У продукта блок живёт внизу карточки и выводит поля списком (как раньше).
-// У преобразования он переехал во вкладку «Технологическое описание» и выводит
-// результат двумя блоками: краткое описание технологии и таблица «Основные
-// параметры» из остальных полей.
+// Настройки свёрнуты за кнопкой «Изменить промпт» — по умолчанию видно только
+// действие. У продукта и преобразования набор полей разный, но форма одна.
+//
+// Параметры карточки преобразования («Оборудование», «Условия» и прочие)
+// показывает блок «Ключевая информация» во вкладке «Краткое описание»: они
+// приходят тем же запросом, но читают их в другом месте. Здесь остаётся
+// собственно описание технологии, а у продукта — все поля списком.
 
 import { useEffect, useMemo, useState, type FC } from "react";
 import type { ProductCard } from "../../store/types";
@@ -18,11 +20,15 @@ import {
   type FillCardField,
 } from "../../prompts/fillCardPrompts";
 import { AiModelSelect } from "../ai-model-select";
+import { PencilIcon } from "../icons";
 
-import styles from "./FlowPanel.module.css";
+import styles from "./FillCardBlock.module.css";
 
 /** Поле, которое у преобразования показываем отдельным блоком-описанием. */
 const TECH_DESCRIPTION_KEY = "technology_short_description";
+
+/** Мягкий предел длины промпта — только для счётчика под полем. */
+const PROMPT_LIMIT = 4000;
 
 export interface FillCardBlockProps {
   nodeType: string;
@@ -32,9 +38,15 @@ export interface FillCardBlockProps {
   productCard?: ProductCard | null;
   /** Только просмотр: настройки и кнопку прячем, заполненную карточку показываем. */
   readOnly?: boolean;
-  /** "list" — плоский список полей (продукт); "tech" — блоки карточки преобразования. */
+  /** "list" — плоский список полей (продукт); "tech" — описание технологии. */
   layout?: "list" | "tech";
 }
+
+const Hint: FC<{ text: string }> = ({ text }) => (
+  <span className={styles.hint} title={text} aria-label={text}>
+    i
+  </span>
+);
 
 export const FillCardBlock: FC<FillCardBlockProps> = ({
   nodeType,
@@ -74,7 +86,7 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
   );
 
   // ── редактор промпта ──
-  const [promptOpen, setPromptOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [manualPrompt, setManualPrompt] = useState<string | null>(null);
   const [useWebSearch, setUseWebSearch] = useState(false);
 
@@ -94,7 +106,7 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
     setSelectedKeys(new Set(fields.map((f) => f.key)));
     setCustomFields([]);
     setManualPrompt(null);
-    setPromptOpen(false);
+    setSettingsOpen(false);
     setNewFieldLabel("");
   }, [nodeType]);
 
@@ -150,38 +162,41 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
   };
 
   const hasCard = productCardStatus === "succeeded" && !!productCard;
+  const isLoading = productCardStatus === "loading";
 
   return (
-    <div className={styles.formGroup}>
+    <div className={styles.block}>
       {!readOnly && (
         <>
           <button
             type="button"
-            onClick={() => setPromptOpen((v) => !v)}
+            onClick={() => setSettingsOpen((v) => !v)}
             className={styles.promptToggle}
           >
-            {promptOpen ? "Скрыть настройки промпта" : "Настроить промпт"}
+            <PencilIcon size={15} />
+            {settingsOpen ? "Скрыть настройки" : "Изменить промпт"}
           </button>
 
-          {promptOpen && (
-            <div className={styles.promptEditor}>
-              {/* выбор полей карточки */}
-              <div className={styles.fieldSection}>
-                <div className={styles.fieldSectionHeader}>
-                  <span className={styles.fieldSectionTitle}>
+          {settingsOpen && (
+            <div className={styles.settings}>
+              {/* ── Поля карточки ── */}
+              <section className={styles.section}>
+                <div className={styles.sectionHead}>
+                  <span className={styles.sectionTitle}>
                     Поля карточки
+                    <Hint text="Модель заполнит только отмеченные поля. Можно добавить своё." />
                   </span>
-                  <div className={styles.fieldBulkActions}>
+                  <div className={styles.sectionActions}>
                     <button
                       type="button"
-                      className={styles.fieldBulkBtn}
+                      className={styles.smallBtn}
                       onClick={handleSelectAll}
                     >
                       Все
                     </button>
                     <button
                       type="button"
-                      className={styles.fieldBulkBtn}
+                      className={styles.smallBtn}
                       onClick={handleDeselectAll}
                     >
                       Ничего
@@ -189,112 +204,164 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
                   </div>
                 </div>
 
-                <div className={styles.fieldGrid}>
-                  {allFields.map((f) => (
-                    <label key={f.key} className={styles.fieldCheckbox}>
-                      <input
-                        type="checkbox"
-                        checked={selectedKeys.has(f.key)}
-                        onChange={() => handleToggleField(f.key)}
-                      />
-                      <span className={styles.fieldLabel}>{f.label}</span>
-                      {f.custom && (
-                        <button
-                          type="button"
-                          className={styles.fieldRemoveBtn}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleRemoveCustomField(f.key);
-                          }}
-                          title="Удалить поле"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </label>
-                  ))}
+                <div className={styles.fieldBox}>
+                  <div className={styles.fieldGrid}>
+                    {allFields.map((f) => (
+                      <label key={f.key} className={styles.fieldCheckbox}>
+                        <input
+                          type="checkbox"
+                          checked={selectedKeys.has(f.key)}
+                          onChange={() => handleToggleField(f.key)}
+                        />
+                        <span className={styles.fieldLabel}>{f.label}</span>
+                        {f.custom && (
+                          <button
+                            type="button"
+                            className={styles.fieldRemoveBtn}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleRemoveCustomField(f.key);
+                            }}
+                            title="Удалить поле"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className={styles.addFieldRow}>
+                    <input
+                      type="text"
+                      value={newFieldLabel}
+                      onChange={(e) => setNewFieldLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddField();
+                        }
+                      }}
+                      className={styles.addFieldInput}
+                      placeholder="Своё поле…"
+                    />
+                    <button
+                      type="button"
+                      className={styles.addFieldBtn}
+                      onClick={handleAddField}
+                      disabled={!newFieldLabel.trim()}
+                      aria-label="Добавить поле"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Модель ── */}
+              <section className={styles.section}>
+                <span className={styles.sectionTitle}>
+                  Модель для запроса
+                  <Hint text="Выбор действует на все запросы к модели в приложении." />
+                </span>
+                <AiModelSelect stage="card" label="" />
+              </section>
+
+              {/* ── Системный промпт ── */}
+              <section className={styles.section}>
+                <div className={styles.sectionHead}>
+                  <span className={styles.sectionTitle}>
+                    Системный промпт
+                    <Hint text="Инструкция модели. Собирается из выбранных полей; можно переписать." />
+                  </span>
+                  {isPromptDirty && (
+                    <div className={styles.sectionActions}>
+                      <button
+                        type="button"
+                        className={styles.smallBtn}
+                        onClick={() => setManualPrompt(null)}
+                      >
+                        Вставить шаблон
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* своё поле */}
-                <div className={styles.addFieldRow}>
-                  <input
-                    type="text"
-                    value={newFieldLabel}
-                    onChange={(e) => setNewFieldLabel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddField();
-                      }
-                    }}
-                    className={styles.addFieldInput}
-                    placeholder="Новое поле..."
+                <div className={styles.promptWrap}>
+                  <textarea
+                    value={displayedPrompt}
+                    onChange={(e) => setManualPrompt(e.target.value)}
+                    className={styles.promptTextarea}
                   />
-                  <button
-                    type="button"
-                    className={styles.addFieldBtn}
-                    onClick={handleAddField}
-                    disabled={!newFieldLabel.trim()}
-                  >
-                    +
-                  </button>
                 </div>
-              </div>
-
-              <AiModelSelect stage="card" />
-              <label className={styles.promptLabel}>Системный промпт:</label>
-              <textarea
-                value={displayedPrompt}
-                onChange={(e) => setManualPrompt(e.target.value)}
-                className={styles.promptTextarea}
-                rows={12}
-              />
-              {isPromptDirty && (
-                <button
-                  type="button"
-                  className={styles.promptResetBtn}
-                  onClick={() => setManualPrompt(null)}
+                <span
+                  className={`${styles.counter} ${
+                    displayedPrompt.length > PROMPT_LIMIT
+                      ? styles.counterOver
+                      : ""
+                  }`}
                 >
-                  Сбросить промпт
-                </button>
-              )}
+                  {displayedPrompt.length} / {PROMPT_LIMIT}
+                </span>
+              </section>
 
-              <label className={styles.webSearchToggle}>
+              {/* ── Веб-поиск ── */}
+              <label className={styles.switchRow}>
                 <input
                   type="checkbox"
                   checked={useWebSearch}
                   onChange={(e) => setUseWebSearch(e.target.checked)}
                 />
+                <span
+                  className={`${styles.switch} ${useWebSearch ? styles.switchOn : ""}`}
+                  aria-hidden
+                >
+                  <span className={styles.switchKnob} />
+                </span>
                 Искать в интернете (web search)
+                <Hint text="Модель дополнит ответ данными из сети. Запрос идёт дольше." />
               </label>
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handleFillCard}
-            disabled={
-              !onBuildProductCard ||
-              productCardStatus === "loading" ||
-              activeFields.length === 0
-            }
-            className={`${styles.findSourcesButton} ${styles.primaryButton}`}
-          >
-            {productCardStatus === "loading"
-              ? "Получаю описание…"
-              : isPromptDirty || fieldsReduced
-                ? "Получить описание (свой промпт)"
-                : "Получить описание"}
-          </button>
+          <div className={styles.actions}>
+            {settingsOpen && (
+              <button
+                type="button"
+                className={styles.actionSecondary}
+                onClick={() => {
+                  setManualPrompt(null);
+                  handleSelectAll();
+                }}
+                disabled={!isPromptDirty && !fieldsReduced}
+              >
+                Сбросить к шаблону
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleFillCard}
+              disabled={
+                !onBuildProductCard || isLoading || activeFields.length === 0
+              }
+              className={styles.actionPrimary}
+            >
+              {isLoading
+                ? "Получаю описание…"
+                : hasCard
+                  ? "Обновить описание"
+                  : "Получить описание"}
+            </button>
+          </div>
 
           {productCardStatus === "failed" && productCardError && (
-            <div className={styles.errorText}>Ошибка: {productCardError}</div>
+            <div className={styles.error}>Ошибка: {productCardError}</div>
           )}
         </>
       )}
 
       {readOnly && !hasCard && (
-        <div className={styles.techHint}>Карточка не заполнена.</div>
+        <div className={styles.emptyHint}>Описание не заполнено.</div>
       )}
 
       {hasCard &&
@@ -324,55 +391,45 @@ function cardRows(
   return rows;
 }
 
-/** Прежний вид карточки продукта: заголовок поля + значение под ним. */
+/** Карточка продукта: все поля таблицей «поле → значение». */
 const ListCardView: FC<{ card: ProductCard; fields: FillCardField[] }> = ({
   card,
   fields,
 }) => (
-  <div className={styles.sourcesBox}>
-    <div className={styles.sourcesTitle}>Карточка</div>
-    {cardRows(card, fields).map(({ key, label, value }) => (
-      <div key={key} style={{ marginTop: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.9 }}>
-          <b>{label}</b>
-        </div>
-        <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{value}</div>
-      </div>
-    ))}
+  <div className={styles.result}>
+    <div className={styles.resultBlock}>
+      <div className={styles.resultTitle}>Карточка продукта</div>
+      <dl className={styles.params}>
+        {cardRows(card, fields).map(({ key, label, value }) => (
+          <div key={key} className={styles.paramRow}>
+            <dt className={styles.paramName}>{label}</dt>
+            <dd className={styles.paramValue}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   </div>
 );
 
-/** Карточка преобразования: описание технологии + таблица параметров. */
+/**
+ * Карточка преобразования: здесь только описание технологии — параметры
+ * читаются в блоке «Ключевая информация» вкладки «Краткое описание».
+ */
 const TechCardView: FC<{ card: ProductCard; fields: FillCardField[] }> = ({
   card,
   fields,
 }) => {
   const rows = cardRows(card, fields);
   const description = rows.find((r) => r.key === TECH_DESCRIPTION_KEY);
-  const params = rows.filter((r) => r.key !== TECH_DESCRIPTION_KEY);
+
+  if (!description) return null;
 
   return (
-    <>
-      {description && (
-        <div className={styles.cardBlock}>
-          <div className={styles.cardBlockTitle}>Технологическое описание</div>
-          <div className={styles.cardBlockText}>{description.value}</div>
-        </div>
-      )}
-
-      {params.length > 0 && (
-        <div className={styles.cardBlock}>
-          <div className={styles.cardBlockTitle}>Основные параметры</div>
-          <dl className={styles.cardParams}>
-            {params.map(({ key, label, value }) => (
-              <div key={key} className={styles.cardParamRow}>
-                <dt className={styles.cardParamName}>{label}</dt>
-                <dd className={styles.cardParamValue}>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      )}
-    </>
+    <div className={styles.result}>
+      <div className={styles.resultBlock}>
+        <div className={styles.resultTitle}>Технологическое описание</div>
+        <div className={styles.resultText}>{description.value}</div>
+      </div>
+    </div>
   );
 };

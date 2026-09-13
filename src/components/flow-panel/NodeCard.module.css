@@ -48,14 +48,21 @@
   border-radius: var(--r-md);
 }
 
-.avatarProduct {
+.avatar_product {
   color: var(--c-product);
   background: var(--c-product-soft);
 }
 
-.avatarTransform {
+.avatar_transformation {
   color: var(--c-transform);
   background: var(--c-transform-soft);
+}
+
+/* Альтернатива — та же пробирка, что у продукта, но в её фиолетовом цвете:
+   на полотне альтернативы окрашены так же. */
+.avatar_alt {
+  color: var(--c-alt);
+  background: var(--c-alt-soft);
 }
 
 .headerMain {
@@ -65,23 +72,29 @@
 
 .titleRow {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-2);
   min-width: 0;
 }
 
-/* Название правится прямо в шапке: отдельного поля «Название узла» больше нет. */
+/* Название правится прямо в шапке: отдельного поля «Название узла» больше нет.
+   Это textarea — длинные названия переносятся на следующую строку, а не
+   обрезаются многоточием. */
 .titleInput {
   flex: 1 1 auto;
   min-width: 0;
   padding: 2px var(--s-2);
   margin-left: calc(var(--s-2) * -1);
+  font-family: inherit;
   font-size: var(--fs-lg);
   font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
   color: var(--c-text);
   background: none;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
+  resize: none;
+  overflow: hidden;
   transition: background var(--t-fast) var(--ease),
     border-color var(--t-fast) var(--ease);
 }
@@ -99,6 +112,7 @@
 
 .kindBadge {
   flex: 0 0 auto;
+  margin-top: 3px;
   padding: 3px 10px;
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
@@ -106,14 +120,19 @@
   white-space: nowrap;
 }
 
-.kindProduct {
+.kind_product {
   color: var(--c-brand-strong);
   background: var(--c-product-soft);
 }
 
-.kindTransform {
+.kind_transformation {
   color: #b45309;
   background: var(--c-transform-soft);
+}
+
+.kind_alt {
+  color: #7e22ce;
+  background: var(--c-alt-soft);
 }
 
 .nodeId {
@@ -373,6 +392,32 @@
   outline: none;
   border-color: var(--c-brand);
   box-shadow: var(--sh-ring);
+}
+
+/* ─── Ключевая информация ─── */
+
+.keyInfo {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr;
+  gap: var(--s-2) var(--s-3);
+}
+
+.keyInfoRow {
+  display: contents;
+}
+
+.keyInfoLabel {
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+}
+
+.keyInfoValue {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  overflow-wrap: break-word;
 }
 
 /* ─── Связанные продукты ─── */

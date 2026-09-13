@@ -160,7 +160,10 @@ export interface FlowPanelProps {
   onClose: () => void;
   isOpen: boolean;
   value: string;
-  onChangeValue: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Название правится в шапке карточки, поле там многострочное. */
+  onChangeValue: (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => void;
   descriptionValue: string;
   onChangeDescription: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onFieldBlur?: () => void; // Сохранение при потере фокуса поля имени/описания
