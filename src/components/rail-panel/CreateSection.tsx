@@ -4,7 +4,9 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
   getGraphData,
   getPromptLayoutFromServer,
+  savePromptLayoutToServer,
 } from "../../store/api/graph-api";
+import { showToast } from "../toast/toastStore";
 import { addNode, setGraphName } from "../../store/slices/gptSlice";
 import { useSaveGraph } from "../../hooks/useSaveGraph";
 import { graphSignature } from "../../utils/graphSignature";
@@ -47,6 +49,7 @@ export const CreateSection = ({ onDone }: CreateSectionProps) => {
   const [manualName, setManualName] = useState("");
   const [promptLayout, setPromptLayout] = useState("");
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [savingLayout, setSavingLayout] = useState(false);
   // Запрошенное создание ждёт ответа на вопрос о несохранённых правках.
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [saving, setSaving] = useState(false);
@@ -72,6 +75,20 @@ export const CreateSection = ({ onDone }: CreateSectionProps) => {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [promptLayout, layoutOpen]);
+
+  /** Запомнить шаблон на сервере — иначе правка живёт до закрытия раздела. */
+  const savePromptLayout = async () => {
+    setSavingLayout(true);
+    try {
+      await savePromptLayoutToServer(promptLayout);
+      showToast("success", "Шаблон промта сохранён");
+    } catch (e) {
+      console.error("Ошибка сохранения шаблона промта:", e);
+      showToast("error", "Не удалось сохранить шаблон промта");
+    } finally {
+      setSavingLayout(false);
+    }
+  };
 
   const createByPrompt = (value: string) => {
     clearCanvas(dispatch);
@@ -200,9 +217,18 @@ export const CreateSection = ({ onDone }: CreateSectionProps) => {
                   placeholder="Введите или измените шаблон промта…"
                   disabled={isLoading}
                 />
-                <Button size="s" onClick={() => setPromptLayout("")}>
-                  Сбросить шаблон
-                </Button>
+                <div className={styles.layoutActions}>
+                  <Button
+                    size="s"
+                    onClick={savePromptLayout}
+                    disabled={savingLayout || isLoading}
+                  >
+                    {savingLayout ? "Сохранение…" : "Сохранить шаблон"}
+                  </Button>
+                  <Button size="s" onClick={() => setPromptLayout("")}>
+                    Сбросить шаблон
+                  </Button>
+                </div>
               </>
             )}
           </div>

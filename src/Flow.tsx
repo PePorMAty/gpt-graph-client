@@ -34,6 +34,7 @@ import {
   addSourcesToPool,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
+import { openGraphExtras } from "./store/graphExtras";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -196,6 +197,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // «Обновить …» продолжит писать в тот же файл.
       if (saved.openedGraph?.id) {
         dispatch(setOpenedGraph(saved.openedGraph));
+        // Закладки и история графа лежат на сервере: после перезагрузки
+        // вкладки поднимаем их оттуда, а не начинаем с пустых списков.
+        dispatch(openGraphExtras(saved.openedGraph.id));
       }
     } catch { /* ignore corrupted data */ }
   }, []);

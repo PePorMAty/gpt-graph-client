@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import type { FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import {
-  clearHistory,
-  type HistoryEntry,
-  type HistoryKind,
+import type {
+  HistoryEntry,
+  HistoryKind,
 } from "../../store/slices/historySlice";
+import { clearHistoryEverywhere } from "../../store/graphExtras";
 import { useFocusNode } from "../../hooks/useFocusNode";
 import {
   BranchIcon,
@@ -250,7 +250,7 @@ export const HistorySection = () => {
         <button
           type="button"
           className={styles.footerBtn}
-          onClick={() => dispatch(clearHistory())}
+          onClick={() => dispatch(clearHistoryEverywhere())}
         >
           Очистить историю
         </button>

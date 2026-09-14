@@ -1,18 +1,9 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
 import { loadGraphFromFile, setGraphData, removeNodes } from "./gptSlice";
+import type { Bookmark, BookmarkKind } from "../types";
 
-export type BookmarkKind = "product" | "transformation";
-
-export interface Bookmark {
-  /** id узла на полотне. Ключ закладки. */
-  nodeId: string;
-  label: string;
-  kind: BookmarkKind;
-  /** Заметка пользователя — правится карандашом в панели закладок. */
-  note: string;
-  createdAt: string;
-}
+export type { Bookmark, BookmarkKind };
 
 interface BookmarksState {
   items: Bookmark[];
@@ -23,10 +14,14 @@ const initialState: BookmarksState = { items: [] };
 /**
  * Закладки текущего графа: узлы, к которым нужно быстро возвращаться.
  *
- * Живут только в памяти сессии и привязаны к id узлов текущего полотна:
- * смена графа (загрузка сейва, очистка) их сбрасывает, удаление узла убирает
- * его закладку. В файл графа они пока не сохраняются — для этого понадобится
- * поле в формате сейва на сервере.
+ * Привязаны к id узлов текущего полотна: смена графа их сбрасывает, удаление
+ * узла убирает его закладку.
+ *
+ * У сохранённого графа закладки живут на сервере: graphExtrasMiddleware
+ * отправляет туда каждую правку, а при открытии графа они подтягиваются
+ * обратно (см. openGraphExtras). Пока полотно не сохранено, сервера у него нет
+ * — закладки остаются в памяти вкладки и уезжают на сервер при первом
+ * сохранении.
  */
 const bookmarksSlice = createSlice({
   name: "bookmarks",
@@ -74,6 +69,11 @@ const bookmarksSlice = createSlice({
     clearBookmarks: (state) => {
       state.items = [];
     },
+
+    /** Положить закладки, пришедшие с сервера при открытии графа. */
+    setBookmarks: (state, action: PayloadAction<Bookmark[]>) => {
+      state.items = action.payload;
+    },
   },
 
   extraReducers: (builder) => {
@@ -99,6 +99,7 @@ export const {
   setBookmarkNote,
   syncBookmarkLabels,
   clearBookmarks,
+  setBookmarks,
 } = bookmarksSlice.actions;
 
 export default bookmarksSlice.reducer;

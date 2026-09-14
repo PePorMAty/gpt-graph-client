@@ -57,6 +57,18 @@ export const getPromptLayoutFromServer = async (): Promise<string> => {
   return response.data.promptLayout;
 };
 
+/**
+ * Сохранить правленый шаблон промта. Без этого правка в поле живёт только до
+ * закрытия раздела: следующее открытие снова тянет шаблон с сервера.
+ */
+export const savePromptLayoutToServer = async (
+  promptLayout: string,
+): Promise<void> => {
+  await axios.put(`${import.meta.env.VITE_API_URL}/graphs/prompt-layout`, {
+    promptLayout,
+  });
+};
+
 export const continueGraph = createAsyncThunk<
   GPTGraphResponse, // <— тип ответа
   { selectedLeafNodes: string[] }, // <— тип аргументов

@@ -123,6 +123,13 @@
   transform: rotate(0deg);
 }
 
+/* Кнопки под шаблоном промта: в узкой панели переносятся на вторую строку. */
+.layoutActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
 .textarea {
   width: 100%;
   min-height: 160px;
