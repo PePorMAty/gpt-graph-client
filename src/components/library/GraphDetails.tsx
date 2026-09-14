@@ -11,6 +11,7 @@ import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
+import { Pagination, usePaged } from "../ui/Pagination";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -134,6 +135,9 @@ export const GraphDetails = ({
         r.objectLabel.toLowerCase().includes(q),
     );
   }, [sources, query]);
+
+  // Источников бывают сотни: сплошная прокрутка в такой таблице бесполезна.
+  const pagedSources = usePaged(filteredSources);
 
   // Описание правится отдельно от промта; у графов, сохранённых до появления
   // поля, его нет — там показываем исходный промт, как и раньше.
@@ -383,7 +387,7 @@ export const GraphDetails = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSources.map((row) => (
+                    {pagedSources.slice.map((row) => (
                       <tr key={row.id}>
                         <td>
                           <span className={styles.objectCell}>
@@ -433,6 +437,16 @@ export const GraphDetails = ({
                 </table>
               </div>
             )}
+
+            <Pagination
+              page={pagedSources.page}
+              pages={pagedSources.pages}
+              from={pagedSources.from}
+              to={pagedSources.to}
+              total={pagedSources.total}
+              onChange={pagedSources.setPage}
+              unit="источников"
+            />
           </>
         )}
 

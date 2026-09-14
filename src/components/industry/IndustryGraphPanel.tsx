@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryProducer } from "../../store/api/industry-api";
 import { GISP_REGISTRY_URL } from "./gisp";
+import { Pagination, usePaged } from "../ui/Pagination";
 import {
   IndustryDataIcon,
   ShieldCheckIcon,
@@ -27,6 +28,14 @@ type StatusFilter = "all" | "active" | "archived";
 interface Props {
   /** Названия продуктов текущего графа. */
   productNames: string[];
+  /**
+   * Узкая раскладка для левой панели.
+   *
+   * В библиотеке под таблицу отдан весь экран, и шесть колонок читаются. В
+   * рельсе ширины около 420 пикселей: там те же колонки уезжают за край вместе
+   * со статусом и номером записи, поэтому запись показываем карточкой.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -37,7 +46,7 @@ interface Props {
  * Поэтому таблица плоская — запись на строку, — с поиском и отборами: на
  * большом графе записей набираются сотни.
  */
-export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
+export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false }) => {
   const dispatch = useAppDispatch();
   const { results, ready, reason, actualAt, status, error } = useAppSelector(
     (s) => s.industry,
@@ -97,6 +106,9 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
       );
     });
   }, [rows, query, product, region, statusFilter]);
+
+  // Реестровых записей на большом графе набираются сотни.
+  const paged = usePaged(visible);
 
   const loading = status === "loading";
 
@@ -255,6 +267,49 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
         </button>
       )}
 
+      {compact ? (
+        <ul className={styles.cards}>
+          {paged.slice.map((r, i) => (
+            <li key={`${r.inn ?? r.producer}-${r.regNumber ?? r.product}-${i}`} className={styles.card}>
+              <div className={styles.cardHead}>
+                <span className={styles.producer} title={r.producerFull ?? undefined}>
+                  {r.producer}
+                </span>
+                <span
+                  className={`${styles.status} ${
+                    r.status === "active" ? styles.statusActive : styles.statusArchived
+                  }`}
+                >
+                  {r.statusLabel}
+                </span>
+              </div>
+              <span className={styles.product}>{r.product}</span>
+              <div className={styles.cardMeta}>
+                {r.inn && <span className={styles.inn}>ИНН {r.inn}</span>}
+                {r.region && (
+                  <span
+                    className={r.regionFromInn ? styles.regionGuess : undefined}
+                    title={
+                      r.regionFromInn
+                        ? "Определён по ИНН — это регион учёта организации, " +
+                          "а не обязательно место производства"
+                        : undefined
+                    }
+                  >
+                    {r.region}
+                  </span>
+                )}
+                {r.regNumber && <span>№ {r.regNumber}</span>}
+              </div>
+            </li>
+          ))}
+          {!visible.length && (
+            <li className={styles.emptyRows}>
+              По этим условиям записей нет. Снимите отбор или измените запрос.
+            </li>
+          )}
+        </ul>
+      ) : (
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -268,7 +323,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
             </tr>
           </thead>
           <tbody>
-            {visible.map((r, i) => (
+            {paged.slice.map((r, i) => (
               <tr key={`${r.inn ?? r.producer}-${r.regNumber ?? r.product}-${i}`}>
                 <td>
                   <span className={styles.producer} title={r.producerFull ?? undefined}>
@@ -340,6 +395,17 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
           </p>
         )}
       </div>
+      )}
+
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        from={paged.from}
+        to={paged.to}
+        total={paged.total}
+        onChange={paged.setPage}
+        unit="записей"
+      />
 
       <p className={styles.foot}>
         Источник: Реестр российской промышленной продукции (ПП №719), ГИСП

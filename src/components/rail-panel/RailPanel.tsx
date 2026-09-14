@@ -2,7 +2,7 @@ import type { FC } from "react";
 
 import { useAppSelector } from "../../store/hooks";
 import type { RailSection } from "../left-rail/LeftRail";
-import { SourcesSection } from "./SourcesSection";
+import { DatabaseSection } from "./DatabaseSection";
 import { BookmarksSection } from "./BookmarksSection";
 import { CreateSection } from "./CreateSection";
 import { HistorySection } from "./HistorySection";
@@ -28,7 +28,7 @@ interface SectionMeta {
 
 const SECTIONS: Partial<Record<RailSection, SectionMeta>> = {
   create: { title: "Создание графа", Icon: PlusIcon },
-  sources: { title: "Источники графа", Icon: DatabaseIcon },
+  sources: { title: "База данных", Icon: DatabaseIcon },
   bookmarks: { title: "Закладки графа", Icon: BookmarkIcon },
   history: { title: "История действий", Icon: ClockIcon },
 };
@@ -80,7 +80,7 @@ export const RailPanel = ({ section, onClose }: RailPanelProps) => {
         {section === "create" ? (
           <CreateSection onDone={onClose} />
         ) : section === "sources" ? (
-          <SourcesSection />
+          <DatabaseSection />
         ) : section === "bookmarks" ? (
           <BookmarksSection />
         ) : (

@@ -15,6 +15,7 @@ import {
   LinkIcon,
   SearchIcon,
 } from "../icons";
+import { Pagination, usePaged } from "../ui/Pagination";
 import styles from "./PanelSection.module.css";
 
 const DirectionBadge = ({ direction }: { direction: "up" | "down" | null }) => {
@@ -94,6 +95,9 @@ export const SourcesSection = () => {
     );
   }, [summary.rows, query]);
 
+  // Источников бывают сотни: листать их сплошной прокруткой бессмысленно.
+  const paged = usePaged(filtered);
+
   const isEmpty = summary.rows.length === 0;
 
   return (
@@ -144,7 +148,7 @@ export const SourcesSection = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
+              {paged.slice.map((row) => (
                 <tr key={row.id}>
                   <td>
                     <ObjectCell row={row} />
@@ -169,6 +173,16 @@ export const SourcesSection = () => {
           </table>
         </div>
       )}
+
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        from={paged.from}
+        to={paged.to}
+        total={paged.total}
+        onChange={paged.setPage}
+        unit="источников"
+      />
 
       {!isEmpty && (
         <div className={styles.footer}>
