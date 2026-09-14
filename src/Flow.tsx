@@ -36,6 +36,7 @@ import {
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
 import { openGraphExtras } from "./store/graphExtras";
+import { checkIndustry, industryKey } from "./store/slices/industrySlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -215,6 +216,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [data.nodes],
   );
 
+
   // When new nodes appear, wait for React Flow to measure them in the DOM,
   // then force-update all handle positions so edges connect correctly.
   useEffect(() => {
@@ -261,9 +263,38 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [paneMenu, setPaneMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
-  // Слой данных ГИСП. Подключения к базе ещё нет, поэтому включённый слой
-  // пока ничего не рисует — узлы не несут признака подтверждения.
+  // Слой данных ГИСП: бейджи с числом производителей у продуктов. Сам граф от
+  // включения не перестраивается — это именно слой поверх него.
   const [industryData, setIndustryData] = useState(true);
+
+  /* ── Слой промышленных данных (ГИСП) ── */
+
+  const industryResults = useAppSelector((s) => s.industry.results);
+
+  // Названия продуктов полотна. Ключ строкой — чтобы проверка запускалась от
+  // смены самого набора продуктов, а не от каждой правки координат.
+  const productNames = useMemo(
+    () =>
+      [
+        ...new Set(
+          data.nodes
+            .filter((n) => n.type === "product")
+            .map((n) => String(n.data?.label ?? "").trim())
+            .filter(Boolean),
+        ),
+      ].sort(),
+    [data.nodes],
+  );
+  const productNamesKey = productNames.join("|");
+
+  // Спрашиваем реестр, когда слой включён. Санк сам отбрасывает уже known
+  // названия, поэтому повторные включения тумблера ничего не стоят.
+  useEffect(() => {
+    if (!industryData || !productNames.length) return;
+    dispatch(checkIndustry(productNames));
+    // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [industryData, productNamesKey, dispatch]);
   // Показывать альтернативные маршруты (alt-узлы и их связи).
   const [showAlternatives, setShowAlternatives] = useState(true);
 
@@ -759,8 +790,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             sourcesPool[poolKey(lbl, "up")],
           );
           const hasBadge = badge.up > 0 || badge.down > 0;
-          // Слой ГИСП: узел сам решает, показывать ли бейдж — пока база не
-          // подключена, gispProducers ни у кого нет и бейдж не появляется.
+          // Слой ГИСП: число производителей из реестра. Пока продукт не
+          // проверен, поля нет — узел бейдж не рисует.
+          const gisp = industryResults[industryKey(lbl)];
           return {
             ...n,
             className: cls,
@@ -769,6 +801,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
               showIndustryData: industryData,
+              ...(gisp
+                ? {
+                    gispProducers: gisp.producerCount,
+                    gispConfirmed: gisp.found,
+                  }
+                : {}),
             },
           };
         }
@@ -787,6 +825,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       sourcesPool,
       showAlternatives,
       industryData,
+      industryResults,
     ],
   );
 

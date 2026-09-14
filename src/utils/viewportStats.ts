@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import { industryKey } from "../store/slices/industrySlice";
 import { estimateNodeSize } from "../components/nodes/nodeBox";
 
 export interface ViewportStats {
@@ -130,6 +131,14 @@ export function computeViewportStats(
   nodes: CustomNode[],
   edges: Edge[],
   view: ViewportRect,
+  /**
+   * Продукты, найденные в реестре ГИСП, — по нормализованному названию.
+   *
+   * Слой промышленных данных производный: он не хранится в узлах, иначе
+   * сохранённый граф носил бы в себе устаревший срез реестра. Поэтому
+   * подтверждённые продукты приходят сюда отдельным набором.
+   */
+  confirmedNames?: ReadonlySet<string>,
 ): ViewportStats {
   if (!nodes.length || !view.width || !view.height) {
     return { nodes: 0, edges: 0, chainLength: 0, confirmed: 0 };
@@ -142,11 +151,13 @@ export function computeViewportStats(
     (e) => visibleIds.has(e.source) && visibleIds.has(e.target),
   ).length;
 
-  // Подключения к базе ГИСП пока нет: узлы не несут признака подтверждения,
-  // поэтому счётчик честно показывает 0, а не выдуманное число.
-  const confirmed = visible.filter(
-    (n) => n.type === "product" && n.data?.gispConfirmed === true,
-  ).length;
+  const confirmed = confirmedNames?.size
+    ? visible.filter(
+        (n) =>
+          n.type === "product" &&
+          confirmedNames.has(industryKey(String(n.data?.label ?? ""))),
+      ).length
+    : 0;
 
   return {
     nodes: visible.length,
