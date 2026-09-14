@@ -117,6 +117,12 @@ export interface GraphApiResponse {
   has_more?: boolean;
   leaf_nodes?: string[];
   message?: string;
+  /**
+   * Причина неудачи при `success: false`. Роут построения отвечает 200 даже на
+   * провал (соединение уже открыто под «живой» ответ), поэтому о нём говорит
+   * только это поле.
+   */
+  error?: string;
 }
 
 export interface CreateGraphResult {
