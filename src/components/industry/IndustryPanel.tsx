@@ -213,13 +213,6 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
         )}
       </div>
 
-      {info.match && !strong && (
-        <p className={styles.note}>
-          Совпадение нестрогое: {MATCH_LABELS[info.match]}. Проверьте по записям
-          ниже, тот ли это продукт.
-        </p>
-      )}
-
       <div className={styles.listHead}>
         <span className={styles.listTitle}>
           Российские производители ({info.producerCount})
