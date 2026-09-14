@@ -115,6 +115,8 @@ import {
 } from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
+import { ConfirmUnsavedModal } from "./components/ui/ConfirmUnsavedModal";
+import { graphSignature } from "./utils/graphSignature";
 import { SelectNeighborModal } from "./components/select-neighbor-modal";
 import {
   getDirectProductNeighbors,
@@ -150,6 +152,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     originalPrompt,
   } = useAppSelector((store) => store.graph);
   const sourcesByNodeId = useAppSelector((s) => s.sources.byNodeId);
+  const savedSignature = useAppSelector((s) => s.savedGraphs.savedSignature);
 
   const { fitView, fitBounds, setViewport, setCenter, screenToFlowPosition, getNodes } =
     useReactFlow();
@@ -2457,11 +2460,34 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   ]);
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [savingBeforeClear, setSavingBeforeClear] = useState(false);
+
+  // Очистка необратима, поэтому при несохранённых правках сначала предлагаем
+  // сохранить — тот же вопрос, что перед созданием и открытием графа.
+  const clearIsLossy =
+    data.nodes.length > 0 &&
+    graphSignature(data.nodes, data.edges) !== savedSignature;
 
   const handleClearCanvas = useCallback(() => {
     clearCanvas(dispatch);
     setShowClearConfirm(false);
   }, [dispatch]);
+
+  const handleSaveThenClear = useCallback(async () => {
+    setSavingBeforeClear(true);
+    const ok = openedGraphId
+      ? await updateOpenedGraph()
+      : await saveGraphAsNew(saveDefaultName);
+    setSavingBeforeClear(false);
+    if (!ok) return; // ошибку показал тост — остаёмся в вопросе
+    handleClearCanvas();
+  }, [
+    openedGraphId,
+    updateOpenedGraph,
+    saveGraphAsNew,
+    saveDefaultName,
+    handleClearCanvas,
+  ]);
 
   return (
     <div className={styles.container}>
@@ -2671,16 +2697,27 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             onCancel={() => setPendingDeleteIds(null)}
           />
         ))}
-      {showClearConfirm && (
-        <ConfirmDeleteModal
-          nodeName=""
-          title="Очистить полотно?"
-          description="Все узлы и связи будут удалены. Это действие нельзя отменить."
-          confirmLabel="Очистить"
-          onConfirm={handleClearCanvas}
-          onCancel={() => setShowClearConfirm(false)}
-        />
-      )}
+      {showClearConfirm &&
+        (clearIsLossy ? (
+          <ConfirmUnsavedModal
+            open
+            action="очисткой полотна"
+            confirmLabel="Сохранить и очистить"
+            saving={savingBeforeClear}
+            onCancel={() => setShowClearConfirm(false)}
+            onDiscard={handleClearCanvas}
+            onSave={handleSaveThenClear}
+          />
+        ) : (
+          <ConfirmDeleteModal
+            nodeName=""
+            title="Очистить полотно?"
+            description="Все узлы и связи будут удалены. Это действие нельзя отменить."
+            confirmLabel="Очистить"
+            onConfirm={handleClearCanvas}
+            onCancel={() => setShowClearConfirm(false)}
+          />
+        ))}
       {insertTrState && (
         <SelectNeighborModal
           productLabel={insertTrState.productLabel}

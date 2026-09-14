@@ -1,11 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useReactFlow, useStore, useViewport, type Node } from "@xyflow/react";
 
 import { minimapNodeColor } from "../../utils/minimapNodeColor";
 import { estimateNodeSize } from "../nodes/nodeBox";
 import styles from "./CanvasMinimap.module.css";
 
-/** Габариты панели мини-карты (px). Совпадают с .panel в CSS. */
+/** Габариты панели мини-карты на QHD (px). На меньших экранах CSS ужимает
+ *  их вместе со всем интерфейсом, поэтому реальные снимаем с DOM. */
 const PANEL_W = 260;
 const PANEL_H = 180;
 
@@ -83,8 +90,23 @@ export const CanvasMinimap = ({ nodes }: CanvasMinimapProps) => {
   const paneH = useStore((s) => s.height);
 
   const [coverage, setCoverage] = useState<Coverage>("near");
+  const panelRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragging = useRef(false);
+
+  // Соотношение сторон viewBox держим равным панели: иначе
+  // preserveAspectRatio="none" растянул бы узлы по одной оси.
+  const [panel, setPanel] = useState({ w: PANEL_W, h: PANEL_H });
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setPanel({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   /** Габариты узлов: измеренные React Flow, иначе — оценка по подписи. */
   const boxes = useMemo(
@@ -130,13 +152,13 @@ export const CanvasMinimap = ({ nodes }: CanvasMinimapProps) => {
     () => ({
       x: -tx / zoom,
       y: -ty / zoom,
-      w: (paneW || PANEL_W) / zoom,
-      h: (paneH || PANEL_H) / zoom,
+      w: (paneW || panel.w) / zoom,
+      h: (paneH || panel.h) / zoom,
     }),
-    [tx, ty, zoom, paneW, paneH],
+    [tx, ty, zoom, paneW, paneH, panel.w, panel.h],
   );
 
-  const aspect = PANEL_W / PANEL_H;
+  const aspect = panel.w / panel.h;
 
   /** Что именно показывает карта. */
   const view = useMemo<Rect>(() => {
@@ -162,7 +184,7 @@ export const CanvasMinimap = ({ nodes }: CanvasMinimapProps) => {
     return near.w >= whole.w ? whole : near;
   }, [graph, frame, coverage, aspect]);
 
-  const scale = PANEL_W / view.w;
+  const scale = panel.w / view.w;
 
   /** Узлы, попадающие в окно карты. */
   const visible = useMemo(
@@ -207,7 +229,7 @@ export const CanvasMinimap = ({ nodes }: CanvasMinimapProps) => {
   );
 
   return (
-    <div className={styles.panel}>
+    <div className={styles.panel} ref={panelRef}>
       <svg
         ref={svgRef}
         className={styles.map}

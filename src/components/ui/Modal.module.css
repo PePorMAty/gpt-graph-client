@@ -24,15 +24,15 @@
 }
 
 .size_s {
-  max-width: 440px;
+  max-width: calc(440 * var(--u));
 }
 
 .size_m {
-  max-width: 600px;
+  max-width: calc(600 * var(--u));
 }
 
 .size_l {
-  max-width: 900px;
+  max-width: calc(900 * var(--u));
 }
 
 .header {
@@ -67,8 +67,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: calc(30 * var(--u));
+  height: calc(30 * var(--u));
   background: none;
   border: none;
   border-radius: var(--r-sm);

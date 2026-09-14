@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
@@ -72,6 +72,12 @@ export const LibraryScreen = () => {
   const [pendingOpen, setPendingOpen] = useState<SavedGraphMeta | null>(null);
   const [savingBeforeOpen, setSavingBeforeOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Вопрос о несохранённых правках перед объединением. Ответ нужен вкладке
+  // объединения как результат её вызова, поэтому держим resolve обещания:
+  // модалка — часть этого экрана, а ждёт ответа другой компонент.
+  const [askBeforeMerge, setAskBeforeMerge] = useState(false);
+  const [savingBeforeMerge, setSavingBeforeMerge] = useState(false);
+  const mergeResolve = useRef<((ok: boolean) => void) | null>(null);
 
   useEffect(() => {
     dispatch(fetchSavedGraphsThunk());
@@ -222,6 +228,52 @@ export const LibraryScreen = () => {
     }
   };
 
+  /**
+   * Положить на полотно граф-основу перед объединением.
+   *
+   * Объединение затирает полотно так же, как открытие графа, поэтому при
+   * несохранённых правках сначала спрашиваем. Ответ возвращается вкладке
+   * объединения: false — пользователь отменил, слияние не начинаем.
+   */
+  const requestMergeBase = useCallback((): Promise<boolean> => {
+    if (!selectedMeta) return Promise.resolve(false);
+    if (!isDirty) {
+      const ok = openOnCanvas(selectedMeta, true);
+      if (!ok) showToast("error", "Граф ещё загружается — попробуйте ещё раз");
+      return Promise.resolve(ok);
+    }
+    return new Promise<boolean>((resolve) => {
+      mergeResolve.current = resolve;
+      setAskBeforeMerge(true);
+    });
+  }, [selectedMeta, isDirty, openOnCanvas]);
+
+  /** Закрыть вопрос и вернуть ответ вкладке объединения. */
+  const finishMergeAsk = useCallback(
+    (proceed: boolean) => {
+      setAskBeforeMerge(false);
+      const resolve = mergeResolve.current;
+      mergeResolve.current = null;
+      if (!resolve) return;
+      if (!proceed || !selectedMeta) {
+        resolve(false);
+        return;
+      }
+      const ok = openOnCanvas(selectedMeta, true);
+      if (!ok) showToast("error", "Граф ещё загружается — попробуйте ещё раз");
+      resolve(ok);
+    },
+    [selectedMeta, openOnCanvas],
+  );
+
+  const saveThenMerge = async () => {
+    setSavingBeforeMerge(true);
+    const ok = openedGraphId ? await updateOpened() : await saveNew();
+    setSavingBeforeMerge(false);
+    if (!ok) return; // ошибку показал тост — остаёмся в вопросе
+    finishMergeAsk(true);
+  };
+
   /** Сохранить описание выбранного графа. Возвращает успех — карточка по нему
    *  решает, закрывать ли режим правки. */
   const handleSaveDescription = useCallback(
@@ -288,7 +340,7 @@ export const LibraryScreen = () => {
             onOpen={handleOpen}
             onRename={() => setRenameTarget(selectedMeta)}
             onDelete={() => setDeleteTarget(selectedMeta)}
-            onOpenBase={() => openOnCanvas(selectedMeta, true)}
+            onOpenBase={requestMergeBase}
             onSaveDescription={handleSaveDescription}
             onGoToCanvas={() => {
               navigate("/");
@@ -307,6 +359,16 @@ export const LibraryScreen = () => {
           </div>
         )}
       </main>
+
+      <ConfirmUnsavedModal
+        open={askBeforeMerge}
+        action="объединением графов"
+        confirmLabel="Сохранить и объединить"
+        saving={savingBeforeMerge}
+        onCancel={() => finishMergeAsk(false)}
+        onDiscard={() => finishMergeAsk(true)}
+        onSave={saveThenMerge}
+      />
 
       <ConfirmUnsavedModal
         open={pendingOpen !== null}

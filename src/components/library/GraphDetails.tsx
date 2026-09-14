@@ -36,7 +36,7 @@ interface GraphDetailsProps {
   onRename: () => void;
   onDelete: () => void;
   /** Положить выбранный граф на полотно, не уходя из библиотеки. */
-  onOpenBase: () => boolean;
+  onOpenBase: () => Promise<boolean>;
   /** Перейти на полотно (после объединения). */
   onGoToCanvas: () => void;
   /** Сохранить описание графа на сервере. */

@@ -30,8 +30,8 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
+  width: calc(48 * var(--u));
+  height: calc(48 * var(--u));
   color: var(--c-brand);
   background: var(--c-brand-soft);
   border-radius: var(--r-md);
@@ -61,8 +61,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: calc(42 * var(--u));
+  height: calc(42 * var(--u));
   background: none;
   border: none;
   border-radius: var(--r-sm);
