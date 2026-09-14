@@ -159,7 +159,7 @@ export const NodeCard: FC<NodeCardProps> = ({
     if (kind === "alt") return list;
 
     list.push({ id: "tech", label: "Технологическое описание" });
-    if (isProduct) list.push({ id: "industry", label: "Промышленные данные" });
+    if (isProduct) list.push({ id: "industry", label: "Промышленное знание" });
     else if (hasAggregatedDesc)
       list.push({ id: "routes", label: "Технологические маршруты" });
     return list;

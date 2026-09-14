@@ -17,7 +17,10 @@ export type IndustryMatch =
   | "prefix";
 
 export interface IndustryProducer {
+  /** Сокращённое название: «ООО «Технокерамика»». */
   producer: string;
+  /** Полное название из реестра — для подсказки: официальное имя нужно как есть. */
+  producerFull?: string | null;
   inn: string | null;
   region: string | null;
   /**

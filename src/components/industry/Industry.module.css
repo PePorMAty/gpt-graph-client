@@ -58,6 +58,22 @@
   cursor: default;
 }
 
+/* ─── Заголовок раздела ─── */
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
 /* ─── Сводка ─── */
 
 .summary {
@@ -131,6 +147,127 @@
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border-soft);
   border-radius: var(--r-sm);
+}
+
+/* ─── Плитки сводки (вкладка библиотеки) ─── */
+
+.tiles {
+  display: grid;
+  /* Четыре в ряд на широком экране, меньше — по мере сужения панели. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s-3);
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.tileIcon {
+  flex: none;
+  color: var(--c-brand-strong);
+}
+
+.tileLabel {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.tileValue {
+  display: block;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.tileOf {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-regular);
+  color: var(--c-text-muted);
+}
+
+/* ─── Поиск и отборы ─── */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1 1 260px;
+  padding: 0 var(--s-3);
+  color: var(--c-text-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--s-2) 0;
+  font: inherit;
+  color: var(--c-text);
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.select {
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  /* Регионов и продуктов бывает много: длинный пункт не должен растягивать
+     всю строку отборов. */
+  max-width: 200px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-pill);
+}
+
+.segment {
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.segmentActive {
+  color: var(--c-text);
+  background: var(--c-surface);
+  box-shadow: var(--sh-sm);
+}
+
+.emptyRows {
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
 }
 
 /* ─── Таблица производителей ─── */
@@ -221,6 +358,121 @@
 .statusArchived {
   color: var(--c-text-muted);
   background: var(--c-surface-soft);
+}
+
+/* ─── Список производителей в карточке ─── */
+
+.listHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.listTitle {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.listLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  text-decoration: none;
+}
+
+.listLink:hover {
+  text-decoration: underline;
+}
+
+.prodList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.prodItem + .prodItem {
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.prodHead {
+  display: grid;
+  /* Стрелка, название, регион, статус. Название забирает остаток: оно длиннее
+     всех и переносить его некуда. */
+  grid-template-columns: 14px minmax(0, 1fr) minmax(0, auto) auto;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.prodHead:hover {
+  background: var(--c-surface-soft);
+}
+
+.prodName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.prodRegion {
+  /* Регион не должен выдавливать название: «Ханты-Мансийский автономный округ
+     — Югра» длиннее иного предприятия. Отдаём ему не больше трети строки. */
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.prodDetails {
+  padding: 0 var(--s-3) var(--s-2) calc(var(--s-3) + 14px + var(--s-2));
+  background: var(--c-surface-soft);
+}
+
+.prodProduct {
+  font-size: var(--fs-md);
+  color: var(--c-text);
+}
+
+.prodMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.moreBtn {
+  align-self: flex-start;
+  padding: var(--s-1) 0;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.moreBtn:hover {
+  text-decoration: underline;
 }
 
 /* ─── Компактный список: карточка узла узкая для таблицы ─── */

@@ -2,9 +2,27 @@ import { useMemo, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
-import { IndustryDataIcon, ShieldCheckIcon, ChevronDownIcon, ChevronRightIcon } from "../icons";
-import { IndustryProducers } from "./IndustryProducers";
+import type { IndustryProducer } from "../../store/api/industry-api";
+import { GISP_REGISTRY_URL } from "./gisp";
+import {
+  IndustryDataIcon,
+  ShieldCheckIcon,
+  SearchIcon,
+  LinkIcon,
+  PlantIcon,
+  FlaskIcon,
+  BookIcon,
+  FocusIcon,
+} from "../icons";
 import styles from "./Industry.module.css";
+
+/** Строка таблицы: запись реестра вместе с продуктом графа, по которому нашлась. */
+interface Row extends IndustryProducer {
+  /** Название узла графа — по нему шёл поиск. */
+  source: string;
+}
+
+type StatusFilter = "all" | "active" | "archived";
 
 interface Props {
   /** Названия продуктов текущего графа. */
@@ -14,36 +32,71 @@ interface Props {
 /**
  * Промышленные данные по всему графу — вкладка библиотеки.
  *
- * Карточка отвечает на вопрос об одном продукте, а здесь нужен другой ответ:
- * сколько продуктов графа вообще подтверждено реестром и у кого их брать.
- * Поэтому список свёрнут — производители раскрываются по продукту.
+ * Карточка отвечает на вопрос об одном продукте, а здесь нужен свод: сколько
+ * продуктов графа подтверждено реестром, кто их выпускает и в каких регионах.
+ * Поэтому таблица плоская — запись на строку, — с поиском и отборами: на
+ * большом графе записей набираются сотни.
  */
 export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
   const dispatch = useAppDispatch();
   const { results, ready, reason, actualAt, status, error } = useAppSelector(
     (s) => s.industry,
   );
-  const [open, setOpen] = useState<string | null>(null);
+
+  const [query, setQuery] = useState("");
+  const [product, setProduct] = useState("");
+  const [region, setRegion] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const names = useMemo(
     () => [...new Set(productNames.map((n) => String(n ?? "").trim()).filter(Boolean))],
     [productNames],
   );
 
-  const rows = useMemo(
-    () => names.map((name) => ({ name, info: results[industryKey(name)] })),
-    [names, results],
+  /** Все записи реестра по продуктам графа, по одной на строку. */
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    for (const name of names) {
+      for (const p of results[industryKey(name)]?.producers ?? []) {
+        out.push({ ...p, source: name });
+      }
+    }
+    return out;
+  }, [names, results]);
+
+  const checked = names.filter((n) => results[industryKey(n)]).length;
+  const confirmed = names.filter((n) => results[industryKey(n)]?.found).length;
+
+  const stats = useMemo(() => {
+    const inns = new Set<string>();
+    const regions = new Set<string>();
+    for (const r of rows) {
+      inns.add(r.inn ?? r.producer);
+      if (r.region) regions.add(r.region);
+    }
+    return { producers: inns.size, regions: regions.size, entries: rows.length };
+  }, [rows]);
+
+  const regionOptions = useMemo(
+    () => [...new Set(rows.map((r) => r.region).filter(Boolean))].sort() as string[],
+    [rows],
   );
 
-  const checked = rows.filter((r) => r.info).length;
-  const confirmed = rows.filter((r) => r.info?.found).length;
-  const producers = useMemo(() => {
-    const inns = new Set<string>();
-    for (const r of rows) {
-      for (const p of r.info?.producers ?? []) inns.add(p.inn ?? p.producer);
-    }
-    return inns.size;
-  }, [rows]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (product && r.source !== product) return false;
+      if (region && r.region !== region) return false;
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        r.producer.toLowerCase().includes(q) ||
+        (r.producerFull ?? "").toLowerCase().includes(q) ||
+        r.product.toLowerCase().includes(q) ||
+        (r.inn ?? "").includes(q)
+      );
+    });
+  }, [rows, query, product, region, statusFilter]);
 
   const loading = status === "loading";
 
@@ -98,16 +151,95 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.summary}>
-        <div className={styles.stat}>
-          <span className={styles.statValue}>
-            {confirmed} из {names.length}
-          </span>
-          <span className={styles.statLabel}>подтверждено в реестре</span>
+      <div className={styles.tiles}>
+        <div className={styles.tile}>
+          <PlantIcon size={20} className={styles.tileIcon} />
+          <div>
+            <span className={styles.tileLabel}>Производителей</span>
+            <span className={styles.tileValue}>{stats.producers}</span>
+          </div>
         </div>
-        <div className={styles.stat}>
-          <span className={styles.statValue}>{producers}</span>
-          <span className={styles.statLabel}>производителей всего</span>
+        <div className={styles.tile}>
+          <FlaskIcon size={20} className={styles.tileIcon} />
+          <div>
+            <span className={styles.tileLabel}>Продуктов в реестре</span>
+            <span className={styles.tileValue}>
+              {confirmed} <span className={styles.tileOf}>из {names.length}</span>
+            </span>
+          </div>
+        </div>
+        <div className={styles.tile}>
+          <BookIcon size={20} className={styles.tileIcon} />
+          <div>
+            <span className={styles.tileLabel}>Реестровых позиций</span>
+            <span className={styles.tileValue}>{stats.entries}</span>
+          </div>
+        </div>
+        <div className={styles.tile}>
+          <FocusIcon size={20} className={styles.tileIcon} />
+          <div>
+            <span className={styles.tileLabel}>Регионов</span>
+            <span className={styles.tileValue}>{stats.regions}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.filters}>
+        <label className={styles.search}>
+          <SearchIcon size={14} />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск по производителю, продукту или ИНН…"
+          />
+        </label>
+
+        <select
+          className={styles.select}
+          value={product}
+          onChange={(e) => setProduct(e.target.value)}
+        >
+          <option value="">Продукт</option>
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className={styles.select}
+          value={region}
+          onChange={(e) => setRegion(e.target.value)}
+        >
+          <option value="">Регион</option>
+          {regionOptions.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+
+        <div className={styles.segmented}>
+          {(
+            [
+              ["all", "Все"],
+              ["active", "Действует"],
+              ["archived", "Архив"],
+            ] as Array<[StatusFilter, string]>
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`${styles.segment} ${
+                statusFilter === value ? styles.segmentActive : ""
+              }`}
+              onClick={() => setStatusFilter(value)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -119,9 +251,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
           onClick={() => dispatch(checkIndustry(names))}
         >
           <ShieldCheckIcon size={15} />
-          {loading
-            ? "Проверяем…"
-            : `Проверить остальные ${names.length - checked}`}
+          {loading ? "Проверяем…" : `Проверить остальные ${names.length - checked}`}
         </button>
       )}
 
@@ -129,63 +259,93 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames }) => {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Продукт графа</th>
-              <th>Производителей</th>
+              <th>Производитель</th>
+              <th>ИНН</th>
+              <th>Продукт</th>
+              <th>Регион</th>
+              <th>Статус в ГИСП</th>
+              <th>Реестровая запись</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ name, info }) => {
-              const count = info?.producerCount ?? 0;
-              const isOpen = open === name;
-              return (
-                <tr key={name}>
-                  <td colSpan={2} style={{ padding: 0 }}>
-                    <button
-                      type="button"
-                      className={styles.productRow}
-                      style={{
-                        width: "100%",
-                        padding: "var(--s-2)",
-                        background: "none",
-                        border: "none",
-                        cursor: count ? "pointer" : "default",
-                        textAlign: "left",
-                      }}
-                      onClick={() => count && setOpen(isOpen ? null : name)}
+            {visible.map((r, i) => (
+              <tr key={`${r.inn ?? r.producer}-${r.regNumber ?? r.product}-${i}`}>
+                <td>
+                  <span className={styles.producer} title={r.producerFull ?? undefined}>
+                    {r.producer}
+                  </span>
+                </td>
+                <td className={styles.inn}>{r.inn ?? "—"}</td>
+                <td>
+                  {r.product}
+                  {r.product !== r.source && (
+                    <span className={styles.product}>по узлу «{r.source}»</span>
+                  )}
+                </td>
+                <td className={styles.region}>
+                  {r.region ? (
+                    <span
+                      className={r.regionFromInn ? styles.regionGuess : undefined}
+                      title={
+                        r.regionFromInn
+                          ? "Определён по ИНН — это регион учёта организации, " +
+                            "а не обязательно место производства"
+                          : undefined
+                      }
                     >
-                      {count ? (
-                        isOpen ? (
-                          <ChevronDownIcon size={13} />
-                        ) : (
-                          <ChevronRightIcon size={13} />
-                        )
-                      ) : (
-                        <span style={{ width: 13 }} />
-                      )}
-                      <span className={styles.productName}>{name}</span>
-                      <span
-                        className={`${styles.count} ${count ? "" : styles.countZero}`}
-                      >
-                        {info ? count : "—"}
-                      </span>
-                    </button>
-
-                    {isOpen && info?.producers.length ? (
-                      <div style={{ padding: "0 var(--s-2) var(--s-2)" }}>
-                        <IndustryProducers producers={info.producers} />
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
+                      {r.region}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td>
+                  <span
+                    className={`${styles.status} ${
+                      r.status === "active" ? styles.statusActive : styles.statusArchived
+                    }`}
+                    title={
+                      r.status === "archived" && r.endedAt
+                        ? `Прекращена ${r.endedAt}`
+                        : undefined
+                    }
+                  >
+                    {r.statusLabel}
+                  </span>
+                </td>
+                <td>
+                  {r.regNumber ? (
+                    <a
+                      className={styles.listLink}
+                      href={GISP_REGISTRY_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Открыть реестр на сайте ГИСП"
+                    >
+                      № {r.regNumber}
+                      <LinkIcon size={12} />
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+
+        {!visible.length && (
+          <p className={styles.emptyRows}>
+            По этим условиям записей нет. Снимите отбор или измените запрос.
+          </p>
+        )}
       </div>
 
-      {actualAt && (
-        <p className={styles.foot}>Выгрузка реестра актуальна на {actualAt}</p>
-      )}
+      <p className={styles.foot}>
+        Источник: Реестр российской промышленной продукции (ПП №719), ГИСП
+        Минпромторга России.
+        {actualAt ? ` Данные актуальны на ${actualAt}.` : ""}
+      </p>
     </div>
   );
 };
