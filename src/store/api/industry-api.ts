@@ -20,6 +20,14 @@ export interface IndustryProducer {
   producer: string;
   inn: string | null;
   region: string | null;
+  /**
+   * Регион выведен из ИНН, а не взят из реестра.
+   *
+   * В выгрузке ПП №719 адрес не заполнен ни у одной записи, поэтому регион
+   * определяется по коду субъекта в ИНН. Это место учёта организации, а не
+   * обязательно место производства, — и подавать его стоит как подсказку.
+   */
+  regionFromInn?: boolean;
   /** Название продукта так, как оно записано в реестре. */
   product: string;
   okpd2: string | null;
@@ -27,6 +35,8 @@ export interface IndustryProducer {
   statusLabel: string;
   regNumber: string | null;
   regDate: string | null;
+  /** Когда запись реестра прекратила действовать. */
+  endedAt?: string | null;
   url: string | null;
 }
 

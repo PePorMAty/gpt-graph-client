@@ -10,6 +10,7 @@ import { showToast } from "../toast/toastStore";
 import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
+import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -89,6 +90,20 @@ export const GraphDetails = ({
   const aboutRef = useRef<HTMLTextAreaElement>(null);
 
   const nodes = useMemo(() => file?.graph.nodes ?? [], [file]);
+
+  // Названия продуктов графа — по ним вкладка спрашивает реестр. Берём из
+  // сохранённого файла: библиотеку открывают, не открывая сам граф.
+  const productNames = useMemo(
+    () => [
+      ...new Set(
+        nodes
+          .filter((n) => n.type === "product")
+          .map((n) => String(n.data?.label ?? "").trim())
+          .filter(Boolean),
+      ),
+    ],
+    [nodes],
+  );
   const edges = useMemo(() => file?.graph.edges ?? [], [file]);
 
   const stats = useMemo(
@@ -422,17 +437,7 @@ export const GraphDetails = ({
         )}
 
         {tab === "industry" && (
-          <div className={styles.placeholder}>
-            <IndustryDataIcon size={30} className={styles.placeholderIcon} />
-            <div className={styles.placeholderTitle}>
-              Промышленные данные появятся позже
-            </div>
-            <p className={styles.placeholderText}>
-              Здесь будут сведения из ГИСП по продуктам графа: производители,
-              ИНН, регионы, статус в реестре и ссылки на реестровые записи.
-              Подключения к базе пока нет.
-            </p>
-          </div>
+          <IndustryGraphPanel productNames={productNames} />
         )}
 
         {tab === "merge" && (

@@ -6,6 +6,7 @@ import { CollapsibleBlock } from "./CollapsibleBlock";
 import { NodeSourcesBlock } from "./NodeSourcesBlock";
 import { CardTitleField } from "./CardTitleField";
 import { KeyInfoBlock } from "./KeyInfoBlock";
+import { IndustryPanel } from "../industry/IndustryPanel";
 import { MarkdownEditor } from "../markdown-editor";
 import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
 import { useDismiss } from "../../hooks/useDismiss";
@@ -17,10 +18,8 @@ import {
   CloseIcon,
   FlaskIcon,
   GearIcon,
-  IndustryDataIcon,
   LinkIcon,
   PencilIcon,
-  ShieldCheckIcon,
   TrashIcon,
 } from "../icons";
 import styles from "./NodeCard.module.css";
@@ -464,23 +463,7 @@ export const NodeCard: FC<NodeCardProps> = ({
           )}
 
           {/* ── Промышленные данные (ГИСП) ── */}
-          {activeTab === "industry" && (
-            <div className={styles.industry}>
-              <IndustryDataIcon size={30} className={styles.industryIcon} />
-              <div className={styles.industryTitle}>
-                Данные по продукту появятся позже
-              </div>
-              <p className={styles.industryText}>
-                Здесь будут сведения из реестра российской промышленной
-                продукции: производители, регионы, статус в реестре и код
-                ОКПД2. Подключения к базе ГИСП пока нет.
-              </p>
-              <div className={styles.industryBadge}>
-                <ShieldCheckIcon size={15} />
-                Проверка по ГИСП не выполнялась
-              </div>
-            </div>
-          )}
+          {activeTab === "industry" && <IndustryPanel productName={value} />}
 
           {/* ── Технологические маршруты (обобщение шага) ── */}
           {activeTab === "routes" && (
