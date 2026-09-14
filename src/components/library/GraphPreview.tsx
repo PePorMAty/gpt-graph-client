@@ -46,7 +46,14 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) setSize({ w: width, h: height });
+      if (width <= 0 || height <= 0) return;
+      // Округляем и сверяем с прежним значением. ResizeObserver отдаёт дробные
+      // размеры и срабатывает на субпиксельных колебаниях раскладки; новый
+      // объект на каждый отклик пересобирал бы кадр и гонял перерисовку по
+      // кругу — на большом экране это выглядело как дрожащее превью.
+      const w = Math.round(width);
+      const h = Math.round(height);
+      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -112,9 +119,16 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
     return { ...rect, x: rect.x - (nw - rect.w) / 2, w: nw };
   }, [boxes, size]);
 
+  // null — «следовать вписанному виду»: тогда превью само подстраивается под
+  // размер контейнера. Как только пользователь подвинул или приблизил граф,
+  // здесь лежит его кадр.
   const [view, setView] = useState<Rect | null>(null);
-  // Смена графа или размера контейнера возвращает превью к вписанному виду.
-  useEffect(() => setView(fitted), [fitted]);
+
+  // К вписанному виду возвращаемся при смене графа. Раньше это делал любой
+  // пересчёт кадра — в том числе из-за изменившегося размера контейнера, и
+  // масштаб, выбранный пользователем, сбрасывался на каждом шевелении
+  // раскладки: превью невозможно было рассмотреть.
+  useEffect(() => setView(null), [boxes]);
 
   const current = view ?? fitted;
 
@@ -257,7 +271,7 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
         <button
           type="button"
           className={styles.previewTool}
-          onClick={() => setView(fitted)}
+          onClick={() => setView(null)}
           disabled={!zoomed}
           aria-label="Вписать граф"
           title="Вписать граф"

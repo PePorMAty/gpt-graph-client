@@ -32,6 +32,7 @@ import {
   removeStepAlternativeNodes,
   insertTransformationsForNeighbors,
   addSourcesToPool,
+  clearGraphError,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
@@ -2515,10 +2516,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </div>
       )}
 
-      {/* Индикатор ошибки */}
+      {/* Индикатор ошибки. Закрывается: без этого сообщение висело до
+          следующего успешного построения, а начать его было неоткуда. */}
       {error && (
         <div className={styles.errorOverlay}>
           <p className={styles.errorText}>Ошибка: {error}</p>
+          <button
+            type="button"
+            className={styles.errorDismiss}
+            onClick={() => dispatch(clearGraphError())}
+          >
+            Закрыть
+          </button>
         </div>
       )}
 
