@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { LogoMark } from "../icons";
 import { GraphSearchBox } from "./GraphSearchBox";
@@ -20,8 +20,16 @@ const TABS = [
 /**
  * Шапка приложения: логотип, разделы, поиск по графу и действия справа.
  * Живёт над роутером — видна на всех экранах, кроме страницы шар-ссылки.
+ *
+ * Поиск и экспорт относятся к графу на полотне, поэтому в библиотеке их нет:
+ * искать там нечего, а выгрузить можно любой граф из списка — своей кнопкой
+ * в его карточке.
  */
-export const TopBar = ({ onShare }: TopBarProps) => (
+export const TopBar = ({ onShare }: TopBarProps) => {
+  const { pathname } = useLocation();
+  const onCanvas = pathname === "/";
+
+  return (
   <header className={styles.bar}>
     <div className={styles.left}>
       <div className={styles.logo}>
@@ -45,14 +53,13 @@ export const TopBar = ({ onShare }: TopBarProps) => (
       </nav>
     </div>
 
-    <div className={styles.center}>
-      <GraphSearchBox />
-    </div>
+    <div className={styles.center}>{onCanvas && <GraphSearchBox />}</div>
 
     <div className={styles.right}>
-      <ExportMenu onShare={onShare} />
+      {onCanvas && <ExportMenu onShare={onShare} />}
       <HelpMenu />
       <NotificationsMenu />
     </div>
   </header>
-);
+  );
+};

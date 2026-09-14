@@ -5,6 +5,8 @@ import { sourcesPoolKey } from "../../store/slices/gptSlice";
 import { collectGraphSources } from "../../utils/graphSources";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { graphChainLength } from "../../utils/viewportStats";
+import { exportGraphJson } from "../../utils/exportGraph";
+import { showToast } from "../toast/toastStore";
 import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
@@ -14,13 +16,16 @@ import {
   BranchIcon,
   ChainLengthIcon,
   DatabaseIcon,
+  ExportIcon,
   FlaskIcon,
   GearIcon,
+  GraphIcon,
   IndustryDataIcon,
   LinkIcon,
   NodesCountIcon,
   PencilIcon,
   SearchIcon,
+  TrashIcon,
 } from "../icons";
 import styles from "./LibraryScreen.module.css";
 
@@ -146,6 +151,19 @@ export const GraphDetails = ({
     if (ok) setEditingAbout(false);
   };
 
+  /**
+   * Выгрузить выбранный граф файлом.
+   *
+   * Отдаём файл ровно в том виде, в каком он лежит на сервере: это тот же
+   * формат, что понимает «Загрузить из файла», — выгруженный граф можно
+   * вернуть обратно без потерь.
+   */
+  const exportGraph = () => {
+    if (!file) return;
+    exportGraphJson(file, meta.name);
+    showToast("success", `Файл графа «${meta.name}» сохранён`);
+  };
+
   return (
     <div className={styles.details}>
       {/* ── Шапка ── */}
@@ -169,10 +187,26 @@ export const GraphDetails = ({
         </div>
 
         <div className={styles.detailsActions}>
-          <Button variant="primary" onClick={onOpen} disabled={isLoading}>
+          <Button
+            variant="primary"
+            onClick={onOpen}
+            disabled={isLoading}
+            icon={<GraphIcon size={16} />}
+          >
             Открыть граф
           </Button>
-          <Button variant="ghost" onClick={onDelete}>
+          <Button
+            onClick={exportGraph}
+            disabled={isLoading || !file}
+            icon={<ExportIcon size={16} />}
+          >
+            Экспорт
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={onDelete}
+            icon={<TrashIcon size={16} />}
+          >
             Удалить
           </Button>
         </div>

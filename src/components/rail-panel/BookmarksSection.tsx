@@ -195,6 +195,9 @@ export const BookmarksSection = () => {
                   </td>
                   <td>
                     <span
+                      title={
+                        b.kind === "product" ? "Продукт" : "Преобразование"
+                      }
                       className={`${styles.kindBadge} ${
                         b.kind === "product"
                           ? styles.kindProduct

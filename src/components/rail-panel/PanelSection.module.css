@@ -252,19 +252,21 @@
 }
 
 .colObject {
-  width: 28%;
+  width: 26%;
 }
 
+/* Под заголовок «Направление»: в прежних 15% слово не помещалось, переноситься
+   ему негде, и tableWrap срезал его до «Направл». */
 .colDirection {
-  width: 15%;
+  width: 20%;
 }
 
 .colTitle {
-  width: 32%;
+  width: 31%;
 }
 
 .colLink {
-  width: 25%;
+  width: 23%;
 }
 
 .table thead th {
@@ -383,16 +385,18 @@
 
 /* ─── Таблица закладок ─── */
 
+/* Доли подобраны так, чтобы самая широкая подпись типа — «Преобразование» —
+   помещалась целиком даже в самой узкой панели (380px). */
 .colBookmarkObject {
-  width: 34%;
+  width: 30%;
 }
 
 .colBookmarkKind {
-  width: 25%;
+  width: 35%;
 }
 
 .colBookmarkNote {
-  width: 29%;
+  width: 23%;
 }
 
 .colBookmarkActions {
@@ -423,9 +427,15 @@
 }
 
 .kindBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
+  display: inline-block;
+  /* Панель узкая, и «Преобразование» длиннее своей колонки: без ограничения
+     бейдж вылезал в соседнюю и наезжал на прочерк в заметке. Уже не вылезет —
+     а полностью подпись видно во всплывающей подсказке (атрибут title). */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  padding: 2px 6px;
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   border-radius: var(--r-pill);
