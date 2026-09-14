@@ -884,3 +884,68 @@
   font-size: var(--fs-md);
   color: var(--c-text-soft);
 }
+
+/* ─── Превью объединения ─── */
+
+.mergeStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin-top: var(--s-4);
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.mergeCommon {
+  margin-top: var(--s-4);
+  padding: var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.mergeCommonTitle {
+  margin-bottom: var(--s-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.mergeCommonList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  list-style: none;
+}
+
+.mergeCommonItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font-size: var(--fs-md);
+}
+
+.mergeCommonName {
+  color: var(--c-text-soft);
+  overflow-wrap: break-word;
+}
+
+.mergeCommonFrom {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.mergeCommonMore {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+/* Кнопки под сводкой объединения: превью и само объединение. */
+.mergeActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}

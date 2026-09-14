@@ -147,6 +147,35 @@ export function ensureProductPresentations(
   return { nodes: outNodes, registry: nextRegistry };
 }
 
+/**
+ * Оставляет в реестре только презентации, которые реально есть на полотне.
+ *
+ * Реестр переживал смену набора узлов: после очистки полотна или создания
+ * нового графа легенда показывала источники прежнего — цвета вроде бы есть, а
+ * узлов с ними уже нет. Здесь он приводится в соответствие узлам.
+ */
+export function prunePresentationColors(
+  registry: Record<string, string>,
+  nodes: NodeWithPresentations[],
+): Record<string, string> {
+  const present = new Set<string>();
+  for (const n of nodes) {
+    const pres = n.data?.presentations;
+    if (!Array.isArray(pres)) continue;
+    for (const p of pres) {
+      if (typeof p !== "string") continue;
+      const trimmed = p.trim();
+      if (trimmed) present.add(trimmed);
+    }
+  }
+  const kept = Object.entries(registry).filter(([name]) => present.has(name));
+  // Ничего не изменилось — возвращаем прежний объект, чтобы не дёргать
+  // подписчиков стора лишней сменой ссылки.
+  return kept.length === Object.keys(registry).length
+    ? registry
+    : Object.fromEntries(kept);
+}
+
 export interface LegendEntry {
   name: string;
   swatch: string;

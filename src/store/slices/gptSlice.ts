@@ -46,6 +46,7 @@ import { parseAlternatives, alternativeKey } from "../../utils/parseAlternatives
 import { countStepsFromDescription, getMainTransformationIds } from "../../utils/rawChainLevel";
 import {
   colorForPresentations,
+  prunePresentationColors,
   reconstructPresentationColors,
 } from "../../utils/presentationColors";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
@@ -217,6 +218,13 @@ const gptSlice = createSlice({
         nodes,
         edges: applyHandlesByGeometry(nodes, edges),
       };
+      // Легенда (реестр презентация → цвет) тоже переживала смену набора узлов:
+      // после очистки полотна и создания нового графа в ней оставались
+      // источники прежнего. Оставляем только те, что есть на полотне.
+      state.presentationColors = prunePresentationColors(
+        state.presentationColors,
+        nodes,
+      );
       // Пул источников label-keyed и переживал смену набора узлов (сброс полотна,
       // загрузка из localStorage). Из-за этого новая нода с именем ранее удалённого
       // продукта подхватывала его «призрачные» источники. Оставляем в пуле только
@@ -1192,6 +1200,9 @@ const gptSlice = createSlice({
         state.leafNodes = data.leaf_nodes || [];
         state.originalPrompt = action.meta.arg.promptValue;
         state.source = "new";
+        // Новый граф — новая легенда: реестр прежнего графа к его узлам
+        // отношения не имеет.
+        state.presentationColors = reconstructPresentationColors(normNodes);
       })
       .addCase(getGraphData.rejected, (state, action) => {
         state.isLoading = false;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import type { CustomNode } from "../../types";
 import { useAppSelector } from "../../store/hooks";
@@ -31,6 +32,8 @@ export const GraphSearchBox = () => {
   const nodes = useAppSelector((s) => s.graph.data.nodes);
   const results = useGraphSearch(nodes, value, 200);
   const focusNode = useFocusNode();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const close = useCallback(() => setOpen(false), []);
   useDismiss(boxRef, close, open);
@@ -54,13 +57,17 @@ export const GraphSearchBox = () => {
 
   const selectNode = useCallback(
     (node: CustomNode) => {
+      // Поиск идёт по графу на полотне, а строка живёт в шапке — искать можно
+      // и из библиотеки. Найденный узел там не показать, поэтому сначала
+      // возвращаемся на полотно, а потом ведём к нему камеру.
+      if (location.pathname !== "/") navigate("/");
       // Узел не только оказывается в центре, но и выделяется — как будто по
       // нему кликнули: иначе на плотном графе не видно, который нашёлся.
       focusNode(node.id);
       setOpen(false);
       inputRef.current?.blur();
     },
-    [focusNode],
+    [focusNode, navigate, location.pathname],
   );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

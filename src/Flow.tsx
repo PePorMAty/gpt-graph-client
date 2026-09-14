@@ -1024,24 +1024,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [paneMenu, dispatch, screenToFlowPosition],
   );
 
+  /** Поставить или снять закладку на узле. */
+  const toggleBookmarkFor = useCallback(
+    (nodeId: string) => {
+      const node = data.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      if (bookmarkedIds.has(node.id)) {
+        dispatch(removeBookmark(node.id));
+      } else {
+        dispatch(
+          addBookmark({
+            nodeId: node.id,
+            label: String(node.data?.label ?? ""),
+            kind: node.type === "transformation" ? "transformation" : "product",
+          }),
+        );
+      }
+    },
+    [data.nodes, bookmarkedIds, dispatch],
+  );
+
   // Закладка узла из контекстного меню.
   const handleToggleBookmark = useCallback(() => {
     if (!contextMenu) return;
-    const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
-    if (!node) return;
-    if (bookmarkedIds.has(node.id)) {
-      dispatch(removeBookmark(node.id));
-    } else {
-      dispatch(
-        addBookmark({
-          nodeId: node.id,
-          label: String(node.data?.label ?? ""),
-          kind: node.type === "transformation" ? "transformation" : "product",
-        }),
-      );
-    }
+    toggleBookmarkFor(contextMenu.nodeId);
     setContextMenu(null);
-  }, [contextMenu, data.nodes, bookmarkedIds, dispatch]);
+  }, [contextMenu, toggleBookmarkFor]);
 
   // Из контекстного меню → показать модалку подтверждения удаления.
   // Если правый клик пришёлся на ноду из группового выделения (>1) — удаляем
@@ -2627,7 +2635,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onDelete={handleContextDelete}
           selectedCount={selectedNodes.length}
           isBookmarked={bookmarkedIds.has(contextMenu.nodeId)}
-          onToggleBookmark={handleToggleBookmark}
+          onToggleBookmark={
+            // Альтернатива живёт внутри шага — отмечать её закладкой незачем.
+            data.nodes.find((n) => n.id === contextMenu.nodeId)?.data
+              ?.chainVariant === "alt"
+              ? undefined
+              : handleToggleBookmark
+          }
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -2658,6 +2672,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}
         isAltNode={selectedNode?.data?.chainVariant === "alt"}
+        isBookmarked={selectedNodeId ? bookmarkedIds.has(selectedNodeId) : false}
+        onToggleBookmark={
+          selectedNodeId && !structureLocked
+            ? () => toggleBookmarkFor(selectedNodeId)
+            : undefined
+        }
+        onDeleteNode={
+          selectedNodeId && !structureLocked
+            ? () => setPendingDeleteIds([selectedNodeId])
+            : undefined
+        }
         isUnfilledUserProduct={
           selectedNode?.data?.isUserAdded === true &&
           !String(selectedNode?.data?.description ?? "").trim()

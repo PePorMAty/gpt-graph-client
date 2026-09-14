@@ -187,7 +187,9 @@
 }
 
 .menuItem {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   width: 100%;
   padding: var(--s-2) var(--s-3);
   background: none;
@@ -204,11 +206,22 @@
   color: var(--c-brand-strong);
 }
 
-.menuNote {
-  padding: var(--s-2) var(--s-3);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-tight);
+.menuItemIcon {
+  flex: 0 0 auto;
   color: var(--c-text-faint);
+}
+
+.menuItem:hover .menuItemIcon {
+  color: inherit;
+}
+
+.menuItemDanger {
+  color: var(--c-danger);
+}
+
+.menuItemDanger:hover {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
 }
 
 /* ─── Вкладки ─── */
@@ -268,6 +281,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
+}
+
+/* Блоки сохраняют свою высоту и не ужимаются.
+   Без этого длинное описание (у альтернатив оно на экран и больше) сжимало
+   блок, а тот его обрезал своим overflow: hidden — прокрутка карточки при
+   этом не появлялась, потому что содержимое «помещалось». */
+.content > * {
+  flex-shrink: 0;
 }
 
 /* ─── Сворачиваемый блок ─── */

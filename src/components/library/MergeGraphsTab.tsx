@@ -1,8 +1,18 @@
 import { useMemo, useState } from "react";
 
-import type { SavedGraphMeta } from "../../store/types";
+import type { SavedGraphFile, SavedGraphMeta } from "../../store/types";
 import { loadSavedGraph } from "../../store/api/saved-graph-api";
-import { useMergeGraph } from "../../hooks/useMergeGraph";
+import {
+  computeMergeChain,
+  useMergeGraph,
+  type MergeGraphState,
+} from "../../hooks/useMergeGraph";
+import { reconstructPresentationColors } from "../../utils/presentationColors";
+import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
+import {
+  MergePreviewModal,
+  type MergePreviewResult,
+} from "./MergePreviewModal";
 import { showToast } from "../toast/toastStore";
 import { Button } from "../ui/Button";
 import { SearchIcon } from "../icons";
@@ -11,6 +21,27 @@ import {
   type MergeReportRow,
 } from "../upload-graph/MergeReportModal";
 import styles from "./LibraryScreen.module.css";
+
+/**
+ * Файл сохранённого графа → состояние, с которого начинается объединение.
+ * Реестр цветов и пул источников на сервер не сохраняются целиком, поэтому
+ * восстанавливаем их по узлам — так же, как при открытии графа на полотне.
+ */
+function fileToMergeState(
+  file: SavedGraphFile,
+  fallbackName: string,
+): MergeGraphState {
+  const nodes = file.graph.nodes;
+  const sources = file.state.sources ?? reconstructSourcesPool(nodes);
+  return {
+    nodes,
+    edges: file.graph.edges,
+    presentationColors: reconstructPresentationColors(nodes),
+    originalPrompt: file.meta.prompt?.trim() || fallbackName,
+    sourcesPool: sources.pool,
+    sourcesSeqCounter: sources.seqCounter,
+  };
+}
 
 interface MergeGraphsTabProps {
   /** Граф-основа: выбранный в библиотеке. */
@@ -56,6 +87,10 @@ export const MergeGraphsTab = ({
   const [query, setQuery] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<MergePreviewResult | null>(null);
   const [report, setReport] = useState<{
     presentationName: string | null;
     commonNodes: MergeReportRow[];
@@ -76,6 +111,47 @@ export const MergeGraphsTab = ({
       else next.add(id);
       return next;
     });
+  };
+
+  const pickedNames = items
+    .filter((g) => checked.has(g.id))
+    .map((g) => g.name);
+
+  /**
+   * Посчитать объединение и показать его в окне превью. Стор не трогаем:
+   * пользователь ещё не решил, объединять ли.
+   */
+  const openPreview = async () => {
+    const picked = items.filter((g) => checked.has(g.id));
+    if (!picked.length) return;
+
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    setPreviewOpen(true);
+    try {
+      const baseFile = await loadSavedGraph(base.id);
+      const sources = await Promise.all(
+        picked.map(async (g) => ({
+          input: await loadSavedGraph(g.id),
+          name: g.name,
+        })),
+      );
+      const merged = await computeMergeChain(
+        fileToMergeState(baseFile, base.name),
+        sources,
+      );
+      setPreview({
+        nodes: merged.state.nodes,
+        edges: merged.state.edges,
+        commonNodes: merged.commonNodes,
+        addedCount: merged.addedCount,
+      });
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const runMerge = async () => {
@@ -173,16 +249,36 @@ export const MergeGraphsTab = ({
           К графу «{base.name}» присоединится: <b>{checked.size}</b>
         </div>
 
-        <Button
-          variant="primary"
-          block
-          onClick={runMerge}
-          disabled={busy || checked.size === 0}
-        >
-          {busy ? "Объединяю…" : "Объединить графы"}
-        </Button>
-
+        <div className={styles.mergeActions}>
+          <Button
+            variant="primary"
+            block
+            onClick={runMerge}
+            disabled={busy || checked.size === 0}
+          >
+            {busy ? "Объединяю…" : "Объединить графы"}
+          </Button>
+          <Button block onClick={openPreview} disabled={busy || checked.size === 0}>
+            Превью
+          </Button>
+        </div>
       </aside>
+
+      <MergePreviewModal
+        open={previewOpen}
+        baseName={base.name}
+        names={pickedNames}
+        result={preview}
+        loading={previewLoading}
+        error={previewError}
+        onCancel={() => setPreviewOpen(false)}
+        onConfirm={() => {
+          // Окно закрываем до слияния: дальше может встать вопрос о
+          // несохранённых правках, и две модалки друг на друге не нужны.
+          setPreviewOpen(false);
+          void runMerge();
+        }}
+      />
 
       {report && (
         <MergeReportModal

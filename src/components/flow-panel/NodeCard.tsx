@@ -10,6 +10,9 @@ import { MarkdownEditor } from "../markdown-editor";
 import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
 import { useDismiss } from "../../hooks/useDismiss";
 import {
+  BookmarkIcon,
+  BranchIcon,
+  ChainLengthIcon,
   ChevronRightIcon,
   CloseIcon,
   FlaskIcon,
@@ -18,6 +21,7 @@ import {
   LinkIcon,
   PencilIcon,
   ShieldCheckIcon,
+  TrashIcon,
 } from "../icons";
 import styles from "./NodeCard.module.css";
 
@@ -84,6 +88,9 @@ export const NodeCard: FC<NodeCardProps> = ({
   sourceGroups = [],
   sourcesCurrentProduct = "",
   isAltNode = false,
+  isBookmarked = false,
+  onToggleBookmark,
+  onDeleteNode,
   isUnfilledUserProduct = false,
   altDirection,
   aggregatedDescription,
@@ -221,7 +228,8 @@ export const NodeCard: FC<NodeCardProps> = ({
                         setMenuOpen(false);
                       }}
                     >
-                      Построить шаг
+                      <ChainLengthIcon size={16} className={styles.menuItemIcon} />
+                      {isAltNode ? "Построить альтернативу" : "Построить шаг"}
                     </button>
                   )}
                   {isProduct &&
@@ -235,12 +243,39 @@ export const NodeCard: FC<NodeCardProps> = ({
                           setMenuOpen(false);
                         }}
                       >
+                        <BranchIcon size={16} className={styles.menuItemIcon} />
                         Преобразования к соседям
                       </button>
                     )}
-                  <div className={styles.menuNote}>
-                    Удаление и закладка — правым кликом по узлу на полотне.
-                  </div>
+                  {/* Закладки только у продуктов и преобразований:
+                      альтернатива живёт внутри шага, отмечать её незачем. */}
+                  {onToggleBookmark && !isAltNode && (
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => {
+                        onToggleBookmark();
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <BookmarkIcon size={16} className={styles.menuItemIcon} />
+                      {isBookmarked ? "Убрать из закладок" : "Добавить в закладки"}
+                    </button>
+                  )}
+
+                  {onDeleteNode && (
+                    <button
+                      type="button"
+                      className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                      onClick={() => {
+                        onDeleteNode();
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <TrashIcon size={16} className={styles.menuItemIcon} />
+                      Удалить
+                    </button>
+                  )}
                 </div>
               )}
             </div>
