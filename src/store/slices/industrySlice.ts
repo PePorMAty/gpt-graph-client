@@ -45,6 +45,14 @@ const initialState: IndustryState = {
 };
 
 /**
+ * Сколько названий отправляем за один запрос.
+ *
+ * Столько же принимает сервер. Больше он молча отбрасывает, поэтому держим
+ * значения одинаковыми: превысить предел клиент теперь не может.
+ */
+const CHUNK = 500;
+
+/**
  * Проверить продукты по реестру.
  *
  * Спрашиваем только то, чего ещё нет в таблице: набор продуктов графа между
@@ -65,19 +73,32 @@ export const checkIndustry = createAsyncThunk<
   }
 
   try {
-    const data = await lookupIndustry(pending);
-    // Раскладываем ответ по нормализованным ключам: сервер отвечает теми же
-    // написаниями, что прислали, а в сторе ключ один на все варианты.
+    // Сервер принимает за раз ограниченное число названий и лишние молча
+    // отбрасывает: на графе с сотнями продуктов часть узлов осталась бы без
+    // индикатора без всякого объяснения. Поэтому режем на части сами.
     const results: Record<string, IndustryProductInfo> = {};
-    for (const [name, info] of Object.entries(data.results ?? {})) {
-      results[industryKey(name)] = info;
+    let ready = true;
+    let reason: string | undefined;
+    let actualAt: string | null = null;
+
+    for (let i = 0; i < pending.length; i += CHUNK) {
+      const data = await lookupIndustry(pending.slice(i, i + CHUNK));
+
+      // Раскладываем ответ по нормализованным ключам: сервер отвечает теми же
+      // написаниями, что прислали, а в сторе ключ один на все варианты.
+      for (const [name, info] of Object.entries(data.results ?? {})) {
+        results[industryKey(name)] = info;
+      }
+
+      ready = data.ready !== false;
+      reason = data.reason;
+      actualAt = data.actualAt ?? actualAt;
+
+      // Реестр не подключён — остальные части спрашивать незачем.
+      if (!ready) break;
     }
-    return {
-      results,
-      ready: data.ready !== false,
-      reason: data.reason,
-      actualAt: data.actualAt ?? null,
-    };
+
+    return { results, ready, reason, actualAt };
   } catch (e) {
     return rejectWithValue(
       e instanceof Error ? e.message : "Не удалось проверить продукты по ГИСП",
