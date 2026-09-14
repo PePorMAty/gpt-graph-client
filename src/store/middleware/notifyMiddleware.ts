@@ -9,10 +9,24 @@ import {
   fetchTransformationsForNeighbors,
 } from "../api/transformation-between-api";
 import { fetchProductCard } from "../api/product-card-api";
+import { continueGraph, getGraphData } from "../api/graph-api";
 import { showToast } from "../../components/toast/toastStore";
 
 function errorText(payload: unknown, fallback: string): string {
-  return typeof payload === "string" && payload.trim() ? payload : fallback;
+  if (typeof payload === "string" && payload.trim()) return payload;
+  // Часть роутов отдаёт причину объектом { error: "…" } — достаём и её, иначе
+  // на экран ушла бы общая отговорка вместо того, что назвал сервер.
+  if (payload && typeof payload === "object") {
+    const inner = (payload as { error?: unknown }).error;
+    if (typeof inner === "string" && inner.trim()) return inner;
+  }
+  return fallback;
+}
+
+/** Запрос пользователя в подписи уведомления: целиком он бывает на абзац. */
+function short(text: string, max = 40): string {
+  const value = text.trim();
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
 /**
@@ -23,8 +37,51 @@ function errorText(payload: unknown, fallback: string): string {
 export const notifyMiddleware: Middleware = () => (next) => (action) => {
   const result = next(action);
 
+  // ── Построение графа по запросу ──
+  // Запрос идёт минутами, а полотно под оверлеем — не единственный экран:
+  // пользователь успевает уйти в библиотеку или в другую вкладку. Поэтому в
+  // ленте отмечаем и начало, и исход.
+  if (getGraphData.pending.match(action)) {
+    showToast(
+      "info",
+      `Строим граф по запросу «${short(action.meta.arg.promptValue)}»`,
+    );
+  } else if (getGraphData.fulfilled.match(action)) {
+    const prompt = short(action.meta.arg.promptValue);
+    const nodes = action.payload.data?.nodes?.length ?? 0;
+    // Ответ без узлов формально успешен, но графа в нём нет — на этом же месте
+    // ошибку показывает и слайс.
+    showToast(
+      nodes ? "success" : "error",
+      nodes
+        ? `Граф построен: узлов ${nodes} — «${prompt}»`
+        : `Граф не построен: в ответе нет узлов — «${prompt}»`,
+    );
+  } else if (getGraphData.rejected.match(action)) {
+    if (!action.meta.aborted) {
+      showToast("error", errorText(action.payload, "Не удалось построить граф"));
+    }
+  }
+
+  // ── Продолжение графа ──
+  // Тот же запрос к модели, только от листьев. Его неудача не показывала
+  // ничего: оверлей просто гас, и об отказе узнать было неоткуда.
+  else if (continueGraph.pending.match(action)) {
+    showToast("info", "Продолжаем граф от выбранных узлов");
+  } else if (continueGraph.fulfilled.match(action)) {
+    const added = action.payload?.nodes?.length ?? 0;
+    showToast(
+      "success",
+      added ? `Граф продолжен: новых узлов ${added}` : "Граф продолжен",
+    );
+  } else if (continueGraph.rejected.match(action)) {
+    if (!action.meta.aborted) {
+      showToast("error", errorText(action.payload, "Не удалось продолжить граф"));
+    }
+  }
+
   // ── Поиск источников ──
-  if (fetchStepSourcesV2.fulfilled.match(action)) {
+  else if (fetchStepSourcesV2.fulfilled.match(action)) {
     const found = action.payload.sources?.length ?? 0;
     const product = action.payload.product || "продукта";
     showToast(
