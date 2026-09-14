@@ -54,7 +54,6 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
         <span className={styles.prodName} title={p.producerFull ?? undefined}>
           {p.producer}
         </span>
-        <span className={styles.prodRegion}>{p.region ?? "—"}</span>
         <span
           className={`${styles.status} ${
             p.status === "active" ? styles.statusActive : styles.statusArchived

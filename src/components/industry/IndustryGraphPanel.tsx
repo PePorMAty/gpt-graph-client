@@ -162,7 +162,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
   }
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap} ${compact ? styles.wrapPanel : ""}`}>
       <div className={styles.tiles}>
         <div className={styles.tile}>
           <PlantIcon size={20} className={styles.tileIcon} />
@@ -268,7 +268,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       )}
 
       {compact ? (
-        <ul className={styles.cards}>
+        <ul className={`${styles.cards} ${styles.cardsScroll}`}>
           {paged.slice.map((r, i) => (
             <li key={`${r.inn ?? r.producer}-${r.regNumber ?? r.product}-${i}`} className={styles.card}>
               <div className={styles.cardHead}>

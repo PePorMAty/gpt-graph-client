@@ -7,6 +7,27 @@
   padding: var(--s-4);
 }
 
+/**
+ * Раскладка для левой панели.
+ *
+ * Панель фиксированной высоты, и список записей уходил за её низ без всякой
+ * прокрутки: до дальних записей и до страниц было не добраться. Растягиваем
+ * блок по высоте панели, прокручиваем только список, а подвал со страницами
+ * остаётся на виду.
+ */
+.wrapPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Отступы уже задал рельс — свои дали бы двойную рамку. */
+  padding: 0;
+}
+
+.cardsScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* ─── Пустые состояния ─── */
 
 .empty {
@@ -356,8 +377,8 @@
 }
 
 .statusArchived {
-  color: var(--c-text-muted);
-  background: var(--c-surface-soft);
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
 }
 
 /* ─── Список производителей в карточке ─── */
@@ -405,9 +426,10 @@
 
 .prodHead {
   display: grid;
-  /* Стрелка, название, регион, статус. Название забирает остаток: оно длиннее
-     всех и переносить его некуда. */
-  grid-template-columns: 14px minmax(0, 1fr) minmax(0, auto) auto;
+  /* Стрелка, название, статус. Регион отсюда убран: в ширину карточки он
+     помещался огрызком («Респ…», «Свер…»), а целиком стоит в подробностях,
+     которые раскрываются тем же щелчком. */
+  grid-template-columns: 14px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--s-2);
   width: 100%;
@@ -429,17 +451,6 @@
   white-space: nowrap;
   font-weight: var(--fw-medium);
   color: var(--c-text);
-}
-
-.prodRegion {
-  /* Регион не должен выдавливать название: «Ханты-Мансийский автономный округ
-     — Югра» длиннее иного предприятия. Отдаём ему не больше трети строки. */
-  max-width: 34%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-sm);
-  color: var(--c-text-muted);
 }
 
 .prodDetails {

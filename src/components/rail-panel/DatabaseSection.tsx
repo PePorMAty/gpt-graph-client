@@ -52,11 +52,13 @@ export const DatabaseSection = () => {
         ))}
       </div>
 
-      {view === "sources" ? (
-        <SourcesSection />
-      ) : (
-        <IndustryGraphPanel productNames={productNames} compact />
-      )}
+      <div className={styles.viewBody}>
+        {view === "sources" ? (
+          <SourcesSection />
+        ) : (
+          <IndustryGraphPanel productNames={productNames} compact />
+        )}
+      </div>
     </div>
   );
 };

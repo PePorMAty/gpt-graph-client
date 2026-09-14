@@ -55,11 +55,14 @@
   background: var(--c-surface-soft);
 }
 
+/* Сплошная заливка бренда среди бледных номеров била в глаза: подвал со
+   страницами — вспомогательный, и выделять его так сильно незачем. */
 .pageActive,
 .pageActive:hover {
-  color: var(--c-brand-ink);
-  background: var(--c-brand);
-  border-color: var(--c-brand);
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  font-weight: var(--fw-semibold);
 }
 
 .arrow:disabled {
