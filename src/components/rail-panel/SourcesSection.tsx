@@ -15,7 +15,8 @@ import {
   LinkIcon,
   SearchIcon,
 } from "../icons";
-import { Pagination, usePaged } from "../ui/Pagination";
+import { Pagination } from "../ui/Pagination";
+import { usePaged } from "../ui/usePaged";
 import styles from "./PanelSection.module.css";
 
 const DirectionBadge = ({ direction }: { direction: "up" | "down" | null }) => {

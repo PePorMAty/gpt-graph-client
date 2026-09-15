@@ -11,7 +11,8 @@ import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
-import { Pagination, usePaged } from "../ui/Pagination";
+import { Pagination } from "../ui/Pagination";
+import { usePaged } from "../ui/usePaged";
 import {
   ArrowDownIcon,
   ArrowUpIcon,

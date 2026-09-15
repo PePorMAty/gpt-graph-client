@@ -1,10 +1,11 @@
-import { useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryProducer } from "../../store/api/industry-api";
 import { GISP_REGISTRY_URL } from "./gisp";
-import { Pagination, usePaged } from "../ui/Pagination";
+import { Pagination } from "../ui/Pagination";
+import { usePaged } from "../ui/usePaged";
 import {
   IndustryDataIcon,
   ShieldCheckIcon,
@@ -112,6 +113,32 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
 
   const loading = status === "loading";
 
+  /**
+   * Проверяем сами, без кнопки.
+   *
+   * Реестр лежит на сервере и отвечает сразу: сотня продуктов разбирается за
+   * секунду, повторный проход берётся из кэша. Отдельный шаг «проверить»
+   * ничего не решал — только заставлял нажимать кнопку, чтобы увидеть данные,
+   * которые и так доступны.
+   *
+   * Список уже спрошенных держим отдельно: если сервер ответил ошибкой,
+   * результатов не появится, и без этой пометки запрос уходил бы снова и
+   * снова.
+   */
+  const asked = useRef(new Set<string>());
+  const pending = names.filter(
+    (n) => !results[industryKey(n)] && !asked.current.has(n),
+  );
+  const pendingKey = pending.join("|");
+
+  useEffect(() => {
+    if (ready === false || !pending.length) return;
+    for (const n of pending) asked.current.add(n);
+    dispatch(checkIndustry(pending));
+    // pendingKey — слепок набора: сам массив пересоздаётся на каждый рендер.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingKey, ready, dispatch]);
+
   if (!names.length) {
     return (
       <div className={styles.empty}>
@@ -142,27 +169,56 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
     return (
       <div className={styles.empty}>
         <IndustryDataIcon size={30} className={styles.emptyIcon} />
-        <div className={styles.emptyTitle}>Проверка по ГИСП не выполнялась</div>
+        <div className={styles.emptyTitle}>
+          {error ? "Не удалось проверить" : "Сверяем с реестром…"}
+        </div>
         <p className={styles.emptyText}>
-          В графе {names.length} продуктов. Посмотрим по реестру российской
-          промышленной продукции, какие из них выпускаются в России и кем.
+          {error ??
+            `В графе ${names.length} продуктов. Смотрим по реестру российской ` +
+              "промышленной продукции, какие из них выпускаются в России и кем."}
         </p>
-        <button
-          type="button"
-          className={styles.checkBtn}
-          disabled={loading}
-          onClick={() => dispatch(checkIndustry(names))}
-        >
-          <ShieldCheckIcon size={15} />
-          {loading ? "Проверяем…" : `Проверить ${names.length} продуктов`}
-        </button>
-        {error && <p className={styles.note}>{error}</p>}
+        {error && (
+          <button
+            type="button"
+            className={styles.checkBtn}
+            disabled={loading}
+            onClick={() => {
+              asked.current.clear();
+              dispatch(checkIndustry(names));
+            }}
+          >
+            <ShieldCheckIcon size={15} />
+            {loading ? "Проверяем…" : "Повторить"}
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className={`${styles.wrap} ${compact ? styles.wrapPanel : ""}`}>
+      {compact ? (
+        /* На экране 1080p четыре плитки занимали почти всю высоту панели, и на
+           сам список оставалась одна строка. Те же числа — строкой чипов. */
+        <div className={styles.chips}>
+          <span className={styles.chip}>
+            <PlantIcon size={13} />
+            {stats.producers} производителей
+          </span>
+          <span className={styles.chip}>
+            <FlaskIcon size={13} />
+            {confirmed} из {names.length} продуктов
+          </span>
+          <span className={styles.chip}>
+            <BookIcon size={13} />
+            {stats.entries} записей
+          </span>
+          <span className={styles.chip}>
+            <FocusIcon size={13} />
+            {stats.regions} регионов
+          </span>
+        </div>
+      ) : (
       <div className={styles.tiles}>
         <div className={styles.tile}>
           <PlantIcon size={20} className={styles.tileIcon} />
@@ -195,6 +251,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
           </div>
         </div>
       </div>
+      )}
 
       <div className={styles.filters}>
         <label className={styles.search}>
@@ -256,15 +313,11 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       </div>
 
       {checked < names.length && (
-        <button
-          type="button"
-          className={styles.checkBtn}
-          disabled={loading}
-          onClick={() => dispatch(checkIndustry(names))}
-        >
-          <ShieldCheckIcon size={15} />
-          {loading ? "Проверяем…" : `Проверить остальные ${names.length - checked}`}
-        </button>
+        <p className={styles.note}>
+          {loading
+            ? `Сверяем с реестром: ${checked} из ${names.length}…`
+            : `Проверено ${checked} из ${names.length} продуктов.`}
+        </p>
       )}
 
       {compact ? (
