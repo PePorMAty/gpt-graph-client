@@ -586,6 +586,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Структурные правки заблокированы: просмотр, «только продукты» или
   // фокус-режим (последние два — проекции, store в них не редактируется).
   const structureLocked = readOnly || productsOnly || focusOn;
+  /**
+   * Создание узла — единственная правка, доступная при фильтре «Только
+   * продукты».
+   *
+   * Остальные структурные действия там заблокированы не зря: полотно
+   * показывает проекцию, и связи в ней перерисованы. А вот новый продукт
+   * ложится в настоящие координаты — проекция их не меняет, — и сразу виден.
+   */
+  const canAddNodes = !readOnly && !focusOn;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -2618,7 +2627,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
-        onPaneContextMenu={structureLocked ? undefined : onPaneContextMenu}
+        onPaneContextMenu={canAddNodes ? onPaneContextMenu : undefined}
         nodesConnectable={!structureLocked}
         // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
         // в режиме «рука» узлы тоже неподвижны, тянется только холст.
@@ -2677,6 +2686,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           x={paneMenu.x}
           y={paneMenu.y}
           onAdd={handleAddNodeAt}
+          productsOnly={productsOnly}
           onClose={() => setPaneMenu(null)}
         />
       )}

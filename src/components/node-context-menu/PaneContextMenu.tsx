@@ -9,6 +9,14 @@ interface PaneContextMenuProps {
   y: number;
   /** Добавить узел выбранного типа в точке вызова меню. */
   onAdd: (type: "product" | "transformation") => void;
+  /**
+   * Показывать только создание продукта.
+   *
+   * В режиме «Только продукты» полотно — проекция, из которой преобразования
+   * убраны. Созданное здесь преобразование тут же исчезло бы с экрана, и
+   * предлагать его незачем.
+   */
+  productsOnly?: boolean;
   onClose: () => void;
 }
 
@@ -20,6 +28,7 @@ export const PaneContextMenu: FC<PaneContextMenuProps> = ({
   x,
   y,
   onAdd,
+  productsOnly = false,
   onClose,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -45,14 +54,16 @@ export const PaneContextMenu: FC<PaneContextMenuProps> = ({
         <FlaskIcon size={16} className={styles.itemIcon} />
         Добавить продукт
       </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={() => onAdd("transformation")}
-      >
-        <GearIcon size={16} className={styles.itemIcon} />
-        Добавить преобразование
-      </button>
+      {!productsOnly && (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={() => onAdd("transformation")}
+        >
+          <GearIcon size={16} className={styles.itemIcon} />
+          Добавить преобразование
+        </button>
+      )}
     </div>
   );
 };
