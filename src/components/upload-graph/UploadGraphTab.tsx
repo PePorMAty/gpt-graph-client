@@ -3,19 +3,24 @@ import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMergeGraph, layoutForMergeTab } from "../../hooks/useMergeGraph";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import { loadGraphFromFile, setGraphData } from "../../store/slices/gptSlice";
+import {
+  loadGraphFromFile,
+  renamePresentation,
+  setGraphData,
+} from "../../store/slices/gptSlice";
 import { parseGraphJson } from "../../utils/parseGraphJson";
 import {
   assignColorsForPresentations,
-  buildLegend,
   colorForPresentations,
   ensureProductPresentations,
+  hasCommonProductNodes,
 } from "../../utils/presentationColors";
 import { markChainRoots } from "../../utils/markChainRoots";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import type { CustomNode } from "../../types";
 
 import styles from "./UploadGraphTab.module.css";
+import { LegendList } from "../legend/LegendList";
 import {
   MergeReportModal,
   type MergeReportRow,
@@ -48,19 +53,12 @@ export const UploadGraphTab = () => {
   const hasGraph = data.nodes.length > 0;
 
   const hasCommonNodes = useMemo(
-    () =>
-      data.nodes.some((n) => {
-        if (n.type !== "product") return false;
-        const pres = n.data?.presentations;
-        return Array.isArray(pres) && pres.length > 1;
-      }),
+    () => hasCommonProductNodes(data.nodes),
     [data.nodes],
   );
 
-  const legendEntries = useMemo(
-    () => buildLegend(presentationColors, hasCommonNodes),
-    [presentationColors, hasCommonNodes],
-  );
+  const hasLegend =
+    Object.keys(presentationColors).length > 0 || hasCommonNodes;
 
   const colorizeNodes = (
     nodes: CustomNode[],
@@ -394,29 +392,17 @@ export const UploadGraphTab = () => {
 
       <div className={styles.legendSection}>
         <h4 className={styles.legendTitle}>Легенда</h4>
-        {legendEntries.length === 0 ? (
+        {hasLegend ? (
+          <LegendList
+            colors={presentationColors}
+            hasCommonNodes={hasCommonNodes}
+            onRename={(from, to) => dispatch(renamePresentation({ from, to }))}
+          />
+        ) : (
           <p className={styles.legendEmpty}>
             Загрузите граф с полем «Название презентации», чтобы увидеть
             источники.
           </p>
-        ) : (
-          <ul className={styles.legend}>
-            {legendEntries.map((entry) => (
-              <li
-                key={entry.name}
-                className={`${styles.legendItem} ${
-                  entry.isCommon ? styles.legendItemCommon : ""
-                }`}
-              >
-                <span
-                  className={styles.swatch}
-                  style={{ background: entry.swatch }}
-                  aria-hidden
-                />
-                <span className={styles.legendName}>{entry.name}</span>
-              </li>
-            ))}
-          </ul>
         )}
       </div>
 

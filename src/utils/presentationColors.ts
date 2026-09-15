@@ -176,6 +176,71 @@ export function prunePresentationColors(
     : Object.fromEntries(kept);
 }
 
+/**
+ * Есть ли на графе продукты сразу из нескольких презентаций.
+ *
+ * От этого зависит служебный пункт легенды «Общие узлы»: без таких узлов он
+ * обещал бы цвет, которого на полотне нет.
+ */
+export function hasCommonProductNodes(nodes: NodeWithPresentations[]): boolean {
+  return nodes.some((n) => {
+    if (n.type !== "product") return false;
+    const pres = n.data?.presentations;
+    return Array.isArray(pres) && pres.length > 1;
+  });
+}
+
+/**
+ * Переименование презентации вне стора — для превью объединения.
+ *
+ * На полотне то же самое делает редьюсер `renamePresentation`; здесь графа в
+ * сторе ещё нет, объединение только посчитано. Правило одно: имя меняется и в
+ * реестре цветов, и в узлах — иначе цвет потеряется.
+ *
+ * Порядок ключей реестра сохраняем, чтобы легенда не перетасовывалась, а узлы
+ * без этой презентации возвращаем прежними объектами: React Flow перерисовывает
+ * узел по смене ссылки.
+ */
+export function applyPresentationRename<T extends NodeWithPresentations>(
+  nodes: T[],
+  colors: Record<string, string>,
+  from: string,
+  to: string,
+): { nodes: T[]; colors: Record<string, string> } {
+  if (!from || !to || from === to) return { nodes, colors };
+  if (!(from in colors) || to in colors) return { nodes, colors };
+
+  const nextColors = Object.fromEntries(
+    Object.entries(colors).map(([name, color]) =>
+      name === from ? [to, color] : [name, color],
+    ),
+  );
+
+  const nextNodes = nodes.map((n) => {
+    const pres = n.data?.presentations;
+    const labels = n.data?.labelsByPresentation as
+      | Record<string, string>
+      | undefined;
+    const inPres = Array.isArray(pres) && pres.includes(from);
+    const inLabels = Boolean(labels && from in labels);
+    if (!inPres && !inLabels) return n;
+
+    const data: Record<string, unknown> = { ...n.data };
+    if (inPres) {
+      data.presentations = (pres as string[]).map((p) =>
+        p === from ? to : p,
+      );
+    }
+    if (inLabels && labels) {
+      const { [from]: moved, ...rest } = labels;
+      data.labelsByPresentation = { ...rest, [to]: moved };
+    }
+    return { ...n, data } as T;
+  });
+
+  return { nodes: nextNodes, colors: nextColors };
+}
+
 export interface LegendEntry {
   name: string;
   swatch: string;

@@ -927,6 +927,12 @@
   color: var(--c-text);
 }
 
+.mergeLegendHint {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
 .mergeCommonList {
   display: flex;
   flex-direction: column;

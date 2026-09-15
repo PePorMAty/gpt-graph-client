@@ -1,0 +1,100 @@
+.legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-1) var(--s-1) 0;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.item:hover {
+  background: var(--c-surface-hover);
+}
+
+/* «Общие узлы» — служебный пункт, а не источник. */
+.itemCommon {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+/*
+ * Имя не растягивается на всю строку: в широком окне превью карандаш иначе
+ * улетает к дальнему краю и не читается как кнопка рядом с названием.
+ */
+.name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-md);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+
+.input:focus {
+  outline: none;
+  box-shadow: var(--sh-ring);
+}
+
+/*
+ * Карандаш бледный, но видимый: спрятанный до наведения, он не находился
+ * глазами в превью объединения и был недоступен с клавиатуры.
+ */
+.renameBtn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  border-radius: var(--r-xs);
+  color: var(--c-text-faint);
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.item:hover .renameBtn,
+.renameBtn:focus-visible {
+  opacity: 1;
+}
+
+.renameBtn:hover {
+  color: var(--c-brand);
+}
+
+.error {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}
