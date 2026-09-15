@@ -183,6 +183,7 @@ export const SavedGraph = () => {
     dispatch(
       markGraphSaved({
         signature: graphSignature(graph.graph.nodes, graph.graph.edges),
+        opened: true,
       }),
     );
 

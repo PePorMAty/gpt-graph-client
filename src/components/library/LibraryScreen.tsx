@@ -136,6 +136,7 @@ export const LibraryScreen = () => {
       dispatch(
         markGraphSaved({
           signature: graphSignature(file.graph.nodes, file.graph.edges),
+          opened: true,
         }),
       );
       if (!stay) {
