@@ -374,6 +374,80 @@
   padding: var(--s-3);
 }
 
+/* ─── Идентификатор продукта ─── */
+
+.idRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.idValue {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.idSource {
+  padding: 1px var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-pill);
+}
+
+.idForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.idInput {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.idInput:focus {
+  outline: none;
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.idSave {
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-4);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-brand-ink);
+  background: var(--c-brand);
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.idSave:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.idHint {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
 .blockEmpty {
   font-size: var(--fs-md);
   color: var(--c-text-faint);

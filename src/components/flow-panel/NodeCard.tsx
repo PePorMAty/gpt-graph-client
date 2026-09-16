@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { FillCardBlock } from "./FillCardBlock";
 import { CollapsibleBlock } from "./CollapsibleBlock";
+import { ProductIdBlock } from "./ProductIdBlock";
 import { NodeSourcesBlock } from "./NodeSourcesBlock";
 import { CardTitleField } from "./CardTitleField";
 import { KeyInfoBlock } from "./KeyInfoBlock";
@@ -356,6 +357,12 @@ export const NodeCard: FC<NodeCardProps> = ({
                   </div>
                 )}
               </CollapsibleBlock>
+
+              {/* Идентификатор продукта: по нему продукты и считаются одним
+                  и тем же при объединении графов. У преобразований его нет. */}
+              {isProduct && (
+                <ProductIdBlock nodeId={nodeId} readOnly={readOnly} />
+              )}
 
               {/* Ключевая информация — параметры карточки технологии.
                   У продукта их место занимают «Промышленные данные». */}

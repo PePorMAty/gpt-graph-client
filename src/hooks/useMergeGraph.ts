@@ -22,8 +22,9 @@ import { alignChainRoots } from "../utils/alignChainRoots";
 import { reconstructSourcesPool } from "../utils/reconstructSourcesPool";
 import { mergeSourcesPools } from "../utils/mergeSourcesPools";
 import { separateComponentsHorizontally } from "../utils/separateComponentsHorizontally";
+import { normalizeProductName } from "../utils/normalizeProductName";
 import type { CustomNode } from "../types";
-import type { SourcesPoolEntry } from "../store/types";
+import type { SavedSourcesBlock, SourcesPoolEntry } from "../store/types";
 import type { MergeReportRow } from "../components/upload-graph/MergeReportModal";
 
 /** Что показать после объединения: сводка, предупреждения парсера и отчёт. */
@@ -54,6 +55,61 @@ export interface MergeGraphState {
 /** Результат слияния: новое состояние графа плюс то, что показать человеку. */
 export interface MergeComputation extends MergeOutcome {
   next: MergeGraphState;
+}
+
+/**
+ * Переложить источники схлопнутых продуктов под имя оставшегося узла.
+ *
+ * Пул источников адресуется названием продукта (`ключ = имя::направление`), а
+ * схлопывание по идентификатору сливает продукты с разными названиями. Записи
+ * пришедшего графа надо переименовать вслед за узлами — иначе они осиротеют:
+ * ссылаться на них будет нечему, и источники исчезнут из таблицы.
+ *
+ * Если у оставшегося узла свои источники уже есть, они и остаются — так же, как
+ * при совпадении по названию.
+ */
+function renamePoolKeysForCollapsed(
+  block: SavedSourcesBlock,
+  nodes: CustomNode[],
+  idRemap: Record<string, string>,
+): SavedSourcesBlock {
+  const labelById = new Map<string, string>();
+  for (const n of nodes) {
+    if (n.type !== "product") continue;
+    const label = typeof n.data?.label === "string" ? n.data.label : "";
+    if (label) labelById.set(n.id, label);
+  }
+
+  // Старое имя → название оставшегося узла, только там, где названия
+  // действительно разошлись.
+  const renames = new Map<string, string>();
+  for (const [fromId, toId] of Object.entries(idRemap)) {
+    const from = labelById.get(fromId);
+    const to = labelById.get(toId);
+    if (!from || !to) continue;
+    const a = normalizeProductName(from);
+    if (a && a !== normalizeProductName(to)) renames.set(a, to);
+  }
+  if (!renames.size) return block;
+
+  const pool: Record<string, SourcesPoolEntry> = {};
+  for (const [key, entry] of Object.entries(block.pool ?? {})) {
+    const sep = key.lastIndexOf("::");
+    const name = sep >= 0 ? key.slice(0, sep) : key;
+    const dir = sep >= 0 ? key.slice(sep + 2) : "";
+    const label = renames.get(name);
+    if (!label) {
+      pool[key] = entry;
+      continue;
+    }
+    const nextKey = `${normalizeProductName(label)}::${dir}`;
+    if (pool[nextKey]) continue;
+    // Подпись записи едет вместе с ключом: в таблице источников она видна, и
+    // исчезнувшее с полотна название там только запутало бы.
+    pool[nextKey] = { ...entry, product: label };
+  }
+
+  return { pool, seqCounter: block.seqCounter };
 }
 
 
@@ -291,7 +347,14 @@ export async function computeMerge(
     parsedSources ?? reconstructSourcesPool(payload.nodes);
   const combinedSources = mergeSourcesPools([
     { pool: sourcesPool, seqCounter: sourcesSeqCounter },
-    incomingSources,
+    // Схлопывание по идентификатору сливает продукты с РАЗНЫМИ названиями
+    // («Изопропилбензол» уехал в «ИПБ»), а пул источников заведён по названию.
+    // Без переноса записи остались бы под исчезнувшим именем, и источники
+    // добавленного графа пропали бы из таблицы.
+    renamePoolKeysForCollapsed(incomingSources, [
+      ...existingNodes,
+      ...incomingBackfill.nodes,
+    ], merged.idRemap),
   ]);
 
   return {

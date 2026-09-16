@@ -2,10 +2,8 @@
 import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import type { StepChainApiStep, StepRecord } from "../store/types";
-import {
-  findExistingProductNode,
-  normalizeProductName,
-} from "./normalizeProductName";
+import { normalizeProductName } from "./normalizeProductName";
+import { findExistingProductNode } from "./productIdentity";
 import { computeShiftX } from "./resolveChainOverlap";
 import { wouldCreateCycle } from "./graphReachability";
 
