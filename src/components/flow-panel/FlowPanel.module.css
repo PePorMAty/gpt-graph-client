@@ -807,6 +807,13 @@
   border-color: #2563eb;
 }
 
+/* Готовый адрес под полем: что уйдёт в список, видно до нажатия кнопки. */
+.addSourceHint {
+  font-size: 12px;
+  color: #64748b;
+  word-break: break-all;
+}
+
 .addSourceTextarea {
   padding: 7px 10px;
   border: 1px solid #cbd5e1;

@@ -112,6 +112,8 @@ import {
   alternativeKey,
 } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
+import { showToast } from "./components/toast/toastStore";
+import { normalizeSourceUrl, sourceUrlKey } from "./utils/sourceUrl";
 import {
   addBookmark,
   removeBookmark,
@@ -1855,28 +1857,49 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         const productName = String(selectedNode.data?.label || "").trim();
         if (!productName) return "У узла нет названия";
 
-        const url = src.url.trim();
-        const title = src.title.trim() || url;
-        if (!/^https?:\/\/.+/i.test(url)) {
-          return "Ссылка должна начинаться с http:// или https://";
+        const parsed = normalizeSourceUrl(src.url);
+        if (!parsed.url) {
+          return parsed.error ?? "Укажите ссылку или название сайта";
         }
+        const url = parsed.url;
+        const title = src.title.trim() || parsed.title || url;
 
         const dirField = direction === "up" ? "sourcesUp" : "sourcesDown";
         const nodeSources =
           (selectedNode.data?.[dirField] as TechnologySource[] | undefined) ?? [];
         const poolSources =
           sourcesPool[poolKey(productName, direction)]?.sources ?? [];
-        // Объединяем оба хранилища (могли разойтись), дедуп по url.
+        // Объединяем оба хранилища (могли разойтись), дедуп по адресу.
         const merged: TechnologySource[] = [];
         const seen = new Set<string>();
         for (const s of [...poolSources, ...nodeSources]) {
-          const key = String(s.url || "").trim().toLowerCase();
+          const key = sourceUrlKey(String(s.url || ""));
           if (!key || seen.has(key)) continue;
           seen.add(key);
           merged.push(s);
         }
-        if (seen.has(url.toLowerCase())) {
-          return "Источник с таким URL уже есть в списке";
+
+        // Источник хранится в двух местах: в узле и в общем пуле продукта. Они
+        // расходятся — например, поиск заново переписал список узла, — и тогда
+        // повторный ввод той же ссылки упирался в «уже есть», хотя в списке её
+        // не было. Отказываем только если ссылка видна там, куда человек
+        // смотрит; в остальных случаях просто возвращаем её на место.
+        const key = sourceUrlKey(url);
+        const inNode = nodeSources.some(
+          (s) => sourceUrlKey(String(s.url || "")) === key,
+        );
+        if (inNode) return "Этот источник уже в списке";
+        if (seen.has(key)) {
+          dispatch(
+            updateNodeData({
+              nodeId: selectedNodeId,
+              data: { [dirField]: merged },
+            }),
+          );
+          dispatch(
+            addSourcesToPool({ productName, direction, sources: merged }),
+          );
+          return null;
         }
 
         const manual: TechnologySource = {

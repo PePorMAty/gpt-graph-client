@@ -1,10 +1,22 @@
-import { useState, type FC } from "react";
+import { useMemo, useState, type FC } from "react";
+
+import {
+  KNOWN_SOURCE_NAMES,
+  normalizeSourceUrl,
+} from "../../utils/sourceUrl";
 import styles from "./FlowPanel.module.css";
 
 /**
- * Ручное добавление источника (задача 3.2). Показывается и ДО поиска источников
- * (пустой список), и ПОСЛЕ (под списком). onAdd возвращает текст ошибки
- * (невалидный url / дубль) или null при успехе.
+ * Ручное добавление источника.
+ *
+ * Поле принимает не только готовый адрес: «wikipedia», «ГОСТ» или «xumuk.ru»
+ * тоже работают — схему и www дописываем сами. Раньше форма отвечала на такой
+ * ввод «ссылка должна начинаться с http://», хотя понять человека было нетрудно.
+ *
+ * Что получится, видно до нажатия кнопки: под полем стоит готовый адрес. Он же
+ * подставляет название, если своё не написали.
+ *
+ * onAdd возвращает текст ошибки или null при успехе.
  */
 export const AddSourceForm: FC<{
   onAdd?: (src: {
@@ -15,23 +27,30 @@ export const AddSourceForm: FC<{
 }> = ({ onAdd }) => {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
+  const [input, setInput] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [addedFlash, setAddedFlash] = useState(false);
 
+  // Разбираем ввод на каждый символ: предпросмотр должен идти за набором.
+  const parsed = useMemo(() => normalizeSourceUrl(input), [input]);
+
   if (!onAdd) return null;
 
   const handleAdd = () => {
+    if (!parsed.url) {
+      setError(parsed.error ?? "Укажите ссылку или название сайта");
+      return;
+    }
     const err = onAdd({
-      title,
-      url,
+      title: title.trim() || parsed.title || parsed.url,
+      url: parsed.url,
       description: description.trim() ? description : undefined,
     });
     setError(err);
     if (!err) {
       setTitle("");
-      setUrl("");
+      setInput("");
       setDescription("");
       setAddedFlash(true);
       setTimeout(() => setAddedFlash(false), 2000);
@@ -53,19 +72,41 @@ export const AddSourceForm: FC<{
           <input
             type="text"
             className={styles.addSourceInput}
-            placeholder="Название источника"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Ссылка или название сайта — например, wikipedia"
+            list="known-sources"
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleAdd();
+            }}
           />
+          <datalist id="known-sources">
+            {KNOWN_SOURCE_NAMES.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+
+          {/* Что уйдёт в список — видно до нажатия кнопки. */}
+          {input.trim() &&
+            (parsed.url ? (
+              <div className={styles.addSourceHint}>→ {parsed.url}</div>
+            ) : (
+              <div className={styles.errorText}>{parsed.error}</div>
+            ))}
+
           <input
             type="text"
             className={styles.addSourceInput}
-            placeholder="https://…"
-            value={url}
-            onChange={(e) => {
-              setUrl(e.target.value);
-              setError(null);
-            }}
+            placeholder={
+              parsed.title
+                ? `Название (по умолчанию «${parsed.title}»)`
+                : "Название источника (необязательно)"
+            }
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
           />
           <textarea
             className={styles.addSourceTextarea}
@@ -82,7 +123,7 @@ export const AddSourceForm: FC<{
             type="button"
             className={styles.findSourcesButton}
             onClick={handleAdd}
-            disabled={!url.trim()}
+            disabled={!parsed.url}
           >
             Добавить источник
           </button>
