@@ -167,6 +167,25 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
     [fitted],
   );
 
+  /**
+   * Колесо над превью только приближает — страница под ним не листается.
+   *
+   * Через onWheel этого не добиться: React вешает колесо пассивным слушателем,
+   * и preventDefault там не работает — прокрутка уходила окну превью, а дальше
+   * и странице. Поэтому слушатель свой, с passive: false.
+   */
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const anchor = toGraph(e.clientX, e.clientY) ?? undefined;
+      zoomBy(e.deltaY < 0 ? 1.25 : 1 / 1.25, anchor);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [toGraph, zoomBy]);
+
   if (!boxes.length || !current) {
     return <div className={styles.previewEmpty}>Граф пуст</div>;
   }
@@ -207,10 +226,6 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
         onPointerUp={(e) => {
           drag.current = null;
           e.currentTarget.releasePointerCapture(e.pointerId);
-        }}
-        onWheel={(e) => {
-          const anchor = toGraph(e.clientX, e.clientY) ?? undefined;
-          zoomBy(e.deltaY < 0 ? 1.25 : 1 / 1.25, anchor);
         }}
       >
         <g className={styles.previewEdges} strokeWidth={1.4 / scale}>

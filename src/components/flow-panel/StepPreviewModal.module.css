@@ -18,6 +18,9 @@
   width: 420px;
   max-height: 80vh;
   overflow-y: auto;
+  /* Прокрутка не выходит за окно: докрутив список до конца, колесо листало
+     полотно под ним. */
+  overscroll-behavior: contain;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
