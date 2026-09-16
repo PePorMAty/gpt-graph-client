@@ -117,6 +117,12 @@ export interface GraphApiResponse {
   has_more?: boolean;
   leaf_nodes?: string[];
   message?: string;
+  /**
+   * Причина неудачи при `success: false`. Роут построения отвечает 200 даже на
+   * провал (соединение уже открыто под «живой» ответ), поэтому о нём говорит
+   * только это поле.
+   */
+  error?: string;
 }
 
 export interface CreateGraphResult {
@@ -172,6 +178,51 @@ export interface SavedGraphFile {
     /** Пул источников + счётчики номеров бейджа. Может отсутствовать у старых сейвов. */
     sources?: SavedSourcesBlock;
   };
+}
+
+// ===== ЗАКЛАДКИ И ИСТОРИЯ =====
+//
+// Живут отдельно от файла графа: на сервере это сайдкары рядом с ним
+// (/graph-files/:id/bookmarks и /graph-files/:id/history). Типы лежат здесь, а
+// не в слайсах, чтобы модули api могли их использовать без циклического
+// импорта; слайсы их реэкспортируют.
+
+export type BookmarkKind = "product" | "transformation";
+
+export interface Bookmark {
+  /** id узла на полотне. Ключ закладки. */
+  nodeId: string;
+  label: string;
+  kind: BookmarkKind;
+  /** Заметка пользователя — правится карандашом в панели закладок. */
+  note: string;
+  createdAt: string;
+}
+
+/** Смысловая группа записи истории — от неё зависят иконка и цвет в панели. */
+export type HistoryKind =
+  | "create"
+  | "open"
+  | "merge"
+  | "add"
+  | "remove"
+  | "edit"
+  | "step"
+  | "link"
+  | "save"
+  | "clear";
+
+export interface HistoryEntry {
+  id: string;
+  /** Время события (ISO). */
+  at: string;
+  kind: HistoryKind;
+  /** Короткая строка: что произошло. */
+  title: string;
+  /** Подробности: имена узлов, количества. */
+  details?: string;
+  /** Узлы, к которым относится запись, — по клику камера едет к ним. */
+  nodeIds?: string[];
 }
 
 // ===== SOURCES (GPT /gpt/sources) =====

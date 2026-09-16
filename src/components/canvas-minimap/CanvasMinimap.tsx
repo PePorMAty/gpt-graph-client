@@ -102,7 +102,13 @@ export const CanvasMinimap = ({ nodes }: CanvasMinimapProps) => {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) setPanel({ w: width, h: height });
+      if (width <= 0 || height <= 0) return;
+      // Как и в превью библиотеки: без сверки с прежним размером каждый отклик
+      // наблюдателя давал новый объект и лишнюю перерисовку, а на дробных
+      // размерах они шли непрерывно.
+      const w = Math.round(width);
+      const h = Math.round(height);
+      setPanel((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
     });
     ro.observe(el);
     return () => ro.disconnect();

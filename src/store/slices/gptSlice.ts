@@ -209,6 +209,17 @@ const gptSlice = createSlice({
     setGraphName: (state, action: PayloadAction<string>) => {
       state.originalPrompt = action.payload.trim() || null;
     },
+    /**
+     * Убрать сообщение об ошибке построения.
+     *
+     * Раньше оно снималось только следующим успешным запросом, а закрывало
+     * собой полотно — начать этот запрос было неоткуда, и оставалось
+     * перезагружать страницу.
+     */
+    clearGraphError: (state) => {
+      state.isError = false;
+      state.error = null;
+    },
     setGraphData: (
       state,
       action: PayloadAction<{ nodes: CustomNode[]; edges: Edge[] }>,
@@ -1622,6 +1633,7 @@ export const {
   removeNodes,
   setGraphData,
   setGraphName,
+  clearGraphError,
   addNode,
   loadGraphFromFile,
   mergeGraphFromFile,

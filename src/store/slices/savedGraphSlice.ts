@@ -157,8 +157,18 @@ const savedGraphsSlice = createSlice({
       state.savedAt = null;
       state.savedSignature = null;
     },
-    /** Полотно записано (или только что загружено) — запомнить его слепок. */
-    markGraphSaved(state, action: { payload: { signature: string } }) {
+    /**
+     * Полотно записано (или только что загружено) — запомнить его слепок.
+     *
+     * Действие шлют по двум поводам: после настоящей записи на сервер и сразу
+     * после открытия графа, чтобы строка состояния не показывала «изменения не
+     * сохранены» у только что загруженного полотна. Второй случай помечается
+     * opened: для истории это не сохранение, и записывать его туда нельзя.
+     */
+    markGraphSaved(
+      state,
+      action: { payload: { signature: string; opened?: boolean } },
+    ) {
       state.savedAt = new Date().toISOString();
       state.savedSignature = action.payload.signature;
     },

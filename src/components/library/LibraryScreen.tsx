@@ -13,6 +13,7 @@ import {
   updateGraphDescriptionThunk,
 } from "../../store/slices/savedGraphSlice";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
+import { openGraphExtras } from "../../store/graphExtras";
 import { parseGraphJson } from "../../utils/parseGraphJson";
 import { applyAutoLayout } from "../../utils/applyAutoLayout";
 import { graphSignature } from "../../utils/graphSignature";
@@ -130,9 +131,12 @@ export const LibraryScreen = () => {
         }),
       );
       dispatch(setOpenedGraph({ id: meta.id, name: meta.name }));
+      // Закладки и история этого графа лежат на сервере — поднимаем их.
+      dispatch(openGraphExtras(meta.id));
       dispatch(
         markGraphSaved({
           signature: graphSignature(file.graph.nodes, file.graph.edges),
+          opened: true,
         }),
       );
       if (!stay) {

@@ -27,6 +27,7 @@ import { graphSignature } from "../../utils/graphSignature";
 import { ConfirmUnsavedModal } from "../ui/ConfirmUnsavedModal";
 import { SaveGraphModal } from "../save-graph-modal";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
+import { openGraphExtras } from "../../store/graphExtras";
 import { extractSubgraph } from "../../utils/extractSubgraph";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { OpenGraphModal } from "../open-graph-modal/OpenGraphModal";
@@ -174,12 +175,15 @@ export const SavedGraph = () => {
     // Полное открытие сохранённого графа — запоминаем его файл для «Обновить».
     if (pendingOpen) {
       dispatch(setOpenedGraph(pendingOpen));
+      // Закладки и история этого графа лежат на сервере — поднимаем их.
+      dispatch(openGraphExtras(pendingOpen.id));
     }
     // Только что открытый граф совпадает с сейвом — строка состояния не должна
     // сразу показывать «изменения не сохранены».
     dispatch(
       markGraphSaved({
         signature: graphSignature(graph.graph.nodes, graph.graph.edges),
+        opened: true,
       }),
     );
 

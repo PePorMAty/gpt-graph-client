@@ -2,9 +2,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { renamePresentation } from "../../store/slices/gptSlice";
-import { buildLegend } from "../../utils/presentationColors";
+import { hasCommonProductNodes } from "../../utils/presentationColors";
 import { useDismiss } from "../../hooks/useDismiss";
-import { ChevronDownIcon, PencilIcon, PlantIcon } from "../icons";
+import { LegendList } from "../legend/LegendList";
+import { ChevronDownIcon, PlantIcon } from "../icons";
 import styles from "./GraphNameMenu.module.css";
 
 interface GraphNameMenuProps {
@@ -30,26 +31,12 @@ export const GraphNameMenu = ({ name }: GraphNameMenuProps) => {
 
   const { data, presentationColors } = useAppSelector((s) => s.graph);
 
-  // Правка названия презентации: имя редактируемого пункта + черновик.
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
   const hasCommonNodes = useMemo(
-    () =>
-      data.nodes.some(
-        (n) =>
-          n.type === "product" &&
-          Array.isArray(n.data?.presentations) &&
-          n.data.presentations.length > 1,
-      ),
+    () => hasCommonProductNodes(data.nodes),
     [data.nodes],
   );
 
-  const legend = useMemo(
-    () => buildLegend(presentationColors, hasCommonNodes),
-    [presentationColors, hasCommonNodes],
-  );
+  const hasLegend = Object.keys(presentationColors).length > 0 || hasCommonNodes;
 
   const counts = useMemo(() => {
     let products = 0;
@@ -60,24 +47,6 @@ export const GraphNameMenu = ({ name }: GraphNameMenuProps) => {
     }
     return { products, transformations, edges: data.edges.length };
   }, [data.nodes, data.edges]);
-
-  const cancelEdit = () => {
-    setEditing(null);
-    setDraft("");
-    setError(null);
-  };
-
-  const commitEdit = () => {
-    if (editing === null) return;
-    const to = draft.trim();
-    if (!to || to === editing) return cancelEdit();
-    if (to in presentationColors) {
-      setError("Такое название уже есть");
-      return;
-    }
-    dispatch(renamePresentation({ from: editing, to }));
-    cancelEdit();
-  };
 
   const title = name || "Граф не создан";
 
@@ -105,59 +74,16 @@ export const GraphNameMenu = ({ name }: GraphNameMenuProps) => {
             <span>Связей: {counts.edges}</span>
           </div>
 
-          {legend.length > 0 && (
+          {hasLegend && (
             <>
               <div className={styles.sectionHead}>Легенда</div>
-              <ul className={styles.legend}>
-                {legend.map((entry) => (
-                  <li
-                    key={entry.name}
-                    className={`${styles.legendItem} ${
-                      entry.isCommon ? styles.legendItemCommon : ""
-                    }`}
-                  >
-                    <span
-                      className={styles.swatch}
-                      style={{ background: entry.swatch }}
-                      aria-hidden
-                    />
-                    {editing === entry.name ? (
-                      <input
-                        className={styles.nameInput}
-                        value={draft}
-                        autoFocus
-                        onChange={(e) => {
-                          setDraft(e.target.value);
-                          setError(null);
-                        }}
-                        onBlur={commitEdit}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitEdit();
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                      />
-                    ) : (
-                      <span className={styles.legendName}>{entry.name}</span>
-                    )}
-                    {/* «Общие узлы» — служебный пункт, а не презентация. */}
-                    {!entry.isCommon && editing !== entry.name && (
-                      <button
-                        type="button"
-                        className={styles.renameBtn}
-                        onClick={() => {
-                          setEditing(entry.name);
-                          setDraft(entry.name);
-                          setError(null);
-                        }}
-                        aria-label={`Переименовать «${entry.name}»`}
-                      >
-                        <PencilIcon size={13} />
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {error && <div className={styles.error}>{error}</div>}
+              <LegendList
+                colors={presentationColors}
+                hasCommonNodes={hasCommonNodes}
+                onRename={(from, to) =>
+                  dispatch(renamePresentation({ from, to }))
+                }
+              />
             </>
           )}
         </div>

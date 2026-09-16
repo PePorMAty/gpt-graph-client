@@ -1,0 +1,584 @@
+/* Слой промышленных данных: что реестр знает о продуктах графа. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+/**
+ * Раскладка для левой панели.
+ *
+ * Панель фиксированной высоты, и список записей уходил за её низ без всякой
+ * прокрутки: до дальних записей и до страниц было не добраться. Растягиваем
+ * блок по высоте панели, прокручиваем только список, а подвал со страницами
+ * остаётся на виду.
+ */
+.wrapPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Отступы уже задал рельс — свои дали бы двойную рамку. */
+  padding: 0;
+}
+
+.cardsScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ─── Пустые состояния ─── */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-8) var(--s-4);
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--c-text-faint);
+}
+
+.emptyTitle {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.emptyText {
+  max-width: 420px;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.checkBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-brand-ink);
+  background: var(--c-brand);
+  border: none;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.checkBtn:hover {
+  background: var(--c-brand-hover);
+}
+
+.checkBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ─── Заголовок раздела ─── */
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+/* ─── Сводка ─── */
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.statValue {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.statLabel {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+/* Насколько уверенно название легло на запись реестра. Реестр очень дробный,
+   и точное совпадение там редкость — разницу надо показывать, а не прятать. */
+.match {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-sm);
+  border-radius: var(--r-pill);
+}
+
+.matchStrong {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+  border: 1px solid var(--c-success-border);
+}
+
+.matchWeak {
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+}
+
+.note {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.nameChip {
+  padding: 2px var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+/* ─── Плитки сводки (вкладка библиотеки) ─── */
+
+.tiles {
+  display: grid;
+  /* Четыре в ряд на широком экране, меньше — по мере сужения панели. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s-3);
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.tileIcon {
+  flex: none;
+  color: var(--c-brand-strong);
+}
+
+.tileLabel {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.tileValue {
+  display: block;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.tileOf {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-regular);
+  color: var(--c-text-muted);
+}
+
+/* Компактная сводка для панели: те же числа, но строкой. */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-pill);
+}
+
+.chip svg {
+  color: var(--c-brand-strong);
+}
+
+/* ─── Поиск и отборы ─── */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1 1 260px;
+  padding: 0 var(--s-3);
+  color: var(--c-text-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--s-2) 0;
+  font: inherit;
+  color: var(--c-text);
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.select {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  /* Регионов и продуктов бывает много: длинный пункт не должен растягивать
+     всю строку отборов. */
+  max-width: 200px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-pill);
+}
+
+.segment {
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.segmentActive {
+  color: var(--c-text);
+  background: var(--c-surface);
+  box-shadow: var(--sh-sm);
+}
+
+.emptyRows {
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+}
+
+/* ─── Таблица производителей ─── */
+
+.tableWrap {
+  /* Названия предприятий длинные («ОБЩЕСТВО С ОГРАНИЧЕННОЙ …»), и в узкой
+     карточке таблица иначе выдавливается за край. */
+  overflow-x: auto;
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--s-2);
+  text-align: left;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.table tbody td {
+  padding: var(--s-2);
+  border-bottom: 1px solid var(--c-border-soft);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--c-surface-soft);
+}
+
+.producer {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.product {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.inn {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--c-text-muted);
+}
+
+.region {
+  color: var(--c-text-muted);
+}
+
+/* Регион выведен из ИНН — это место учёта, а не обязательно производства. */
+.regionGuess {
+  border-bottom: 1px dashed var(--c-border);
+  cursor: help;
+}
+
+.status {
+  display: inline-block;
+  padding: 2px var(--s-2);
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  border-radius: var(--r-pill);
+}
+
+.statusActive {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.statusArchived {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+}
+
+/* ─── Список производителей в карточке ─── */
+
+.listHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.listTitle {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.listLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  text-decoration: none;
+}
+
+.listLink:hover {
+  text-decoration: underline;
+}
+
+.prodList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.prodItem + .prodItem {
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.prodHead {
+  display: grid;
+  /* Стрелка, название, статус. Регион отсюда убран: в ширину карточки он
+     помещался огрызком («Респ…», «Свер…»), а целиком стоит в подробностях,
+     которые раскрываются тем же щелчком. */
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.prodHead:hover {
+  background: var(--c-surface-soft);
+}
+
+.prodName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.prodDetails {
+  padding: 0 var(--s-3) var(--s-2) calc(var(--s-3) + 14px + var(--s-2));
+  background: var(--c-surface-soft);
+}
+
+.prodProduct {
+  font-size: var(--fs-md);
+  color: var(--c-text);
+}
+
+.prodMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.moreBtn {
+  align-self: flex-start;
+  padding: var(--s-1) 0;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.moreBtn:hover {
+  text-decoration: underline;
+}
+
+/* ─── Компактный список: карточка узла узкая для таблицы ─── */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+}
+
+/* ─── Список продуктов графа (вкладка библиотеки) ─── */
+
+.productRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.productName {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.count {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-success);
+  background: var(--c-success-soft);
+  border-radius: var(--r-pill);
+}
+
+.countZero {
+  color: var(--c-text-faint);
+  background: var(--c-surface-soft);
+}
+
+.foot {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}

@@ -32,8 +32,9 @@ const KIND_LABEL: Record<KindFilter, string> = {
  * полотне. Клик по названию подводит камеру и выделяет узел, карандаш правит
  * заметку.
  *
- * Закладки живут в памяти сессии и привязаны к id узлов текущего графа —
- * смена графа их сбрасывает (см. bookmarksSlice).
+ * Закладки привязаны к id узлов текущего графа — смена графа их сбрасывает. У
+ * сохранённого графа они хранятся на сервере и переживают перезагрузку
+ * вкладки; у ещё не сохранённого — живут в памяти (см. bookmarksSlice).
  */
 export const BookmarksSection = () => {
   const dispatch = useAppDispatch();
@@ -194,6 +195,9 @@ export const BookmarksSection = () => {
                   </td>
                   <td>
                     <span
+                      title={
+                        b.kind === "product" ? "Продукт" : "Преобразование"
+                      }
                       className={`${styles.kindBadge} ${
                         b.kind === "product"
                           ? styles.kindProduct

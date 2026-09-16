@@ -5,22 +5,30 @@ import { sourcesPoolKey } from "../../store/slices/gptSlice";
 import { collectGraphSources } from "../../utils/graphSources";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { graphChainLength } from "../../utils/viewportStats";
+import { exportGraphJson } from "../../utils/exportGraph";
+import { showToast } from "../toast/toastStore";
 import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
+import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
+import { Pagination } from "../ui/Pagination";
+import { usePaged } from "../ui/usePaged";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   BranchIcon,
   ChainLengthIcon,
   DatabaseIcon,
+  ExportIcon,
   FlaskIcon,
   GearIcon,
+  GraphIcon,
   IndustryDataIcon,
   LinkIcon,
   NodesCountIcon,
   PencilIcon,
   SearchIcon,
+  TrashIcon,
 } from "../icons";
 import styles from "./LibraryScreen.module.css";
 
@@ -84,6 +92,20 @@ export const GraphDetails = ({
   const aboutRef = useRef<HTMLTextAreaElement>(null);
 
   const nodes = useMemo(() => file?.graph.nodes ?? [], [file]);
+
+  // Названия продуктов графа — по ним вкладка спрашивает реестр. Берём из
+  // сохранённого файла: библиотеку открывают, не открывая сам граф.
+  const productNames = useMemo(
+    () => [
+      ...new Set(
+        nodes
+          .filter((n) => n.type === "product")
+          .map((n) => String(n.data?.label ?? "").trim())
+          .filter(Boolean),
+      ),
+    ],
+    [nodes],
+  );
   const edges = useMemo(() => file?.graph.edges ?? [], [file]);
 
   const stats = useMemo(
@@ -114,6 +136,9 @@ export const GraphDetails = ({
         r.objectLabel.toLowerCase().includes(q),
     );
   }, [sources, query]);
+
+  // Источников бывают сотни: сплошная прокрутка в такой таблице бесполезна.
+  const pagedSources = usePaged(filteredSources);
 
   // Описание правится отдельно от промта; у графов, сохранённых до появления
   // поля, его нет — там показываем исходный промт, как и раньше.
@@ -146,6 +171,19 @@ export const GraphDetails = ({
     if (ok) setEditingAbout(false);
   };
 
+  /**
+   * Выгрузить выбранный граф файлом.
+   *
+   * Отдаём файл ровно в том виде, в каком он лежит на сервере: это тот же
+   * формат, что понимает «Загрузить из файла», — выгруженный граф можно
+   * вернуть обратно без потерь.
+   */
+  const exportGraph = () => {
+    if (!file) return;
+    exportGraphJson(file, meta.name);
+    showToast("success", `Файл графа «${meta.name}» сохранён`);
+  };
+
   return (
     <div className={styles.details}>
       {/* ── Шапка ── */}
@@ -169,10 +207,26 @@ export const GraphDetails = ({
         </div>
 
         <div className={styles.detailsActions}>
-          <Button variant="primary" onClick={onOpen} disabled={isLoading}>
+          <Button
+            variant="primary"
+            onClick={onOpen}
+            disabled={isLoading}
+            icon={<GraphIcon size={16} />}
+          >
             Открыть граф
           </Button>
-          <Button variant="ghost" onClick={onDelete}>
+          <Button
+            onClick={exportGraph}
+            disabled={isLoading || !file}
+            icon={<ExportIcon size={16} />}
+          >
+            Экспорт
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={onDelete}
+            icon={<TrashIcon size={16} />}
+          >
             Удалить
           </Button>
         </div>
@@ -334,7 +388,7 @@ export const GraphDetails = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSources.map((row) => (
+                    {pagedSources.slice.map((row) => (
                       <tr key={row.id}>
                         <td>
                           <span className={styles.objectCell}>
@@ -384,21 +438,21 @@ export const GraphDetails = ({
                 </table>
               </div>
             )}
+
+            <Pagination
+              page={pagedSources.page}
+              pages={pagedSources.pages}
+              from={pagedSources.from}
+              to={pagedSources.to}
+              total={pagedSources.total}
+              onChange={pagedSources.setPage}
+              unit="источников"
+            />
           </>
         )}
 
         {tab === "industry" && (
-          <div className={styles.placeholder}>
-            <IndustryDataIcon size={30} className={styles.placeholderIcon} />
-            <div className={styles.placeholderTitle}>
-              Промышленные данные появятся позже
-            </div>
-            <p className={styles.placeholderText}>
-              Здесь будут сведения из ГИСП по продуктам графа: производители,
-              ИНН, регионы, статус в реестре и ссылки на реестровые записи.
-              Подключения к базе пока нет.
-            </p>
-          </div>
+          <IndustryGraphPanel productNames={productNames} />
         )}
 
         {tab === "merge" && (

@@ -120,12 +120,56 @@
   gap: var(--s-2);
 }
 
+/* Переключатель вида внутри раздела «База данных». */
+
+.viewSwitch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.viewBtn {
+  flex: 1 1 0;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.viewBtn:hover {
+  color: var(--c-text);
+}
+
+/* Вид занимает остаток высоты панели: без этого список уходил за низ. */
+.viewBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewBtnActive,
+.viewBtnActive:hover {
+  color: var(--c-text);
+  background: var(--c-surface);
+  box-shadow: var(--sh-sm);
+}
+
 .search {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
-  height: var(--h-control);
-  padding: 0 var(--s-3);
+  gap: var(--s-3);
+  /* Панель широкая, а поле поиска выглядело узкой полоской: на общем фоне его
+     было легко не заметить. Даём высоту крупного элемента. */
+  min-height: calc(52 * var(--u));
+  padding: 0 var(--s-4);
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
@@ -147,7 +191,7 @@
   min-width: 0;
   border: none;
   background: none;
-  font-size: var(--fs-md);
+  font-size: var(--fs-base);
 }
 
 .searchInput:focus {
@@ -252,19 +296,21 @@
 }
 
 .colObject {
-  width: 28%;
+  width: 26%;
 }
 
+/* Под заголовок «Направление»: в прежних 15% слово не помещалось, переноситься
+   ему негде, и tableWrap срезал его до «Направл». */
 .colDirection {
-  width: 15%;
+  width: 20%;
 }
 
 .colTitle {
-  width: 32%;
+  width: 31%;
 }
 
 .colLink {
-  width: 25%;
+  width: 23%;
 }
 
 .table thead th {
@@ -383,16 +429,18 @@
 
 /* ─── Таблица закладок ─── */
 
+/* Доли подобраны так, чтобы самая широкая подпись типа — «Преобразование» —
+   помещалась целиком даже в самой узкой панели (380px). */
 .colBookmarkObject {
-  width: 34%;
+  width: 30%;
 }
 
 .colBookmarkKind {
-  width: 25%;
+  width: 35%;
 }
 
 .colBookmarkNote {
-  width: 29%;
+  width: 23%;
 }
 
 .colBookmarkActions {
@@ -423,9 +471,15 @@
 }
 
 .kindBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
+  display: inline-block;
+  /* Панель узкая, и «Преобразование» длиннее своей колонки: без ограничения
+     бейдж вылезал в соседнюю и наезжал на прочерк в заметке. Уже не вылезет —
+     а полностью подпись видно во всплывающей подсказке (атрибут title). */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  padding: 2px 6px;
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   border-radius: var(--r-pill);
