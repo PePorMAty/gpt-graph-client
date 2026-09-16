@@ -475,7 +475,16 @@ const gptSlice = createSlice({
       const anchor = state.data.nodes.find(
         (n) => n.id === session.currentProductNodeId,
       );
-      if (!anchor) return;
+      // Продукта, от которого строился шаг, на полотне больше нет: его удалили
+      // или полотно сменилось (открытие другого графа, объединение — там id
+      // получают новый префикс). Класть шаг некуда, но и оставлять сессию с
+      // pendingStep нельзя: превью висело бы с нерабочей кнопкой «Принять».
+      if (!anchor) {
+        session.pendingStep = null;
+        session.status = "idle";
+        session.accumulatedSources = [];
+        return;
+      }
 
       const stepNumber = session.steps.length + 1;
 

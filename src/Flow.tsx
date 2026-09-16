@@ -1685,6 +1685,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       ) => {
         if (!selectedNodeId) return;
         const sKey = stepSessionKey(selectedNodeId, direction);
+        // Якорь шага мог исчезнуть с полотна (удалён, или граф сменился —
+        // после объединения у узлов новые id). Шаг тогда класть некуда;
+        // редьюсер закроет превью, а причину называем здесь.
+        const anchorId = stepChainSessions[sKey]?.currentProductNodeId;
+        if (anchorId && !data.nodes.some((n) => n.id === anchorId)) {
+          showToast(
+            "error",
+            "Шаг не принят: продукта, от которого он строился, больше нет на полотне",
+          );
+        }
         // Обобщённое описание шага продукта-якоря (markdown) — прокинем на
         // создаваемую transformation-ноду (см. stepToFlow / карточка преобразования).
         const anchorAggregatedText =
@@ -1703,7 +1713,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // альтернативы должны остаться видимыми, и useEffect пересоздаст
         // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
-    [dispatch, selectedNodeId, sourcesByNodeId],
+    [dispatch, selectedNodeId, sourcesByNodeId, stepChainSessions, data.nodes],
   );
 
   // Активные запросы поиска источников — по ключу продукт+направление.
