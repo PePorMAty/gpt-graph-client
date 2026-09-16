@@ -589,14 +589,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // фокус-режим (последние два — проекции, store в них не редактируется).
   const structureLocked = readOnly || productsOnly || focusOn;
   /**
-   * Создание узла — единственная правка, доступная при фильтре «Только
-   * продукты».
+   * Правки самих узлов при фильтре «Только продукты» разрешены.
    *
-   * Остальные структурные действия там заблокированы не зря: полотно
-   * показывает проекцию, и связи в ней перерисованы. А вот новый продукт
-   * ложится в настоящие координаты — проекция их не меняет, — и сразу виден.
+   * Общий запрет там стоит не зря, но касается он связей: рёбра в проекции
+   * синтетические, их в сторе нет. А узлы настоящие — id проекция не
+   * подменяет, — поэтому создание, удаление и закладка работают ровно так же,
+   * как на полном полотне, и результат виден сразу.
+   *
+   * Фокус-режим остаётся просмотровым: там своя раскладка окрестности.
    */
-  const canAddNodes = !readOnly && !focusOn;
+  const canEditNodes = !readOnly && !focusOn;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -2648,9 +2650,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
+        onNodeContextMenu={canEditNodes ? onNodeContextMenu : undefined}
         onPaneClick={onPaneClick}
-        onPaneContextMenu={canAddNodes ? onPaneContextMenu : undefined}
+        onPaneContextMenu={canEditNodes ? onPaneContextMenu : undefined}
         nodesConnectable={!structureLocked}
         // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
         // в режиме «рука» узлы тоже неподвижны, тянется только холст.
