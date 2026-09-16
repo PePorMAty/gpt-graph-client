@@ -37,6 +37,19 @@ export const StatusBar = () => {
 
   const { nodes, edges } = useAppSelector((s) => s.graph.data);
   const { savedAt, savedSignature } = useAppSelector((s) => s.savedGraphs);
+  const industryResults = useAppSelector((s) => s.industry.results);
+
+  // Продукты, найденные в реестре. Считаем здесь, а не в узлах: слой ГИСП
+  // производный и в сохранённый граф попадать не должен.
+  const confirmedNames = useMemo(
+    () =>
+      new Set(
+        Object.entries(industryResults)
+          .filter(([, info]) => info.found)
+          .map(([key]) => key),
+      ),
+    [industryResults],
+  );
 
   // Пересчёт счётчиков отложен: панорамирование даёт десятки кадров в
   // секунду, а обход графа на каждом из них заметно тормозит холст.
@@ -50,8 +63,8 @@ export const StatusBar = () => {
   }, [viewport, width, height]);
 
   const stats = useMemo(
-    () => computeViewportStats(nodes, edges, view),
-    [nodes, edges, view],
+    () => computeViewportStats(nodes, edges, view, confirmedNames),
+    [nodes, edges, view, confirmedNames],
   );
 
   const zoomPercent = Math.round(viewport.zoom * 100);

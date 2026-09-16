@@ -5,6 +5,8 @@ import type { MergeReportRow } from "../upload-graph/MergeReportModal";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
+import { LegendList } from "../legend/LegendList";
+import { hasCommonProductNodes } from "../../utils/presentationColors";
 import { ChainLengthIcon, LinkIcon, NodesCountIcon } from "../icons";
 import styles from "./LibraryScreen.module.css";
 
@@ -13,6 +15,8 @@ export interface MergePreviewResult {
   edges: Edge[];
   commonNodes: MergeReportRow[];
   addedCount: number;
+  /** Реестр «презентация → цвет» посчитанного объединения — для легенды. */
+  presentationColors: Record<string, string>;
 }
 
 interface MergePreviewModalProps {
@@ -24,6 +28,8 @@ interface MergePreviewModalProps {
   result: MergePreviewResult | null;
   loading: boolean;
   error: string | null;
+  /** Переименовать источник прямо в превью — до того, как он попал на полотно. */
+  onRename: (from: string, to: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -34,6 +40,10 @@ interface MergePreviewModalProps {
  * Слияние считается той же функцией, что и настоящее (`computeMergeChain`),
  * только мимо стора — поэтому схема в окне не «похожая», а ровно та же.
  * Превью интерактивное: большой объединённый граф иначе не разобрать.
+ *
+ * Здесь же правится легенда. Имена источников берутся из названий графов
+ * («Пиролиз бензина от 12.03»), и подписывать ими цвета удобнее до объединения,
+ * а не разыскивать потом нужный цвет на полотне.
  */
 export const MergePreviewModal = ({
   open,
@@ -42,6 +52,7 @@ export const MergePreviewModal = ({
   result,
   loading,
   error,
+  onRename,
   onCancel,
   onConfirm,
 }: MergePreviewModalProps) => (
@@ -95,6 +106,19 @@ export const MergePreviewModal = ({
             <ChainLengthIcon size={16} className={styles.aboutStatIcon} />
             Добавится узлов: <b>{result.addedCount}</b>
           </span>
+        </div>
+
+        <div className={styles.mergeCommon}>
+          <div className={styles.mergeCommonTitle}>Легенда источников</div>
+          <p className={styles.mergeLegendHint}>
+            Цвет узла показывает, из какого графа он пришёл. Название можно
+            поправить сразу — нажмите карандаш.
+          </p>
+          <LegendList
+            colors={result.presentationColors}
+            hasCommonNodes={hasCommonProductNodes(result.nodes)}
+            onRename={onRename}
+          />
         </div>
 
         {result.commonNodes.length > 0 && (

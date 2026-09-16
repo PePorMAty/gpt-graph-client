@@ -1,32 +1,14 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-/** Смысловая группа записи — от неё зависят иконка и цвет в панели. */
-export type HistoryKind =
-  | "create"
-  | "open"
-  | "merge"
-  | "add"
-  | "remove"
-  | "edit"
-  | "step"
-  | "link"
-  | "save"
-  | "clear";
+import type { HistoryEntry, HistoryKind } from "../types";
 
-export interface HistoryEntry {
-  id: string;
-  /** Время события (ISO). */
-  at: string;
-  kind: HistoryKind;
-  /** Короткая строка: что произошло. */
-  title: string;
-  /** Подробности: имена узлов, количества. */
-  details?: string;
-  /** Узлы, к которым относится запись, — по клику камера едет к ним. */
-  nodeIds?: string[];
-}
+export type { HistoryEntry, HistoryKind };
 
-/** Сколько записей храним. Дальше история только мешает искать нужное. */
+/**
+ * Сколько записей храним. Дальше история только мешает искать нужное.
+ * Совпадает с лимитом на сервере — иначе список после перезагрузки страницы
+ * оказался бы короче или длиннее, чем был.
+ */
 const LIMIT = 300;
 
 interface HistoryState {

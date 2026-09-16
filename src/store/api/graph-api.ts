@@ -35,6 +35,19 @@ export const getGraphData = createAsyncThunk<
           promptLayout,
         },
       );
+      // Роут держит соединение «живым» и уже успел отдать 200 к моменту
+      // неудачи, поэтому о провале говорит success: false в теле, а не код
+      // ответа. Раньше такой ответ считался успешным, и пользователь видел
+      // общее «Некорректные данные от сервера» вместо причины, которую сервер
+      // назвал (какая модель и что с ней не так).
+      if (response.data?.success === false) {
+        return rejectWithValue(
+          typeof response.data.error === "string" && response.data.error
+            ? response.data.error
+            : "Не удалось построить граф",
+        );
+      }
+
       return {
         data: response.data,
         message: response.data.message || "Граф создан",
@@ -55,6 +68,18 @@ export const getPromptLayoutFromServer = async (): Promise<string> => {
     `${import.meta.env.VITE_API_URL}/graphs/prompt-layout`,
   );
   return response.data.promptLayout;
+};
+
+/**
+ * Сохранить правленый шаблон промта. Без этого правка в поле живёт только до
+ * закрытия раздела: следующее открытие снова тянет шаблон с сервера.
+ */
+export const savePromptLayoutToServer = async (
+  promptLayout: string,
+): Promise<void> => {
+  await axios.put(`${import.meta.env.VITE_API_URL}/graphs/prompt-layout`, {
+    promptLayout,
+  });
 };
 
 export const continueGraph = createAsyncThunk<

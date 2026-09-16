@@ -32,8 +32,11 @@ import {
   removeStepAlternativeNodes,
   insertTransformationsForNeighbors,
   addSourcesToPool,
+  clearGraphError,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
+import { openGraphExtras } from "./store/graphExtras";
+import { checkIndustry, industryKey } from "./store/slices/industrySlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -196,6 +199,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // «Обновить …» продолжит писать в тот же файл.
       if (saved.openedGraph?.id) {
         dispatch(setOpenedGraph(saved.openedGraph));
+        // Закладки и история графа лежат на сервере: после перезагрузки
+        // вкладки поднимаем их оттуда, а не начинаем с пустых списков.
+        dispatch(openGraphExtras(saved.openedGraph.id));
       }
     } catch { /* ignore corrupted data */ }
   }, []);
@@ -209,6 +215,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     () => data.nodes.map((n) => n.id).sort().join("|"),
     [data.nodes],
   );
+
 
   // When new nodes appear, wait for React Flow to measure them in the DOM,
   // then force-update all handle positions so edges connect correctly.
@@ -256,9 +263,38 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [paneMenu, setPaneMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
-  // Слой данных ГИСП. Подключения к базе ещё нет, поэтому включённый слой
-  // пока ничего не рисует — узлы не несут признака подтверждения.
+  // Слой данных ГИСП: бейджи с числом производителей у продуктов. Сам граф от
+  // включения не перестраивается — это именно слой поверх него.
   const [industryData, setIndustryData] = useState(true);
+
+  /* ── Слой промышленных данных (ГИСП) ── */
+
+  const industryResults = useAppSelector((s) => s.industry.results);
+
+  // Названия продуктов полотна. Ключ строкой — чтобы проверка запускалась от
+  // смены самого набора продуктов, а не от каждой правки координат.
+  const productNames = useMemo(
+    () =>
+      [
+        ...new Set(
+          data.nodes
+            .filter((n) => n.type === "product")
+            .map((n) => String(n.data?.label ?? "").trim())
+            .filter(Boolean),
+        ),
+      ].sort(),
+    [data.nodes],
+  );
+  const productNamesKey = productNames.join("|");
+
+  // Спрашиваем реестр, когда слой включён. Санк сам отбрасывает уже known
+  // названия, поэтому повторные включения тумблера ничего не стоят.
+  useEffect(() => {
+    if (!industryData || !productNames.length) return;
+    dispatch(checkIndustry(productNames));
+    // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [industryData, productNamesKey, dispatch]);
   // Показывать альтернативные маршруты (alt-узлы и их связи).
   const [showAlternatives, setShowAlternatives] = useState(true);
 
@@ -550,6 +586,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Структурные правки заблокированы: просмотр, «только продукты» или
   // фокус-режим (последние два — проекции, store в них не редактируется).
   const structureLocked = readOnly || productsOnly || focusOn;
+  /**
+   * Создание узла — единственная правка, доступная при фильтре «Только
+   * продукты».
+   *
+   * Остальные структурные действия там заблокированы не зря: полотно
+   * показывает проекцию, и связи в ней перерисованы. А вот новый продукт
+   * ложится в настоящие координаты — проекция их не меняет, — и сразу виден.
+   */
+  const canAddNodes = !readOnly && !focusOn;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -754,8 +799,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             sourcesPool[poolKey(lbl, "up")],
           );
           const hasBadge = badge.up > 0 || badge.down > 0;
-          // Слой ГИСП: узел сам решает, показывать ли бейдж — пока база не
-          // подключена, gispProducers ни у кого нет и бейдж не появляется.
+          // Слой ГИСП: число производителей из реестра. Пока продукт не
+          // проверен, поля нет — узел бейдж не рисует.
+          const gisp = industryResults[industryKey(lbl)];
           return {
             ...n,
             className: cls,
@@ -764,6 +810,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
               showIndustryData: industryData,
+              ...(gisp
+                ? {
+                    gispProducers: gisp.producerCount,
+                    gispConfirmed: gisp.found,
+                  }
+                : {}),
             },
           };
         }
@@ -782,6 +834,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       sourcesPool,
       showAlternatives,
       industryData,
+      industryResults,
     ],
   );
 
@@ -2515,10 +2568,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         </div>
       )}
 
-      {/* Индикатор ошибки */}
+      {/* Индикатор ошибки. Закрывается: без этого сообщение висело до
+          следующего успешного построения, а начать его было неоткуда. */}
       {error && (
         <div className={styles.errorOverlay}>
           <p className={styles.errorText}>Ошибка: {error}</p>
+          <button
+            type="button"
+            className={styles.errorDismiss}
+            onClick={() => dispatch(clearGraphError())}
+          >
+            Закрыть
+          </button>
         </div>
       )}
 
@@ -2566,7 +2627,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
         onPaneClick={onPaneClick}
-        onPaneContextMenu={structureLocked ? undefined : onPaneContextMenu}
+        onPaneContextMenu={canAddNodes ? onPaneContextMenu : undefined}
         nodesConnectable={!structureLocked}
         // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
         // в режиме «рука» узлы тоже неподвижны, тянется только холст.
@@ -2625,6 +2686,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           x={paneMenu.x}
           y={paneMenu.y}
           onAdd={handleAddNodeAt}
+          productsOnly={productsOnly}
           onClose={() => setPaneMenu(null)}
         />
       )}

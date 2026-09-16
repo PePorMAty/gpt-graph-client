@@ -7,8 +7,13 @@ import {
   useMergeGraph,
   type MergeGraphState,
 } from "../../hooks/useMergeGraph";
-import { reconstructPresentationColors } from "../../utils/presentationColors";
+import {
+  applyPresentationRename,
+  reconstructPresentationColors,
+} from "../../utils/presentationColors";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
+import { useAppDispatch } from "../../store/hooks";
+import { renamePresentation } from "../../store/slices/gptSlice";
 import {
   MergePreviewModal,
   type MergePreviewResult,
@@ -83,6 +88,7 @@ export const MergeGraphsTab = ({
   onDone,
 }: MergeGraphsTabProps) => {
   const mergeSource = useMergeGraph();
+  const dispatch = useAppDispatch();
 
   const [query, setQuery] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -91,6 +97,14 @@ export const MergeGraphsTab = ({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [preview, setPreview] = useState<MergePreviewResult | null>(null);
+  /**
+   * Переименования источников, сделанные в превью.
+   *
+   * Настоящее объединение считается заново и от превью ничего не наследует,
+   * поэтому правки легенды держим отдельным списком и повторяем их на полотне
+   * после слияния. Список упорядочен: A→B, потом B→C дают C.
+   */
+  const [renames, setRenames] = useState<{ from: string; to: string }[]>([]);
   const [report, setReport] = useState<{
     presentationName: string | null;
     commonNodes: MergeReportRow[];
@@ -127,6 +141,7 @@ export const MergeGraphsTab = ({
 
     setPreview(null);
     setPreviewError(null);
+    setRenames([]);
     setPreviewLoading(true);
     setPreviewOpen(true);
     try {
@@ -146,6 +161,7 @@ export const MergeGraphsTab = ({
         edges: merged.state.edges,
         commonNodes: merged.commonNodes,
         addedCount: merged.addedCount,
+        presentationColors: merged.state.presentationColors,
       });
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : String(e));
@@ -153,6 +169,36 @@ export const MergeGraphsTab = ({
       setPreviewLoading(false);
     }
   };
+
+  /**
+   * Переименовать источник в превью: цвет на схеме должен поехать за именем
+   * сразу, поэтому правим и посчитанное состояние, и список для повтора.
+   */
+  const renameInPreview = (from: string, to: string) => {
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const next = applyPresentationRename(
+        prev.nodes,
+        prev.presentationColors,
+        from,
+        to,
+      );
+      return {
+        ...prev,
+        nodes: next.nodes,
+        presentationColors: next.colors,
+        commonNodes: prev.commonNodes.map((row) => ({
+          ...row,
+          presentations: row.presentations.map((p) => (p === from ? to : p)),
+        })),
+      };
+    });
+    setRenames((prev) => [...prev, { from, to }]);
+  };
+
+  /** Имя источника после всех правок легенды, сделанных в превью. */
+  const renamed = (name: string) =>
+    renames.reduce((cur, r) => (cur === r.from ? r.to : cur), name);
 
   const runMerge = async () => {
     const picked = items.filter((g) => checked.has(g.id));
@@ -173,7 +219,32 @@ export const MergeGraphsTab = ({
         const file = await loadSavedGraph(g.id);
         last = await mergeSource(file, g.name);
       }
-      if (last) setReport(last.report);
+
+      // Слияние считалось заново, с исходными именами графов — повторяем
+      // правки легенды, сделанные в превью.
+      for (const r of renames) dispatch(renamePresentation(r));
+
+      if (last) {
+        setReport({
+          ...last.report,
+          presentationName: last.report.presentationName
+            ? renamed(last.report.presentationName)
+            : null,
+          commonNodes: last.report.commonNodes.map((row) => ({
+            ...row,
+            presentations: row.presentations.map(renamed),
+            labelsByPresentation: row.labelsByPresentation
+              ? Object.fromEntries(
+                  Object.entries(row.labelsByPresentation).map(([k, v]) => [
+                    renamed(k),
+                    v,
+                  ]),
+                )
+              : undefined,
+          })),
+        });
+      }
+      setRenames([]);
       showToast(
         "success",
         `Объединено графов: ${picked.length + 1}. Результат на полотне.`,
@@ -271,6 +342,7 @@ export const MergeGraphsTab = ({
         result={preview}
         loading={previewLoading}
         error={previewError}
+        onRename={renameInPreview}
         onCancel={() => setPreviewOpen(false)}
         onConfirm={() => {
           // Окно закрываем до слияния: дальше может встать вопрос о

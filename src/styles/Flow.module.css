@@ -168,14 +168,18 @@
   cursor: pointer;
 }
 
-/* ===== ЛОАДЕР НА ВЕСЬ ЭКРАН ГРАФА ===== */
+/* ===== ЛОАДЕР НАД ПОЛОТНОМ ===== */
 
+/* Оверлей закрывает полотно — и только его. Раньше он стоял на z-index 50,
+   то есть выше рельса, выезжающей панели и экрана библиотеки: во время
+   построения графа переставал работать весь интерфейс, а на ошибке — до
+   перезагрузки страницы. */
 .loadingOverlay,
 .layoutOverlay,
 .errorOverlay {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-canvas-overlay);
   background: rgba(15, 15, 20, 0.55);
   backdrop-filter: blur(6px);
   display: flex;
@@ -220,6 +224,22 @@
   background: rgba(255, 50, 50, 0.3);
   border: 1px solid rgba(255, 100, 100, 0.6);
   border-radius: 12px;
+}
+
+.errorDismiss {
+  margin-top: 16px;
+  padding: 10px 22px;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.errorDismiss:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .node--highlight {

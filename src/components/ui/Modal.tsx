@@ -1,4 +1,5 @@
 import { useCallback, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { useDismiss } from "../../hooks/useDismiss";
 import { CloseIcon } from "../icons";
@@ -23,6 +24,11 @@ export interface ModalProps {
  *
  * Раньше каждая модалка приложения рисовала свой оверлей и свою шапку, с
  * разными радиусами, тенями и обработкой Escape. Здесь это одно место.
+ *
+ * Рисуется порталом в body. Экран библиотеки лежит в собственном слое
+ * (z-index), и модалка, открытая изнутри него, оказывалась в том же слое —
+ * то есть ниже верхней панели приложения: её шапку с заголовком и крестиком
+ * закрывало собой меню. Портал выносит окно из чужого контекста наложения.
  */
 export const Modal = ({
   open,
@@ -39,7 +45,7 @@ export const Modal = ({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className={styles.overlay}>
       <div
         ref={windowRef}
@@ -66,6 +72,7 @@ export const Modal = ({
 
         {footer && <div className={styles.footer}>{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

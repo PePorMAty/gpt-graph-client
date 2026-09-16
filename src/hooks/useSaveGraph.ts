@@ -8,6 +8,7 @@ import {
   updateSavedGraphThunk,
 } from "../store/slices/savedGraphSlice";
 import { saveGraph } from "../store/api/saved-graph-api";
+import { pushGraphExtras } from "../store/graphExtras";
 import { buildSaveGraphPayload } from "../utils/buildSaveGraphPayload";
 import { graphSignature } from "../utils/graphSignature";
 import { showToast } from "../components/toast/toastStore";
@@ -66,6 +67,10 @@ export function useSaveGraph() {
               name: name || (originalPrompt ?? "graph"),
             }),
           );
+          // До этого момента графа на сервере не было, и закладки с историей
+          // копились только в памяти — переносим их в новый файл. Строго до
+          // markGraphSaved: иначе его запись «Граф сохранён» уедет дважды.
+          await dispatch(pushGraphExtras(res.file));
         }
 
         dispatch(

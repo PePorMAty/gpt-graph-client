@@ -311,6 +311,12 @@ export const ChevronRightIcon: Icon = (p) => (
   </svg>
 );
 
+export const ChevronLeftIcon: Icon = (p) => (
+  <svg {...base(p)} strokeWidth={2}>
+    <path d="m14.5 6-6 6 6 6" />
+  </svg>
+);
+
 export const ChevronUpIcon: Icon = (p) => (
   <svg {...base(p)} strokeWidth={2}>
     <path d="m6 14.5 6-6 6 6" />
