@@ -285,6 +285,14 @@
   max-width: 200px;
 }
 
+/* Переключатель списков стоит отдельной строкой — по ширине содержимого,
+   иначе в колоночной раскладке он растягивается во всю панель. */
+.viewSwitch {
+  align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
 .segmented {
   display: inline-flex;
   padding: 2px;
@@ -405,6 +413,13 @@
 .statusArchived {
   color: var(--c-warning);
   background: var(--c-warning-soft);
+}
+
+/* «Нет записи» — не тревога, а констатация: реестр покрывает не всё. */
+.statusMissing {
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
 }
 
 /* ─── Список производителей в карточке ─── */

@@ -57,6 +57,14 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
   const [product, setProduct] = useState("");
   const [region, setRegion] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  /**
+   * Что показываем: найденные записи реестра или продукты, которых там нет.
+   *
+   * Ненайденные не попадают в таблицу по устройству — записей у них ноль, —
+   * а вопрос «чего в реестре нет» не менее важен: это либо непрофильная
+   * продукция, либо название, под которым реестр её не знает.
+   */
+  const [view, setView] = useState<"entries" | "missing">("entries");
 
   const names = useMemo(
     () => [...new Set(productNames.map((n) => String(n ?? "").trim()).filter(Boolean))],
@@ -76,6 +84,21 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
 
   const checked = names.filter((n) => results[industryKey(n)]).length;
   const confirmed = names.filter((n) => results[industryKey(n)]?.found).length;
+
+  /** Проверенные продукты, которых в реестре не нашлось. */
+  const missing = useMemo(
+    () =>
+      names.filter((n) => {
+        const info = results[industryKey(n)];
+        return info && !info.found;
+      }),
+    [names, results],
+  );
+
+  const missingVisible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? missing.filter((n) => n.toLowerCase().includes(q)) : missing;
+  }, [missing, query]);
 
   const stats = useMemo(() => {
     const inns = new Set<string>();
@@ -110,6 +133,9 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
 
   // Реестровых записей на большом графе набираются сотни.
   const paged = usePaged(visible);
+  const pagedMissing = usePaged(missingVisible);
+  const showMissing = view === "missing";
+  const page = showMissing ? pagedMissing : paged;
 
   const loading = status === "loading";
 
@@ -253,6 +279,28 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       </div>
       )}
 
+      {/* Записи реестра и ненайденные продукты — два разных списка, а не два
+          состояния одного отбора: у ненайденных нет ни производителя, ни
+          региона, ни статуса. */}
+      <div className={`${styles.segmented} ${styles.viewSwitch}`}>
+        {(
+          [
+            ["entries", `Записи реестра (${rows.length})`],
+            ["missing", `Нет в реестре (${missing.length})`],
+          ] as Array<["entries" | "missing", string]>
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`${styles.segment} ${view === value ? styles.segmentActive : ""}`}
+            onClick={() => setView(value)}
+            aria-pressed={view === value}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className={styles.filters}>
         <label className={styles.search}>
           <SearchIcon size={14} />
@@ -260,56 +308,65 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по производителю, продукту или ИНН…"
+            placeholder={
+              showMissing
+                ? "Поиск по названию продукта…"
+                : "Поиск по производителю, продукту или ИНН…"
+            }
           />
         </label>
 
-        <select
-          className={styles.select}
-          value={product}
-          onChange={(e) => setProduct(e.target.value)}
-        >
-          <option value="">Продукт</option>
-          {names.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className={styles.select}
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-        >
-          <option value="">Регион</option>
-          {regionOptions.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-
-        <div className={styles.segmented}>
-          {(
-            [
-              ["all", "Все"],
-              ["active", "Действует"],
-              ["archived", "Архив"],
-            ] as Array<[StatusFilter, string]>
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={`${styles.segment} ${
-                statusFilter === value ? styles.segmentActive : ""
-              }`}
-              onClick={() => setStatusFilter(value)}
+        {/* Отборы описывают запись реестра: у ненайденных описывать нечего. */}
+        {!showMissing && (
+          <>
+            <select
+              className={styles.select}
+              value={product}
+              onChange={(e) => setProduct(e.target.value)}
             >
-              {label}
-            </button>
-          ))}
-        </div>
+              <option value="">Продукт</option>
+              {names.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={styles.select}
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+            >
+              <option value="">Регион</option>
+              {regionOptions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+
+            <div className={styles.segmented}>
+              {(
+                [
+                  ["all", "Все"],
+                  ["active", "Действует"],
+                  ["archived", "Архив"],
+                ] as Array<[StatusFilter, string]>
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`${styles.segment} ${
+                    statusFilter === value ? styles.segmentActive : ""
+                  }`}
+                  onClick={() => setStatusFilter(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {checked < names.length && (
@@ -320,7 +377,27 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
         </p>
       )}
 
-      {compact ? (
+      {showMissing ? (
+        <ul className={`${styles.cards} ${compact ? styles.cardsScroll : ""}`}>
+          {pagedMissing.slice.map((name) => (
+            <li key={name} className={styles.card}>
+              <div className={styles.cardHead}>
+                <span className={styles.producer}>{name}</span>
+                <span className={`${styles.status} ${styles.statusMissing}`}>
+                  Нет записи
+                </span>
+              </div>
+            </li>
+          ))}
+          {!missingVisible.length && (
+            <li className={styles.emptyRows}>
+              {missing.length
+                ? "По этому запросу ничего нет."
+                : "Все проверенные продукты нашлись в реестре."}
+            </li>
+          )}
+        </ul>
+      ) : compact ? (
         <ul className={`${styles.cards} ${styles.cardsScroll}`}>
           {paged.slice.map((r, i) => (
             <li key={`${r.inn ?? r.producer}-${r.regNumber ?? r.product}-${i}`} className={styles.card}>
@@ -451,13 +528,13 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       )}
 
       <Pagination
-        page={paged.page}
-        pages={paged.pages}
-        from={paged.from}
-        to={paged.to}
-        total={paged.total}
-        onChange={paged.setPage}
-        unit="записей"
+        page={page.page}
+        pages={page.pages}
+        from={page.from}
+        to={page.to}
+        total={page.total}
+        onChange={page.setPage}
+        unit={showMissing ? "продуктов" : "записей"}
       />
 
       <p className={styles.foot}>
