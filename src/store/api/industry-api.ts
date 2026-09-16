@@ -34,6 +34,11 @@ export interface IndustryProducer {
   /** Название продукта так, как оно записано в реестре. */
   product: string;
   okpd2: string | null;
+  /** Расшифровка кода по классификатору: «Полимеры этилена в первичных формах». */
+  okpd2Name?: string | null;
+  /** Код товарной номенклатуры и его расшифровка. */
+  tnved?: string | null;
+  tnvedName?: string | null;
   status: "active" | "archived";
   statusLabel: string;
   regNumber: string | null;
@@ -52,6 +57,7 @@ export interface IndustryProductInfo {
   regionCount: number;
   status: "active" | "archived" | null;
   okpd2: string | null;
+  okpd2Name?: string | null;
   producers: IndustryProducer[];
 }
 

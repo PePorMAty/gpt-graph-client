@@ -378,25 +378,37 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       )}
 
       {showMissing ? (
-        <ul className={`${styles.cards} ${compact ? styles.cardsScroll : ""}`}>
-          {pagedMissing.slice.map((name) => (
-            <li key={name} className={styles.card}>
-              <div className={styles.cardHead}>
-                <span className={styles.producer}>{name}</span>
-                <span className={`${styles.status} ${styles.statusMissing}`}>
-                  Нет записи
-                </span>
-              </div>
-            </li>
-          ))}
-          {!missingVisible.length && (
-            <li className={styles.emptyRows}>
-              {missing.length
-                ? "По этому запросу ничего нет."
-                : "Все проверенные продукты нашлись в реестре."}
-            </li>
+        <>
+          {/* Почему их тут много: реестр про товарную продукцию, а граф — про
+              промежуточные потоки. Без этой строки список читается как
+              «программа не справилась». */}
+          {missing.length > 0 && (
+            <p className={styles.note}>
+              Реестр ПП №719 охватывает товарную продукцию. Промежуточных
+              веществ цепочки в нём нет — их не продают, и на подтверждение
+              происхождения никто не заявляет.
+            </p>
           )}
-        </ul>
+          <ul className={`${styles.cards} ${compact ? styles.cardsScroll : ""}`}>
+            {pagedMissing.slice.map((name) => (
+              <li key={name} className={styles.card}>
+                <div className={styles.cardHead}>
+                  <span className={styles.producer}>{name}</span>
+                  <span className={`${styles.status} ${styles.statusMissing}`}>
+                    Нет записи
+                  </span>
+                </div>
+              </li>
+            ))}
+            {!missingVisible.length && (
+              <li className={styles.emptyRows}>
+                {missing.length
+                  ? "По этому запросу ничего нет."
+                  : "Все проверенные продукты нашлись в реестре."}
+              </li>
+            )}
+          </ul>
+        </>
       ) : compact ? (
         <ul className={`${styles.cards} ${styles.cardsScroll}`}>
           {paged.slice.map((r, i) => (

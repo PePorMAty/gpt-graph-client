@@ -66,6 +66,28 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
       {open && (
         <div className={styles.prodDetails}>
           {p.product && <div className={styles.prodProduct}>{p.product}</div>}
+
+          {/* Коды с расшифровкой: сам по себе «20.16.10.110» ничего не говорит
+              о том, к чему запись отнесена. */}
+          {p.okpd2 && (
+            <div className={styles.code}>
+              <span className={styles.codeLabel}>ОКПД2</span>
+              <span className={styles.codeValue}>{p.okpd2}</span>
+              {p.okpd2Name && (
+                <span className={styles.codeName}>{p.okpd2Name}</span>
+              )}
+            </div>
+          )}
+          {p.tnved && (
+            <div className={styles.code}>
+              <span className={styles.codeLabel}>ТН ВЭД</span>
+              <span className={styles.codeValue}>{p.tnved}</span>
+              {p.tnvedName && (
+                <span className={styles.codeName}>{p.tnvedName}</span>
+              )}
+            </div>
+          )}
+
           <div className={styles.prodMeta}>
             {p.inn && <span className={styles.inn}>ИНН {p.inn}</span>}
             {p.region && (
@@ -159,15 +181,24 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
     );
   }
 
+  // «Не найдено» здесь чаще всего не пробел в данных, а свойство продукта:
+  // реестр ПП №719 — про товарную продукцию, а промежуточные вещества никто на
+  // подтверждение происхождения не заявляет, их не продают. На графе таких
+  // узлов больше половины, и подавать это как неудачу поиска — врать.
   if (!info.found) {
     return (
       <div className={styles.empty}>
         <IndustryDataIcon size={30} className={styles.emptyIcon} />
-        <div className={styles.emptyTitle}>В реестре не найдено</div>
+        <div className={styles.emptyTitle}>Записи в реестре нет</div>
         <p className={styles.emptyText}>
-          Продукта «{name}» нет среди записей реестра. Это не значит, что его не
-          выпускают: реестр ПП №719 охватывает продукцию, заявленную на
-          подтверждение российского происхождения, и туда попадает не всё.
+          Реестр ПП №719 охватывает <b>товарную продукцию</b> — то, что
+          заявляют на подтверждение российского происхождения. Промежуточных
+          веществ технологической цепочки в нём нет: их не продают, они идут на
+          следующую установку.
+        </p>
+        <p className={styles.emptyText}>
+          Так что отсутствие записи ничего не говорит о том, производят ли
+          «{name}» в России, — реестр про другое.
         </p>
       </div>
     );
@@ -205,13 +236,20 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
           </span>
           <span className={styles.statLabel}>Статус в реестре</span>
         </div>
-        {info.okpd2 && (
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{info.okpd2}</span>
-            <span className={styles.statLabel}>ОКПД2 (основной)</span>
-          </div>
-        )}
       </div>
+
+      {/* Класс продукции отдельной строкой, а не плиткой: название из
+          классификатора длиннее, чем помещается в плитку, а без него код
+          бесполезен. */}
+      {info.okpd2 && (
+        <div className={styles.classLine}>
+          <span className={styles.codeLabel}>ОКПД2</span>
+          <span className={styles.codeValue}>{info.okpd2}</span>
+          {info.okpd2Name && (
+            <span className={styles.codeName}>{info.okpd2Name}</span>
+          )}
+        </div>
+      )}
 
       <div className={styles.listHead}>
         <span className={styles.listTitle}>
