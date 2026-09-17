@@ -105,6 +105,22 @@ export function createProductIndex(
   const nameKey = (data: NodeDataLike | undefined) =>
     normalizeProductName(typeof data?.label === "string" ? data.label : "");
 
+  /**
+   * Идентификатор из справочника — это каноническое НАЗВАНИЕ вещества
+   * («Изопропилбензол»), поэтому его можно сравнивать и с названиями узлов.
+   * Так узел «ИПБ» с проставленным идентификатором узнаёт узел
+   * «Изопропилбензол», которому идентификатор ещё не проставили, — а это
+   * обычное дело: графы сохранялись до того, как справочник появился.
+   *
+   * Только для справочника: номер CAS с названием сравнивать нельзя, иначе
+   * продукт, названный «98-82-8», сошёлся бы с продуктом, у которого это код.
+   */
+  const canonNameKey = (data: NodeDataLike | undefined) => {
+    if (readProductIdSource(data) !== "dictionary") return "";
+    const id = readProductId(data);
+    return id ? normalizeProductName(id) : "";
+  };
+
   const add: ProductIndex["add"] = (nodeId, data) => {
     const id = idKey(data);
     if (id) {
@@ -115,6 +131,8 @@ export function createProductIndex(
     // Первый победил: если на полотне уже два одноимённых узла, новый продукт
     // должен уехать к тому же, к какому уезжал раньше.
     if (name && !byName.has(name)) byName.set(name, nodeId);
+    const canon = canonNameKey(data);
+    if (canon && !byName.has(canon)) byName.set(canon, nodeId);
   };
 
   const find: ProductIndex["find"] = (data) => {
@@ -123,13 +141,19 @@ export function createProductIndex(
       const hit = byId.get(id);
       if (hit) return hit;
     }
-    const name = nameKey(data);
-    if (!name) return null;
-    const hit = byName.get(name);
-    if (!hit) return null;
-    const other = idOfNode.get(hit);
-    if (id && other && other !== id) return null;
-    return hit;
+
+    // Порядок важен: каноническое название сильнее собственной подписи узла.
+    // «ИПБ» с каноном «Изопропилбензол» должен искать сперва изопропилбензол,
+    // иначе на полотне с обоими названиями он уедет не к тому узлу.
+    for (const name of [canonNameKey(data), nameKey(data)]) {
+      if (!name) continue;
+      const hit = byName.get(name);
+      if (!hit) continue;
+      const other = idOfNode.get(hit);
+      if (id && other && other !== id) continue;
+      return hit;
+    }
+    return null;
   };
 
   for (const n of nodes) {

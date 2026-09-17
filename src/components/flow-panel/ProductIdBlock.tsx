@@ -39,14 +39,23 @@ export const ProductIdBlock: FC<Props> = ({ nodeId, readOnly = false }) => {
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current ?? "");
+  const [open, setOpen] = useState(Boolean(current));
 
   // Карточка переиспользуется между узлами — черновик не должен переезжать
   // на соседний продукт.
   useEffect(() => {
     setEditing(false);
     setDraft(current ?? "");
+    setOpen(Boolean(current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId]);
+
+  // Идентификатор может появиться у открытой карточки: при объединении графов
+  // его проставляет справочник. Блок, свёрнутый пустым, тогда так и остался бы
+  // свёрнутым — и человек не увидел бы, что у продукта появился канон.
+  useEffect(() => {
+    if (current) setOpen(true);
+  }, [current]);
 
   if (!nodeId) return null;
 
@@ -66,7 +75,7 @@ export const ProductIdBlock: FC<Props> = ({ nodeId, readOnly = false }) => {
   };
 
   return (
-    <CollapsibleBlock title="Идентификатор" defaultOpen={Boolean(current)}>
+    <CollapsibleBlock title="Идентификатор" open={open} onOpenChange={setOpen}>
       {current && !editing ? (
         <div className={styles.idRow}>
           <span className={styles.idValue}>{current}</span>

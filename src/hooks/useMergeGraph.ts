@@ -23,6 +23,7 @@ import { reconstructSourcesPool } from "../utils/reconstructSourcesPool";
 import { mergeSourcesPools } from "../utils/mergeSourcesPools";
 import { separateComponentsHorizontally } from "../utils/separateComponentsHorizontally";
 import { normalizeProductName } from "../utils/normalizeProductName";
+import { resolveProductIds } from "../utils/resolveProductIds";
 import type { CustomNode } from "../types";
 import type { SavedSourcesBlock, SourcesPoolEntry } from "../store/types";
 import type { MergeReportRow } from "../components/upload-graph/MergeReportModal";
@@ -201,7 +202,11 @@ export async function computeMerge(
     existingSourceName,
     presentationColors,
   );
-  const existingNodes = existingBackfill.nodes;
+  // Идентификаторы проставляем обеим сторонам до сравнения: по одной стороне
+  // толку нет — «ИПБ» с каноном сойдётся с «Изопропилбензолом» только если
+  // канон есть и у него. Справочник недоступен — вернётся как было, и
+  // объединение пройдёт по названиям, как до него.
+  const existingNodes = await resolveProductIds(existingBackfill.nodes);
 
   // Расширяем реестр презентациями добавляемого графа (старые цвета целы).
   let registry = assignColorsForPresentations(
@@ -257,11 +262,12 @@ export async function computeMerge(
     registry,
   );
   registry = incomingBackfill.registry;
+  const incomingNodes = await resolveProductIds(incomingBackfill.nodes);
 
   const mergedRaw = mergeProductGraph({
     existingNodes,
     existingEdges: data.edges,
-    newNodes: incomingBackfill.nodes,
+    newNodes: incomingNodes,
     newEdges: namespacedEdges,
     registry,
   });
@@ -353,7 +359,7 @@ export async function computeMerge(
     // добавленного графа пропали бы из таблицы.
     renamePoolKeysForCollapsed(incomingSources, [
       ...existingNodes,
-      ...incomingBackfill.nodes,
+      ...incomingNodes,
     ], merged.idRemap),
   ]);
 

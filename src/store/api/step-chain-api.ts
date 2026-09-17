@@ -13,6 +13,7 @@ import type { TechChain } from "../../utils/chainToFlow";
 import { addSourcesToPool, sourcesPoolKey } from "../slices/gptSlice";
 import { enrichSourcesFromNodes } from "../../utils/enrichSourcesFromNodes";
 import { getAncestorProductLabels } from "../../utils/graphReachability";
+import { identifyStepProducts } from "../../utils/resolveProductIds";
 
 export const fetchChainStep = createAsyncThunk<
   { sessionKey: string; response: StepChainApiResponse },
@@ -58,7 +59,15 @@ export const fetchChainStep = createAsyncThunk<
       );
     }
 
-    return { sessionKey: args.sessionKey, response: res.data };
+    // Опознаём продукты шага по справочнику до того, как он ляжет на полотно:
+    // кладётся он синхронно, в редьюсере, и спросить сервер там будет негде.
+    return {
+      sessionKey: args.sessionKey,
+      response: {
+        ...res.data,
+        step: await identifyStepProducts(res.data.step),
+      },
+    };
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
       const errObj = e.response?.data?.error;
@@ -452,7 +461,7 @@ export const buildStep = createAsyncThunk<
       sessionKey: args.sessionKey,
       nodeId: args.nodeId,
       direction: args.direction,
-      step: res.data.step,
+      step: await identifyStepProducts(res.data.step),
       chain: res.data.chain ?? null,
       sourcesStatus: res.data.sourcesStatus ?? "sufficient",
       insufficientProducts: res.data.insufficientProducts ?? [],

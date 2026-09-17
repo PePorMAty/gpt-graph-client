@@ -96,10 +96,16 @@ export function stepToFlow(
   }> = [];
 
   for (const { product } of uniqueProducts) {
+    // Идентификатор сильнее названия: продукт шага может называться иначе, чем
+    // тот же продукт на полотне («Кумол» из шага и «ИПБ» на полотне).
     const existingNodeId =
-      findExistingProductNode(product.name, existingNodes) ??
+      findExistingProductNode(product.name, existingNodes, product.productId) ??
       (product.existingNodeLabel
-        ? findExistingProductNode(product.existingNodeLabel, existingNodes)
+        ? findExistingProductNode(
+            product.existingNodeLabel,
+            existingNodes,
+            product.productId,
+          )
         : null);
 
     if (
@@ -269,6 +275,15 @@ export function stepToFlow(
           chainDirection: direction,
           stepChainSessionKey: sessionKey,
           stepChainStepNumber: stepNumber,
+          // Справочник опознал вещество — закрепляем за узлом сразу. Иначе
+          // построенный по шагам граф остался бы без идентификаторов, и при
+          // объединении с другим сходился бы только по названиям.
+          ...(product.productId
+            ? {
+                productId: product.productId,
+                productIdSource: "dictionary" as const,
+              }
+            : {}),
           // Ручной продукт из превью шага: пока описание пустое, узел
           // помечается «не заполнен» (см. ProductNode).
           ...(product.isUserAdded ? { isUserAdded: true } : {}),

@@ -51,6 +51,16 @@ export interface IndustryProducer {
 export interface IndustryProductInfo {
   found: boolean;
   match: IndustryMatch | null;
+  /**
+   * Под каким названием запись нашлась, если не под спрошенным.
+   *
+   * По «ПЭВД» в реестре нет ничего, по «полиэтилену высокого давления» —
+   * есть. Показать это стоит: иначе непонятно, почему на одно название
+   * приехали записи про другое.
+   */
+  matchedAs?: string | null;
+  /** Каноническое название вещества по справочнику синонимов. */
+  canon?: string | null;
   /** Строк реестра (один производитель может иметь их несколько). */
   entryCount: number;
   producerCount: number;
@@ -78,6 +88,30 @@ export interface IndustryStatus {
   products?: number;
   producers?: number;
   actualAt?: string | null;
+  /** Справочник синонимов: сколько веществ и написаний прочитано. */
+  synonyms?: {
+    ready: boolean;
+    substances: number;
+    spellings: number;
+    /** Одно написание у двух веществ — сервер их не разрешает молча. */
+    conflicts: { spelling: string; kept: string; ignored: string }[];
+  };
+}
+
+/** Что справочник знает о названии. null — не знает ничего. */
+export interface ProductIdentity {
+  /** Каноническое название — оно и становится идентификатором продукта. */
+  id: string;
+  canon: string;
+  /** Совпало само каноническое название, а не синоним. */
+  exact: boolean;
+}
+
+export interface IdentifyResponse {
+  success: boolean;
+  /** false — справочник на сервере не прочитан. */
+  ready: boolean;
+  results: Record<string, ProductIdentity | null>;
 }
 
 const base = () => import.meta.env.VITE_API_URL;
@@ -91,5 +125,19 @@ export async function lookupIndustry(
   products: string[],
 ): Promise<IndustryLookupResponse> {
   const { data } = await axios.post(`${base()}/industry/lookup`, { products });
+  return data;
+}
+
+/**
+ * Опознать продукты по справочнику синонимов.
+ *
+ * Отдельно от поиска по реестру: узнать, что «ИПБ» и «Кумол» — одно вещество,
+ * можно и тогда, когда записи в ГИСП нет вовсе. Схлопывание узлов от реестра
+ * не зависит.
+ */
+export async function identifyProducts(
+  products: string[],
+): Promise<IdentifyResponse> {
+  const { data } = await axios.post(`${base()}/industry/identify`, { products });
   return data;
 }
