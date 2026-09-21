@@ -1,4 +1,4 @@
-import { useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 
 import { useAppSelector } from "../../store/hooks";
 import { industryKey } from "../../store/slices/industrySlice";
@@ -31,8 +31,36 @@ interface Props {
  * можем: снятые коды помечены изменением, которым их исключили, а наш файл
  * плоский, без статусов.
  */
+/**
+ * Сколько ждать перед закрытием, когда мышь ушла с надписи.
+ *
+ * Подсказка шире надписи в несколько раз, и мышь, идущая к ней по диагонали,
+ * выходит из надписи вбок раньше, чем доходит до подсказки. Без задержки
+ * подсказка закрывалась в этот самый момент — до неё было не добраться.
+ */
+const CLOSE_DELAY_MS = 180;
+
 export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const show = () => {
+    cancelClose();
+    setOpen(true);
+  };
+  const hideSoon = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
+  };
+
+  // Карточка закрывается вместе с узлом — таймер переживать её не должен.
+  useEffect(() => cancelClose, []);
 
   // Данные узла берём из стора по id: карточка получает поля по одному, и
   // тащить через неё ещё два ради подсказки незачем.
@@ -52,10 +80,15 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   return (
     <div
       className={styles.idWrap}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
+      onMouseEnter={show}
+      onMouseLeave={hideSoon}
+      onFocus={show}
+      onBlur={(e) => {
+        // Щелчок по ссылке ОКПД2 переводит фокус ВНУТРЬ подсказки — закрывать
+        // её при этом нельзя, иначе по ссылке не попасть. Закрываем, только
+        // когда фокус ушёл за пределы обёртки.
+        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
     >
       <div className={styles.nodeId} tabIndex={0}>
         ID: {short}
