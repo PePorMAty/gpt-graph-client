@@ -376,75 +376,66 @@
 
 /* ─── Идентификатор продукта ─── */
 
-.idRow {
+.idWrap {
+  position: relative;
+  margin-top: 2px;
+}
+
+.idPop {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  left: 0;
+  z-index: 40;
+  width: max-content;
+  max-width: 280px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: var(--s-2);
-}
-
-.idValue {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-medium);
-  color: var(--c-text);
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.idSource {
-  padding: 1px var(--s-2);
-  font-size: var(--fs-sm);
-  color: var(--c-text-muted);
-  background: var(--c-surface-soft);
-  border: 1px solid var(--c-border-soft);
-  border-radius: var(--r-pill);
-}
-
-.idForm {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-}
-
-.idInput {
-  flex: 1 1 180px;
-  min-width: 0;
-  padding: var(--s-2) var(--s-3);
-  font: inherit;
-  font-size: var(--fs-md);
-  color: var(--c-text);
+  padding: var(--s-3);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-md);
 }
 
-.idInput:focus {
-  outline: none;
-  border-color: var(--c-brand);
-  box-shadow: var(--sh-ring);
+.idPopRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.idSave {
-  flex: 0 0 auto;
-  padding: var(--s-2) var(--s-4);
-  font: inherit;
-  font-size: var(--fs-md);
-  color: var(--c-brand-ink);
-  background: var(--c-brand);
-  border: none;
-  border-radius: var(--r-sm);
-  cursor: pointer;
+.idPopLabel {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
 }
 
-.idSave:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.idHint {
-  margin-top: var(--s-2);
+.idPopValue {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
+  color: var(--c-text);
+  word-break: break-word;
+}
+
+.idPopNote {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.idPopLink {
+  color: var(--c-accent);
+  text-decoration: none;
+}
+
+.idPopLink:hover {
+  text-decoration: underline;
+}
+
+.idPopHint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
   color: var(--c-text-muted);
 }
 

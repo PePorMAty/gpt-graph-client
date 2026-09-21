@@ -140,25 +140,6 @@ function describe(
           nodeIds: [p.nodeId],
         };
       }
-      // Идентификатор — ключ, по которому продукты схлопываются при
-      // объединении графов. Правка тихой быть не должна: после неё два узла
-      // могут стать одним, и надо видеть, с чего это началось.
-      if (
-        typeof p.data.productId === "string" &&
-        p.data.productId !== (was?.data?.productId ?? "")
-      ) {
-        const name = labelOf(prevNodes, p.nodeId);
-        const wasId =
-          typeof was?.data?.productId === "string" ? was.data.productId : "";
-        return {
-          kind: "edit",
-          title: p.data.productId ? "Задан идентификатор" : "Убран идентификатор",
-          details: p.data.productId
-            ? `«${name}» → ${p.data.productId}`
-            : `«${name}»${wasId ? ` (был ${wasId})` : ""}`,
-          nodeIds: [p.nodeId],
-        };
-      }
       return null;
     }
 

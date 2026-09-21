@@ -3,7 +3,7 @@ import { useMemo, useState, type FC } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryMatch, IndustryProducer } from "../../store/api/industry-api";
-import { GISP_REGISTRY_URL } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
 import {
   IndustryDataIcon,
   ShieldCheckIcon,
@@ -72,7 +72,15 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
           {p.okpd2 && (
             <div className={styles.code}>
               <span className={styles.codeLabel}>ОКПД2</span>
-              <span className={styles.codeValue}>{p.okpd2}</span>
+              <a
+                className={styles.codeValue}
+                href={okpd2Url(p.okpd2)}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="Открыть код в классификаторе"
+              >
+                {p.okpd2}
+              </a>
               {p.okpd2Name && (
                 <span className={styles.codeName}>{p.okpd2Name}</span>
               )}
@@ -244,7 +252,15 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
       {info.okpd2 && (
         <div className={styles.classLine}>
           <span className={styles.codeLabel}>ОКПД2</span>
-          <span className={styles.codeValue}>{info.okpd2}</span>
+          <a
+            className={styles.codeValue}
+            href={okpd2Url(info.okpd2)}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="Открыть код в классификаторе"
+          >
+            {info.okpd2}
+          </a>
           {info.okpd2Name && (
             <span className={styles.codeName}>{info.okpd2Name}</span>
           )}

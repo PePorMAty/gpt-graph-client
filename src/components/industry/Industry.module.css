@@ -550,6 +550,14 @@
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   color: var(--c-text-soft);
+  text-decoration: none;
+}
+
+/* Код ведёт в классификатор: там он виден целиком, со всеми уровнями, и там
+   же помечены снятые коды — чего наш плоский файл сказать не может. */
+a.codeValue:hover {
+  color: var(--c-accent);
+  text-decoration: underline;
 }
 
 .codeName {
