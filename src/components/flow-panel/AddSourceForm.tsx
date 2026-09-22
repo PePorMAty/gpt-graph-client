@@ -4,6 +4,7 @@ import {
   KNOWN_SOURCE_NAMES,
   normalizeSourceUrl,
 } from "../../utils/sourceUrl";
+import { PlusIcon } from "../icons";
 import styles from "./FlowPanel.module.css";
 
 /**
@@ -59,12 +60,18 @@ export const AddSourceForm: FC<{
 
   return (
     <div className={styles.addSourceBox}>
+      {/* Плюс — иконкой из набора, а не эмодзи «➕»: то рисовалось шрифтом
+          системы, выпадало из штриховой графики остального окна и на части
+          машин выходило цветным. */}
       <button
         type="button"
-        className={styles.promptToggle}
+        className={styles.addSourceToggle}
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? "Скрыть добавление источника" : "➕ Добавить источник вручную"}
+        <span className={`${styles.addSourcePlus} ${open ? styles.addSourcePlusOpen : ""}`}>
+          <PlusIcon size={15} />
+        </span>
+        {open ? "Скрыть добавление источника" : "Добавить источник вручную"}
       </button>
 
       {open && (

@@ -53,8 +53,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   chainPid,
   onExpandNext,
 
-  buildMode,
-  onChangeBuildMode,
+  isBuildContext,
   stepChainStatus,
   stepChainError,
   stepChainStepCount,
@@ -184,51 +183,13 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
   const isLoading = sourcesLoading || aggregateLoading || chainLoading;
 
-  // buildMode может быть undefined (если компонент в card-режиме или проп не передан).
-  // В build-режиме: null = пользователь ещё не выбрал, "whole"/"step" = выбран.
-  const isBuildContext = typeof buildMode !== "undefined";
-
   return (
     <>
-      {/* ── Build mode toggle (shown FIRST, before any requests) ──
-          Только пока режим не выбран. Выбранный переключатель повторял бы тот,
-          что стоит на первом экране мастера, — два одинаковых ряда кнопок
-          подряд в одном окне. Вернуться к выбору можно по номеру «1» в полосе
-          шагов. Для узла-альтернативы мастера нет, и здесь по-прежнему всё. */}
-      {isBuildContext && buildMode === null && (
-        <div className={styles.formGroup}>
-          <div className={styles.modeToggleRow}>
-            <button
-              type="button"
-              className={`${styles.modeToggleBtn} ${buildMode === "whole" ? styles.modeToggleBtnActive : ""}`}
-              onClick={() => onChangeBuildMode?.("whole")}
-            >
-              Вся цепочка
-            </button>
-            <button
-              type="button"
-              className={`${styles.modeToggleBtn} ${buildMode === "step" ? styles.modeToggleBtnActive : ""}`}
-              onClick={() => onChangeBuildMode?.("step")}
-            >
-              По шагам
-            </button>
-          </div>
-
-          {buildMode === null && (
-            <div
-              className={styles.sourcesTitle}
-              style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}
-            >
-              Выберите режим: «Вся цепочка» — один запрос → целая цепочка;
-              «По шагам» — один запрос = один шаг с превью и возможностью
-              откатить.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Step-by-step v2 flow (dedicated /step/* routes) ── */}
-      {isBuildContext && buildMode === "step" && (
+      {/* ── Step-by-step v2 flow (dedicated /step/* routes) ──
+          Режим один — по шагам. Выбор между ним и «всей цепочкой» убран:
+          мастер устроен вокруг шагов, и второй режим оставался развилкой,
+          которая никуда не вела. */}
+      {isBuildContext && (
         <StepByStepContent
           direction={direction}
           stepChainStatus={stepChainStatus}
@@ -268,8 +229,10 @@ const DirectionContent: FC<DirectionTabProps> = ({
         />
       )}
 
-      {/* ── Full-chain ("whole") flow — the original path, unchanged ── */}
-      {(!isBuildContext || buildMode === "whole") && (
+      {/* ── Карточный режим: тот же блок обслуживает вкладку карточки, где
+             построения нет вовсе. В построении он больше не появляется —
+             режим «вся цепочка» убран. ── */}
+      {!isBuildContext && (
       <>
       {isLoading && (
         <div className={styles.tabLoader}>
@@ -750,11 +713,6 @@ const PanelBuildView: FC<{
   const [dir, setDir] = useState<BuildDirection | null>(null);
   const tab = dir === "up" ? upTab : downTab;
 
-  // Мастер описывает построение ПО ШАГАМ: «Построение → Источники → Превью»
-  // — это его стадии. Режим «вся цепочка» идёт одним запросом, превью у него
-  // нет, и полоса шагов к нему не относится — тогда её не показываем вовсе.
-  const byStep = tab.buildMode !== "whole";
-
   // Пока направление не выбрано, мастер стоит на первом шаге независимо от
   // того, что лежит в направлениях: выбирать ещё нечего.
   const step: WizardStep = dir === null ? 1 : wizardStepOf(tab);
@@ -765,9 +723,9 @@ const PanelBuildView: FC<{
   // «мы снова на первом шаге» было бы неправдой.
   const [backToIntro, setBackToIntro] = useState(false);
 
-  // Первый экран держим, пока направление не выбрано и пока по нему ничего не
-  // нашли. В режиме «вся цепочка» шагов нет — там сразу отдаём прежний вид.
-  const showIntro = dir === null || backToIntro || (byStep && step === 1);
+  // Первый экран держим, пока направление не выбрано и пока по нему ничего
+  // не нашли.
+  const showIntro = dir === null || backToIntro || step === 1;
   // Источники уже есть — значит, с первого экрана не ищут заново, а просто
   // возвращаются к ним. Искать по кнопке «назад» было бы потерей найденного.
   const hasSources = (tab.stepSources?.length ?? 0) > 0 && !tab.stepNeedsFreshSources;
@@ -776,12 +734,6 @@ const PanelBuildView: FC<{
   const chooseDirection = (value: BuildDirection) => {
     setDir(value);
     setBackToIntro(false);
-    // Режим хранится на пару «узел + направление», и у только что выбранного
-    // направления он пуст. Ставим «по шагам» сами: мастер ведёт именно по
-    // ним, а пустой режим означал бы, что второй экран встретит вопросом о
-    // режиме вместо найденных источников.
-    const next = value === "up" ? upTab : downTab;
-    if (!next.buildMode) next.onChangeBuildMode?.("step");
   };
 
   const DIRECTIONS = [
@@ -814,12 +766,10 @@ const PanelBuildView: FC<{
 
   return (
     <div className={wiz.pane}>
-      {byStep && (
-        <StepWizardSteps
-          current={showIntro ? 1 : step}
-          onGoTo={(n) => setBackToIntro(n === 1)}
-        />
-      )}
+      <StepWizardSteps
+        current={showIntro ? 1 : step}
+        onGoTo={(n) => setBackToIntro(n === 1)}
+      />
 
       {showIntro ? (
         <>
@@ -845,32 +795,6 @@ const PanelBuildView: FC<{
             ))}
           </div>
 
-          {/* Режим остаётся выбираемым, но ушёл сюда, под направление: раньше
-              он встречал на втором экране вместо найденных источников. По
-              умолчанию — «по шагам», про который и написан мастер. */}
-          {dir && (
-            <div className={wiz.modeRow}>
-              <span className={wiz.modeCap}>Как строим</span>
-              {(
-                [
-                  ["step", "По шагам", "Один запрос — один шаг, с превью и откатом"],
-                  ["whole", "Вся цепочка", "Один запрос — вся цепочка сразу, без превью"],
-                ] as const
-              ).map(([value, name, hint]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`${wiz.mode} ${
-                    (tab.buildMode ?? "step") === value ? wiz.modeOn : ""
-                  }`}
-                  onClick={() => tab.onChangeBuildMode?.(value)}
-                  title={hint}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          )}
 
           <div className={wiz.current}>
             <span className={wiz.currentIcon}>

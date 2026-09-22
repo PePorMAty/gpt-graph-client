@@ -18,6 +18,14 @@ const WIKIPEDIA_PRESET = "ru.wikipedia.org, en.wikipedia.org";
 export const SearchPromptEditor: FC<{
   open: boolean;
   onToggle: () => void;
+  /**
+   * Не рисовать собственную надпись-тумблер.
+   *
+   * В мастере построения её место занял пункт в сводке над списком
+   * источников — там, где на макете. Две надписи с одним смыслом подряд
+   * читались бы как разные настройки.
+   */
+  hideToggle?: boolean;
   prompt: string;
   onChangePrompt: (value: string) => void;
   isDirty: boolean;
@@ -28,6 +36,7 @@ export const SearchPromptEditor: FC<{
 }> = ({
   open,
   onToggle,
+  hideToggle,
   prompt,
   onChangePrompt,
   isDirty,
@@ -41,9 +50,15 @@ export const SearchPromptEditor: FC<{
 
   return (
     <div className={styles.addSourceBox}>
-      <button type="button" className={styles.promptToggle} onClick={onToggle}>
-        {open ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
-      </button>
+      {!hideToggle && (
+        <button
+          type="button"
+          className={styles.promptToggle}
+          onClick={onToggle}
+        >
+          {open ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
+        </button>
+      )}
 
       {!open && parsed.length > 0 && (
         <div className={styles.domainsActiveNote}>

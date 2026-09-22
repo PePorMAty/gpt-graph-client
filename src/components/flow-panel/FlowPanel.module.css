@@ -784,6 +784,45 @@
   margin-top: 8px;
 }
 
+/* Раскрывашка выглядела ссылкой с эмодзи посреди списка источников и терялась
+   в нём. Теперь это кнопка-действие: плюс в кружке и подпись рядом. */
+.addSourceToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-brand-strong);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.addSourceToggle:hover {
+  background: var(--c-brand-soft);
+  border-color: var(--c-border-brand);
+}
+
+.addSourcePlus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(22 * var(--u));
+  height: calc(22 * var(--u));
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+/* Открыто — плюс становится крестиком тем же поворотом: подпись меняется на
+   «Скрыть», и значок должен сказать то же самое. */
+.addSourcePlusOpen {
+  transform: rotate(45deg);
+}
+
 .addSourceForm {
   display: flex;
   flex-direction: column;

@@ -84,7 +84,6 @@ import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import {
   sourcesKey,
-  setBuildMode,
   clearStepState,
   resetStepBuild,
   setStepAggregatedText,
@@ -2262,12 +2261,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         chainPid: queuePid,
         onExpandNext: handleExpandNext(direction),
 
-        // --- build mode (Redux-backed, per-(nodeId, direction)) ---
-        buildMode: sliceState?.buildMode ?? null,
-        onChangeBuildMode: (mode) =>
-          dispatch(
-            setBuildMode({ nodeId: selectedNodeId, direction, mode }),
-          ),
+        // Признак «это окно построения, а не вкладка карточки». Раньше здесь
+        // жил выбор режима — «вся цепочка» или «по шагам»; режим остался один,
+        // и от поля нужен только сам факт его наличия.
+        isBuildContext: true,
 
         // --- step-by-step chain (session-level state) ---
         stepChainStatus: stepSession?.status ?? "idle",
@@ -2357,7 +2354,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
           baseResult.isAlternativeNode = true;
           baseResult.altDescription = altDesc;
-          baseResult.buildMode = rootSliceState?.buildMode ?? "step";
           baseResult.stepChainCurrentProductLabel = rootProductName;
 
           baseResult.stepSources =

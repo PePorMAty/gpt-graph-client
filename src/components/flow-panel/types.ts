@@ -6,7 +6,6 @@ import type {
   StepChainStatus,
   TechnologySource,
 } from "../../store/types";
-import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
 import type { SourceGroup } from "../../utils/sourceRows";
 import type { LinkedProduct } from "../../utils/getLinkedProducts";
@@ -72,8 +71,14 @@ export interface DirectionTabProps {
   onExpandNext?: () => void;
 
   // --- build mode toggle (shared by full + step flows) ---
-  buildMode?: BuildMode;
-  onChangeBuildMode?: (mode: BuildMode) => void;
+  /**
+   * Окно построения, а не вкладка карточки.
+   *
+   * Раньше на этом месте стоял выбор режима — «вся цепочка» или «по шагам», —
+   * и признаком служило само его наличие. Режим остался один, признак нужен
+   * по-прежнему: тот же компонент обслуживает и карточку, где построения нет.
+   */
+  isBuildContext?: boolean;
 
   // --- step-by-step chain ---
   stepChainStatus?: StepChainStatus;

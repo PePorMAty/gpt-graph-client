@@ -1,5 +1,5 @@
-/* Мастер построения шага: полоса шагов и экран выбора направления.
-   Остальные экраны пока живут в StepByStepContent со своими стилями. */
+/* Мастер построения шага: полоса шагов, экран направления и экран источников.
+   Превью и обобщение пока живут в StepByStepContent со своими стилями. */
 
 /* ─── Полоса шагов ─── */
 
@@ -187,40 +187,6 @@
   box-shadow: inset 0 0 0 3px var(--c-surface), inset 0 0 0 10px var(--c-brand);
 }
 
-/* ─── Режим построения ─── */
-
-.modeRow {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-
-.modeCap {
-  margin-right: var(--s-1);
-  font-size: var(--fs-sm);
-  color: var(--c-text-muted);
-}
-
-.mode {
-  padding: var(--s-2) var(--s-3);
-  font-size: var(--fs-sm);
-  color: var(--c-text-soft);
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-pill);
-  cursor: pointer;
-}
-
-.mode:hover {
-  border-color: var(--c-border-brand);
-}
-
-.modeOn {
-  color: var(--c-brand-strong);
-  background: var(--c-brand-soft);
-  border-color: var(--c-brand);
-}
-
 /* ─── Карточка текущего продукта ─── */
 
 .current {
@@ -292,6 +258,270 @@
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
   color: var(--c-text-muted);
+}
+
+/* ─── Сводка о продукте и направлении (экран 2) ─── */
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-md);
+}
+
+.summaryCell {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.summaryCell + .summaryCell {
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--c-border);
+}
+
+.summaryIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(36 * var(--u));
+  height: calc(36 * var(--u));
+  color: var(--c-brand);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.summaryCap {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.summaryValue {
+  display: block;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+.summaryHint {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.summaryAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
+  padding: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.summaryAction:hover {
+  text-decoration: underline;
+}
+
+/* ─── Источники ─── */
+
+.sourcesBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.searchField {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--s-3);
+  color: var(--c-text-muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--s-3) var(--s-3) var(--s-3) calc(38 * var(--u));
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.sourcesCard {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.sourcesHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-brand-softer);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.sourcesHeadIcon {
+  flex: none;
+  display: flex;
+  color: var(--c-brand);
+}
+
+.sourcesHeadText {
+  flex: 1;
+  min-width: 0;
+}
+
+.sourcesTitle {
+  display: block;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-brand-ink);
+}
+
+.sourcesHint {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.sourcesCount {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.sourceList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourceRow + .sourceRow {
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.sourceMain {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+}
+
+.sourceCheck {
+  flex: none;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  accent-color: var(--c-brand);
+  cursor: pointer;
+}
+
+.sourceIcon {
+  flex: none;
+  display: flex;
+  color: var(--c-text-muted);
+}
+
+/* Название занимает всё свободное место и при нехватке ужимается многоточием:
+   длинный заголовок иначе выдавливал бы домен и стрелку за край карточки. */
+.sourceName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sourceDomain {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  background: var(--c-surface-hover);
+  border-radius: var(--r-xs);
+}
+
+.sourceMore {
+  flex: none;
+  display: flex;
+  padding: var(--s-1);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.sourceMore:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+
+.sourceMoreOpen {
+  transform: rotate(180deg);
+}
+
+.sourceBody {
+  padding: 0 var(--s-4) var(--s-3) calc(56 * var(--u));
+}
+
+.sourceLink {
+  font-size: var(--fs-xs);
+  color: var(--c-brand-strong);
+  overflow-wrap: anywhere;
+}
+
+.sourceDesc {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.sourcesEmpty {
+  padding: var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.addSource {
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--c-border-soft);
 }
 
 /* ─── Подвал мастера ─── */
