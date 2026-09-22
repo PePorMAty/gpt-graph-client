@@ -38,6 +38,7 @@ import {
 import { stepToFlow } from "../../utils/stepToFlow";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 
+import { areNodesLinked } from "../../utils/getDirectProductNeighbors";
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
@@ -175,6 +176,74 @@ const gptSlice = createSlice({
 
       state.data.edges = normalizeEdges(
         addEdge({ ...action.payload, type: "straight" }, state.data.edges),
+      );
+    },
+    /**
+     * Связать два продукта в режиме «только продукты» — через заглушку.
+     *
+     * На том полотне преобразований нет, и прямая связь продукт→продукт
+     * означала бы в полном графе продукт, не привязанный ни к какой
+     * технологии: в режиме технологий он стоял бы в стороне от цепочки.
+     * Поэтому связь заводит между продуктами узел-преобразование — пустой,
+     * с говорящим названием. Человек допишет его сам или заменит найденным
+     * через «Получить преобразование».
+     *
+     * Проекция «только продукты» схлопнет заглушку обратно, и на экране
+     * останется ровно та стрелка, которую провели.
+     */
+    connectProductsViaStub: (state, action: PayloadAction<Connection>) => {
+      const { source, target } = action.payload;
+      if (!source || !target || source === target) return;
+
+      const src = state.data.nodes.find((n) => n.id === source);
+      const tgt = state.data.nodes.find((n) => n.id === target);
+      // Заглушка — про пару продуктов. На этом полотне другого и нет, но
+      // молча городить преобразование к преобразованию всё же не стоит.
+      if (src?.type !== "product" || tgt?.type !== "product") return;
+
+      // Та же проверка, что и на полотне перед вызовом, — одной функцией:
+      // разойдясь, они соврали бы пользователю (см. areNodesLinked).
+      if (areNodesLinked(state.data.edges, source, target)) return;
+
+      const name = String(tgt.data?.label ?? "").trim();
+      const trId = `tr-stub::${crypto.randomUUID()}`;
+
+      state.data.nodes.push({
+        id: trId,
+        type: "transformation",
+        position: {
+          x: (src.position.x + tgt.position.x) / 2,
+          y: (src.position.y + tgt.position.y) / 2,
+        },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: {
+          label: name
+            ? `Преобразование к новому продукту (${name})`
+            : "Преобразование к новому продукту",
+          description: "",
+        },
+      });
+
+      state.data.edges.push(
+        ...normalizeEdges([
+          {
+            id: `${trId}::in`,
+            source,
+            target: trId,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          },
+          {
+            id: `${trId}::out`,
+            source: trId,
+            target,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          },
+        ]),
       );
     },
     onReconnect: (
@@ -1661,6 +1730,7 @@ export const {
   onNodesChange,
   onEdgesChange,
   onConnect,
+  connectProductsViaStub,
   onReconnect,
   removeEdge,
   removeNode,

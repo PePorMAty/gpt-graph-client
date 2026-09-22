@@ -8,6 +8,34 @@ export type DirectProductNeighbor = {
   role: "incoming" | "outgoing";
 };
 
+/**
+ * Связаны ли уже эти два узла — напрямую или через один промежуточный.
+ *
+ * Нужна обеим сторонам связывания в режиме «только продукты»: редьюсеру —
+ * чтобы не заводить вторую заглушку рядом с настоящей технологией, и
+ * полотну — чтобы не рассказывать про созданную заглушку там, где её не
+ * создали. Разошедшись, эти двое как раз и соврали бы: уведомление
+ * появлялось на связи, которую граф отверг.
+ *
+ * Направление не различаем: на полотне «только продукты» путь через
+ * преобразование выглядит такой же одной стрелкой, в какую сторону его ни
+ * веди, и вторая стрелка поверх неё — мусор.
+ */
+export function areNodesLinked(edges: Edge[], a: string, b: string): boolean {
+  const direct = edges.some(
+    (e) =>
+      (e.source === a && e.target === b) || (e.source === b && e.target === a),
+  );
+  if (direct) return true;
+
+  const outs = (id: string) =>
+    edges.filter((e) => e.source === id).map((e) => e.target);
+  return (
+    outs(a).some((mid) => outs(mid).includes(b)) ||
+    outs(b).some((mid) => outs(mid).includes(a))
+  );
+}
+
 export function getDirectProductNeighbors(
   nodeId: string,
   nodes: CustomNode[],

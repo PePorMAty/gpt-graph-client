@@ -22,6 +22,7 @@ import {
   onNodesChange,
   onEdgesChange,
   onConnect,
+  connectProductsViaStub,
   onReconnect,
   removeEdge,
   removeNodes,
@@ -130,6 +131,7 @@ import {
   type ModalProduct,
 } from "./components/transformation-between-modal";
 import {
+  areNodesLinked,
   getDirectProductNeighbors,
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
@@ -665,10 +667,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   /**
    * Правки самих узлов при фильтре «Только продукты» разрешены.
    *
-   * Общий запрет там стоит не зря, но касается он связей: рёбра в проекции
-   * синтетические, их в сторе нет. А узлы настоящие — id проекция не
-   * подменяет, — поэтому создание, удаление и закладка работают ровно так же,
-   * как на полном полотне, и результат виден сразу.
+   * Общий запрет там стоит не зря, но касается он ПРАВКИ рёбер: они в
+   * проекции синтетические, их в сторе нет, и менять или отцеплять их
+   * нечего. А узлы настоящие — id проекция не подменяет, — поэтому
+   * создание, удаление и закладка работают ровно так же, как на полном
+   * полотне, и результат виден сразу.
+   *
+   * Новую связь провести тоже можно: без этого добавленный здесь продукт
+   * оставался висеть ни к чему не привязанным, и привязать его было нечем —
+   * преобразований на этом полотне нет. Такая связь заводит заглушку, см.
+   * handleConnect.
    *
    * Фокус-режим остаётся просмотровым: там своя раскладка окрестности.
    */
@@ -1672,9 +1680,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   const handleConnect: OnConnect = useCallback(
     (params) => {
+      // В режиме «только продукты» прямая связь продукт→продукт оставила бы
+      // продукт вне технологий: в полном графе между ними нет узла, к
+      // которому он относится. Поэтому там связь заводит заглушку —
+      // пустое преобразование с говорящим названием.
+      if (productsOnly) {
+        // Пара может быть связана и сейчас: путь через преобразование
+        // выглядит на этом полотне такой же стрелкой. Спрашиваем ровно ту
+        // проверку, по которой решает и сам редьюсер, — иначе уведомление
+        // появлялось бы на связи, которую граф отверг.
+        if (
+          !params.source ||
+          !params.target ||
+          areNodesLinked(data.edges, params.source, params.target)
+        ) {
+          return;
+        }
+        dispatch(connectProductsViaStub(params));
+        showToast(
+          "info",
+          "Создано преобразование-заглушка — опишите его в режиме технологий",
+        );
+        return;
+      }
       dispatch(onConnect(params));
     },
-    [dispatch],
+    [dispatch, productsOnly, data.edges],
   );
 
   const onReconnectStart = useCallback(() => {
@@ -2806,14 +2837,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={structureLocked ? undefined : handleConnect}
+        onConnect={canEditNodes ? handleConnect : undefined}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={canEditNodes ? onNodeContextMenu : undefined}
         onPaneClick={onPaneClick}
         onPaneContextMenu={canEditNodes ? onPaneContextMenu : undefined}
-        nodesConnectable={!structureLocked}
+        nodesConnectable={canEditNodes}
         // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
         // в режиме «рука» узлы тоже неподвижны, тянется только холст.
         nodesDraggable={!focusOn && canvasMode !== "pan"}
