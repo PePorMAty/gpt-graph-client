@@ -5,13 +5,24 @@ import { StepByStepContent } from "./StepByStepContent";
 import { MarkdownEditor } from "../markdown-editor";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
-import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
+import {
+  getDefaultSourcesPrompt,
+  getDefaultStepSourcesPrompt,
+} from "../../prompts/sourcesPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 import { getAiRequestFields } from "../../hooks/useAiConfig";
 import { StepWizardSteps, type WizardStep } from "./StepWizardSteps";
-import { ArrowDownIcon, ArrowUpIcon, FlaskIcon, HelpIcon } from "../icons";
+import { StepSearchSettingsProvider } from "./StepSearchSettingsProvider";
+import { useStepSearchSettings } from "./stepSearchSettings";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  FlaskIcon,
+  HelpIcon,
+  PencilIcon,
+} from "../icons";
 
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
@@ -683,9 +694,6 @@ const DirectionContent: FC<DirectionTabProps> = ({
   );
 };
 
-/** Сколько источников просить, когда поиск запускают с первого экрана. */
-const DEFAULT_MAX_SOURCES = 5;
-
 /**
  * На каком шаге мастера мы находимся.
  *
@@ -704,7 +712,7 @@ function wizardStepOf(tab: DirectionTabProps): WizardStep {
 // PanelBuildView — мастер построения шага.
 // Экран 1 — направление, дальше существующий DirectionContent.
 // ─────────────────────────────────────────────────
-const PanelBuildView: FC<{
+const PanelBuildViewInner: FC<{
   productName: string;
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
@@ -736,6 +744,18 @@ const PanelBuildView: FC<{
     setBackToIntro(false);
   };
 
+  // Настройки поиска общие со вторым экраном: что задали здесь, тем и
+  // повторится «Найти источники заново».
+  const search = useStepSearchSettings();
+  const autoSrcPrompt = useMemo(
+    () =>
+      getDefaultStepSourcesPrompt(dir ?? "down", productName, search.maxItems),
+    [dir, productName, search.maxItems],
+  );
+  const displayedSrcPrompt = search.manualPrompt ?? autoSrcPrompt;
+  const isSrcPromptDirty = search.manualPrompt !== null;
+  const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";
+
   const DIRECTIONS = [
     {
       value: "up" as const,
@@ -751,15 +771,15 @@ const PanelBuildView: FC<{
     },
   ];
 
-  // Поиск с первого экрана идёт настройками по умолчанию. Тонкая настройка —
-  // промпт, домены, число источников — ждёт на втором экране, у кнопки «Найти
-  // источники заново»: на первом она только мешала бы выбору направления.
   const startSearch = () => {
     if (!dir) return;
     setBackToIntro(false);
     if (introGoesForward) return; // источники уже есть — просто идём дальше
+    const allowedDomains = parseDomainsInput(search.domainsText);
     tab.onFetchStepSources?.({
-      maxItems: DEFAULT_MAX_SOURCES,
+      maxItems: search.maxItems,
+      ...(isSrcPromptDirty ? { customSystemPrompt: displayedSrcPrompt } : {}),
+      ...(allowedDomains.length ? { allowedDomains } : {}),
       ...getAiRequestFields({ stage: "search" }),
     });
   };
@@ -804,7 +824,54 @@ const PanelBuildView: FC<{
               <span className={wiz.currentCap}>Текущий продукт</span>
               <div className={wiz.currentName}>{productName || "—"}</div>
             </span>
+            {/* Промпт правится ДО первого поиска: искать с чужими настройками,
+                чтобы потом переискать со своими, — лишний запрос на минуты.
+                Назван по тому, что правит: следующим действием идёт поиск
+                источников, а не построение шага. */}
+            <button
+              type="button"
+              className={wiz.summaryAction}
+              onClick={() => search.setOpen((v) => !v)}
+            >
+              <PencilIcon size={15} />
+              {search.open
+                ? "Скрыть промпт поиска"
+                : "Редактировать промпт поиска"}
+              {isSrcPromptDirty && " (изменён)"}
+            </button>
           </div>
+
+          {search.open && (
+            <div className={wiz.searchSettings}>
+              <label className={wiz.countRow}>
+                Сколько источников искать:
+                <input
+                  type="number"
+                  min={2}
+                  max={5}
+                  value={search.maxItems}
+                  onChange={(e) =>
+                    search.setMaxItems(
+                      Math.min(5, Math.max(2, Number(e.target.value) || 2)),
+                    )
+                  }
+                  className={wiz.countInput}
+                />
+              </label>
+              <SearchPromptEditor
+                open
+                onToggle={() => search.setOpen(false)}
+                prompt={displayedSrcPrompt}
+                onChangePrompt={search.setManualPrompt}
+                isDirty={isSrcPromptDirty}
+                onResetPrompt={() => search.setManualPrompt(null)}
+                isEmpty={isSrcPromptEmpty}
+                domainsText={search.domainsText}
+                onChangeDomains={search.setDomainsText}
+                hideToggle
+              />
+            </div>
+          )}
 
           <div className={wiz.next}>
             <span className={wiz.nextIcon}>
@@ -838,7 +905,7 @@ const PanelBuildView: FC<{
               type="button"
               className={`${wiz.primary} ${searching ? wiz.primaryBusy : ""}`}
               onClick={startSearch}
-              disabled={!dir || searching}
+              disabled={!dir || searching || isSrcPromptEmpty}
             >
               {searching ? (
                 <>
@@ -865,6 +932,23 @@ const PanelBuildView: FC<{
     </div>
   );
 };
+
+/**
+ * Мастер построения шага.
+ *
+ * Обёртка нужна ради настроек поиска: они общие у первого и второго экранов,
+ * а оба лежат внутри. Провайдер поэтому стоит НАД мастером, а не в нём.
+ */
+const PanelBuildView: FC<{
+  productName: string;
+  downTab: DirectionTabProps;
+  upTab: DirectionTabProps;
+  onBack?: () => void;
+}> = (props) => (
+  <StepSearchSettingsProvider>
+    <PanelBuildViewInner {...props} />
+  </StepSearchSettingsProvider>
+);
 
 // ─────────────────────────────────────────────────
 // FlowPanel — карточка узла.

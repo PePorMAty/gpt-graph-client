@@ -11,6 +11,7 @@ import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { StepSourcesList } from "./StepSourcesList";
+import { useStepSearchSettings } from "./stepSearchSettings";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -158,13 +159,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     });
   };
 
-  // ── Sources prompt state ──
-  const [maxItems, setMaxItems] = useState(5);
-  const [srcPromptOpen, setSrcPromptOpen] = useState(false);
-  const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
-
-  // ── Белый список доменов поиска (3.3) ──
-  const [domainsText, setDomainsText] = useState("");
+  // ── Настройки поиска: общие с первым экраном мастера ──
+  // Промпт, домены и число источников заданы ДО первого поиска и остаются
+  // теми же при «Найти источники заново» — одно состояние на оба экрана.
+  const {
+    maxItems,
+    setMaxItems,
+    open: srcPromptOpen,
+    setOpen: setSrcPromptOpen,
+    manualPrompt: manualSrcPrompt,
+    setManualPrompt: setManualSrcPrompt,
+    domainsText,
+    setDomainsText,
+  } = useStepSearchSettings();
 
   const autoSrcPrompt = useMemo(
     () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
