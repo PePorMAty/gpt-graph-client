@@ -567,6 +567,21 @@ a.codeValue:hover {
   overflow-wrap: break-word;
 }
 
+/* Пометка «снят». Приглушённая, не красная: это не ошибка записи и не повод
+   ей не верить — производитель настоящий, продукция настоящая. Сказано лишь,
+   что искать этот код в классификаторе сегодня бесполезно. */
+.codeRetired {
+  flex: 0 0 auto;
+  padding: 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--c-text-muted);
+  background: var(--c-surface-hover);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  cursor: help;
+}
+
 /* Приписка про остальные коды: не тянется, в отличие от названия класса, —
    иначе они делили бы строку поровну и название переносилось бы зря. */
 .codeExtra {

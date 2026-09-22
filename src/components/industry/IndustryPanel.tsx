@@ -261,6 +261,17 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
           >
             {info.okpd2}
           </a>
+          {/* Кода нет в действующем классификаторе. Пометка идёт сразу за
+              самим кодом, до названия: название-то у него найдётся — по живой
+              родительской группе, — и без пометки выглядело бы обычным. */}
+          {info.okpd2Retired && (
+            <span
+              className={styles.codeRetired}
+              title="Код был присвоен записи при регистрации, а сейчас в классификаторе его нет"
+            >
+              снят
+            </span>
+          )}
           {info.okpd2Name && (
             <span className={styles.codeName}>{info.okpd2Name}</span>
           )}
