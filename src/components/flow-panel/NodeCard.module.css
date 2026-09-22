@@ -448,12 +448,6 @@
   text-decoration: underline;
 }
 
-.idPopHint {
-  margin: 0;
-  font-size: var(--fs-xs);
-  line-height: 1.4;
-  color: var(--c-text-muted);
-}
 
 .blockEmpty {
   font-size: var(--fs-md);

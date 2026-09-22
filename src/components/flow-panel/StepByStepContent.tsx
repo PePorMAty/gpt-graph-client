@@ -962,19 +962,23 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           счётчиком в сводке, а сам список — на предыдущем шаге, куда ведёт
           номер «2» в полосе. Сброс всего шага живёт там же. */}
 
+      {/* Откат последнего шага — действие над уже построенным, а не часть
+          мастера: стоит особняком и оформлено как второстепенная кнопка, а не
+          как шаг вперёд. */}
       {hasSteps && (
-        <button
-          type="button"
-          onClick={onUndoStep}
-          className={styles.findSourcesButton}
-          style={{ marginTop: 8 }}
-        >
-          Отменить последний шаг
-        </button>
+        <div className={wiz.undoRow}>
+          <button type="button" onClick={onUndoStep} className={wiz.secondary}>
+            <ArrowUpIcon size={17} className={wiz.arrowBack} />
+            Отменить последний шаг
+          </button>
+          <span className={wiz.undoNote}>
+            Построено шагов: {stepChainStepCount}
+          </span>
+        </div>
       )}
 
       {stepChainError && (
-        <div className={styles.errorText}>Ошибка: {stepChainError}</div>
+        <div className={wiz.error}>Ошибка: {stepChainError}</div>
       )}
 
       {showPreview && pendingStep && (

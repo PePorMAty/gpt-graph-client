@@ -172,12 +172,6 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             </div>
           )}
 
-          {!substance && (
-            <p className={styles.idPopHint}>
-              Идентификатор вещества появляется при объединении графов и при
-              построении шага — справочник опознаёт продукт по названию.
-            </p>
-          )}
         </div>
       )}
     </div>
