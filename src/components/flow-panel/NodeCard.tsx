@@ -427,6 +427,28 @@ export const NodeCard: FC<NodeCardProps> = ({
                 </button>
               )}
 
+              {/* Преобразование между этим продуктом и соседними.
+                  Действие было только в меню «…» — то есть невидимо, пока не
+                  откроешь меню. Здесь оно на виду, ровно там, где человек уже
+                  смотрит на продукт.
+
+                  Намеренно НЕ через canBuild: тот выключается вместе с
+                  readOnly, а в режиме «только продукты» карточка как раз
+                  просмотровая — при том что именно там два продукта видны
+                  рядом и связать их преобразованием нужнее всего. Граф эта
+                  кнопка меняет не сама: она открывает модалку, которая идёт
+                  за преобразованием на сервер. */}
+              {isProduct && hasProductNeighbors && onFetchTransformations && (
+                <button
+                  type="button"
+                  className={styles.transformButton}
+                  onClick={onFetchTransformations}
+                >
+                  <BranchIcon size={17} className={styles.transformButtonIcon} />
+                  Получить преобразование
+                </button>
+              )}
+
               {isProduct && (
                 <NodeSourcesBlock
                   groups={sourceGroups}

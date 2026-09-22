@@ -731,6 +731,7 @@ const PanelBuildViewInner: FC<{
   // того, что лежит в направлениях: выбирать ещё нечего.
   const step: WizardStep = dir === null ? 1 : wizardStepOf(tab);
   const searching = tab.stepSourcesStatus === "loading";
+  const canCancelSearch = searching && !!tab.onCancelStepSources;
 
   // Возврат на пройденный шаг по номеру в полосе. Отдельным признаком, а не
   // вычислением: найденное никуда не делось, и выводить из состояния «мы
@@ -905,11 +906,32 @@ const PanelBuildViewInner: FC<{
             <div className={wiz.error}>Ошибка: {tab.stepSourcesError}</div>
           )}
 
-          <div className={`${wiz.footer} ${onBack ? "" : wiz.footerEnd}`}>
-            {onBack && (
-              <button type="button" className={wiz.secondary} onClick={onBack}>
-                Отмена
+          <div
+            className={`${wiz.footer} ${
+              onBack || canCancelSearch ? "" : wiz.footerEnd
+            }`}
+          >
+            {/* Пока идёт поиск, левая кнопка прерывает ЕГО, а не закрывает
+                окно: запрос длится минутами, и «Отмена», которая ничего не
+                отменяет, — худшее, что здесь может стоять. Закрыть окно
+                по-прежнему можно крестиком и Escape, поиск при этом
+                продолжается в фоне — так и написано в подсказке выше.
+                На втором экране мастера такая кнопка есть давно, здесь её
+                просто не было. */}
+            {canCancelSearch ? (
+              <button
+                type="button"
+                className={wiz.cancelSearch}
+                onClick={() => tab.onCancelStepSources?.()}
+              >
+                Отменить поиск
               </button>
+            ) : (
+              onBack && (
+                <button type="button" className={wiz.secondary} onClick={onBack}>
+                  Отмена
+                </button>
+              )
             )}
             <button
               type="button"

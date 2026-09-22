@@ -672,6 +672,19 @@
   cursor: progress;
 }
 
+/* Прервать идущий поиск. Габариты те же, что у .secondary, — она стоит на её
+   месте; цвет тревожный, потому что действие теряет уже начатую работу. */
+.cancelSearch {
+  composes: secondary;
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border-color: var(--c-danger-border);
+}
+
+.cancelSearch:hover {
+  background: var(--c-danger-border);
+}
+
 .spinner {
   flex: none;
   width: calc(16 * var(--u));

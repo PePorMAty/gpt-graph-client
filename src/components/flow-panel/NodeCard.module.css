@@ -671,6 +671,32 @@
   background: var(--c-brand-strong);
 }
 
+/* Получить преобразование между этим продуктом и соседними.
+   Оранжевая — цвет преобразования на полотне и в легенде: кнопка называет
+   не действие вообще, а то, ЧТО появится на графе. Габариты общие с
+   «Построить шаг», чтобы две кнопки подряд читались одним блоком. */
+.transformButton {
+  composes: buildButton;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  background: var(--c-transform);
+  border-color: var(--c-transform);
+}
+
+.transformButton:hover {
+  /* Своего «strong» у оранжевого в токенах нет, а заводить ради одной
+     кнопки седьмой оттенок — плодить палитру. Затемняем на месте. */
+  background: #f57c00;
+  border-color: #f57c00;
+}
+
+.transformButtonIcon {
+  flex: none;
+}
+
 /* ─── Таблица источников узла ─── */
 
 .search {
