@@ -80,6 +80,15 @@ export interface DirectionTabProps {
    */
   isBuildContext?: boolean;
 
+  /**
+   * Показать конкретный экран мастера, а не выведенный из состояния.
+   *
+   * Нужен для возврата назад: обобщение уже получено, но человек вернулся к
+   * источникам по номеру в полосе шагов. Без этого состояние тянуло бы его
+   * обратно вперёд — источники-то обобщены.
+   */
+  stageOverride?: 2 | 3;
+
   // --- step-by-step chain ---
   stepChainStatus?: StepChainStatus;
   stepChainError?: string | null;

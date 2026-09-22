@@ -386,7 +386,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
 
         <div className={styles.actions}>
           <button type="button" className={styles.cancelBtn} onClick={onReject}>
-            Назад к источникам
+            Назад к обобщению
           </button>
           <span className={styles.actionsRight}>
             <button type="button" className={styles.retryBtn} onClick={onRetry}>
@@ -427,7 +427,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           </button>
         </header>
 
-        <StepWizardSteps current={3} />
+        <StepWizardSteps current={4} />
         {body}
       </div>
     </div>

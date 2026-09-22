@@ -6,30 +6,42 @@ import styles from "./StepWizard.module.css";
 const WIZARD_STEPS = [
   { n: 1, label: "Построение" },
   { n: 2, label: "Источники" },
-  { n: 3, label: "Превью" },
+  { n: 3, label: "Обобщение" },
+  { n: 4, label: "Превью" },
 ] as const;
 
-export type WizardStep = 1 | 2 | 3;
+export type WizardStep = 1 | 2 | 3 | 4;
 
 interface Props {
   current: WizardStep;
-  /** Вернуться на пройденный шаг. Без него номера просто показывают, где мы. */
+  /**
+   * Самый дальний шаг, до которого уже дошли.
+   *
+   * Отличается от current, когда человек вернулся назад посмотреть: обобщение
+   * получено, но открыты источники. Тогда вперёд идти ЕСТЬ куда, и запрещать
+   * это было бы неправдой — пришлось бы обобщать заново ради того, что уже
+   * есть. По умолчанию совпадает с current: дальше него не ходили.
+   */
+  reached?: WizardStep;
+  /** Перейти на доступный шаг. Без него номера просто показывают, где мы. */
   onGoTo?: (step: WizardStep) => void;
 }
 
 /**
- * Полоса «1 Построение — 2 Источники — 3 Превью».
+ * Полоса «1 Построение — 2 Источники — 3 Обобщение — 4 Превью».
  *
- * Показывает не выбор, а положение: шаги идут строго по порядку, перескочить
- * вперёд нельзя — источников ещё нет, обобщать нечего. Назад можно, и только
- * назад кликабельно; будущие шаги остаются бледными, чтобы по ним не тыкали
- * впустую.
+ * Показывает не выбор, а положение. Перескочить дальше пройденного нельзя —
+ * источников ещё нет, обобщать нечего; такие шаги остаются бледными, чтобы по
+ * ним не тыкали впустую. А вот вернуться назад и снова уйти вперёд можно
+ * свободно: то, что уже получено, никуда не делось.
  */
-export const StepWizardSteps: FC<Props> = ({ current, onGoTo }) => (
+export const StepWizardSteps: FC<Props> = ({ current, reached, onGoTo }) => {
+  const far = Math.max(reached ?? current, current);
+  return (
   <ol className={styles.steps} aria-label="Шаги построения">
     {WIZARD_STEPS.map(({ n, label }, i) => {
       const state = n === current ? "on" : n < current ? "done" : "next";
-      const canGo = Boolean(onGoTo) && n < current;
+      const canGo = Boolean(onGoTo) && n !== current && n <= far;
       return (
         <li key={n} className={styles.stepItem}>
           {i > 0 && (
@@ -53,5 +65,6 @@ export const StepWizardSteps: FC<Props> = ({ current, onGoTo }) => (
         </li>
       );
     })}
-  </ol>
-);
+    </ol>
+  );
+};

@@ -65,6 +65,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
   onExpandNext,
 
   isBuildContext,
+  stageOverride,
   stepChainStatus,
   stepChainError,
   stepChainStepCount,
@@ -224,6 +225,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepBuildStatus={stepBuildStatus}
           stepBuildError={stepBuildError}
           stepBuiltFromAggregate={stepBuiltFromAggregate}
+          stageOverride={stageOverride}
           pendingStep={pendingStep}
           onFetchStepSources={onFetchStepSources}
           onCancelStepSources={onCancelStepSources}
@@ -702,9 +704,13 @@ const DirectionContent: FC<DirectionTabProps> = ({
  * дозаказе источников, и полоса показывала бы «Превью» там, где превью уже нет.
  */
 function wizardStepOf(tab: DirectionTabProps): WizardStep {
-  if (tab.pendingStep && tab.stepBuildStatus === "succeeded") return 3;
+  if (tab.pendingStep && tab.stepBuildStatus === "succeeded") return 4;
   const hasSources = (tab.stepSources?.length ?? 0) > 0;
-  if (hasSources && !tab.stepNeedsFreshSources) return 2;
+  const usable = hasSources && !tab.stepNeedsFreshSources;
+  // Обобщение готово — это уже свой шаг, а не хвост источников: из него
+  // строится шаг, и текст перед этим правится.
+  if (usable && tab.stepAggregatedText && !tab.stepNeedsSources) return 3;
+  if (usable) return 2;
   return 1;
 }
 
@@ -726,22 +732,22 @@ const PanelBuildViewInner: FC<{
   const step: WizardStep = dir === null ? 1 : wizardStepOf(tab);
   const searching = tab.stepSourcesStatus === "loading";
 
-  // Возврат на первый экран по номеру «1» в полосе шагов. Отдельным признаком,
-  // а не вычислением: найденные источники никуда не делись, и выводить из них
-  // «мы снова на первом шаге» было бы неправдой.
-  const [backToIntro, setBackToIntro] = useState(false);
+  // Возврат на пройденный шаг по номеру в полосе. Отдельным признаком, а не
+  // вычислением: найденное никуда не делось, и выводить из состояния «мы
+  // снова на втором шаге» было бы неправдой.
+  const [backTo, setBackTo] = useState<WizardStep | null>(null);
 
-  // Первый экран держим, пока направление не выбрано и пока по нему ничего
-  // не нашли.
-  const showIntro = dir === null || backToIntro || step === 1;
+  // Назад можно, вперёд нет: шаг, до которого ещё не дошли, показывать нечем.
+  const shown: WizardStep = dir === null ? 1 : Math.min(backTo ?? step, step) as WizardStep;
+  const showIntro = shown === 1;
   // Источники уже есть — значит, с первого экрана не ищут заново, а просто
   // возвращаются к ним. Искать по кнопке «назад» было бы потерей найденного.
   const hasSources = (tab.stepSources?.length ?? 0) > 0 && !tab.stepNeedsFreshSources;
-  const introGoesForward = backToIntro && hasSources;
+  const introGoesForward = backTo === 1 && hasSources;
 
   const chooseDirection = (value: BuildDirection) => {
     setDir(value);
-    setBackToIntro(false);
+    setBackTo(null);
   };
 
   // Настройки поиска общие со вторым экраном: что задали здесь, тем и
@@ -773,7 +779,7 @@ const PanelBuildViewInner: FC<{
 
   const startSearch = () => {
     if (!dir) return;
-    setBackToIntro(false);
+    setBackTo(null);
     if (introGoesForward) return; // источники уже есть — просто идём дальше
     const allowedDomains = parseDomainsInput(search.domainsText);
     tab.onFetchStepSources?.({
@@ -787,8 +793,12 @@ const PanelBuildViewInner: FC<{
   return (
     <div className={wiz.pane}>
       <StepWizardSteps
-        current={showIntro ? 1 : step}
-        onGoTo={(n) => setBackToIntro(n === 1)}
+        current={shown}
+        reached={dir === null ? 1 : step}
+        // Возврат на пройденный шаг. Когда вернулись на тот, где и так
+        // стоим, признак снимаем — иначе он замораживал бы мастер на месте
+        // при дальнейшем движении вперёд.
+        onGoTo={(n) => setBackTo(n >= step ? null : n)}
       />
 
       {showIntro ? (
@@ -926,7 +936,11 @@ const PanelBuildViewInner: FC<{
           {/* key по направлению: без него React переиспользует тот же
               экземпляр, и состояние вкладки (правленый промпт, домены,
               число источников) переезжает с «вверх» на «вниз». */}
-          <DirectionContent key={dir ?? "down"} {...tab} />
+          <DirectionContent
+            key={dir ?? "down"}
+            {...tab}
+            stageOverride={shown === 2 ? 2 : undefined}
+          />
         </>
       )}
     </div>
