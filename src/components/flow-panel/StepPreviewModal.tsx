@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState, type FC } from "react";
 import type { StepChainApiStep, StepProduct } from "../../store/types";
 import { normalizeProductName } from "../../utils/normalizeProductName";
+import { StepWizardSteps } from "./StepWizardSteps";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BookIcon,
+  CloseIcon,
+  FlaskIcon,
+  GearIcon,
+  PlusIcon,
+} from "../icons";
 import styles from "./StepPreviewModal.module.css";
 
 /**
@@ -46,6 +56,14 @@ interface StepPreviewModalProps {
    * однонаправленный, и сторону задаёт именно направление.
    */
   direction: "up" | "down";
+  /**
+   * Рисовать внутри окна построения, а не отдельной модалкой поверх него.
+   *
+   * Превью — третий экран мастера, и своя затемнённая подложка с собственной
+   * шапкой давала два окна с одним заголовком друг на друге. Снаружи остаётся
+   * одно окно: заголовок и полосу шагов даёт оно.
+   */
+  inline?: boolean;
   onAccept: (filteredStep: StepChainApiStep) => void;
   onRetry: () => void;
   onReject: () => void;
@@ -56,6 +74,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   anchorProductName,
   stepNumber,
   direction,
+  inline = false,
   onAccept,
   onRetry,
   onReject,
@@ -171,95 +190,124 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     onAccept(filteredStep);
   };
 
-  return (
-    <div className={styles.overlay} onClick={onReject}>
-      <div className={styles.window} onClick={(e) => e.stopPropagation()}>
-        <h3 className={styles.title}>Превью шага #{stepNumber}</h3>
+  /** Список продуктов одной стороны — вид у входов и выходов один. */
+  const productList = (
+    items: { product: StepProduct; origIdx: number }[],
+    excluded: Set<number>,
+    toggle: (i: number) => void,
+    side: "input" | "output",
+  ) => (
+    <ul className={styles.productList}>
+      {items.map(({ product: p, origIdx }) => (
+        <li key={origIdx} className={styles.productItem}>
+          <input
+            type="checkbox"
+            className={styles.productCheck}
+            checked={!excluded.has(origIdx)}
+            onChange={() => toggle(origIdx)}
+            title="Включить продукт в шаг"
+          />
+          <span className={styles.productIcon}>
+            <FlaskIcon size={17} />
+          </span>
+          <span className={styles.productName}>{p.name}</span>
+          <span className={p.isExisting ? styles.badgeExisting : styles.badgeNew}>
+            {p.isExisting
+              ? `в графе${p.existingNodeLabel ? `: ${p.existingNodeLabel}` : ""}`
+              : "новый"}
+          </span>
+        </li>
+      ))}
+      {customSide === side &&
+        customProducts.map((p, i) => (
+          <CustomProductItem
+            key={`custom-${side}-${i}`}
+            product={p}
+            onRemove={() => removeCustomProduct(i)}
+          />
+        ))}
+    </ul>
+  );
 
-        <div className={styles.transformationName}>
-          {step.transformation.name}
-        </div>
+  const notes = step.transformation.notes ?? [];
+  const showInputs =
+    visibleInputs.length > 0 ||
+    (customSide === "input" && customProducts.length > 0);
+  const showOutputs =
+    visibleOutputs.length > 0 ||
+    (customSide === "output" && customProducts.length > 0);
 
-        {step.transformation.description && (
-          <div className={styles.transformationDesc}>
-            {step.transformation.description}
+  const body = (
+    <>
+        {/* Сам шаг: что за процесс получился. */}
+        <section className={styles.card}>
+          <span className={styles.cardIcon}>
+            <GearIcon size={24} />
+          </span>
+          <div className={styles.cardText}>
+            <span className={styles.cardCap}>
+              Производственный шаг #{stepNumber}
+            </span>
+            <div className={styles.cardName}>{step.transformation.name}</div>
+            {step.transformation.description && (
+              <p className={styles.cardDesc}>
+                {step.transformation.description}
+              </p>
+            )}
           </div>
+        </section>
+
+        {showInputs && (
+          <section className={styles.block}>
+            <span className={styles.blockIcon}>
+              <ArrowDownIcon size={18} />
+            </span>
+            <div className={styles.blockBody}>
+              <span className={styles.blockTitle}>
+                Входные данные ({visibleInputs.length +
+                  (customSide === "input" ? customProducts.length : 0)})
+              </span>
+              {productList(visibleInputs, excludedInputs, toggleInput, "input")}
+            </div>
+          </section>
         )}
 
-        {(visibleInputs.length > 0 ||
-          (customSide === "input" && customProducts.length > 0)) && (
-          <>
-            <p className={styles.sectionTitle}>Входы:</p>
-            <ul className={styles.productList}>
-              {visibleInputs.map(({ product: p, origIdx }) => (
-                <li key={origIdx} className={styles.productItem}>
-                  <label className={styles.productCheckbox}>
-                    <input
-                      type="checkbox"
-                      checked={!excludedInputs.has(origIdx)}
-                      onChange={() => toggleInput(origIdx)}
-                    />
-                    <span>{p.name}</span>
-                  </label>
-                  <span
-                    className={
-                      p.isExisting ? styles.badgeExisting : styles.badgeNew
-                    }
-                  >
-                    {p.isExisting
-                      ? `в дереве${p.existingNodeLabel ? `: ${p.existingNodeLabel}` : ""}`
-                      : "новый"}
-                  </span>
-                </li>
-              ))}
-              {customSide === "input" &&
-                customProducts.map((p, i) => (
-                  <CustomProductItem
-                    key={`custom-in-${i}`}
-                    product={p}
-                    onRemove={() => removeCustomProduct(i)}
-                  />
-                ))}
-            </ul>
-          </>
+        {showOutputs && (
+          <section className={styles.block}>
+            <span className={styles.blockIcon}>
+              <ArrowUpIcon size={18} />
+            </span>
+            <div className={styles.blockBody}>
+              <span className={styles.blockTitle}>
+                Выходные данные ({visibleOutputs.length +
+                  (customSide === "output" ? customProducts.length : 0)})
+              </span>
+              {productList(
+                visibleOutputs,
+                excludedOutputs,
+                toggleOutput,
+                "output",
+              )}
+            </div>
+          </section>
         )}
 
-        {(visibleOutputs.length > 0 ||
-          (customSide === "output" && customProducts.length > 0)) && (
-          <>
-            <p className={styles.sectionTitle}>Выходы:</p>
-            <ul className={styles.productList}>
-              {visibleOutputs.map(({ product: p, origIdx }) => (
-                <li key={origIdx} className={styles.productItem}>
-                  <label className={styles.productCheckbox}>
-                    <input
-                      type="checkbox"
-                      checked={!excludedOutputs.has(origIdx)}
-                      onChange={() => toggleOutput(origIdx)}
-                    />
-                    <span>{p.name}</span>
-                  </label>
-                  <span
-                    className={
-                      p.isExisting ? styles.badgeExisting : styles.badgeNew
-                    }
-                  >
-                    {p.isExisting
-                      ? `в дереве${p.existingNodeLabel ? `: ${p.existingNodeLabel}` : ""}`
-                      : "новый"}
-                  </span>
-                </li>
-              ))}
-              {customSide === "output" &&
-                customProducts.map((p, i) => (
-                  <CustomProductItem
-                    key={`custom-out-${i}`}
-                    product={p}
-                    onRemove={() => removeCustomProduct(i)}
-                  />
+        {/* Оговорки к шагу. Блока нет вовсе, когда сказать нечего: пустых
+            «Примечаний» быть не должно — они читались бы как потерянный текст. */}
+        {notes.length > 0 && (
+          <section className={styles.block}>
+            <span className={styles.blockIcon}>
+              <BookIcon size={18} />
+            </span>
+            <div className={styles.blockBody}>
+              <span className={styles.blockTitle}>Примечания</span>
+              <ul className={styles.notes}>
+                {notes.map((n) => (
+                  <li key={n}>{n}</li>
                 ))}
-            </ul>
-          </>
+              </ul>
+            </div>
+          </section>
         )}
 
         {/* ── Свой продукт: модель могла не предложить нужный, добавляем руками.
@@ -272,7 +320,10 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
               className={styles.customToggle}
               onClick={() => setFormOpen(true)}
             >
-              ＋ Добавить свой продукт
+              <span className={styles.customPlus}>
+                <PlusIcon size={15} />
+              </span>
+              Добавить свой продукт
             </button>
           ) : (
             <div className={styles.customForm}>
@@ -334,16 +385,50 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
         </div>
 
         <div className={styles.actions}>
-          <button className={styles.retryBtn} onClick={onRetry}>
-            Повторить запрос
+          <button type="button" className={styles.cancelBtn} onClick={onReject}>
+            Назад к источникам
           </button>
-          <button className={styles.cancelBtn} onClick={onReject}>
-            Отменить
-          </button>
-          <button className={styles.acceptBtn} onClick={handleAccept}>
-            Добавить шаг
-          </button>
+          <span className={styles.actionsRight}>
+            <button type="button" className={styles.retryBtn} onClick={onRetry}>
+              Повторить запрос
+            </button>
+            <button
+              type="button"
+              className={styles.acceptBtn}
+              onClick={handleAccept}
+            >
+              <PlusIcon size={17} />
+              Добавить шаг
+            </button>
+          </span>
         </div>
+    </>
+  );
+
+  if (inline) return <div className={styles.inline}>{body}</div>;
+
+  return (
+    <div className={styles.overlay} onClick={onReject}>
+      <div
+        className={styles.window}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <header className={styles.head}>
+          <h3 className={styles.title}>Построение — «{anchorProductName}»</h3>
+          <button
+            type="button"
+            className={styles.closeX}
+            onClick={onReject}
+            aria-label="Закрыть"
+          >
+            <CloseIcon size={20} />
+          </button>
+        </header>
+
+        <StepWizardSteps current={3} />
+        {body}
       </div>
     </div>
   );

@@ -381,6 +381,8 @@ export type StepChainApiStep = {
     industry?: string;
     /** Главная производственная функция, одним предложением. */
     mainPurpose?: string;
+    /** Оговорки к шагу: чем набор может отличаться, что необязательно. */
+    notes?: string[];
   };
   inputProducts: StepProduct[];
   outputProducts: StepProduct[];

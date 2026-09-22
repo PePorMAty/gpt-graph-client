@@ -206,6 +206,9 @@ export function stepToFlow(
         ...(step.transformation.mainPurpose?.trim()
           ? { mainPurpose: step.transformation.mainPurpose.trim() }
           : {}),
+        ...(step.transformation.notes?.length
+          ? { notes: step.transformation.notes.filter((n) => n?.trim()) }
+          : {}),
         ...(anchorAggregatedText
           ? { aggregatedDescription: anchorAggregatedText }
           : {}),

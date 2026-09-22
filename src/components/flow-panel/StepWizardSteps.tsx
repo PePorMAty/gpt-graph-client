@@ -3,7 +3,7 @@ import type { FC } from "react";
 import styles from "./StepWizard.module.css";
 
 /** Шаги мастера построения — по порядку прохождения. */
-export const WIZARD_STEPS = [
+const WIZARD_STEPS = [
   { n: 1, label: "Построение" },
   { n: 2, label: "Источники" },
   { n: 3, label: "Превью" },

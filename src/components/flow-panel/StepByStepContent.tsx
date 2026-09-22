@@ -440,11 +440,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     <div className={styles.formGroup}>
       {/* На экране источников продукт назван в сводке — здесь он был бы
           второй раз подряд. На остальных стадиях сводки нет. */}
-      {!(sourcesUsable && !hasValidAggregate && !stepNeedsSources) && (
-        <div className={styles.sourcesTitle}>
-          Текущий продукт: <b>{productName || "—"}</b>
-        </div>
-      )}
+      {/* Продукт назван в сводке над источниками и в заголовке окна на
+          превью — здесь он был бы второй раз подряд. */}
+      {!(sourcesUsable && !hasValidAggregate && !stepNeedsSources) &&
+        !showPreview && (
+          <div className={styles.sourcesTitle}>
+            Текущий продукт: <b>{productName || "—"}</b>
+          </div>
+        )}
 
       {/* Маркер с build родителя: этому продукту нужны свежие источники */}
       {stepNeedsFreshSources && (
@@ -563,7 +566,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* ── Экран 2 мастера: найденные источники и отбор для обобщения ──
           Список, поле фильтра и ручное добавление собраны в отдельной
           карточке; здесь остаются действия над ней. */}
-      {sourcesUsable && !hasValidAggregate && !stepNeedsSources && (
+      {sourcesUsable && !hasValidAggregate && !stepNeedsSources && !showPreview && (
         <>
           <div className={wiz.summary}>
             <span className={wiz.summaryCell}>
@@ -755,8 +758,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage: aggregated ready → build */}
-      {sourcesUsable && hasValidAggregate && (
+      {/* Stage: aggregated ready → build. Скрыт, когда шаг уже построен:
+          превью занимает тот же экран, и обобщение под ним только уводило бы
+          внимание. */}
+      {sourcesUsable && hasValidAggregate && !showPreview && (
         <>
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>
@@ -908,7 +913,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Источники после обобщения: видно, из чего собран текст, и можно
           пересобрать отбор. До обобщения список показан выше, вместе с
           действиями над ним. */}
-      {sourcesUsable && hasValidAggregate && (
+      {sourcesUsable && hasValidAggregate && !showPreview && (
         <StepSourcesList
           sources={stepSources}
           excluded={excludedUrls}
@@ -920,7 +925,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
       {/* Reset — на стадии обобщения. До неё «Начать заново» стоит в подвале
           рядом с «Обобщить источники». */}
-      {hasValidAggregate && (
+      {hasValidAggregate && !showPreview && (
         <button
           type="button"
           onClick={onClearStepState}
@@ -953,6 +958,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
           direction={direction}
+          // Третий экран того же окна, а не модалка поверх него: заголовок и
+          // полосу шагов даёт окно построения.
+          inline
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.
