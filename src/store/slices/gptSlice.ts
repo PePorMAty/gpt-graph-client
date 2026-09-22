@@ -38,7 +38,10 @@ import {
 import { stepToFlow } from "../../utils/stepToFlow";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 
-import { areNodesLinked } from "../../utils/getDirectProductNeighbors";
+import {
+  areNodesLinked,
+  STUB_TRANSFORMATION_PREFIX,
+} from "../../utils/getDirectProductNeighbors";
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
@@ -206,7 +209,9 @@ const gptSlice = createSlice({
       if (areNodesLinked(state.data.edges, source, target)) return;
 
       const name = String(tgt.data?.label ?? "").trim();
-      const trId = `tr-stub::${crypto.randomUUID()}`;
+      // Префикс — не украшение: по нему поиск соседей узнаёт, что технологии
+      // между продуктами ещё нет, и предлагает её найти.
+      const trId = `${STUB_TRANSFORMATION_PREFIX}${crypto.randomUUID()}`;
 
       state.data.nodes.push({
         id: trId,
@@ -1196,6 +1201,8 @@ const gptSlice = createSlice({
           inputNodeIds: string[];
           outputNodeIds: string[];
           removeEdgeIds: string[];
+          /** Заглушки, на место которых встаёт найденное преобразование. */
+          removeNodeIds?: string[];
         }>;
       }>,
     ) => {
@@ -1203,12 +1210,25 @@ const gptSlice = createSlice({
       if (!groups.length) return;
 
       const edgesToRemove = new Set<string>();
+      const nodesToRemove = new Set<string>();
       for (const g of groups) {
         for (const eid of g.removeEdgeIds) edgesToRemove.add(eid);
+        for (const nid of g.removeNodeIds ?? []) nodesToRemove.add(nid);
       }
       if (edgesToRemove.size) {
         state.data.edges = state.data.edges.filter(
           (e) => !edgesToRemove.has(e.id),
+        );
+      }
+      // Заглушку убираем вместе со всем, что к ней ещё вело: найденное
+      // преобразование встаёт на её место, и оставить её значило бы
+      // нарисовать рядом две технологии между одной парой продуктов.
+      if (nodesToRemove.size) {
+        state.data.nodes = state.data.nodes.filter(
+          (n) => !nodesToRemove.has(n.id),
+        );
+        state.data.edges = state.data.edges.filter(
+          (e) => !nodesToRemove.has(e.source) && !nodesToRemove.has(e.target),
         );
       }
 

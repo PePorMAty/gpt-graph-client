@@ -168,6 +168,16 @@ export const NodeCard: FC<NodeCardProps> = ({
   if (!isOpen) return null;
 
   const canBuild = !readOnly && (isProduct || (isAltNode && !!altDirection));
+  const canFetchTransformations =
+    isProduct && hasProductNeighbors && !!onFetchTransformations;
+  // Кнопка «…» прячется, когда прятать под ней нечего. Без этого она
+  // открывала пустой прямоугольник: в режиме «только продукты» readOnly
+  // снимал все пункты разом, и меню превращалось в сломанное на вид.
+  const hasMenu =
+    canBuild ||
+    canFetchTransformations ||
+    (!!onToggleBookmark && !isAltNode) ||
+    !!onDeleteNode;
 
   return (
     <>
@@ -212,16 +222,18 @@ export const NodeCard: FC<NodeCardProps> = ({
 
           <div className={styles.headerActions}>
             <div className={styles.menuWrap} ref={menuRef}>
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={() => setMenuOpen((v) => !v)}
-                aria-label="Ещё"
-                aria-expanded={menuOpen}
-              >
-                …
-              </button>
-              {menuOpen && (
+              {hasMenu && (
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label="Ещё"
+                  aria-expanded={menuOpen}
+                >
+                  …
+                </button>
+              )}
+              {hasMenu && menuOpen && (
                 <div className={styles.menu}>
                   {canBuild && (
                     <button
@@ -236,21 +248,19 @@ export const NodeCard: FC<NodeCardProps> = ({
                       {isAltNode ? "Построить альтернативу" : "Построить шаг"}
                     </button>
                   )}
-                  {isProduct &&
-                    hasProductNeighbors &&
-                    onFetchTransformations && (
-                      <button
-                        type="button"
-                        className={styles.menuItem}
-                        onClick={() => {
-                          onFetchTransformations();
-                          setMenuOpen(false);
-                        }}
-                      >
-                        <BranchIcon size={16} className={styles.menuItemIcon} />
-                        Преобразование между продуктами
-                      </button>
-                    )}
+                  {canFetchTransformations && (
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => {
+                        onFetchTransformations?.();
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <BranchIcon size={16} className={styles.menuItemIcon} />
+                      Преобразование между продуктами
+                    </button>
+                  )}
                   {/* Закладки только у продуктов и преобразований:
                       альтернатива живёт внутри шага, отмечать её незачем. */}
                   {onToggleBookmark && !isAltNode && (
@@ -438,7 +448,7 @@ export const NodeCard: FC<NodeCardProps> = ({
                   рядом и связать их преобразованием нужнее всего. Граф эта
                   кнопка меняет не сама: она открывает модалку, которая идёт
                   за преобразованием на сервер. */}
-              {isProduct && hasProductNeighbors && onFetchTransformations && (
+              {canFetchTransformations && (
                 <button
                   type="button"
                   className={styles.transformButton}

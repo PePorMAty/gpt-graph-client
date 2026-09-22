@@ -4,9 +4,28 @@ import type { CustomNode } from "../types";
 export type DirectProductNeighbor = {
   neighborNodeId: string;
   neighborLabel: string;
-  edgeId: string;
+  /** Рёбра, которые заменит найденное преобразование: одно у прямой связи,
+   *  два у связи через заглушку. */
+  edgeIds: string[];
+  /** Узел-заглушка между продуктами, если связь идёт через него. */
+  viaStubId?: string;
   role: "incoming" | "outgoing";
 };
+
+/**
+ * Узел-заглушка — преобразование, заведённое связыванием продуктов, а не
+ * найденное.
+ *
+ * Технологии в нём нет, есть только название («Преобразование к новому
+ * продукту (X)»), поэтому для поиска преобразования такая пара продуктов
+ * считается ещё не связанной технологией. Узнаём по префиксу id, а не по
+ * пустому описанию: преобразование, заведённое человеком вручную, тоже
+ * поначалу без описания, но подменять его найденным никто не просил.
+ */
+export const STUB_TRANSFORMATION_PREFIX = "tr-stub::";
+
+const isStub = (node: CustomNode | undefined) =>
+  !!node && node.type === "transformation" && node.id.startsWith(STUB_TRANSFORMATION_PREFIX);
 
 /**
  * Связаны ли уже эти два узла — напрямую или через один промежуточный.
@@ -65,15 +84,43 @@ export function getDirectProductNeighbors(
     if (seenNeighbors.has(otherId)) continue;
 
     const other = nodes.find((n) => n.id === otherId);
-    if (!other || other.type !== "product") continue;
+    if (!other) continue;
 
-    seenNeighbors.add(otherId);
-    result.push({
-      neighborNodeId: otherId,
-      neighborLabel: String(other.data?.label ?? ""),
-      edgeId: e.id,
-      role,
-    });
+    if (other.type === "product") {
+      seenNeighbors.add(otherId);
+      result.push({
+        neighborNodeId: otherId,
+        neighborLabel: String(other.data?.label ?? ""),
+        edgeIds: [e.id],
+        role,
+      });
+      continue;
+    }
+
+    // Связь через заглушку — это связь без технологии: заглушку завели
+    // связыванием продуктов, и заполнить её нечем, кроме как этим самым
+    // поиском преобразования. Без этой ветки заглушка оставалась тупиком:
+    // кнопка «Получить преобразование» у такой пары не показывалась.
+    if (!isStub(other)) continue;
+
+    const beyond = edges.filter((x) =>
+      role === "outgoing" ? x.source === otherId : x.target === otherId,
+    );
+    for (const far of beyond) {
+      const farId = role === "outgoing" ? far.target : far.source;
+      if (farId === nodeId || seenNeighbors.has(farId)) continue;
+      const farNode = nodes.find((n) => n.id === farId);
+      if (!farNode || farNode.type !== "product") continue;
+
+      seenNeighbors.add(farId);
+      result.push({
+        neighborNodeId: farId,
+        neighborLabel: String(farNode.data?.label ?? ""),
+        edgeIds: [e.id, far.id],
+        viaStubId: otherId,
+        role,
+      });
+    }
   }
 
   return result;

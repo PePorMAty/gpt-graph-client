@@ -1346,10 +1346,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       };
     });
 
-    const edgeIdByPair = new Map<string, string>();
+    // У прямой связи ребро одно, у связи через заглушку — два, и вместе с
+    // ними уходит сама заглушка: найденное преобразование встаёт на её место.
+    const edgeIdsByPair = new Map<string, string[]>();
+    const stubIdsByPair = new Map<string, string>();
     for (const n of picked) {
       const p = pairOf(n);
-      edgeIdByPair.set(`${p.fromId}->${p.toId}`, n.edgeId);
+      edgeIdsByPair.set(`${p.fromId}->${p.toId}`, n.edgeIds);
+      if (n.viaStubId) stubIdsByPair.set(`${p.fromId}->${p.toId}`, n.viaStubId);
     }
     const knownNodeIds = new Set<string>([
       anchorId,
@@ -1378,10 +1382,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             knownNodeIds.has(id),
           );
           const removeEdgeIds: string[] = [];
+          const removeNodeIds: string[] = [];
           for (const inId of inputNodeIds) {
             for (const outId of outputNodeIds) {
-              const eid = edgeIdByPair.get(`${inId}->${outId}`);
-              if (eid) removeEdgeIds.push(eid);
+              const key = `${inId}->${outId}`;
+              removeEdgeIds.push(...(edgeIdsByPair.get(key) ?? []));
+              const stub = stubIdsByPair.get(key);
+              if (stub) removeNodeIds.push(stub);
             }
           }
           return {
@@ -1391,6 +1398,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             inputNodeIds,
             outputNodeIds,
             removeEdgeIds,
+            removeNodeIds,
           };
         })
         .filter((g) => g.inputNodeIds.length > 0 && g.outputNodeIds.length > 0);
@@ -2952,12 +2960,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         isAltNode={selectedNode?.data?.chainVariant === "alt"}
         isBookmarked={selectedNodeId ? bookmarkedIds.has(selectedNodeId) : false}
         onToggleBookmark={
-          selectedNodeId && !structureLocked
+          // Закладка и удаление — по canEditNodes, а не по structureLocked:
+          // узлы при фильтре «Только продукты» настоящие, и с полотна их
+          // правым кликом и удаляют, и кладут в закладки. Карточка же
+          // запрещала это заодно с правкой рёбер — и в том режиме её меню
+          // «…» оставалось вовсе без пунктов, то есть открывало пустоту.
+          selectedNodeId && canEditNodes
             ? () => toggleBookmarkFor(selectedNodeId)
             : undefined
         }
         onDeleteNode={
-          selectedNodeId && !structureLocked
+          selectedNodeId && canEditNodes
             ? () => setPendingDeleteIds([selectedNodeId])
             : undefined
         }
