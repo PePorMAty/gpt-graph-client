@@ -365,6 +365,7 @@ export const NodeCard: FC<NodeCardProps> = ({
               {kind === "transformation" && (
                 <KeyInfoBlock
                   card={productCard}
+                  nodeId={nodeId}
                   onEdit={() => setTab("tech")}
                 />
               )}

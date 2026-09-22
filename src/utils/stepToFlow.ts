@@ -198,6 +198,14 @@ export function stepToFlow(
       data: {
         label: step.transformation.name,
         description: step.transformation.description || "",
+        // Пустое поле не кладём вовсе: в карточке такая строка всё равно не
+        // показывается, а в файле графа пустышка только мешает сравнению.
+        ...(step.transformation.industry?.trim()
+          ? { industry: step.transformation.industry.trim() }
+          : {}),
+        ...(step.transformation.mainPurpose?.trim()
+          ? { mainPurpose: step.transformation.mainPurpose.trim() }
+          : {}),
         ...(anchorAggregatedText
           ? { aggregatedDescription: anchorAggregatedText }
           : {}),

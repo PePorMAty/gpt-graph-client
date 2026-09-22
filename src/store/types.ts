@@ -373,7 +373,15 @@ export type StepProduct = {
 };
 
 export type StepChainApiStep = {
-  transformation: { id: string; name: string; description?: string };
+  transformation: {
+    id: string;
+    name: string;
+    description?: string;
+    /** Отрасль процесса, в 1–3 словах. */
+    industry?: string;
+    /** Главная производственная функция, одним предложением. */
+    mainPurpose?: string;
+  };
   inputProducts: StepProduct[];
   outputProducts: StepProduct[];
 };
