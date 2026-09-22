@@ -5,12 +5,18 @@ import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryMatch, IndustryProducer } from "../../store/api/industry-api";
 import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
 import {
+  STATUS_FILTERS,
+  matchesStatus,
+  type StatusFilter,
+} from "./statusFilter";
+import {
   IndustryDataIcon,
   ShieldCheckIcon,
   LinkIcon,
   ChevronDownIcon,
   ChevronRightIcon,
 } from "../icons";
+import { plural } from "../../utils/plural";
 import styles from "./Industry.module.css";
 
 /**
@@ -129,11 +135,30 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
     (s) => s.industry,
   );
   const [showAll, setShowAll] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const name = String(productName ?? "").trim();
   const info = useMemo(
     () => (name ? results[industryKey(name)] : undefined),
     [results, name],
+  );
+
+  /**
+   * Сколько записей под каждым отбором.
+   *
+   * Нужны, чтобы не предлагать пустое: у половины продуктов все записи
+   * действующие, и кнопка «Архив» вела бы в пустой список. Число рядом с
+   * подписью отвечает на вопрос сразу, не нажимая.
+   */
+  const counts = useMemo(() => {
+    const all = info?.producers ?? [];
+    const active = all.filter((p) => p.status === "active").length;
+    return { all: all.length, active, archived: all.length - active };
+  }, [info]);
+
+  const producers = useMemo(
+    () => (info?.producers ?? []).filter((p) => matchesStatus(p.status, statusFilter)),
+    [info, statusFilter],
   );
 
   const loading = status === "loading";
@@ -213,8 +238,8 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
   }
 
   const strong = info.match ? STRONG.includes(info.match) : false;
-  const shown = showAll ? info.producers : info.producers.slice(0, VISIBLE);
-  const hidden = info.producers.length - shown.length;
+  const shown = showAll ? producers : producers.slice(0, VISIBLE);
+  const hidden = producers.length - shown.length;
 
   return (
     <div className={styles.wrap}>
@@ -232,11 +257,16 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
       <div className={styles.summary}>
         <div className={styles.stat}>
           <span className={styles.statValue}>{info.producerCount}</span>
-          <span className={styles.statLabel}>Производителей</span>
+          <span className={styles.statLabel}>
+            {plural(info.producerCount, "Производитель", "Производителя", "Производителей")}
+          </span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statValue}>{info.regionCount}</span>
-          <span className={styles.statLabel}>Региона</span>
+          {/* Подпись согласуется с числом: «6 Региона» читалось ошибкой. */}
+          <span className={styles.statLabel}>
+            {plural(info.regionCount, "Регион", "Региона", "Регионов")}
+          </span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statValue}>
@@ -312,11 +342,45 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
         </a>
       </div>
 
-      <ul className={styles.prodList}>
-        {shown.map((p) => (
-          <ProducerRow key={`${p.inn ?? p.producer}-${p.regNumber ?? p.product}`} p={p} />
-        ))}
-      </ul>
+      {/* Тот же отбор, что в панели графа. Реестр хранит и прекращённые
+          записи, и на вопрос «кто выпускает СЕЙЧАС» список вперемешку не
+          отвечает. Кнопка без записей выключена: вести в пустой список
+          незачем, а число рядом с подписью отвечает и без нажатия. */}
+      <div className={`${styles.segmented} ${styles.segmentedCard}`}>
+        {STATUS_FILTERS.map(([value, label]) => {
+          const n = counts[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              className={`${styles.segment} ${
+                statusFilter === value ? styles.segmentActive : ""
+              }`}
+              onClick={() => setStatusFilter(value)}
+              disabled={n === 0}
+              aria-pressed={statusFilter === value}
+            >
+              {label}
+              <span className={styles.segmentCount}>{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {producers.length === 0 ? (
+        <p className={styles.note}>
+          Под этот отбор записей нет.
+        </p>
+      ) : (
+        <ul className={styles.prodList}>
+          {shown.map((p) => (
+            <ProducerRow
+              key={`${p.inn ?? p.producer}-${p.regNumber ?? p.product}`}
+              p={p}
+            />
+          ))}
+        </ul>
+      )}
 
       {hidden > 0 && (
         <button

@@ -253,6 +253,30 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
+  /**
+   * Пересчитать раскладку всего полотна по ярусам (Сугияма).
+   *
+   * Отличается от applyLayout выше: та раскладывает дерево от корня и без
+   * корня не работает вовсе. Здесь корень не нужен, а несвязанные куски графа
+   * разводятся по горизонтали — это та самая раскладка, что считалась при
+   * объединении графов. Нужна она и просто так: после ручных правок, удалений
+   * и достроенных шагов узлы разъезжаются, и вернуть порядок было нечем.
+   */
+  const handleRelayout = useCallback(async () => {
+    if (!data.nodes.length) return;
+    setIsApplyingLayout(true);
+    try {
+      const { layoutForMergeTab } = await import("./hooks/useMergeGraph");
+      const laid = await layoutForMergeTab(data.nodes, data.edges);
+      dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
+    } catch (e) {
+      console.error("[relayout] не удалось пересчитать раскладку:", e);
+    } finally {
+      setIsApplyingLayout(false);
+    }
+  }, [data.nodes, data.edges, dispatch, fitView]);
+
   // Режим «только продукты»: преобразования/альтернативы скрыты, продукты
   // склеены напрямую. Чистая проекция для рендера — store не мутируется,
   // выключение возвращает полный граф. Пока включён — полу-просмотр:
@@ -2723,6 +2747,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         canSave={data.nodes.length > 0}
         onClear={() => setShowClearConfirm(true)}
         canClear={data.nodes.length > 0}
+        onRelayout={handleRelayout}
+        canRelayout={data.nodes.length > 0}
+        relayouting={isApplyingLayout}
         saveFlash={saveFlash}
         readOnly={readOnly || focusOn}
       />

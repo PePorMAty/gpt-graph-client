@@ -4,6 +4,11 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryProducer } from "../../store/api/industry-api";
 import { GISP_REGISTRY_URL } from "./gisp";
+import {
+  STATUS_FILTERS,
+  matchesStatus,
+  type StatusFilter,
+} from "./statusFilter";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
 import {
@@ -23,8 +28,6 @@ interface Row extends IndustryProducer {
   /** Название узла графа — по нему шёл поиск. */
   source: string;
 }
-
-type StatusFilter = "all" | "active" | "archived";
 
 interface Props {
   /** Названия продуктов текущего графа. */
@@ -120,7 +123,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
     return rows.filter((r) => {
       if (product && r.source !== product) return false;
       if (region && r.region !== region) return false;
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (!matchesStatus(r.status, statusFilter)) return false;
       if (!q) return true;
       return (
         r.producer.toLowerCase().includes(q) ||
@@ -279,28 +282,6 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       </div>
       )}
 
-      {/* Записи реестра и ненайденные продукты — два разных списка, а не два
-          состояния одного отбора: у ненайденных нет ни производителя, ни
-          региона, ни статуса. */}
-      <div className={`${styles.segmented} ${styles.viewSwitch}`}>
-        {(
-          [
-            ["entries", `Записи реестра (${rows.length})`],
-            ["missing", `Нет в реестре (${missing.length})`],
-          ] as Array<["entries" | "missing", string]>
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={`${styles.segment} ${view === value ? styles.segmentActive : ""}`}
-            onClick={() => setView(value)}
-            aria-pressed={view === value}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       <div className={styles.filters}>
         <label className={styles.search}>
           <SearchIcon size={14} />
@@ -346,13 +327,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
             </select>
 
             <div className={styles.segmented}>
-              {(
-                [
-                  ["all", "Все"],
-                  ["active", "Действует"],
-                  ["archived", "Архив"],
-                ] as Array<[StatusFilter, string]>
-              ).map(([value, label]) => (
+              {STATUS_FILTERS.map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
@@ -367,6 +342,31 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
             </div>
           </>
         )}
+
+        {/* Записи реестра и ненайденные продукты — два разных списка, а не два
+            состояния одного отбора: у ненайденных нет ни производителя, ни
+            региона, ни статуса, и отборы выше для них просто скрыты.
+
+            Стоит в конце строки и прижат вправо, чтобы не прыгал с места на
+            место, когда середина строки исчезает. */}
+        <div className={`${styles.segmented} ${styles.viewSwitch}`}>
+          {(
+            [
+              ["entries", `Записи реестра (${rows.length})`],
+              ["missing", `Нет в реестре (${missing.length})`],
+            ] as Array<["entries" | "missing", string]>
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`${styles.segment} ${view === value ? styles.segmentActive : ""}`}
+              onClick={() => setView(value)}
+              aria-pressed={view === value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {checked < names.length && (

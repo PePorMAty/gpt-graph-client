@@ -34,7 +34,13 @@ export const TopBar = ({ onShare }: TopBarProps) => {
     <div className={styles.left}>
       <div className={styles.logo}>
         <LogoMark size={26} className={styles.logoMark} />
-        <span className={styles.logoText}>GPT Graph</span>
+        {/* В две строки: «Граф производства» одной строкой отодвигало бы
+            вкладки, а шапка и так тесная. */}
+        <span className={styles.logoText}>
+          Граф
+          <br />
+          производства
+        </span>
       </div>
 
       <nav className={styles.tabs}>
