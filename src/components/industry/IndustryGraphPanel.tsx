@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryProducer } from "../../store/api/industry-api";
-import { GISP_REGISTRY_URL } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
 import {
   STATUS_FILTERS,
   matchesStatus,
@@ -390,16 +390,37 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
             </p>
           )}
           <ul className={`${styles.cards} ${compact ? styles.cardsScroll : ""}`}>
-            {pagedMissing.slice.map((name) => (
-              <li key={name} className={styles.card}>
-                <div className={styles.cardHead}>
-                  <span className={styles.producer}>{name}</span>
-                  <span className={`${styles.status} ${styles.statusMissing}`}>
-                    Нет записи
-                  </span>
-                </div>
-              </li>
-            ))}
+            {pagedMissing.slice.map((name) => {
+              // Категория классификатора, если она у вещества есть. Без неё
+              // «нет записи» читается как «мы не справились»: человек шёл на
+              // сайт ОКПД2, находил там вещество и переставал верить списку.
+              const category = results[industryKey(name)]?.category ?? null;
+              return (
+                <li key={name} className={styles.card}>
+                  <div className={styles.cardHead}>
+                    <span className={styles.producer}>{name}</span>
+                    <span className={`${styles.status} ${styles.statusMissing}`}>
+                      Нет записи
+                    </span>
+                  </div>
+                  {category && (
+                    <div className={styles.cardMeta}>
+                      <span className={styles.codeLabel}>ОКПД2</span>
+                      <a
+                        className={styles.codeValue}
+                        href={okpd2Url(category.code)}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="Категория в классификаторе — записей реестра под ней нет"
+                      >
+                        {category.code}
+                      </a>
+                      <span className={styles.codeName}>{category.name}</span>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
             {!missingVisible.length && (
               <li className={styles.emptyRows}>
                 {missing.length

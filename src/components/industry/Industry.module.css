@@ -599,6 +599,34 @@ a.codeValue:hover {
   overflow-wrap: break-word;
 }
 
+/* Категория классификатора в пустой карточке. Отделена рамкой от объяснения
+   выше: это не продолжение мысли «записи нет», а другой источник — там
+   вещество ЕСТЬ, и спутать их нельзя. */
+.categoryNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-2);
+  width: 100%;
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  font-size: var(--fs-sm);
+  text-align: left;
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.categoryLabel {
+  flex: 0 0 auto;
+  color: var(--c-text-muted);
+}
+
+.categoryHint {
+  flex: 1 1 100%;
+  color: var(--c-text-muted);
+}
+
 /* Пометка «снят». Приглушённая, не красная: это не ошибка записи и не повод
    ей не верить — производитель настоящий, продукция настоящая. Сказано лишь,
    что искать этот код в классификаторе сегодня бесполезно. */

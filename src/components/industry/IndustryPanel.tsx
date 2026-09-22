@@ -233,6 +233,30 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
           Так что отсутствие записи ничего не говорит о том, производят ли
           «{name}» в России, — реестр про другое.
         </p>
+
+        {/* Категория классификатора — чтобы «нет записи» не читалось как «мы
+            не справились». Классификатор и реестр разные вещи: код категории
+            существует всегда, запись появляется, только когда завод заявил
+            продукцию. Без этой строки человек шёл на сайт ОКПД2, находил там
+            вещество и переставал верить карточке. */}
+        {info.category && (
+          <div className={styles.categoryNote}>
+            <span className={styles.categoryLabel}>В классификаторе ОКПД2 это</span>
+            <a
+              className={styles.codeValue}
+              href={okpd2Url(info.category.code)}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="Открыть категорию в классификаторе"
+            >
+              {info.category.code}
+            </a>
+            <span className={styles.codeName}>{info.category.name}</span>
+            <span className={styles.categoryHint}>
+              Категория есть, продукции под ней никто не заявлял.
+            </span>
+          </div>
+        )}
       </div>
     );
   }
