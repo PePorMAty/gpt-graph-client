@@ -27,6 +27,7 @@ import {
   removeNodes,
   addNode,
   setGraphData,
+  setProductIds,
   loadGraphFromFile,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
@@ -72,6 +73,8 @@ import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
 // Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
 // вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
 import { clearCanvas, AUTOSAVE_KEY } from "./utils/clearCanvas";
+import { resolveProductIds } from "./utils/resolveProductIds";
+import { readProductId } from "./utils/productIdentity";
 import { GraphToolbar } from "./components/graph-toolbar/GraphToolbar";
 import {
   CanvasTools,
@@ -324,6 +327,50 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [industryData, productNamesKey, dispatch]);
+
+  /**
+   * Опознаём продукты по справочнику и проставляем идентификаторы.
+   *
+   * Отдельно от проверки по реестру выше и от тумблера «Промышленные данные»:
+   * это разные вопросы. Реестр отвечает, кто выпускает вещество; справочник —
+   * какое это вещество. Второе нужно всегда, даже когда реестра нет вовсе:
+   * идентификатор — то, по чему узлы считаются одним и тем же.
+   *
+   * Раньше справочник спрашивали только при ОБЪЕДИНЕНИИ графов и при
+   * построении шага. У графа, построенного с нуля, идентификаторов не было — и
+   * достроенный к нему шаг с «Кумолом» заводил второй узел рядом с «ИПБ»: у
+   * шага идентификатор есть, у узла нет, сравнение падает на названия, а они
+   * разные. Теперь опознаём сразу, как появился новый набор продуктов.
+   *
+   * Просмотр по ссылке не трогаем: там чужой граф, и менять его нечего.
+   */
+  useEffect(() => {
+    if (sharedView || !productNames.length) return;
+    let cancelled = false;
+
+    (async () => {
+      const nodes = nodesRef.current;
+      const next = await resolveProductIds(nodes);
+      // Тот же массив — справочник ничего не добавил, будить стор незачем.
+      if (cancelled || next === nodes) return;
+
+      // Берём только изменившиеся узлы: resolveProductIds отображает список
+      // один в один, и несовпадение ссылки — это и есть «сюда проставили».
+      const byNodeId: Record<string, string> = {};
+      next.forEach((n, i) => {
+        if (n === nodes[i]) return;
+        const id = readProductId(n.data);
+        if (id) byNodeId[n.id] = id;
+      });
+      if (Object.keys(byNodeId).length) dispatch(setProductIds(byNodeId));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productNamesKey, sharedView, dispatch]);
   // Показывать альтернативные маршруты (alt-узлы и их связи).
   const [showAlternatives, setShowAlternatives] = useState(true);
 

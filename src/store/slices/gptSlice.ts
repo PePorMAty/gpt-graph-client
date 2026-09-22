@@ -384,6 +384,31 @@ const gptSlice = createSlice({
       state.isError = false;
       state.error = null;
     },
+    /**
+     * Проставить продуктам идентификаторы, полученные от справочника.
+     *
+     * Одним действием на весь граф, а не updateNodeData на каждый узел: на
+     * графе в шестьсот продуктов это шестьсот действий, шестьсот проходов
+     * middleware и столько же перерисовок.
+     *
+     * Ставим только там, где идентификатора НЕТ. Заданный человеком или
+     * взятый из другого источника трогать нельзя — он может быть точнее.
+     */
+    setProductIds: (
+      state,
+      action: PayloadAction<Record<string, string>>,
+    ) => {
+      const byNodeId = action.payload;
+      for (const node of state.data.nodes) {
+        const id = byNodeId[node.id];
+        if (!id) continue;
+        if (typeof node.data?.productId === "string" && node.data.productId.trim()) {
+          continue;
+        }
+        node.data = { ...node.data, productId: id, productIdSource: "dictionary" };
+      }
+    },
+
     setProducerForPid: (
       state,
       action: PayloadAction<{
@@ -1646,6 +1671,7 @@ export const {
   addNode,
   loadGraphFromFile,
   mergeGraphFromFile,
+  setProductIds,
   setProducerForPid,
   popQueueHead,
   initStepChainSession,
