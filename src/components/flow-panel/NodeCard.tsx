@@ -514,6 +514,7 @@ export const NodeCard: FC<NodeCardProps> = ({
                   productName={value}
                   downTab={downTab}
                   upTab={upTab}
+                  onBack={() => setBuildOpen(false)}
                 />
               )}
             </div>

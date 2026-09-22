@@ -1,0 +1,398 @@
+/* Мастер построения шага: полоса шагов и экран выбора направления.
+   Остальные экраны пока живут в StepByStepContent со своими стилями. */
+
+/* ─── Полоса шагов ─── */
+
+.steps {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Каждый пункт тянется поровну, чтобы соединительные черты вышли равными
+   независимо от длины подписи. */
+.stepItem {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.stepItem:first-child {
+  flex: 0 0 auto;
+}
+
+.stepLine {
+  flex: 1;
+  height: 2px;
+  margin: 0 var(--s-3);
+  background: var(--c-border);
+  border-radius: 1px;
+}
+
+.stepLineDone {
+  background: var(--c-brand);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0;
+  font-size: var(--fs-md);
+  background: none;
+  border: none;
+  white-space: nowrap;
+}
+
+.step:disabled {
+  cursor: default;
+}
+
+.step:not(:disabled) {
+  cursor: pointer;
+}
+
+.step:not(:disabled):hover .stepLabel {
+  text-decoration: underline;
+}
+
+.stepNum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  border-radius: 50%;
+}
+
+/* Текущий — синий кружок; пройденный — синий контур; будущий — серый. */
+.step_on .stepNum {
+  color: var(--c-text-on-brand);
+  background: var(--c-brand);
+}
+
+.step_on .stepLabel {
+  color: var(--c-brand-ink);
+  font-weight: var(--fw-semibold);
+}
+
+.step_done .stepNum {
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-border-brand);
+}
+
+.step_done .stepLabel {
+  color: var(--c-text-soft);
+}
+
+.step_next .stepNum {
+  color: var(--c-text-muted);
+  background: var(--c-surface-hover);
+}
+
+.step_next .stepLabel {
+  color: var(--c-text-muted);
+}
+
+/* ─── Экран 1: направление построения ─── */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.paneTitle {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.dirRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+
+.dir {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  text-align: left;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.dir:hover {
+  border-color: var(--c-border-brand);
+}
+
+.dirOn {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
+}
+
+.dirIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(36 * var(--u));
+  height: calc(36 * var(--u));
+  color: var(--c-brand);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-brand);
+  border-radius: var(--r-sm);
+}
+
+.dirText {
+  flex: 1;
+  min-width: 0;
+}
+
+.dirName {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-brand-ink);
+}
+
+.dirHint {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.radio {
+  flex: none;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  margin-top: calc(10 * var(--u));
+  border: 2px solid var(--c-border-strong);
+  border-radius: 50%;
+}
+
+.radioOn {
+  border-color: var(--c-brand);
+  box-shadow: inset 0 0 0 3px var(--c-surface), inset 0 0 0 10px var(--c-brand);
+}
+
+/* ─── Режим построения ─── */
+
+.modeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.modeCap {
+  margin-right: var(--s-1);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.mode {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-soft);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.mode:hover {
+  border-color: var(--c-border-brand);
+}
+
+.modeOn {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
+}
+
+/* ─── Карточка текущего продукта ─── */
+
+.current {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-md);
+}
+
+.currentIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(44 * var(--u));
+  height: calc(44 * var(--u));
+  color: var(--c-product);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.currentText {
+  flex: 1;
+  min-width: 0;
+}
+
+.currentCap {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.currentName {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+/* ─── Подсказка «Что дальше?» ─── */
+
+.next {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.nextIcon {
+  flex: none;
+  display: flex;
+  margin-top: 1px;
+  color: var(--c-brand);
+}
+
+.nextTitle {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.nextText {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+/* ─── Подвал мастера ─── */
+
+/* Отмена слева, действие справа — как на макете. Кнопки не тянутся: общая на
+   всю ширину читается как «другого пути нет», а отмена рядом с ней теряется. */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-top: var(--s-2);
+}
+
+.footer:only-child,
+.footerEnd {
+  justify-content: flex-end;
+}
+
+.secondary,
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.secondary {
+  color: var(--c-text-soft);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+}
+
+.primary {
+  color: var(--c-text-on-brand);
+  background: var(--c-brand);
+  border: 1px solid var(--c-brand);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--c-brand-hover);
+}
+
+.primary:disabled {
+  background: var(--c-border-strong);
+  border-color: var(--c-border-strong);
+  cursor: not-allowed;
+}
+
+/* Пока идёт поиск, кнопка нажата быть не может, но выцветать ей нельзя:
+   работа идёт, и серая кнопка читается как сломанная. */
+.primaryBusy:disabled {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+  opacity: 0.75;
+  cursor: progress;
+}
+
+.spinner {
+  flex: none;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: var(--c-text-on-brand);
+  border-radius: 50%;
+  animation: wizSpin 0.8s linear infinite;
+}
+
+@keyframes wizSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Стрелка «вперёд» — та же иконка, что и «вниз», повёрнутая: набор штриховой,
+   отдельной стрелки вправо в нём нет. */
+.arrowRight {
+  transform: rotate(-90deg);
+}
+
+.error {
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border: 1px solid var(--c-danger-border);
+  border-radius: var(--r-md);
+}

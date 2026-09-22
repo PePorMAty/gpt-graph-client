@@ -9,8 +9,12 @@ import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
+import { getAiRequestFields } from "../../hooks/useAiConfig";
+import { StepWizardSteps, type WizardStep } from "./StepWizardSteps";
+import { ArrowDownIcon, ArrowUpIcon, FlaskIcon, HelpIcon } from "../icons";
 
 import styles from "./FlowPanel.module.css";
+import wiz from "./StepWizard.module.css";
 import { AiModelSelect } from "../ai-model-select";
 import { NodeCard } from "./NodeCard";
 
@@ -186,8 +190,12 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
   return (
     <>
-      {/* ── Build mode toggle (shown FIRST, before any requests) ── */}
-      {isBuildContext && (
+      {/* ── Build mode toggle (shown FIRST, before any requests) ──
+          Только пока режим не выбран. Выбранный переключатель повторял бы тот,
+          что стоит на первом экране мастера, — два одинаковых ряда кнопок
+          подряд в одном окне. Вернуться к выбору можно по номеру «1» в полосе
+          шагов. Для узла-альтернативы мастера нет, и здесь по-прежнему всё. */}
+      {isBuildContext && buildMode === null && (
         <div className={styles.formGroup}>
           <div className={styles.modeToggleRow}>
             <button
@@ -712,9 +720,26 @@ const DirectionContent: FC<DirectionTabProps> = ({
   );
 };
 
+/** Сколько источников просить, когда поиск запускают с первого экрана. */
+const DEFAULT_MAX_SOURCES = 5;
+
+/**
+ * На каком шаге мастера мы находимся.
+ *
+ * Шаг не хранится отдельным состоянием, а выводится из того, что уже есть:
+ * иначе счётчик и содержимое разошлись бы при первом же откате шага или
+ * дозаказе источников, и полоса показывала бы «Превью» там, где превью уже нет.
+ */
+function wizardStepOf(tab: DirectionTabProps): WizardStep {
+  if (tab.pendingStep && tab.stepBuildStatus === "succeeded") return 3;
+  const hasSources = (tab.stepSources?.length ?? 0) > 0;
+  if (hasSources && !tab.stepNeedsFreshSources) return 2;
+  return 1;
+}
+
 // ─────────────────────────────────────────────────
-// PanelBuildView — build-view внутри панели (варианты B и C).
-// Сначала выбор направления (вверх/вниз), затем существующий DirectionContent.
+// PanelBuildView — мастер построения шага.
+// Экран 1 — направление, дальше существующий DirectionContent.
 // ─────────────────────────────────────────────────
 const PanelBuildView: FC<{
   productName: string;
@@ -723,61 +748,197 @@ const PanelBuildView: FC<{
   onBack?: () => void;
 }> = ({ productName, downTab, upTab, onBack }) => {
   const [dir, setDir] = useState<BuildDirection | null>(null);
+  const tab = dir === "up" ? upTab : downTab;
+
+  // Мастер описывает построение ПО ШАГАМ: «Построение → Источники → Превью»
+  // — это его стадии. Режим «вся цепочка» идёт одним запросом, превью у него
+  // нет, и полоса шагов к нему не относится — тогда её не показываем вовсе.
+  const byStep = tab.buildMode !== "whole";
+
+  // Пока направление не выбрано, мастер стоит на первом шаге независимо от
+  // того, что лежит в направлениях: выбирать ещё нечего.
+  const step: WizardStep = dir === null ? 1 : wizardStepOf(tab);
+  const searching = tab.stepSourcesStatus === "loading";
+
+  // Возврат на первый экран по номеру «1» в полосе шагов. Отдельным признаком,
+  // а не вычислением: найденные источники никуда не делись, и выводить из них
+  // «мы снова на первом шаге» было бы неправдой.
+  const [backToIntro, setBackToIntro] = useState(false);
+
+  // Первый экран держим, пока направление не выбрано и пока по нему ничего не
+  // нашли. В режиме «вся цепочка» шагов нет — там сразу отдаём прежний вид.
+  const showIntro = dir === null || backToIntro || (byStep && step === 1);
+  // Источники уже есть — значит, с первого экрана не ищут заново, а просто
+  // возвращаются к ним. Искать по кнопке «назад» было бы потерей найденного.
+  const hasSources = (tab.stepSources?.length ?? 0) > 0 && !tab.stepNeedsFreshSources;
+  const introGoesForward = backToIntro && hasSources;
+
+  const chooseDirection = (value: BuildDirection) => {
+    setDir(value);
+    setBackToIntro(false);
+    // Режим хранится на пару «узел + направление», и у только что выбранного
+    // направления он пуст. Ставим «по шагам» сами: мастер ведёт именно по
+    // ним, а пустой режим означал бы, что второй экран встретит вопросом о
+    // режиме вместо найденных источников.
+    const next = value === "up" ? upTab : downTab;
+    if (!next.buildMode) next.onChangeBuildMode?.("step");
+  };
+
+  const DIRECTIONS = [
+    {
+      value: "up" as const,
+      name: "Построить вверх",
+      hint: "Найти, из чего производится текущий продукт",
+      icon: <ArrowUpIcon size={20} />,
+    },
+    {
+      value: "down" as const,
+      name: "Построить вниз",
+      hint: "Найти, что получается из текущего продукта",
+      icon: <ArrowDownIcon size={20} />,
+    },
+  ];
+
+  // Поиск с первого экрана идёт настройками по умолчанию. Тонкая настройка —
+  // промпт, домены, число источников — ждёт на втором экране, у кнопки «Найти
+  // источники заново»: на первом она только мешала бы выбору направления.
+  const startSearch = () => {
+    if (!dir) return;
+    setBackToIntro(false);
+    if (introGoesForward) return; // источники уже есть — просто идём дальше
+    tab.onFetchStepSources?.({
+      maxItems: DEFAULT_MAX_SOURCES,
+      ...getAiRequestFields({ stage: "search" }),
+    });
+  };
 
   return (
-    <>
-      {onBack && (
-        <button
-          type="button"
-          className={styles.promptToggle}
-          onClick={onBack}
-          style={{ marginBottom: 8 }}
-        >
-          ‹ Назад к карточке
-        </button>
+    <div className={wiz.pane}>
+      {byStep && (
+        <StepWizardSteps
+          current={showIntro ? 1 : step}
+          onGoTo={(n) => setBackToIntro(n === 1)}
+        />
       )}
 
-      <div className={styles.formGroup}>
-        <div className={styles.modeToggleRow}>
-          <button
-            type="button"
-            className={`${styles.modeToggleBtn} ${dir === "up" ? styles.modeToggleBtnActive : ""}`}
-            onClick={() => setDir("up")}
-          >
-            Построить вверх
-          </button>
-          <button
-            type="button"
-            className={`${styles.modeToggleBtn} ${dir === "down" ? styles.modeToggleBtnActive : ""}`}
-            onClick={() => setDir("down")}
-          >
-            Построить вниз
-          </button>
-        </div>
-        {dir === null && (
-          <div
-            className={styles.sourcesTitle}
-            style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}
-          >
-            Выберите направление построения.
-          </div>
-        )}
-      </div>
-
-      {dir && (
+      {showIntro ? (
         <>
-          <div className={styles.buildHeader}>
-            {dir === "down"
-              ? `Построить вниз от «${productName}»`
-              : `Построить вверх от «${productName}»`}
+          <h4 className={wiz.paneTitle}>Направление построения</h4>
+          <div className={wiz.dirRow}>
+            {DIRECTIONS.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                className={`${wiz.dir} ${dir === d.value ? wiz.dirOn : ""}`}
+                onClick={() => chooseDirection(d.value)}
+              >
+                <span className={wiz.dirIcon}>{d.icon}</span>
+                <span className={wiz.dirText}>
+                  <span className={wiz.dirName}>{d.name}</span>
+                  <p className={wiz.dirHint}>{d.hint}</p>
+                </span>
+                <span
+                  className={`${wiz.radio} ${dir === d.value ? wiz.radioOn : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
+            ))}
           </div>
+
+          {/* Режим остаётся выбираемым, но ушёл сюда, под направление: раньше
+              он встречал на втором экране вместо найденных источников. По
+              умолчанию — «по шагам», про который и написан мастер. */}
+          {dir && (
+            <div className={wiz.modeRow}>
+              <span className={wiz.modeCap}>Как строим</span>
+              {(
+                [
+                  ["step", "По шагам", "Один запрос — один шаг, с превью и откатом"],
+                  ["whole", "Вся цепочка", "Один запрос — вся цепочка сразу, без превью"],
+                ] as const
+              ).map(([value, name, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`${wiz.mode} ${
+                    (tab.buildMode ?? "step") === value ? wiz.modeOn : ""
+                  }`}
+                  onClick={() => tab.onChangeBuildMode?.(value)}
+                  title={hint}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className={wiz.current}>
+            <span className={wiz.currentIcon}>
+              <FlaskIcon size={22} />
+            </span>
+            <span className={wiz.currentText}>
+              <span className={wiz.currentCap}>Текущий продукт</span>
+              <div className={wiz.currentName}>{productName || "—"}</div>
+            </span>
+          </div>
+
+          <div className={wiz.next}>
+            <span className={wiz.nextIcon}>
+              <HelpIcon size={18} />
+            </span>
+            <span>
+              <span className={wiz.nextTitle}>Что дальше?</span>
+              <p className={wiz.nextText}>
+                {dir
+                  ? `Найдём источники о том, ${
+                      dir === "up"
+                        ? "из чего производится"
+                        : "что производится из"
+                    } «${productName}», и обобщим их в один шаг. Поиск идёт минутами — окно можно закрыть.`
+                  : "Выберите направление — от него зависит, что мы будем искать в источниках."}
+              </p>
+            </span>
+          </div>
+
+          {tab.stepSourcesError && (
+            <div className={wiz.error}>Ошибка: {tab.stepSourcesError}</div>
+          )}
+
+          <div className={`${wiz.footer} ${onBack ? "" : wiz.footerEnd}`}>
+            {onBack && (
+              <button type="button" className={wiz.secondary} onClick={onBack}>
+                Отмена
+              </button>
+            )}
+            <button
+              type="button"
+              className={`${wiz.primary} ${searching ? wiz.primaryBusy : ""}`}
+              onClick={startSearch}
+              disabled={!dir || searching}
+            >
+              {searching ? (
+                <>
+                  <span className={wiz.spinner} aria-hidden="true" />
+                  Ищем источники…
+                </>
+              ) : (
+                <>
+                  {introGoesForward ? "К источникам" : "Найти источники"}
+                  <ArrowDownIcon size={17} className={wiz.arrowRight} />
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
           {/* key по направлению: без него React переиспользует тот же
               экземпляр, и состояние вкладки (правленый промпт, домены,
               число источников) переезжает с «вверх» на «вниз». */}
-          <DirectionContent key={dir} {...(dir === "down" ? downTab : upTab)} />
+          <DirectionContent key={dir ?? "down"} {...tab} />
         </>
       )}
-    </>
+    </div>
   );
 };
 
