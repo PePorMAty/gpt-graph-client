@@ -567,6 +567,23 @@ a.codeValue:hover {
   overflow-wrap: break-word;
 }
 
+/* Приписка про остальные коды: не тянется, в отличие от названия класса, —
+   иначе они делили бы строку поровну и название переносилось бы зря. */
+.codeExtra {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+/* Оговорка про состав препарата. Своим классом, а не .note: та без полей, и
+   прижатая к строке с кодом читалась бы как её продолжение. */
+.formulationNote {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
 .moreBtn {
   align-self: flex-start;
   padding: var(--s-1) 0;

@@ -264,7 +264,26 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
           {info.okpd2Name && (
             <span className={styles.codeName}>{info.okpd2Name}</span>
           )}
+          {/* У записей реестра коды разные, и продукту достаётся самый
+              частый. Сколько их всего — само по себе признак: много кодов
+              значит, что записи собрались разнородные. */}
+          {!!info.okpd2Others && (
+            <span className={styles.codeExtra}>
+              у остальных записей ещё{" "}
+              {info.okpd2Others === 1 ? "код" : `кодов: ${info.okpd2Others}`}
+            </span>
+          )}
         </div>
+      )}
+
+      {/* Вещество найдено в составе препарата, а не как самостоятельный
+          продукт. Считать это присутствием в реестре — решение заказчика, но
+          ОКПД2 у такой записи пестицидный, и молчать об этом нельзя. */}
+      {info.viaFormulation && (
+        <p className={styles.formulationNote}>
+          Вещество названо в составе препарата, а не отдельным продуктом.
+          Класс продукции выше — у препарата, а не у самого вещества.
+        </p>
       )}
 
       <div className={styles.listHead}>

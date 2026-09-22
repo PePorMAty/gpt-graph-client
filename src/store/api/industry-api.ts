@@ -68,6 +68,18 @@ export interface IndustryProductInfo {
   status: "active" | "archived" | null;
   okpd2: string | null;
   okpd2Name?: string | null;
+  /** У скольких из найденных записей именно этот код. */
+  okpd2Share?: number;
+  /** Сколько ещё разных кодов у остальных записей. */
+  okpd2Others?: number;
+  /**
+   * Вещество нашлось только в составе препарата: «ТОРНАДО, ВР (360 г/л
+   * глифосата к-ты)». Присутствием в реестре это считается, но ОКПД2 у такой
+   * записи пестицидный, а не глифосатный, и говорить об этом надо вслух.
+   */
+  viaFormulation?: boolean;
+  /** Сколько записей отбор отбросил как «слово попало в чужое название». */
+  rejected?: number;
   producers: IndustryProducer[];
 }
 
