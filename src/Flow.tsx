@@ -122,7 +122,11 @@ import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu"
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { ConfirmUnsavedModal } from "./components/ui/ConfirmUnsavedModal";
 import { graphSignature } from "./utils/graphSignature";
-import { SelectNeighborModal } from "./components/select-neighbor-modal";
+import {
+  TransformationBetweenModal,
+  type ChainDirection,
+  type ModalProduct,
+} from "./components/transformation-between-modal";
 import {
   getDirectProductNeighbors,
   type DirectProductNeighbor,
@@ -732,10 +736,25 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     });
   }, []);
 
+  /**
+   * Состояние модалки «Получение преобразования между продуктами».
+   *
+   * Живёт ОТДЕЛЬНО от признака «открыта»: закрытие во время запроса ничего не
+   * отменяет — он идёт минутами, результат ложится на полотно сам, — и, вернувшись,
+   * человек должен увидеть тот же запрос, а не пустую форму. Поэтому закрытие
+   * гасит только `open`, а сам ход запроса переживает его.
+   *
+   * Держать это в Flow, а не в сторе, достаточно: полотно смонтировано всегда,
+   * «Библиотека» ложится поверх него (см. App.tsx) — уйти со страницы и
+   * потерять состояние тут нельзя.
+   */
   const [insertTrState, setInsertTrState] = useState<{
+    open: boolean;
     nodeId: string;
     productLabel: string;
     neighbors: DirectProductNeighbor[];
+    /** Вниз — что получается из продукта; вверх — из чего он сам. */
+    direction: ChainDirection;
     loading: boolean;
     error: string | null;
     customSystemPrompt: string;
@@ -1124,34 +1143,85 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setContextMenu(null);
   }, [contextMenu, data.nodes]);
 
-  // Из карточки продукта → открыть модалку «Получить преобразования к соседним
-  // продуктам» (SelectNeighborModal) для выбранной ноды.
+  // Из карточки продукта → открыть модалку «Получение преобразования между
+  // продуктами» для выбранной ноды.
   const handleOpenFetchTransformations = useCallback(() => {
     if (!selectedNodeId) return;
     const node = data.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
-    const outgoing = getDirectProductNeighbors(
+    const neighbors = getDirectProductNeighbors(
       selectedNodeId,
       data.nodes,
       data.edges,
-    ).filter((n) => n.role === "outgoing");
-    if (!outgoing.length) return;
-    setInsertTrState({
-      nodeId: selectedNodeId,
-      productLabel: String(node.data?.label ?? ""),
-      neighbors: outgoing,
-      loading: false,
-      error: null,
-      customSystemPrompt: defaultTransformationsBetweenPrompt,
-      isPromptDirty: false,
+    );
+    if (!neighbors.length) return;
+
+    setInsertTrState((prev) => {
+      // Вернулись к тому же продукту — показываем тот же запрос, а не пустую
+      // форму: он мог идти всё это время.
+      if (prev && prev.nodeId === selectedNodeId) return { ...prev, open: true };
+      return {
+        open: true,
+        nodeId: selectedNodeId,
+        productLabel: String(node.data?.label ?? ""),
+        neighbors,
+        // По умолчанию смотрим вниз — «что из этого получается». Если
+        // потомков нет, а предки есть, начинаем с той стороны, где есть что
+        // искать: иначе модалка открывалась бы сразу пустой.
+        direction: neighbors.some((n) => n.role === "outgoing") ? "down" : "up",
+        loading: false,
+        error: null,
+        customSystemPrompt: defaultTransformationsBetweenPrompt,
+        isPromptDirty: false,
+      };
     });
   }, [selectedNodeId, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
+
+  /**
+   * Что показать в модалке: кто исходный, кто целевой и куда вообще можно
+   * смотреть. Сам продукт всегда один, соседи — сколько нашлось; выбирать их
+   * нельзя, они просто перечисляются.
+   */
+  const insertTrPair = useMemo(() => {
+    const empty = {
+      sources: [] as ModalProduct[],
+      targets: [] as ModalProduct[],
+      canGoDown: false,
+      canGoUp: false,
+    };
+    if (!insertTrState) return empty;
+
+    const self: ModalProduct = {
+      nodeId: insertTrState.nodeId,
+      label: insertTrState.productLabel,
+    };
+    const of = (role: DirectProductNeighbor["role"]) =>
+      insertTrState.neighbors
+        .filter((n) => n.role === role)
+        .map((n) => ({ nodeId: n.neighborNodeId, label: n.neighborLabel }));
+
+    const down = insertTrState.direction === "down";
+    const side = of(down ? "outgoing" : "incoming");
+    return {
+      sources: down ? [self] : side,
+      targets: down ? side : [self],
+      canGoDown: insertTrState.neighbors.some((n) => n.role === "outgoing"),
+      canGoUp: insertTrState.neighbors.some((n) => n.role === "incoming"),
+    };
+  }, [insertTrState]);
 
   const handleFetchTransformations = useCallback(async () => {
     if (!insertTrState) return;
     const anchorId = insertTrState.nodeId;
     const anchor = data.nodes.find((n) => n.id === anchorId);
-    if (!anchor || !insertTrState.neighbors.length) return;
+    if (!anchor) return;
+
+    // Направление решает, с какой стороны стоит сам продукт. Вниз — он сырьё,
+    // соседи-потомки продукты; вверх — наоборот. Ребро при этом одно и то же,
+    // меняется только то, что мы спрашиваем.
+    const wantRole = insertTrState.direction === "down" ? "outgoing" : "incoming";
+    const picked = insertTrState.neighbors.filter((n) => n.role === wantRole);
+    if (!picked.length) return;
 
     const anchorLabel = String(anchor.data?.label ?? "");
     const anchorDesc = anchor.data?.description
@@ -1166,7 +1236,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         "Название узла": anchorLabel,
         ...(anchorDesc ? { "Описание продукта": anchorDesc } : {}),
       },
-      ...insertTrState.neighbors.map((n) => {
+      ...picked.map((n) => {
         const node = data.nodes.find((nd) => nd.id === n.neighborNodeId);
         const desc = node?.data?.description
           ? String(node.data.description)
@@ -1181,21 +1251,31 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       }),
     ];
 
-    const links: ChainLink[] = insertTrState.neighbors.map((n) => ({
-      "Откуда": anchorId,
-      "Куда": n.neighborNodeId,
-      "Источник": anchorLabel,
-      "Приемник": n.neighborLabel,
-      "Тип связи": "сырье -> продукт",
-    }));
+    /** Кто из пары сырьё, а кто продукт, — по выбранному направлению. */
+    const pairOf = (n: DirectProductNeighbor) =>
+      insertTrState.direction === "down"
+        ? { fromId: anchorId, fromLabel: anchorLabel, toId: n.neighborNodeId, toLabel: n.neighborLabel }
+        : { fromId: n.neighborNodeId, fromLabel: n.neighborLabel, toId: anchorId, toLabel: anchorLabel };
+
+    const links: ChainLink[] = picked.map((n) => {
+      const p = pairOf(n);
+      return {
+        "Откуда": p.fromId,
+        "Куда": p.toId,
+        "Источник": p.fromLabel,
+        "Приемник": p.toLabel,
+        "Тип связи": "сырье -> продукт",
+      };
+    });
 
     const edgeIdByPair = new Map<string, string>();
-    for (const n of insertTrState.neighbors) {
-      edgeIdByPair.set(`${anchorId}->${n.neighborNodeId}`, n.edgeId);
+    for (const n of picked) {
+      const p = pairOf(n);
+      edgeIdByPair.set(`${p.fromId}->${p.toId}`, n.edgeId);
     }
     const knownNodeIds = new Set<string>([
       anchorId,
-      ...insertTrState.neighbors.map((n) => n.neighborNodeId),
+      ...picked.map((n) => n.neighborNodeId),
     ]);
 
     setInsertTrState((s) => (s ? { ...s, loading: true, error: null } : s));
@@ -1266,13 +1346,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Outgoing-соседи выбранной ноды — для кнопки «Получить преобразования…»
   // в карточке продукта.
-  const selectedNodeHasOutgoingNeighbors = useMemo(() => {
+  // Годится сосед в ЛЮБУЮ сторону: модалка теперь умеет смотреть и вверх по
+  // цепочке, а раньше кнопка пряталась у всего, что стоит в конце ветки.
+  const selectedNodeHasProductNeighbors = useMemo(() => {
     if (!selectedNodeId) return false;
-    return getDirectProductNeighbors(
-      selectedNodeId,
-      data.nodes,
-      data.edges,
-    ).some((n) => n.role === "outgoing");
+    return (
+      getDirectProductNeighbors(selectedNodeId, data.nodes, data.edges).length > 0
+    );
   }, [selectedNodeId, data.nodes, data.edges]);
 
   // Подтверждение удаления (одна нода или группа выделенных)
@@ -2760,7 +2840,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         productCard={selectedNode?.data?.productCard}
         downTab={downTab}
         upTab={upTab}
-        hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
+        hasProductNeighbors={selectedNodeHasProductNeighbors}
         onFetchTransformations={handleOpenFetchTransformations}
         linkedProducts={linkedProducts}
         onFocusLinkedProduct={handleFocusLinkedProduct}
@@ -2840,10 +2920,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             onCancel={() => setShowClearConfirm(false)}
           />
         ))}
-      {insertTrState && (
-        <SelectNeighborModal
-          productLabel={insertTrState.productLabel}
-          neighbors={insertTrState.neighbors}
+      {insertTrState?.open && (
+        <TransformationBetweenModal
+          sources={insertTrPair.sources}
+          targets={insertTrPair.targets}
+          direction={insertTrState.direction}
+          onChangeDirection={(direction) =>
+            setInsertTrState((s) => (s ? { ...s, direction, error: null } : s))
+          }
+          canGoDown={insertTrPair.canGoDown}
+          canGoUp={insertTrPair.canGoUp}
           loading={insertTrState.loading}
           error={insertTrState.error}
           defaultSystemPrompt={defaultTransformationsBetweenPrompt}
@@ -2872,9 +2958,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             )
           }
           onConfirm={handleFetchTransformations}
-          // Закрытие во время запроса разрешено: он идёт минутами, а
-          // результат применится и при закрытой модалке — о нём сообщит тост.
-          onClose={() => setInsertTrState(null)}
+          // Закрытие во время запроса ничего не отменяет: он идёт минутами,
+          // результат ляжет на полотно и при закрытой модалке, о готовности
+          // скажет уведомление. Поэтому гасим только видимость — вернувшись,
+          // человек увидит тот же запрос. А когда ждать нечего, состояние
+          // выбрасываем: незачем хранить форму, которую никто не открывал.
+          onClose={() =>
+            setInsertTrState((s) =>
+              s && (s.loading || s.error) ? { ...s, open: false } : null,
+            )
+          }
         />
       )}
     </div>

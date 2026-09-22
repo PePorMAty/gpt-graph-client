@@ -211,8 +211,8 @@ export interface FlowPanelProps {
   upTab: DirectionTabProps;
 
   /** У продукта есть прямые соседи-продукты без преобразования между ними. */
-  hasOutgoingProductNeighbors?: boolean;
-  /** Открыть поток «Получить преобразования к соседним продуктам» (SelectNeighborModal). */
+  hasProductNeighbors?: boolean;
+  /** Открыть модалку «Получение преобразования между продуктами». */
   onFetchTransformations?: () => void;
 
   /** Продукты, связанные с выбранным (напрямую или через преобразование) —

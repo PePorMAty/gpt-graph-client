@@ -79,7 +79,7 @@ export const NodeCard: FC<NodeCardProps> = ({
   downTab,
   upTab,
 
-  hasOutgoingProductNeighbors = false,
+  hasProductNeighbors = false,
   onFetchTransformations,
   linkedProducts = [],
   onFocusLinkedProduct,
@@ -235,7 +235,7 @@ export const NodeCard: FC<NodeCardProps> = ({
                     </button>
                   )}
                   {isProduct &&
-                    hasOutgoingProductNeighbors &&
+                    hasProductNeighbors &&
                     onFetchTransformations && (
                       <button
                         type="button"
@@ -246,7 +246,7 @@ export const NodeCard: FC<NodeCardProps> = ({
                         }}
                       >
                         <BranchIcon size={16} className={styles.menuItemIcon} />
-                        Преобразования к соседям
+                        Преобразование между продуктами
                       </button>
                     )}
                   {/* Закладки только у продуктов и преобразований:
