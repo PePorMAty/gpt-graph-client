@@ -354,6 +354,10 @@ export type ProductCardResponse = {
 export type StepProduct = {
   name: string;
   description?: string;
+  /** Отрасль, к которой относится сам продукт, в 1–3 словах. */
+  industry?: string;
+  /** Для чего продукт нужен — одним предложением. */
+  mainPurpose?: string;
   isExisting: boolean;
   existingNodeLabel?: string;
   /**

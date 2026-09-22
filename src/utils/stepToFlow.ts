@@ -282,6 +282,15 @@ export function stepToFlow(
         data: {
           label: product.name,
           description: product.description || "",
+          // Отрасль и назначение самого продукта — из построения шага. Пустое
+          // поле не кладём: строка из него всё равно не показывается, а в
+          // файле графа пустышка только мешает сравнению.
+          ...(product.industry?.trim()
+            ? { industry: product.industry.trim() }
+            : {}),
+          ...(product.mainPurpose?.trim()
+            ? { mainPurpose: product.mainPurpose.trim() }
+            : {}),
           chainRootNodeId: rootNodeId,
           chainDirection: direction,
           stepChainSessionKey: sessionKey,

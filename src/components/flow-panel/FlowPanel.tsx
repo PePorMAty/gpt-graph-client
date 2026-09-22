@@ -940,6 +940,13 @@ const PanelBuildViewInner: FC<{
             key={dir ?? "down"}
             {...tab}
             stageOverride={shown === 2 ? 2 : undefined}
+            // Шаг принят — окно закрывается. Держать его открытым незачем:
+            // построенное уже на полотне, а мастер показывал бы первый экран
+            // так, будто ничего не произошло.
+            onAcceptStep={(nodeId, filteredStep) => {
+              tab.onAcceptStep?.(nodeId, filteredStep);
+              onBack?.();
+            }}
           />
         </>
       )}

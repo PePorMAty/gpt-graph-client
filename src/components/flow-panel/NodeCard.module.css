@@ -120,15 +120,7 @@
   white-space: nowrap;
 }
 
-.kind_product {
-  color: var(--c-brand-strong);
-  background: var(--c-product-soft);
-}
 
-.kind_transformation {
-  color: #b45309;
-  background: var(--c-transform-soft);
-}
 
 .kind_alt {
   color: #7e22ce;
@@ -543,6 +535,67 @@
   line-height: var(--lh-normal);
   color: var(--c-text);
   overflow-wrap: break-word;
+}
+
+/* Правка отрасли и назначения — прямо в блоке. */
+.keyInfoForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.keyInfoField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.keyInfoInput {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  resize: vertical;
+}
+
+.keyInfoInput:focus {
+  outline: none;
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.keyInfoNote {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.keyInfoActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+
+.keyInfoSave {
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-on-brand);
+  background: var(--c-brand);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.keyInfoSave:hover {
+  background: var(--c-brand-hover);
 }
 
 /* ─── Связанные продукты ─── */

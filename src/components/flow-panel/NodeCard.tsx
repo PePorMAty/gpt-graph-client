@@ -109,11 +109,7 @@ export const NodeCard: FC<NodeCardProps> = ({
     : isProduct
       ? "product"
       : "transformation";
-  const KIND_LABEL = {
-    product: "Продукт",
-    transformation: "Технология",
-    alt: "Альтернатива",
-  } as const;
+  const KIND_LABEL = { alt: "Альтернатива" } as const;
 
   const [tab, setTab] = useState<CardTab>("brief");
   const [buildOpen, setBuildOpen] = useState(false);
@@ -197,9 +193,15 @@ export const NodeCard: FC<NodeCardProps> = ({
                 onBlur={onFieldBlur}
                 readOnly={readOnly}
               />
-              <span className={`${styles.kindBadge} ${styles[`kind_${kind}`]}`}>
-                {KIND_LABEL[kind]}
-              </span>
+              {/* Подпись типа осталась только у альтернативы. «Продукт» и
+                  «Технология» повторяли то, что и так сказано значком: синяя
+                  пробирка против оранжевой шестерёнки. У альтернативы пробирка
+                  тоже пробирка, только фиолетовая, — там слово нужно. */}
+              {kind === "alt" && (
+                <span className={`${styles.kindBadge} ${styles.kind_alt}`}>
+                  {KIND_LABEL.alt}
+                </span>
+              )}
             </div>
             <NodeIdentifiers
               nodeId={nodeId}
@@ -360,13 +362,15 @@ export const NodeCard: FC<NodeCardProps> = ({
                 )}
               </CollapsibleBlock>
 
-              {/* Ключевая информация — параметры карточки технологии.
-                  У продукта их место занимают «Промышленные данные». */}
-              {kind === "transformation" && (
+              {/* Ключевая информация. Отрасль и назначение есть и у продукта,
+                  и у преобразования — блок нужен обоим; поля карточки
+                  технологии добавляются к ним там, где они есть. У
+                  альтернативы своего содержимого нет вовсе. */}
+              {kind !== "alt" && (
                 <KeyInfoBlock
-                  card={productCard}
+                  card={isProduct ? null : productCard}
                   nodeId={nodeId}
-                  onEdit={() => setTab("tech")}
+                  readOnly={readOnly}
                 />
               )}
 
