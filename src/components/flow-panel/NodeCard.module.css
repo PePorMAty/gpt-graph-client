@@ -513,6 +513,7 @@
   display: grid;
   grid-template-columns: minmax(120px, 38%) 1fr;
   gap: var(--s-2) var(--s-3);
+  align-items: start;
 }
 
 .keyInfoRow {
@@ -520,7 +521,19 @@
 }
 
 .keyInfoLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   font-size: var(--fs-md);
+  color: var(--c-text-muted);
+}
+
+/* Значок ведёт строку взглядом. Живёт внутри подписи, а не отдельной колонкой:
+   в <dl> между строками допустимы только dt и dd, третьей ячейке там не место.
+   Не сжимается — иначе длинная подпись съела бы его до нуля. */
+.keyInfoIcon {
+  flex: none;
+  display: flex;
   color: var(--c-text-muted);
 }
 

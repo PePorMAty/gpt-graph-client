@@ -1,14 +1,22 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import type { ProductCard } from "../../store/types";
 import { TRANSFORMATION_FIELDS } from "../../prompts/fillCardPrompts";
 import { useAppSelector } from "../../store/hooks";
 import { CollapsibleBlock } from "./CollapsibleBlock";
-import { PencilIcon } from "../icons";
+import { FocusIcon, GearIcon, IndustryDataIcon, PencilIcon } from "../icons";
 import styles from "./NodeCard.module.css";
 
 /** Поле, которое показывается отдельным описанием, а не строкой таблицы. */
 const SHORT_DESCRIPTION_KEY = "technology_short_description";
+
+const ICON_SIZE = 15;
+
+interface Row {
+  label: string;
+  value: string;
+  icon?: ReactNode;
+}
 
 interface KeyInfoBlockProps {
   card?: ProductCard | null;
@@ -38,14 +46,22 @@ export const KeyInfoBlock = ({ card, nodeId, onEdit }: KeyInfoBlockProps) => {
     (s) => s.graph.data.nodes.find((n) => n.id === nodeId)?.data,
   );
 
-  const rows = useMemo(() => {
-    const fromNode = [
-      { label: "Отрасль", value: String(nodeData?.industry ?? "").trim() },
-      { label: "Назначение", value: String(nodeData?.mainPurpose ?? "").trim() },
+  const rows = useMemo<Row[]>(() => {
+    const fromNode: Row[] = [
+      {
+        label: "Отрасль",
+        value: String(nodeData?.industry ?? "").trim(),
+        icon: <IndustryDataIcon size={ICON_SIZE} />,
+      },
+      {
+        label: "Основное назначение",
+        value: String(nodeData?.mainPurpose ?? "").trim(),
+        icon: <FocusIcon size={ICON_SIZE} />,
+      },
     ].filter((row) => row.value.length > 0);
 
     const source = (card ?? {}) as Record<string, unknown>;
-    const fromCard = card
+    const fromCard: Row[] = card
       ? TRANSFORMATION_FIELDS.filter((f) => f.key !== SHORT_DESCRIPTION_KEY)
           .map((f) => ({
             label: f.label,
@@ -54,7 +70,17 @@ export const KeyInfoBlock = ({ card, nodeId, onEdit }: KeyInfoBlockProps) => {
           .filter((row) => row.value.length > 0)
       : [];
 
-    return [...fromNode, ...fromCard];
+    // Сказать нечего — «Тип» не добавляем. Одна строка «Тип: Технология» это
+    // не «ключевая информация», а видимость её: человек узнал бы из неё ровно
+    // то, что и так написано в шапке карточки. Пусть лучше блок объяснит,
+    // почему пусто и откуда возьмётся.
+    if (!fromNode.length && !fromCard.length) return [];
+
+    return [
+      { label: "Тип", value: "Технология", icon: <GearIcon size={ICON_SIZE} /> },
+      ...fromNode,
+      ...fromCard,
+    ];
   }, [card, nodeData?.industry, nodeData?.mainPurpose]);
 
   return (
@@ -69,15 +95,23 @@ export const KeyInfoBlock = ({ card, nodeId, onEdit }: KeyInfoBlockProps) => {
     >
       {rows.length === 0 ? (
         <div className={styles.blockEmpty}>
-          Пока пусто. Отрасль и назначение проставляются при построении шага, у
-          узлов, созданных раньше, их нет. Остальные параметры приходят вместе с
-          технологическим описанием — его можно получить на соседней вкладке.
+          Пока пусто. Отрасль и основное назначение проставляются при построении
+          шага, у узлов, созданных раньше, их нет. Остальные параметры приходят
+          вместе с технологическим описанием — его можно получить на соседней
+          вкладке.
         </div>
       ) : (
         <dl className={styles.keyInfo}>
           {rows.map((row) => (
             <div key={row.label} className={styles.keyInfoRow}>
-              <dt className={styles.keyInfoLabel}>{row.label}</dt>
+              <dt className={styles.keyInfoLabel}>
+                {row.icon && (
+                  <span className={styles.keyInfoIcon} aria-hidden="true">
+                    {row.icon}
+                  </span>
+                )}
+                {row.label}
+              </dt>
               <dd className={styles.keyInfoValue}>{row.value}</dd>
             </div>
           ))}
