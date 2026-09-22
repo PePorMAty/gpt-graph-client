@@ -76,6 +76,10 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   const substance = readProductId(data);
   const source = readProductIdSource(data);
   const okpd2 = industry?.found ? industry.okpd2 : null;
+  const tnved = industry?.found ? industry.tnved : null;
+  // CAS — факт справочника, а не реестра: он есть и у вещества, которого в
+  // ГИСП нет вовсе. Потому и не прячется за found, в отличие от кодов.
+  const cas = industry?.cas ?? null;
 
   return (
     <div
@@ -115,6 +119,18 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             </div>
           )}
 
+          {cas && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>CAS</span>
+              <span className={styles.idPopValue}>
+                {cas}
+                <span className={styles.idPopNote}>
+                  международный номер вещества
+                </span>
+              </span>
+            </div>
+          )}
+
           {okpd2 && (
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ОКПД2</span>
@@ -133,6 +149,20 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                   // а не самой позиции, — так и подписываем.
                   <span className={styles.idPopNote}>
                     группа: {industry.okpd2Name}
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+
+          {tnved && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ТН ВЭД</span>
+              <span className={styles.idPopValue}>
+                {tnved}
+                {industry?.tnvedName && (
+                  <span className={styles.idPopNote}>
+                    {industry.tnvedName}
                   </span>
                 )}
               </span>
