@@ -94,9 +94,32 @@ const gptSlice = createSlice({
     ) => {
       const { nodeId, data } = action.payload;
       const node = state.data.nodes.find((node) => node.id === nodeId);
-      if (node) {
-        node.data = { ...node.data, ...data };
+      if (!node) return;
+
+      // Переименовали продукт — идентификатор, выведенный из ПРЕЖНЕГО имени,
+      // протух.
+      //
+      // Без этого узел, переименованный из «Кумола» в «Толуол», оставался с
+      // идентификатором «Изопропилбензол» и при объединении графов сливался с
+      // изопропилбензолом — ровно та беда, от которой идентификаторы и
+      // заводились, только наоборот. Найдено замером трафика: переименование
+      // не поднимало ни одного запроса к справочнику, хотя имя стало другим.
+      //
+      // Снимаем только «из справочника»: он и есть функция от имени. Заданный
+      // человеком вручную не трогаем — его выбор не отменяется переименованием
+      // подписи, и восстановить его нам будет неоткуда.
+      const renamed =
+        typeof data.label === "string" && data.label !== node.data?.label;
+      const derived = node.data?.productIdSource === "dictionary";
+      if (renamed && derived) {
+        const { productId, productIdSource, ...rest } = node.data ?? {};
+        void productId;
+        void productIdSource;
+        node.data = { ...rest, ...data };
+        return;
       }
+
+      node.data = { ...node.data, ...data };
     },
     removeNode: (state, action: PayloadAction<string>) => {
       const nodeId = action.payload;
