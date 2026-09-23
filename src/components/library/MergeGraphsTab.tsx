@@ -74,7 +74,7 @@ function formatDate(iso?: string | null): string {
 }
 
 /**
- * Вкладка «Объединить графы»: к выбранному в библиотеке графу присоединяются
+ * Вкладка «Объединить с графами»: к выбранному в библиотеке графу присоединяются
  * отмеченные. Основа кладётся на полотно перед слиянием, результат остаётся
  * там же, и после объединения открывается вкладка «Граф».
  *
@@ -224,6 +224,9 @@ export const MergeGraphsTab = ({
       // правки легенды, сделанные в превью.
       for (const r of renames) dispatch(renamePresentation(r));
 
+      // Отчёт показываем ДО перехода на полотно: onDone уводит из библиотеки,
+      // вкладка размонтируется, и отчёт исчезает вместе с ней — до сих пор его
+      // не видел никто ни разу. Переход ждёт закрытия отчёта.
       if (last) {
         setReport({
           ...last.report,
@@ -250,7 +253,7 @@ export const MergeGraphsTab = ({
         `Объединено графов: ${picked.length + 1}. Результат на полотне.`,
       );
       setChecked(new Set());
-      onDone();
+      if (!last) onDone();
     } catch (e) {
       showToast(
         "error",
@@ -357,7 +360,10 @@ export const MergeGraphsTab = ({
           presentationName={report.presentationName}
           commonNodes={report.commonNodes}
           addedCount={report.addedCount}
-          onClose={() => setReport(null)}
+          onClose={() => {
+            setReport(null);
+            onDone();
+          }}
         />
       )}
     </div>

@@ -33,7 +33,7 @@ type UploadMode = "replace" | "merge";
 export const UploadGraphTab = () => {
   const dispatch = useAppDispatch();
   const { data, presentationColors } = useAppSelector((state) => state.graph);
-  // Слияние — общее с вкладкой «Объединить графы» в библиотеке.
+  // Слияние — общее с вкладкой «Объединить с графами» в библиотеке.
   const mergeSource = useMergeGraph();
 
   const replaceInputRef = useRef<HTMLInputElement | null>(null);

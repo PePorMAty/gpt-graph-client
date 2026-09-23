@@ -2,10 +2,8 @@
 import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import type { StepChainApiStep, StepRecord } from "../store/types";
-import {
-  findExistingProductNode,
-  normalizeProductName,
-} from "./normalizeProductName";
+import { normalizeProductName } from "./normalizeProductName";
+import { findExistingProductNode } from "./productIdentity";
 import { computeShiftX } from "./resolveChainOverlap";
 import { wouldCreateCycle } from "./graphReachability";
 
@@ -98,10 +96,16 @@ export function stepToFlow(
   }> = [];
 
   for (const { product } of uniqueProducts) {
+    // Идентификатор сильнее названия: продукт шага может называться иначе, чем
+    // тот же продукт на полотне («Кумол» из шага и «ИПБ» на полотне).
     const existingNodeId =
-      findExistingProductNode(product.name, existingNodes) ??
+      findExistingProductNode(product.name, existingNodes, product.productId) ??
       (product.existingNodeLabel
-        ? findExistingProductNode(product.existingNodeLabel, existingNodes)
+        ? findExistingProductNode(
+            product.existingNodeLabel,
+            existingNodes,
+            product.productId,
+          )
         : null);
 
     if (
@@ -194,6 +198,17 @@ export function stepToFlow(
       data: {
         label: step.transformation.name,
         description: step.transformation.description || "",
+        // Пустое поле не кладём вовсе: в карточке такая строка всё равно не
+        // показывается, а в файле графа пустышка только мешает сравнению.
+        ...(step.transformation.industry?.trim()
+          ? { industry: step.transformation.industry.trim() }
+          : {}),
+        ...(step.transformation.mainPurpose?.trim()
+          ? { mainPurpose: step.transformation.mainPurpose.trim() }
+          : {}),
+        ...(step.transformation.notes?.length
+          ? { notes: step.transformation.notes.filter((n) => n?.trim()) }
+          : {}),
         ...(anchorAggregatedText
           ? { aggregatedDescription: anchorAggregatedText }
           : {}),
@@ -267,10 +282,28 @@ export function stepToFlow(
         data: {
           label: product.name,
           description: product.description || "",
+          // Отрасль и назначение самого продукта — из построения шага. Пустое
+          // поле не кладём: строка из него всё равно не показывается, а в
+          // файле графа пустышка только мешает сравнению.
+          ...(product.industry?.trim()
+            ? { industry: product.industry.trim() }
+            : {}),
+          ...(product.mainPurpose?.trim()
+            ? { mainPurpose: product.mainPurpose.trim() }
+            : {}),
           chainRootNodeId: rootNodeId,
           chainDirection: direction,
           stepChainSessionKey: sessionKey,
           stepChainStepNumber: stepNumber,
+          // Справочник опознал вещество — закрепляем за узлом сразу. Иначе
+          // построенный по шагам граф остался бы без идентификаторов, и при
+          // объединении с другим сходился бы только по названиям.
+          ...(product.productId
+            ? {
+                productId: product.productId,
+                productIdSource: "dictionary" as const,
+              }
+            : {}),
           // Ручной продукт из превью шага: пока описание пустое, узел
           // помечается «не заполнен» (см. ProductNode).
           ...(product.isUserAdded ? { isUserAdded: true } : {}),

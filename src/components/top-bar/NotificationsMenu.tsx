@@ -146,7 +146,14 @@ export const NotificationsMenu = () => {
                     className={`${styles.marker} ${styles[`marker_${item.kind}`]}`}
                     aria-hidden
                   />
-                  <span className={styles.itemText}>{item.text}</span>
+                  <span className={styles.itemBody}>
+                    <span className={styles.itemText}>{item.text}</span>
+                    {/* Пояснение и техническая причина: в тост не помещаются,
+                        а разбирают отказ именно здесь. */}
+                    {item.detail && (
+                      <span className={styles.itemDetail}>{item.detail}</span>
+                    )}
+                  </span>
                   <span className={styles.itemTime}>{formatTime(item.at)}</span>
                 </li>
               ))}

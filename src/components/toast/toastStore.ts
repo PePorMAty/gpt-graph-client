@@ -8,7 +8,18 @@ import {
 } from "./chime";
 
 export type ToastKind = "success" | "error" | "info";
-export type Toast = { id: number; kind: ToastKind; text: string };
+export type Toast = {
+  id: number;
+  kind: ToastKind;
+  text: string;
+  /**
+   * Вторая строка: пояснение и техническая причина.
+   *
+   * В тост не помещается — он живёт секунды и должен читаться с одного взгляда;
+   * показывается в ленте под колокольчиком, где отказ и разбирают.
+   */
+  detail?: string;
+};
 /** Запись в ленте уведомлений: тот же тост, но со временем и без автоскрытия. */
 export type NotificationRecord = Toast & { at: string };
 
@@ -47,12 +58,16 @@ export function dismissToast(id: number) {
   emit();
 }
 
-export function showToast(kind: ToastKind, text: string): number {
+export function showToast(
+  kind: ToastKind,
+  text: string,
+  detail?: string,
+): number {
   const id = nextId++;
   // Больше трёх одновременно — стена вместо уведомлений.
-  toasts = [...toasts, { id, kind, text }].slice(-3);
+  toasts = [...toasts, { id, kind, text, detail }].slice(-3);
   emit();
-  pushHistory({ id, kind, text, at: new Date().toISOString() });
+  pushHistory({ id, kind, text, detail, at: new Date().toISOString() });
   playChime(kind);
   setTimeout(() => dismissToast(id), AUTO_HIDE_MS[kind]);
   return id;

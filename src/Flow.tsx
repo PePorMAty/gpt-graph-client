@@ -22,11 +22,13 @@ import {
   onNodesChange,
   onEdgesChange,
   onConnect,
+  connectProductsViaStub,
   onReconnect,
   removeEdge,
   removeNodes,
   addNode,
   setGraphData,
+  setProductIds,
   loadGraphFromFile,
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
@@ -72,6 +74,8 @@ import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
 // Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
 // вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
 import { clearCanvas, AUTOSAVE_KEY } from "./utils/clearCanvas";
+import { resolveProductIds } from "./utils/resolveProductIds";
+import { readProductId } from "./utils/productIdentity";
 import { GraphToolbar } from "./components/graph-toolbar/GraphToolbar";
 import {
   CanvasTools,
@@ -84,7 +88,6 @@ import type { BuildDirection, TechnologySource } from "./store/types";
 import { aggregateSources, fetchSources } from "./store/api/sources-api";
 import {
   sourcesKey,
-  setBuildMode,
   clearStepState,
   resetStepBuild,
   setStepAggregatedText,
@@ -112,6 +115,8 @@ import {
   alternativeKey,
 } from "./utils/parseAlternatives";
 import { NodeContextMenu } from "./components/node-context-menu";
+import { showToast } from "./components/toast/toastStore";
+import { normalizeSourceUrl, sourceUrlKey } from "./utils/sourceUrl";
 import {
   addBookmark,
   removeBookmark,
@@ -120,8 +125,13 @@ import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu"
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { ConfirmUnsavedModal } from "./components/ui/ConfirmUnsavedModal";
 import { graphSignature } from "./utils/graphSignature";
-import { SelectNeighborModal } from "./components/select-neighbor-modal";
 import {
+  TransformationBetweenModal,
+  type ChainDirection,
+  type ModalProduct,
+} from "./components/transformation-between-modal";
+import {
+  areNodesLinked,
   getDirectProductNeighbors,
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
@@ -248,6 +258,30 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     });
   }, [data.nodes, data.edges, dispatch, fitView]);
 
+  /**
+   * Пересчитать раскладку всего полотна по ярусам (Сугияма).
+   *
+   * Отличается от applyLayout выше: та раскладывает дерево от корня и без
+   * корня не работает вовсе. Здесь корень не нужен, а несвязанные куски графа
+   * разводятся по горизонтали — это та самая раскладка, что считалась при
+   * объединении графов. Нужна она и просто так: после ручных правок, удалений
+   * и достроенных шагов узлы разъезжаются, и вернуть порядок было нечем.
+   */
+  const handleRelayout = useCallback(async () => {
+    if (!data.nodes.length) return;
+    setIsApplyingLayout(true);
+    try {
+      const { layoutForMergeTab } = await import("./hooks/useMergeGraph");
+      const laid = await layoutForMergeTab(data.nodes, data.edges);
+      dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
+    } catch (e) {
+      console.error("[relayout] не удалось пересчитать раскладку:", e);
+    } finally {
+      setIsApplyingLayout(false);
+    }
+  }, [data.nodes, data.edges, dispatch, fitView]);
+
   // Режим «только продукты»: преобразования/альтернативы скрыты, продукты
   // склеены напрямую. Чистая проекция для рендера — store не мутируется,
   // выключение возвращает полный граф. Пока включён — полу-просмотр:
@@ -295,6 +329,50 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [industryData, productNamesKey, dispatch]);
+
+  /**
+   * Опознаём продукты по справочнику и проставляем идентификаторы.
+   *
+   * Отдельно от проверки по реестру выше и от тумблера «Промышленные данные»:
+   * это разные вопросы. Реестр отвечает, кто выпускает вещество; справочник —
+   * какое это вещество. Второе нужно всегда, даже когда реестра нет вовсе:
+   * идентификатор — то, по чему узлы считаются одним и тем же.
+   *
+   * Раньше справочник спрашивали только при ОБЪЕДИНЕНИИ графов и при
+   * построении шага. У графа, построенного с нуля, идентификаторов не было — и
+   * достроенный к нему шаг с «Кумолом» заводил второй узел рядом с «ИПБ»: у
+   * шага идентификатор есть, у узла нет, сравнение падает на названия, а они
+   * разные. Теперь опознаём сразу, как появился новый набор продуктов.
+   *
+   * Просмотр по ссылке не трогаем: там чужой граф, и менять его нечего.
+   */
+  useEffect(() => {
+    if (sharedView || !productNames.length) return;
+    let cancelled = false;
+
+    (async () => {
+      const nodes = nodesRef.current;
+      const next = await resolveProductIds(nodes);
+      // Тот же массив — справочник ничего не добавил, будить стор незачем.
+      if (cancelled || next === nodes) return;
+
+      // Берём только изменившиеся узлы: resolveProductIds отображает список
+      // один в один, и несовпадение ссылки — это и есть «сюда проставили».
+      const byNodeId: Record<string, string> = {};
+      next.forEach((n, i) => {
+        if (n === nodes[i]) return;
+        const id = readProductId(n.data);
+        if (id) byNodeId[n.id] = id;
+      });
+      if (Object.keys(byNodeId).length) dispatch(setProductIds(byNodeId));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productNamesKey, sharedView, dispatch]);
   // Показывать альтернативные маршруты (alt-узлы и их связи).
   const [showAlternatives, setShowAlternatives] = useState(true);
 
@@ -587,14 +665,22 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // фокус-режим (последние два — проекции, store в них не редактируется).
   const structureLocked = readOnly || productsOnly || focusOn;
   /**
-   * Создание узла — единственная правка, доступная при фильтре «Только
-   * продукты».
+   * Правки самих узлов при фильтре «Только продукты» разрешены.
    *
-   * Остальные структурные действия там заблокированы не зря: полотно
-   * показывает проекцию, и связи в ней перерисованы. А вот новый продукт
-   * ложится в настоящие координаты — проекция их не меняет, — и сразу виден.
+   * Общий запрет там стоит не зря, но касается он ПРАВКИ рёбер: они в
+   * проекции синтетические, их в сторе нет, и менять или отцеплять их
+   * нечего. А узлы настоящие — id проекция не подменяет, — поэтому
+   * создание, удаление и закладка работают ровно так же, как на полном
+   * полотне, и результат виден сразу.
+   *
+   * Новую связь провести тоже можно: без этого добавленный здесь продукт
+   * оставался висеть ни к чему не привязанным, и привязать его было нечем —
+   * преобразований на этом полотне нет. Такая связь заводит заглушку, см.
+   * handleConnect.
+   *
+   * Фокус-режим остаётся просмотровым: там своя раскладка окрестности.
    */
-  const canAddNodes = !readOnly && !focusOn;
+  const canEditNodes = !readOnly && !focusOn;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -728,10 +814,25 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     });
   }, []);
 
+  /**
+   * Состояние модалки «Получение преобразования между продуктами».
+   *
+   * Живёт ОТДЕЛЬНО от признака «открыта»: закрытие во время запроса ничего не
+   * отменяет — он идёт минутами, результат ложится на полотно сам, — и, вернувшись,
+   * человек должен увидеть тот же запрос, а не пустую форму. Поэтому закрытие
+   * гасит только `open`, а сам ход запроса переживает его.
+   *
+   * Держать это в Flow, а не в сторе, достаточно: полотно смонтировано всегда,
+   * «Библиотека» ложится поверх него (см. App.tsx) — уйти со страницы и
+   * потерять состояние тут нельзя.
+   */
   const [insertTrState, setInsertTrState] = useState<{
+    open: boolean;
     nodeId: string;
     productLabel: string;
     neighbors: DirectProductNeighbor[];
+    /** Вниз — что получается из продукта; вверх — из чего он сам. */
+    direction: ChainDirection;
     loading: boolean;
     error: string | null;
     customSystemPrompt: string;
@@ -1120,34 +1221,85 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setContextMenu(null);
   }, [contextMenu, data.nodes]);
 
-  // Из карточки продукта → открыть модалку «Получить преобразования к соседним
-  // продуктам» (SelectNeighborModal) для выбранной ноды.
+  // Из карточки продукта → открыть модалку «Получение преобразования между
+  // продуктами» для выбранной ноды.
   const handleOpenFetchTransformations = useCallback(() => {
     if (!selectedNodeId) return;
     const node = data.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return;
-    const outgoing = getDirectProductNeighbors(
+    const neighbors = getDirectProductNeighbors(
       selectedNodeId,
       data.nodes,
       data.edges,
-    ).filter((n) => n.role === "outgoing");
-    if (!outgoing.length) return;
-    setInsertTrState({
-      nodeId: selectedNodeId,
-      productLabel: String(node.data?.label ?? ""),
-      neighbors: outgoing,
-      loading: false,
-      error: null,
-      customSystemPrompt: defaultTransformationsBetweenPrompt,
-      isPromptDirty: false,
+    );
+    if (!neighbors.length) return;
+
+    setInsertTrState((prev) => {
+      // Вернулись к тому же продукту — показываем тот же запрос, а не пустую
+      // форму: он мог идти всё это время.
+      if (prev && prev.nodeId === selectedNodeId) return { ...prev, open: true };
+      return {
+        open: true,
+        nodeId: selectedNodeId,
+        productLabel: String(node.data?.label ?? ""),
+        neighbors,
+        // По умолчанию смотрим вниз — «что из этого получается». Если
+        // потомков нет, а предки есть, начинаем с той стороны, где есть что
+        // искать: иначе модалка открывалась бы сразу пустой.
+        direction: neighbors.some((n) => n.role === "outgoing") ? "down" : "up",
+        loading: false,
+        error: null,
+        customSystemPrompt: defaultTransformationsBetweenPrompt,
+        isPromptDirty: false,
+      };
     });
   }, [selectedNodeId, data.nodes, data.edges, defaultTransformationsBetweenPrompt]);
+
+  /**
+   * Что показать в модалке: кто исходный, кто целевой и куда вообще можно
+   * смотреть. Сам продукт всегда один, соседи — сколько нашлось; выбирать их
+   * нельзя, они просто перечисляются.
+   */
+  const insertTrPair = useMemo(() => {
+    const empty = {
+      sources: [] as ModalProduct[],
+      targets: [] as ModalProduct[],
+      canGoDown: false,
+      canGoUp: false,
+    };
+    if (!insertTrState) return empty;
+
+    const self: ModalProduct = {
+      nodeId: insertTrState.nodeId,
+      label: insertTrState.productLabel,
+    };
+    const of = (role: DirectProductNeighbor["role"]) =>
+      insertTrState.neighbors
+        .filter((n) => n.role === role)
+        .map((n) => ({ nodeId: n.neighborNodeId, label: n.neighborLabel }));
+
+    const down = insertTrState.direction === "down";
+    const side = of(down ? "outgoing" : "incoming");
+    return {
+      sources: down ? [self] : side,
+      targets: down ? side : [self],
+      canGoDown: insertTrState.neighbors.some((n) => n.role === "outgoing"),
+      canGoUp: insertTrState.neighbors.some((n) => n.role === "incoming"),
+    };
+  }, [insertTrState]);
 
   const handleFetchTransformations = useCallback(async () => {
     if (!insertTrState) return;
     const anchorId = insertTrState.nodeId;
     const anchor = data.nodes.find((n) => n.id === anchorId);
-    if (!anchor || !insertTrState.neighbors.length) return;
+    if (!anchor) return;
+
+    // Направление решает, с какой стороны стоит сам продукт. Вниз — он сырьё,
+    // соседи-потомки продукты; вверх — наоборот. Ребро при этом одно и то же,
+    // меняется только то, что мы спрашиваем.
+    const wantRole = insertTrState.direction === "down" ? "outgoing" : "incoming";
+    const picked = insertTrState.neighbors.filter((n) => n.role === wantRole);
+    if (!picked.length) return;
 
     const anchorLabel = String(anchor.data?.label ?? "");
     const anchorDesc = anchor.data?.description
@@ -1162,7 +1314,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         "Название узла": anchorLabel,
         ...(anchorDesc ? { "Описание продукта": anchorDesc } : {}),
       },
-      ...insertTrState.neighbors.map((n) => {
+      ...picked.map((n) => {
         const node = data.nodes.find((nd) => nd.id === n.neighborNodeId);
         const desc = node?.data?.description
           ? String(node.data.description)
@@ -1177,21 +1329,35 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       }),
     ];
 
-    const links: ChainLink[] = insertTrState.neighbors.map((n) => ({
-      "Откуда": anchorId,
-      "Куда": n.neighborNodeId,
-      "Источник": anchorLabel,
-      "Приемник": n.neighborLabel,
-      "Тип связи": "сырье -> продукт",
-    }));
+    /** Кто из пары сырьё, а кто продукт, — по выбранному направлению. */
+    const pairOf = (n: DirectProductNeighbor) =>
+      insertTrState.direction === "down"
+        ? { fromId: anchorId, fromLabel: anchorLabel, toId: n.neighborNodeId, toLabel: n.neighborLabel }
+        : { fromId: n.neighborNodeId, fromLabel: n.neighborLabel, toId: anchorId, toLabel: anchorLabel };
 
-    const edgeIdByPair = new Map<string, string>();
-    for (const n of insertTrState.neighbors) {
-      edgeIdByPair.set(`${anchorId}->${n.neighborNodeId}`, n.edgeId);
+    const links: ChainLink[] = picked.map((n) => {
+      const p = pairOf(n);
+      return {
+        "Откуда": p.fromId,
+        "Куда": p.toId,
+        "Источник": p.fromLabel,
+        "Приемник": p.toLabel,
+        "Тип связи": "сырье -> продукт",
+      };
+    });
+
+    // У прямой связи ребро одно, у связи через заглушку — два, и вместе с
+    // ними уходит сама заглушка: найденное преобразование встаёт на её место.
+    const edgeIdsByPair = new Map<string, string[]>();
+    const stubIdsByPair = new Map<string, string>();
+    for (const n of picked) {
+      const p = pairOf(n);
+      edgeIdsByPair.set(`${p.fromId}->${p.toId}`, n.edgeIds);
+      if (n.viaStubId) stubIdsByPair.set(`${p.fromId}->${p.toId}`, n.viaStubId);
     }
     const knownNodeIds = new Set<string>([
       anchorId,
-      ...insertTrState.neighbors.map((n) => n.neighborNodeId),
+      ...picked.map((n) => n.neighborNodeId),
     ]);
 
     setInsertTrState((s) => (s ? { ...s, loading: true, error: null } : s));
@@ -1216,10 +1382,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             knownNodeIds.has(id),
           );
           const removeEdgeIds: string[] = [];
+          const removeNodeIds: string[] = [];
           for (const inId of inputNodeIds) {
             for (const outId of outputNodeIds) {
-              const eid = edgeIdByPair.get(`${inId}->${outId}`);
-              if (eid) removeEdgeIds.push(eid);
+              const key = `${inId}->${outId}`;
+              removeEdgeIds.push(...(edgeIdsByPair.get(key) ?? []));
+              const stub = stubIdsByPair.get(key);
+              if (stub) removeNodeIds.push(stub);
             }
           }
           return {
@@ -1229,6 +1398,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             inputNodeIds,
             outputNodeIds,
             removeEdgeIds,
+            removeNodeIds,
           };
         })
         .filter((g) => g.inputNodeIds.length > 0 && g.outputNodeIds.length > 0);
@@ -1262,13 +1432,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Outgoing-соседи выбранной ноды — для кнопки «Получить преобразования…»
   // в карточке продукта.
-  const selectedNodeHasOutgoingNeighbors = useMemo(() => {
+  // Годится сосед в ЛЮБУЮ сторону: модалка теперь умеет смотреть и вверх по
+  // цепочке, а раньше кнопка пряталась у всего, что стоит в конце ветки.
+  const selectedNodeHasProductNeighbors = useMemo(() => {
     if (!selectedNodeId) return false;
-    return getDirectProductNeighbors(
-      selectedNodeId,
-      data.nodes,
-      data.edges,
-    ).some((n) => n.role === "outgoing");
+    return (
+      getDirectProductNeighbors(selectedNodeId, data.nodes, data.edges).length > 0
+    );
   }, [selectedNodeId, data.nodes, data.edges]);
 
   // Подтверждение удаления (одна нода или группа выделенных)
@@ -1518,9 +1688,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   const handleConnect: OnConnect = useCallback(
     (params) => {
+      // В режиме «только продукты» прямая связь продукт→продукт оставила бы
+      // продукт вне технологий: в полном графе между ними нет узла, к
+      // которому он относится. Поэтому там связь заводит заглушку —
+      // пустое преобразование с говорящим названием.
+      if (productsOnly) {
+        // Пара может быть связана и сейчас: путь через преобразование
+        // выглядит на этом полотне такой же стрелкой. Спрашиваем ровно ту
+        // проверку, по которой решает и сам редьюсер, — иначе уведомление
+        // появлялось бы на связи, которую граф отверг.
+        if (
+          !params.source ||
+          !params.target ||
+          areNodesLinked(data.edges, params.source, params.target)
+        ) {
+          return;
+        }
+        dispatch(connectProductsViaStub(params));
+        showToast(
+          "info",
+          "Создано преобразование-заглушка — опишите его в режиме технологий",
+        );
+        return;
+      }
       dispatch(onConnect(params));
     },
-    [dispatch],
+    [dispatch, productsOnly, data.edges],
   );
 
   const onReconnectStart = useCallback(() => {
@@ -1681,6 +1874,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       ) => {
         if (!selectedNodeId) return;
         const sKey = stepSessionKey(selectedNodeId, direction);
+        // Якорь шага мог исчезнуть с полотна (удалён, или граф сменился —
+        // после объединения у узлов новые id). Шаг тогда класть некуда;
+        // редьюсер закроет превью, а причину называем здесь.
+        const anchorId = stepChainSessions[sKey]?.currentProductNodeId;
+        if (anchorId && !data.nodes.some((n) => n.id === anchorId)) {
+          showToast(
+            "error",
+            "Шаг не принят: продукта, от которого он строился, больше нет на полотне",
+          );
+        }
         // Обобщённое описание шага продукта-якоря (markdown) — прокинем на
         // создаваемую transformation-ноду (см. stepToFlow / карточка преобразования).
         const anchorAggregatedText =
@@ -1699,7 +1902,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // альтернативы должны остаться видимыми, и useEffect пересоздаст
         // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
-    [dispatch, selectedNodeId, sourcesByNodeId],
+    [dispatch, selectedNodeId, sourcesByNodeId, stepChainSessions, data.nodes],
   );
 
   // Активные запросы поиска источников — по ключу продукт+направление.
@@ -1855,28 +2058,49 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         const productName = String(selectedNode.data?.label || "").trim();
         if (!productName) return "У узла нет названия";
 
-        const url = src.url.trim();
-        const title = src.title.trim() || url;
-        if (!/^https?:\/\/.+/i.test(url)) {
-          return "Ссылка должна начинаться с http:// или https://";
+        const parsed = normalizeSourceUrl(src.url);
+        if (!parsed.url) {
+          return parsed.error ?? "Укажите ссылку или название сайта";
         }
+        const url = parsed.url;
+        const title = src.title.trim() || parsed.title || url;
 
         const dirField = direction === "up" ? "sourcesUp" : "sourcesDown";
         const nodeSources =
           (selectedNode.data?.[dirField] as TechnologySource[] | undefined) ?? [];
         const poolSources =
           sourcesPool[poolKey(productName, direction)]?.sources ?? [];
-        // Объединяем оба хранилища (могли разойтись), дедуп по url.
+        // Объединяем оба хранилища (могли разойтись), дедуп по адресу.
         const merged: TechnologySource[] = [];
         const seen = new Set<string>();
         for (const s of [...poolSources, ...nodeSources]) {
-          const key = String(s.url || "").trim().toLowerCase();
+          const key = sourceUrlKey(String(s.url || ""));
           if (!key || seen.has(key)) continue;
           seen.add(key);
           merged.push(s);
         }
-        if (seen.has(url.toLowerCase())) {
-          return "Источник с таким URL уже есть в списке";
+
+        // Источник хранится в двух местах: в узле и в общем пуле продукта. Они
+        // расходятся — например, поиск заново переписал список узла, — и тогда
+        // повторный ввод той же ссылки упирался в «уже есть», хотя в списке её
+        // не было. Отказываем только если ссылка видна там, куда человек
+        // смотрит; в остальных случаях просто возвращаем её на место.
+        const key = sourceUrlKey(url);
+        const inNode = nodeSources.some(
+          (s) => sourceUrlKey(String(s.url || "")) === key,
+        );
+        if (inNode) return "Этот источник уже в списке";
+        if (seen.has(key)) {
+          dispatch(
+            updateNodeData({
+              nodeId: selectedNodeId,
+              data: { [dirField]: merged },
+            }),
+          );
+          dispatch(
+            addSourcesToPool({ productName, direction, sources: merged }),
+          );
+          return null;
         }
 
         const manual: TechnologySource = {
@@ -2147,12 +2371,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         chainPid: queuePid,
         onExpandNext: handleExpandNext(direction),
 
-        // --- build mode (Redux-backed, per-(nodeId, direction)) ---
-        buildMode: sliceState?.buildMode ?? null,
-        onChangeBuildMode: (mode) =>
-          dispatch(
-            setBuildMode({ nodeId: selectedNodeId, direction, mode }),
-          ),
+        // Признак «это окно построения, а не вкладка карточки». Раньше здесь
+        // жил выбор режима — «вся цепочка» или «по шагам»; режим остался один,
+        // и от поля нужен только сам факт его наличия.
+        isBuildContext: true,
 
         // --- step-by-step chain (session-level state) ---
         stepChainStatus: stepSession?.status ?? "idle",
@@ -2242,7 +2464,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
           baseResult.isAlternativeNode = true;
           baseResult.altDescription = altDesc;
-          baseResult.buildMode = rootSliceState?.buildMode ?? "step";
           baseResult.stepChainCurrentProductLabel = rootProductName;
 
           baseResult.stepSources =
@@ -2612,6 +2833,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         canSave={data.nodes.length > 0}
         onClear={() => setShowClearConfirm(true)}
         canClear={data.nodes.length > 0}
+        onRelayout={handleRelayout}
+        canRelayout={data.nodes.length > 0}
+        relayouting={isApplyingLayout}
         saveFlash={saveFlash}
         readOnly={readOnly || focusOn}
       />
@@ -2621,14 +2845,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         edges={flowEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onConnect={structureLocked ? undefined : handleConnect}
+        onConnect={canEditNodes ? handleConnect : undefined}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
-        onNodeContextMenu={structureLocked ? undefined : onNodeContextMenu}
+        onNodeContextMenu={canEditNodes ? onNodeContextMenu : undefined}
         onPaneClick={onPaneClick}
-        onPaneContextMenu={canAddNodes ? onPaneContextMenu : undefined}
-        nodesConnectable={!structureLocked}
+        onPaneContextMenu={canEditNodes ? onPaneContextMenu : undefined}
+        nodesConnectable={canEditNodes}
         // В фокус-режиме позиции задаёт раскладка окрестности — двигать нечего;
         // в режиме «рука» узлы тоже неподвижны, тянется только холст.
         nodesDraggable={!focusOn && canvasMode !== "pan"}
@@ -2725,7 +2949,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         productCard={selectedNode?.data?.productCard}
         downTab={downTab}
         upTab={upTab}
-        hasOutgoingProductNeighbors={selectedNodeHasOutgoingNeighbors}
+        hasProductNeighbors={selectedNodeHasProductNeighbors}
         onFetchTransformations={handleOpenFetchTransformations}
         linkedProducts={linkedProducts}
         onFocusLinkedProduct={handleFocusLinkedProduct}
@@ -2736,12 +2960,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         isAltNode={selectedNode?.data?.chainVariant === "alt"}
         isBookmarked={selectedNodeId ? bookmarkedIds.has(selectedNodeId) : false}
         onToggleBookmark={
-          selectedNodeId && !structureLocked
+          // Закладка и удаление — по canEditNodes, а не по structureLocked:
+          // узлы при фильтре «Только продукты» настоящие, и с полотна их
+          // правым кликом и удаляют, и кладут в закладки. Карточка же
+          // запрещала это заодно с правкой рёбер — и в том режиме её меню
+          // «…» оставалось вовсе без пунктов, то есть открывало пустоту.
+          selectedNodeId && canEditNodes
             ? () => toggleBookmarkFor(selectedNodeId)
             : undefined
         }
         onDeleteNode={
-          selectedNodeId && !structureLocked
+          selectedNodeId && canEditNodes
             ? () => setPendingDeleteIds([selectedNodeId])
             : undefined
         }
@@ -2805,10 +3034,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             onCancel={() => setShowClearConfirm(false)}
           />
         ))}
-      {insertTrState && (
-        <SelectNeighborModal
-          productLabel={insertTrState.productLabel}
-          neighbors={insertTrState.neighbors}
+      {insertTrState?.open && (
+        <TransformationBetweenModal
+          sources={insertTrPair.sources}
+          targets={insertTrPair.targets}
+          direction={insertTrState.direction}
+          onChangeDirection={(direction) =>
+            setInsertTrState((s) => (s ? { ...s, direction, error: null } : s))
+          }
+          canGoDown={insertTrPair.canGoDown}
+          canGoUp={insertTrPair.canGoUp}
           loading={insertTrState.loading}
           error={insertTrState.error}
           defaultSystemPrompt={defaultTransformationsBetweenPrompt}
@@ -2837,9 +3072,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             )
           }
           onConfirm={handleFetchTransformations}
-          // Закрытие во время запроса разрешено: он идёт минутами, а
-          // результат применится и при закрытой модалке — о нём сообщит тост.
-          onClose={() => setInsertTrState(null)}
+          // Закрытие во время запроса ничего не отменяет: он идёт минутами,
+          // результат ляжет на полотно и при закрытой модалке, о готовности
+          // скажет уведомление. Поэтому гасим только видимость — вернувшись,
+          // человек увидит тот же запрос. А когда ждать нечего, состояние
+          // выбрасываем: незачем хранить форму, которую никто не открывал.
+          onClose={() =>
+            setInsertTrState((s) =>
+              s && (s.loading || s.error) ? { ...s, open: false } : null,
+            )
+          }
         />
       )}
     </div>

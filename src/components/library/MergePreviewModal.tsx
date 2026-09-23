@@ -1,7 +1,10 @@
 import type { Edge } from "@xyflow/react";
 
 import type { CustomNode } from "../../types";
-import type { MergeReportRow } from "../upload-graph/MergeReportModal";
+import {
+  describeMergedFrom,
+  type MergeReportRow,
+} from "../upload-graph/MergeReportModal";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
@@ -126,13 +129,17 @@ export const MergePreviewModal = ({
             <div className={styles.mergeCommonTitle}>
               Продукты, которые сольются в один узел:{" "}
               {result.commonNodes.length}
+              <span className={styles.mergeCommonHint}>
+                слева — название, которое останется; в скобках — как этот же
+                продукт назван в другом графе
+              </span>
             </div>
             <ul className={styles.mergeCommonList}>
               {result.commonNodes.slice(0, 12).map((row) => (
                 <li key={row.label} className={styles.mergeCommonItem}>
                   <span className={styles.mergeCommonName}>{row.label}</span>
                   <span className={styles.mergeCommonFrom}>
-                    {row.presentations.join(" · ")}
+                    {describeMergedFrom(row)}
                   </span>
                 </li>
               ))}

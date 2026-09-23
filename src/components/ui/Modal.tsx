@@ -1,9 +1,16 @@
-import { useCallback, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { useDismiss } from "../../hooks/useDismiss";
 import { CloseIcon } from "../icons";
 import styles from "./Modal.module.css";
+
+/**
+ * Сколько окон открыто сейчас. Окна встречаются вложенными (превью объединения
+ * поверх библиотеки), и закрытие верхнего не должно возвращать прокрутку, пока
+ * под ним есть другое.
+ */
+let openModals = 0;
 
 export interface ModalProps {
   open: boolean;
@@ -42,6 +49,21 @@ export const Modal = ({
   const windowRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => onClose(), [onClose]);
   useDismiss(windowRef, close, open);
+
+  // Страница под окном не листается: иначе прокрутка мимо окна (или колесо по
+  // затемнению) уводила экран за спиной у пользователя.
+  useEffect(() => {
+    if (!open) return;
+    openModals += 1;
+    document.body.style.overflow = "hidden";
+    return () => {
+      openModals -= 1;
+      if (openModals <= 0) {
+        openModals = 0;
+        document.body.style.overflow = "";
+      }
+    };
+  }, [open]);
 
   if (!open) return null;
 

@@ -6,7 +6,6 @@ import type {
   StepChainStatus,
   TechnologySource,
 } from "../../store/types";
-import type { BuildMode } from "../../store/slices/sourcesSlice";
 import type { TechChain } from "../../utils/chainToFlow";
 import type { SourceGroup } from "../../utils/sourceRows";
 import type { LinkedProduct } from "../../utils/getLinkedProducts";
@@ -72,8 +71,23 @@ export interface DirectionTabProps {
   onExpandNext?: () => void;
 
   // --- build mode toggle (shared by full + step flows) ---
-  buildMode?: BuildMode;
-  onChangeBuildMode?: (mode: BuildMode) => void;
+  /**
+   * Окно построения, а не вкладка карточки.
+   *
+   * Раньше на этом месте стоял выбор режима — «вся цепочка» или «по шагам», —
+   * и признаком служило само его наличие. Режим остался один, признак нужен
+   * по-прежнему: тот же компонент обслуживает и карточку, где построения нет.
+   */
+  isBuildContext?: boolean;
+
+  /**
+   * Показать конкретный экран мастера, а не выведенный из состояния.
+   *
+   * Нужен для возврата назад: обобщение уже получено, но человек вернулся к
+   * источникам по номеру в полосе шагов. Без этого состояние тянуло бы его
+   * обратно вперёд — источники-то обобщены.
+   */
+  stageOverride?: 2 | 3;
 
   // --- step-by-step chain ---
   stepChainStatus?: StepChainStatus;
@@ -211,8 +225,8 @@ export interface FlowPanelProps {
   upTab: DirectionTabProps;
 
   /** У продукта есть прямые соседи-продукты без преобразования между ними. */
-  hasOutgoingProductNeighbors?: boolean;
-  /** Открыть поток «Получить преобразования к соседним продуктам» (SelectNeighborModal). */
+  hasProductNeighbors?: boolean;
+  /** Открыть модалку «Получение преобразования между продуктами». */
   onFetchTransformations?: () => void;
 
   /** Продукты, связанные с выбранным (напрямую или через преобразование) —

@@ -38,6 +38,10 @@ import {
 import { stepToFlow } from "../../utils/stepToFlow";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 
+import {
+  areNodesLinked,
+  STUB_TRANSFORMATION_PREFIX,
+} from "../../utils/getDirectProductNeighbors";
 import { findRootNodeId } from "../../utils/findRootNodeId";
 import { getLeafNodes } from "../../utils/getLeafNodes";
 import { fetchProductCard } from "../api/product-card-api";
@@ -175,6 +179,76 @@ const gptSlice = createSlice({
 
       state.data.edges = normalizeEdges(
         addEdge({ ...action.payload, type: "straight" }, state.data.edges),
+      );
+    },
+    /**
+     * Связать два продукта в режиме «только продукты» — через заглушку.
+     *
+     * На том полотне преобразований нет, и прямая связь продукт→продукт
+     * означала бы в полном графе продукт, не привязанный ни к какой
+     * технологии: в режиме технологий он стоял бы в стороне от цепочки.
+     * Поэтому связь заводит между продуктами узел-преобразование — пустой,
+     * с говорящим названием. Человек допишет его сам или заменит найденным
+     * через «Получить преобразование».
+     *
+     * Проекция «только продукты» схлопнет заглушку обратно, и на экране
+     * останется ровно та стрелка, которую провели.
+     */
+    connectProductsViaStub: (state, action: PayloadAction<Connection>) => {
+      const { source, target } = action.payload;
+      if (!source || !target || source === target) return;
+
+      const src = state.data.nodes.find((n) => n.id === source);
+      const tgt = state.data.nodes.find((n) => n.id === target);
+      // Заглушка — про пару продуктов. На этом полотне другого и нет, но
+      // молча городить преобразование к преобразованию всё же не стоит.
+      if (src?.type !== "product" || tgt?.type !== "product") return;
+
+      // Та же проверка, что и на полотне перед вызовом, — одной функцией:
+      // разойдясь, они соврали бы пользователю (см. areNodesLinked).
+      if (areNodesLinked(state.data.edges, source, target)) return;
+
+      const name = String(tgt.data?.label ?? "").trim();
+      // Префикс — не украшение: по нему поиск соседей узнаёт, что технологии
+      // между продуктами ещё нет, и предлагает её найти.
+      const trId = `${STUB_TRANSFORMATION_PREFIX}${crypto.randomUUID()}`;
+
+      state.data.nodes.push({
+        id: trId,
+        type: "transformation",
+        position: {
+          x: (src.position.x + tgt.position.x) / 2,
+          y: (src.position.y + tgt.position.y) / 2,
+        },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: {
+          label: name
+            ? `Преобразование к новому продукту (${name})`
+            : "Преобразование к новому продукту",
+          description: "",
+        },
+      });
+
+      state.data.edges.push(
+        ...normalizeEdges([
+          {
+            id: `${trId}::in`,
+            source,
+            target: trId,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          },
+          {
+            id: `${trId}::out`,
+            source: trId,
+            target,
+            sourceHandle: "bottom",
+            targetHandle: "top",
+            type: "straight",
+          },
+        ]),
       );
     },
     onReconnect: (
@@ -384,6 +458,31 @@ const gptSlice = createSlice({
       state.isError = false;
       state.error = null;
     },
+    /**
+     * Проставить продуктам идентификаторы, полученные от справочника.
+     *
+     * Одним действием на весь граф, а не updateNodeData на каждый узел: на
+     * графе в шестьсот продуктов это шестьсот действий, шестьсот проходов
+     * middleware и столько же перерисовок.
+     *
+     * Ставим только там, где идентификатора НЕТ. Заданный человеком или
+     * взятый из другого источника трогать нельзя — он может быть точнее.
+     */
+    setProductIds: (
+      state,
+      action: PayloadAction<Record<string, string>>,
+    ) => {
+      const byNodeId = action.payload;
+      for (const node of state.data.nodes) {
+        const id = byNodeId[node.id];
+        if (!id) continue;
+        if (typeof node.data?.productId === "string" && node.data.productId.trim()) {
+          continue;
+        }
+        node.data = { ...node.data, productId: id, productIdSource: "dictionary" };
+      }
+    },
+
     setProducerForPid: (
       state,
       action: PayloadAction<{
@@ -475,7 +574,16 @@ const gptSlice = createSlice({
       const anchor = state.data.nodes.find(
         (n) => n.id === session.currentProductNodeId,
       );
-      if (!anchor) return;
+      // Продукта, от которого строился шаг, на полотне больше нет: его удалили
+      // или полотно сменилось (открытие другого графа, объединение — там id
+      // получают новый префикс). Класть шаг некуда, но и оставлять сессию с
+      // pendingStep нельзя: превью висело бы с нерабочей кнопкой «Принять».
+      if (!anchor) {
+        session.pendingStep = null;
+        session.status = "idle";
+        session.accumulatedSources = [];
+        return;
+      }
 
       const stepNumber = session.steps.length + 1;
 
@@ -1093,6 +1201,8 @@ const gptSlice = createSlice({
           inputNodeIds: string[];
           outputNodeIds: string[];
           removeEdgeIds: string[];
+          /** Заглушки, на место которых встаёт найденное преобразование. */
+          removeNodeIds?: string[];
         }>;
       }>,
     ) => {
@@ -1100,12 +1210,25 @@ const gptSlice = createSlice({
       if (!groups.length) return;
 
       const edgesToRemove = new Set<string>();
+      const nodesToRemove = new Set<string>();
       for (const g of groups) {
         for (const eid of g.removeEdgeIds) edgesToRemove.add(eid);
+        for (const nid of g.removeNodeIds ?? []) nodesToRemove.add(nid);
       }
       if (edgesToRemove.size) {
         state.data.edges = state.data.edges.filter(
           (e) => !edgesToRemove.has(e.id),
+        );
+      }
+      // Заглушку убираем вместе со всем, что к ней ещё вело: найденное
+      // преобразование встаёт на её место, и оставить её значило бы
+      // нарисовать рядом две технологии между одной парой продуктов.
+      if (nodesToRemove.size) {
+        state.data.nodes = state.data.nodes.filter(
+          (n) => !nodesToRemove.has(n.id),
+        );
+        state.data.edges = state.data.edges.filter(
+          (e) => !nodesToRemove.has(e.source) && !nodesToRemove.has(e.target),
         );
       }
 
@@ -1627,6 +1750,7 @@ export const {
   onNodesChange,
   onEdgesChange,
   onConnect,
+  connectProductsViaStub,
   onReconnect,
   removeEdge,
   removeNode,
@@ -1637,6 +1761,7 @@ export const {
   addNode,
   loadGraphFromFile,
   mergeGraphFromFile,
+  setProductIds,
   setProducerForPid,
   popQueueHead,
   initStepChainSession,

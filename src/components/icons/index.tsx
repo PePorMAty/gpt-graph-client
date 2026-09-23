@@ -233,6 +233,16 @@ export const MarqueeIcon: Icon = (p) => (
   </svg>
 );
 
+/** Пересчёт раскладки: узлы, разложенные по ярусам сверху вниз. */
+export const AutoLayoutIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <rect x="9" y="3" width="6" height="4.5" rx="1.2" />
+    <rect x="2.5" y="16.5" width="6" height="4.5" rx="1.2" />
+    <rect x="15.5" y="16.5" width="6" height="4.5" rx="1.2" />
+    <path d="M12 7.5v4.5M5.5 16.5V12h13v4.5" />
+  </svg>
+);
+
 export const ZoomInIcon: Icon = (p) => (
   <svg {...base(p)} strokeWidth={2}>
     <path d="M12 5.5v13M5.5 12h13" />
