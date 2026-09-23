@@ -120,15 +120,7 @@
   white-space: nowrap;
 }
 
-.kind_product {
-  color: var(--c-brand-strong);
-  background: var(--c-product-soft);
-}
 
-.kind_transformation {
-  color: #b45309;
-  background: var(--c-transform-soft);
-}
 
 .kind_alt {
   color: #7e22ce;
@@ -139,6 +131,9 @@
   margin-top: 2px;
   font-size: var(--fs-sm);
   color: var(--c-text-muted);
+  /* Надпись — не ссылка и не кнопка, но по наведению что-то показывает.
+     Курсор об этом и говорит, иначе подсказку просто не найдут. */
+  cursor: help;
 }
 
 .headerActions {
@@ -374,6 +369,86 @@
   padding: var(--s-3);
 }
 
+/* ─── Идентификатор продукта ─── */
+
+.idWrap {
+  position: relative;
+  /* Ловит наведение сама надпись, а не вся строка шапки. Блочная обёртка
+     растягивалась на всю ширину карточки, и подсказка всплывала от движения
+     мыши где угодно рядом с идентификатором. */
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 2px;
+}
+
+.idPop {
+  position: absolute;
+  /* Прижата вплотную, а видимый отступ даёт margin. Между надписью и
+     подсказкой не должно быть мёртвой полосы: мышь пересекала её по дороге,
+     обёртка теряла наведение, и подсказка закрывалась раньше, чем до неё
+     доводили. Полосу отступа перекрывает мостик ниже. */
+  top: 100%;
+  margin-top: var(--s-1);
+  left: 0;
+  z-index: 40;
+  width: max-content;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-md);
+}
+
+/* Прозрачный мостик через отступ: путь мыши от надписи к подсказке не должен
+   прерываться, иначе подсказку нельзя ни прочитать до конца, ни выделить. */
+.idPop::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--s-1));
+  height: var(--s-1);
+}
+
+.idPopRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.idPopLabel {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.idPopValue {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+  word-break: break-word;
+}
+
+.idPopNote {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.idPopLink {
+  color: var(--c-accent);
+  text-decoration: none;
+}
+
+.idPopLink:hover {
+  text-decoration: underline;
+}
+
+
 .blockEmpty {
   font-size: var(--fs-md);
   color: var(--c-text-faint);
@@ -424,6 +499,7 @@
   display: grid;
   grid-template-columns: minmax(120px, 38%) 1fr;
   gap: var(--s-2) var(--s-3);
+  align-items: start;
 }
 
 .keyInfoRow {
@@ -431,7 +507,19 @@
 }
 
 .keyInfoLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   font-size: var(--fs-md);
+  color: var(--c-text-muted);
+}
+
+/* Значок ведёт строку взглядом. Живёт внутри подписи, а не отдельной колонкой:
+   в <dl> между строками допустимы только dt и dd, третьей ячейке там не место.
+   Не сжимается — иначе длинная подпись съела бы его до нуля. */
+.keyInfoIcon {
+  flex: none;
+  display: flex;
   color: var(--c-text-muted);
 }
 
@@ -441,6 +529,67 @@
   line-height: var(--lh-normal);
   color: var(--c-text);
   overflow-wrap: break-word;
+}
+
+/* Правка отрасли и назначения — прямо в блоке. */
+.keyInfoForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.keyInfoField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.keyInfoInput {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  resize: vertical;
+}
+
+.keyInfoInput:focus {
+  outline: none;
+  border-color: var(--c-brand);
+  box-shadow: var(--sh-ring);
+}
+
+.keyInfoNote {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.keyInfoActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+
+.keyInfoSave {
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-on-brand);
+  background: var(--c-brand);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.keyInfoSave:hover {
+  background: var(--c-brand-hover);
 }
 
 /* ─── Связанные продукты ─── */
@@ -520,6 +669,32 @@
 
 .buildButton:hover {
   background: var(--c-brand-strong);
+}
+
+/* Получить преобразование между этим продуктом и соседними.
+   Оранжевая — цвет преобразования на полотне и в легенде: кнопка называет
+   не действие вообще, а то, ЧТО появится на графе. Габариты общие с
+   «Построить шаг», чтобы две кнопки подряд читались одним блоком. */
+.transformButton {
+  composes: buildButton;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  background: var(--c-transform);
+  border-color: var(--c-transform);
+}
+
+.transformButton:hover {
+  /* Своего «strong» у оранжевого в токенах нет, а заводить ради одной
+     кнопки седьмой оттенок — плодить палитру. Затемняем на месте. */
+  background: #f57c00;
+  border-color: #f57c00;
+}
+
+.transformButtonIcon {
+  flex: none;
 }
 
 /* ─── Таблица источников узла ─── */

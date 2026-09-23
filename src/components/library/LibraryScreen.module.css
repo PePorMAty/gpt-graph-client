@@ -921,10 +921,22 @@
 }
 
 .mergeCommonTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin-bottom: var(--s-2);
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
   color: var(--c-text);
+}
+
+/* Без этой подсказки скобки читаются загадкой: видно, что «ИПБ» с чем-то
+   слился, но не видно, что скобка и есть второе название. */
+.mergeCommonHint {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  line-height: 1.4;
+  color: var(--c-text-muted);
 }
 
 .mergeLegendHint {

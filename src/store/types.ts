@@ -354,8 +354,20 @@ export type ProductCardResponse = {
 export type StepProduct = {
   name: string;
   description?: string;
+  /** Отрасль, к которой относится сам продукт, в 1–3 словах. */
+  industry?: string;
+  /** Для чего продукт нужен — одним предложением. */
+  mainPurpose?: string;
   isExisting: boolean;
   existingNodeLabel?: string;
+  /**
+   * Каноническое название вещества по справочнику синонимов.
+   *
+   * Модель его не присылает — проставляется на клиенте, как только шаг пришёл.
+   * По нему продукт шага узнаёт узел на полотне, названный иначе: без этого
+   * «Кумол» из шага завёл бы второй узел рядом с «ИПБ».
+   */
+  productId?: string;
   /**
    * Продукт добавлен пользователем вручную в превью шага, а не предложен
    * моделью. Такие продукты не проходили заполнение (описание/карточку),
@@ -365,7 +377,17 @@ export type StepProduct = {
 };
 
 export type StepChainApiStep = {
-  transformation: { id: string; name: string; description?: string };
+  transformation: {
+    id: string;
+    name: string;
+    description?: string;
+    /** Отрасль процесса, в 1–3 словах. */
+    industry?: string;
+    /** Главная производственная функция, одним предложением. */
+    mainPurpose?: string;
+    /** Оговорки к шагу: чем набор может отличаться, что необязательно. */
+    notes?: string[];
+  };
   inputProducts: StepProduct[];
   outputProducts: StepProduct[];
 };

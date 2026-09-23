@@ -339,7 +339,7 @@ export const GraphDetails = ({
           onClick={() => setTab("merge")}
         >
           <BranchIcon size={16} />
-          Объединить графы
+          Объединить с графами
         </button>
       </nav>
 

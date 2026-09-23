@@ -3,7 +3,12 @@ import { useMemo, useState, type FC } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import type { IndustryMatch, IndustryProducer } from "../../store/api/industry-api";
-import { GISP_REGISTRY_URL } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
+import {
+  STATUS_FILTERS,
+  matchesStatus,
+  type StatusFilter,
+} from "./statusFilter";
 import {
   IndustryDataIcon,
   ShieldCheckIcon,
@@ -11,6 +16,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
 } from "../icons";
+import { plural } from "../../utils/plural";
 import styles from "./Industry.module.css";
 
 /**
@@ -66,6 +72,36 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
       {open && (
         <div className={styles.prodDetails}>
           {p.product && <div className={styles.prodProduct}>{p.product}</div>}
+
+          {/* Коды с расшифровкой: сам по себе «20.16.10.110» ничего не говорит
+              о том, к чему запись отнесена. */}
+          {p.okpd2 && (
+            <div className={styles.code}>
+              <span className={styles.codeLabel}>ОКПД2</span>
+              <a
+                className={styles.codeValue}
+                href={okpd2Url(p.okpd2)}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="Открыть код в классификаторе"
+              >
+                {p.okpd2}
+              </a>
+              {p.okpd2Name && (
+                <span className={styles.codeName}>{p.okpd2Name}</span>
+              )}
+            </div>
+          )}
+          {p.tnved && (
+            <div className={styles.code}>
+              <span className={styles.codeLabel}>ТН ВЭД</span>
+              <span className={styles.codeValue}>{p.tnved}</span>
+              {p.tnvedName && (
+                <span className={styles.codeName}>{p.tnvedName}</span>
+              )}
+            </div>
+          )}
+
           <div className={styles.prodMeta}>
             {p.inn && <span className={styles.inn}>ИНН {p.inn}</span>}
             {p.region && (
@@ -99,11 +135,30 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
     (s) => s.industry,
   );
   const [showAll, setShowAll] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const name = String(productName ?? "").trim();
   const info = useMemo(
     () => (name ? results[industryKey(name)] : undefined),
     [results, name],
+  );
+
+  /**
+   * Сколько записей под каждым отбором.
+   *
+   * Нужны, чтобы не предлагать пустое: у половины продуктов все записи
+   * действующие, и кнопка «Архив» вела бы в пустой список. Число рядом с
+   * подписью отвечает на вопрос сразу, не нажимая.
+   */
+  const counts = useMemo(() => {
+    const all = info?.producers ?? [];
+    const active = all.filter((p) => p.status === "active").length;
+    return { all: all.length, active, archived: all.length - active };
+  }, [info]);
+
+  const producers = useMemo(
+    () => (info?.producers ?? []).filter((p) => matchesStatus(p.status, statusFilter)),
+    [info, statusFilter],
   );
 
   const loading = status === "loading";
@@ -159,23 +214,74 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
     );
   }
 
-  if (!info.found) {
+  // Подпись не называет вещество: либо заготовка интерфейса («Новый
+  // продукт»), либо одни определения («Новый»). Реестр по ней не спрашивали,
+  // поэтому «записи нет» было бы неправдой — не искали. И объяснение про
+  // охват реестра тут ни при чём: надо просто вписать название.
+  if (info.placeholder) {
     return (
       <div className={styles.empty}>
         <IndustryDataIcon size={30} className={styles.emptyIcon} />
-        <div className={styles.emptyTitle}>В реестре не найдено</div>
+        <div className={styles.emptyTitle}>Продукт ещё не назван</div>
         <p className={styles.emptyText}>
-          Продукта «{name}» нет среди записей реестра. Это не значит, что его не
-          выпускают: реестр ПП №719 охватывает продукцию, заявленную на
-          подтверждение российского происхождения, и туда попадает не всё.
+          Подпись «{name}» не называет вещество, и в реестре ПП №719 мы по ней
+          не искали. Вещества называются существительными: бензол, аммиак,
+          серная кислота. Впишите название — и поищем.
         </p>
       </div>
     );
   }
 
+  // «Не найдено» здесь чаще всего не пробел в данных, а свойство продукта:
+  // реестр ПП №719 — про товарную продукцию, а промежуточные вещества никто на
+  // подтверждение происхождения не заявляет, их не продают. На графе таких
+  // узлов больше половины, и подавать это как неудачу поиска — врать.
+  if (!info.found) {
+    return (
+      <div className={styles.empty}>
+        <IndustryDataIcon size={30} className={styles.emptyIcon} />
+        <div className={styles.emptyTitle}>Записи в реестре нет</div>
+        <p className={styles.emptyText}>
+          Реестр ПП №719 охватывает <b>товарную продукцию</b> — то, что
+          заявляют на подтверждение российского происхождения. Промежуточных
+          веществ технологической цепочки в нём нет: их не продают, они идут на
+          следующую установку.
+        </p>
+        <p className={styles.emptyText}>
+          Так что отсутствие записи ничего не говорит о том, производят ли
+          «{name}» в России, — реестр про другое.
+        </p>
+
+        {/* Категория классификатора — чтобы «нет записи» не читалось как «мы
+            не справились». Классификатор и реестр разные вещи: код категории
+            существует всегда, запись появляется, только когда завод заявил
+            продукцию. Без этой строки человек шёл на сайт ОКПД2, находил там
+            вещество и переставал верить карточке. */}
+        {info.category && (
+          <div className={styles.categoryNote}>
+            <span className={styles.categoryLabel}>В классификаторе ОКПД2 это</span>
+            <a
+              className={styles.codeValue}
+              href={okpd2Url(info.category.code)}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="Открыть категорию в классификаторе"
+            >
+              {info.category.code}
+            </a>
+            <span className={styles.codeName}>{info.category.name}</span>
+            <span className={styles.categoryHint}>
+              Категория есть, продукции под ней никто не заявлял.
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const strong = info.match ? STRONG.includes(info.match) : false;
-  const shown = showAll ? info.producers : info.producers.slice(0, VISIBLE);
-  const hidden = info.producers.length - shown.length;
+  const shown = showAll ? producers : producers.slice(0, VISIBLE);
+  const hidden = producers.length - shown.length;
 
   return (
     <div className={styles.wrap}>
@@ -193,11 +299,16 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
       <div className={styles.summary}>
         <div className={styles.stat}>
           <span className={styles.statValue}>{info.producerCount}</span>
-          <span className={styles.statLabel}>Производителей</span>
+          <span className={styles.statLabel}>
+            {plural(info.producerCount, "Производитель", "Производителя", "Производителей")}
+          </span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statValue}>{info.regionCount}</span>
-          <span className={styles.statLabel}>Региона</span>
+          {/* Подпись согласуется с числом: «6 Региона» читалось ошибкой. */}
+          <span className={styles.statLabel}>
+            {plural(info.regionCount, "Регион", "Региона", "Регионов")}
+          </span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statValue}>
@@ -205,13 +316,58 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
           </span>
           <span className={styles.statLabel}>Статус в реестре</span>
         </div>
-        {info.okpd2 && (
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{info.okpd2}</span>
-            <span className={styles.statLabel}>ОКПД2 (основной)</span>
-          </div>
-        )}
       </div>
+
+      {/* Класс продукции отдельной строкой, а не плиткой: название из
+          классификатора длиннее, чем помещается в плитку, а без него код
+          бесполезен. */}
+      {info.okpd2 && (
+        <div className={styles.classLine}>
+          <span className={styles.codeLabel}>ОКПД2</span>
+          <a
+            className={styles.codeValue}
+            href={okpd2Url(info.okpd2)}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="Открыть код в классификаторе"
+          >
+            {info.okpd2}
+          </a>
+          {/* Кода нет в действующем классификаторе. Пометка идёт сразу за
+              самим кодом, до названия: название-то у него найдётся — по живой
+              родительской группе, — и без пометки выглядело бы обычным. */}
+          {info.okpd2Retired && (
+            <span
+              className={styles.codeRetired}
+              title="Код был присвоен записи при регистрации, а сейчас в классификаторе его нет"
+            >
+              снят
+            </span>
+          )}
+          {info.okpd2Name && (
+            <span className={styles.codeName}>{info.okpd2Name}</span>
+          )}
+          {/* У записей реестра коды разные, и продукту достаётся самый
+              частый. Сколько их всего — само по себе признак: много кодов
+              значит, что записи собрались разнородные. */}
+          {!!info.okpd2Others && (
+            <span className={styles.codeExtra}>
+              у остальных записей ещё{" "}
+              {info.okpd2Others === 1 ? "код" : `кодов: ${info.okpd2Others}`}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Вещество найдено в составе препарата, а не как самостоятельный
+          продукт. Считать это присутствием в реестре — решение заказчика, но
+          ОКПД2 у такой записи пестицидный, и молчать об этом нельзя. */}
+      {info.viaFormulation && (
+        <p className={styles.formulationNote}>
+          Вещество названо в составе препарата, а не отдельным продуктом.
+          Класс продукции выше — у препарата, а не у самого вещества.
+        </p>
+      )}
 
       <div className={styles.listHead}>
         <span className={styles.listTitle}>
@@ -228,11 +384,45 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
         </a>
       </div>
 
-      <ul className={styles.prodList}>
-        {shown.map((p) => (
-          <ProducerRow key={`${p.inn ?? p.producer}-${p.regNumber ?? p.product}`} p={p} />
-        ))}
-      </ul>
+      {/* Тот же отбор, что в панели графа. Реестр хранит и прекращённые
+          записи, и на вопрос «кто выпускает СЕЙЧАС» список вперемешку не
+          отвечает. Кнопка без записей выключена: вести в пустой список
+          незачем, а число рядом с подписью отвечает и без нажатия. */}
+      <div className={`${styles.segmented} ${styles.segmentedCard}`}>
+        {STATUS_FILTERS.map(([value, label]) => {
+          const n = counts[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              className={`${styles.segment} ${
+                statusFilter === value ? styles.segmentActive : ""
+              }`}
+              onClick={() => setStatusFilter(value)}
+              disabled={n === 0}
+              aria-pressed={statusFilter === value}
+            >
+              {label}
+              <span className={styles.segmentCount}>{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {producers.length === 0 ? (
+        <p className={styles.note}>
+          Под этот отбор записей нет.
+        </p>
+      ) : (
+        <ul className={styles.prodList}>
+          {shown.map((p) => (
+            <ProducerRow
+              key={`${p.inn ?? p.producer}-${p.regNumber ?? p.product}`}
+              p={p}
+            />
+          ))}
+        </ul>
+      )}
 
       {hidden > 0 && (
         <button

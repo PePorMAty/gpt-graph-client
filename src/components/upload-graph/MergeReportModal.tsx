@@ -10,6 +10,26 @@ export interface MergeReportRow {
   labelsByPresentation?: Record<string, string>;
 }
 
+/**
+ * Откуда пришёл слитый узел — строкой для человека.
+ *
+ * Написание в скобках показываем, ТОЛЬКО если оно отличается от подписи
+ * оставшегося узла. Иначе на продукте из пяти графов выходило «Граф А
+ * (Этилен) + Граф Б (Этилен) + Граф В (Этилен) + …» — одно имя пять раз, и за
+ * повтором терялось единственно важное: где написание разошлось.
+ *
+ * А там, где разошлось, скобки — самое ценное в списке: без них видно, что
+ * «ИПБ» с чем-то слился, но не видно, с чем именно.
+ */
+export function describeMergedFrom(row: MergeReportRow): string {
+  return row.presentations
+    .map((p) => {
+      const original = row.labelsByPresentation?.[p];
+      return original && original !== row.label ? `${p} (${original})` : p;
+    })
+    .join(", ");
+}
+
 interface MergeReportModalProps {
   presentationName: string | null;
   commonNodes: MergeReportRow[];
@@ -66,18 +86,12 @@ export const MergeReportModal: React.FC<MergeReportModalProps> = ({
         ) : (
           <>
             <p className={styles.sectionTitle}>
-              Эти узлы стали общими с другими презентациями:
+              Эти узлы стали общими с другими презентациями. В скобках —
+              написание, если оно отличается:
             </p>
             <ul className={styles.list}>
               {commonNodes.map((row) => {
-                const presText = row.presentations
-                  .map((p) => {
-                    const original = row.labelsByPresentation?.[p];
-                    return original && original !== row.label
-                      ? `${p} (${original})`
-                      : `${p} (${row.label})`;
-                  })
-                  .join(" + ");
+                const presText = describeMergedFrom(row);
                 return (
                   <li key={row.label} className={styles.item}>
                     <span className={styles.label}>{row.label}</span>

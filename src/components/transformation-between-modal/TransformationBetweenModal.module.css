@@ -1,0 +1,422 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-4);
+  background: rgba(15, 23, 42, 0.42);
+  z-index: 1000;
+}
+
+.window {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: calc(560 * var(--u));
+  max-width: 100%;
+  max-height: 86vh;
+  padding: var(--s-6);
+  background: var(--c-surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-xl);
+  overflow-y: auto;
+  /* Докрутив окно до конца, колесо листало полотно под ним. */
+  overscroll-behavior: contain;
+}
+
+/* ─── Шапка ─── */
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+
+.headIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(40 * var(--u));
+  height: calc(40 * var(--u));
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-md);
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--c-brand-ink);
+}
+
+.subtitle {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.closeX {
+  flex: none;
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-base);
+  line-height: 1;
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+
+.closeX:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+
+/* ─── Пара «исходный → целевой» ─── */
+
+/* Обе стороны в одной рамке: это одно утверждение, «из этого получается то»,
+   и разрывать его на две карточки значило бы читать его по половинке. */
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.sideTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-soft);
+}
+
+.pairArrow {
+  display: flex;
+  justify-content: center;
+  color: var(--c-brand);
+}
+
+/* Продукты не выбираются, а перечисляются: выпадающего списка нет, и когда
+   их несколько, список просто растёт вниз. */
+.products {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.productIcon {
+  flex: none;
+  display: flex;
+  color: var(--c-product);
+}
+
+.productLabel {
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+.empty {
+  padding: var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-md);
+}
+
+/* ─── Направление ─── */
+
+.directions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  font-size: var(--fs-2xs);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 50%;
+  cursor: help;
+}
+
+.directionRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+
+.direction {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  text-align: left;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.direction:hover:not(:disabled) {
+  border-color: var(--c-border-brand);
+}
+
+.direction:disabled {
+  color: var(--c-text-faint);
+  cursor: not-allowed;
+}
+
+.directionOn {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-color: var(--c-border-brand);
+}
+
+.directionIcon {
+  flex: none;
+  display: flex;
+  color: var(--c-brand);
+}
+
+.direction:disabled .directionIcon {
+  color: var(--c-text-faint);
+}
+
+/* Кружок-переключатель справа, как на макете. Своим элементом, а не
+   настоящим radio: кнопка целиком и есть переключатель, и вложенный ввод
+   перехватывал бы клик. */
+.radio {
+  flex: none;
+  margin-left: auto;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  border: 2px solid var(--c-border-strong);
+  border-radius: 50%;
+}
+
+.radioOn {
+  border-color: var(--c-brand);
+  box-shadow: inset 0 0 0 3px var(--c-surface), inset 0 0 0 10px var(--c-brand);
+}
+
+/* ─── Промпт ─── */
+
+.promptBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.promptToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  padding: var(--s-1) 0;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.promptToggle:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.promptToggle:disabled {
+  color: var(--c-text-faint);
+  cursor: not-allowed;
+}
+
+.promptTextarea {
+  width: 100%;
+  padding: var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  resize: vertical;
+}
+
+.promptReset {
+  align-self: flex-start;
+  padding: var(--s-1) 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.promptReset:disabled {
+  color: var(--c-text-faint);
+  cursor: not-allowed;
+}
+
+/* ─── Ход запроса ─── */
+
+.running {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-border-brand);
+  border-radius: var(--r-md);
+}
+
+.spinner,
+.spinnerOnBrand {
+  flex: none;
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner {
+  border: 2px solid var(--c-border-brand);
+  border-top-color: var(--c-brand);
+}
+
+/* На синей кнопке обод берётся от её же текста — иначе спиннер тонул в фоне. */
+.spinnerOnBrand {
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: var(--c-text-on-brand);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .spinnerOnBrand {
+    animation-duration: 2.4s;
+  }
+}
+
+.error {
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border: 1px solid var(--c-danger-border);
+  border-radius: var(--r-md);
+}
+
+/* ─── Кнопки ─── */
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.secondary,
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.secondary {
+  color: var(--c-text-soft);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+}
+
+.secondary:hover {
+  background: var(--c-surface-hover);
+}
+
+.primary {
+  color: var(--c-text-on-brand);
+  background: var(--c-brand);
+  border: 1px solid var(--c-brand);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--c-brand-hover);
+}
+
+.primary:disabled {
+  background: var(--c-border-strong);
+  border-color: var(--c-border-strong);
+  cursor: not-allowed;
+}
+
+/* Кнопка на время запроса тоже нажата быть не может, но выцветать ей нельзя:
+   работа идёт, и серая кнопка со спиннером читается как сломанная. Оставляем
+   цвет, приглушая его, — и спиннер на ней виден. */
+.primary.primaryBusy:disabled {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+  opacity: 0.75;
+  cursor: progress;
+}
+
+/* Стрелка на кнопке — та же, что между сторонами, повёрнутая вправо: набор
+   иконок штриховой и отдельной «стрелки вправо» в нём нет. */
+.primaryArrow {
+  transform: rotate(-90deg);
+}

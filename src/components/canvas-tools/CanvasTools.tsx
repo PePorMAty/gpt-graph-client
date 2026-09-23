@@ -1,6 +1,7 @@
 import type { FC } from "react";
 
 import {
+  AutoLayoutIcon,
   CursorIcon,
   HandIcon,
   MarqueeIcon,
@@ -32,6 +33,11 @@ interface CanvasToolsProps {
   canSave: boolean;
   onClear: () => void;
   canClear: boolean;
+  /** Пересчитать раскладку узлов по ярусам. */
+  onRelayout: () => void;
+  canRelayout: boolean;
+  /** Раскладка считается: кнопка занята, повторный клик ни к чему. */
+  relayouting?: boolean;
   /** Подсветка кнопки сохранения после успешной записи. */
   saveFlash?: boolean;
   /** Режим просмотра: доступен только выбор режима указателя. */
@@ -50,6 +56,9 @@ export const CanvasTools = ({
   canSave,
   onClear,
   canClear,
+  onRelayout,
+  canRelayout,
+  relayouting = false,
   saveFlash = false,
   readOnly = false,
 }: CanvasToolsProps) => (
@@ -72,6 +81,21 @@ export const CanvasTools = ({
 
     {!readOnly && (
       <div className={styles.group}>
+        {/* Раскладка — действие над графом, а не режим указателя, поэтому
+            стоит в той же группе, что сохранение и очистка. */}
+        <button
+          type="button"
+          className={`${styles.button} ${relayouting ? styles.buttonBusy : ""}`}
+          onClick={onRelayout}
+          disabled={!canRelayout || relayouting}
+          aria-label="Рассчитать раскладку"
+          aria-busy={relayouting}
+          data-tooltip={
+            relayouting ? "Считаем раскладку…" : "Рассчитать раскладку"
+          }
+        >
+          <AutoLayoutIcon size={18} />
+        </button>
         <button
           type="button"
           className={`${styles.button} ${saveFlash ? styles.buttonFlash : ""}`}

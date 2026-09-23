@@ -1,6 +1,7 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { colorForPresentations } from "./presentationColors";
+import { createProductIndex } from "./productIdentity";
 
 export interface MergeInput {
   existingNodes: CustomNode[];
@@ -19,34 +20,6 @@ export interface MergeOutput {
   idRemap: Record<string, string>;
 }
 
-// Дефис (обычный U+002D), различные дефисы/тире/минусы и soft hyphen:
-// U+2010, U+2011, U+2012, U+2013, U+2014, U+2015, U+2212, U+00AD.
-// В химических названиях дефис — разделитель локантов, эквивалентный
-// пробелу: «Синтез-газ» и «Синтез газ» — один продукт.
-const HYPHENS = /[-‐‑‒–—―−­]/g;
-// Разные апострофы: U+2019, U+02BC, U+02B9, U+00B4, U+0060.
-const APOSTROPHES = /[’ʼʹ´`]/g;
-// Zero-width символы: U+200B (ZWSP), U+200C (ZWNJ), U+200D (ZWJ), U+FEFF.
-// eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class -- класс намеренно содержит zero-width символы (ZWSP/ZWNJ/ZWJ/BOM)
-const ZERO_WIDTH = /[​‌‍﻿]/g;
-// Неразрывный пробел U+00A0.
-// eslint-disable-next-line no-irregular-whitespace -- регэксп намеренно матчит NBSP (U+00A0)
-const NBSP = / /g;
-
-function normalizeLabel(s: string): string {
-  return s
-    .normalize("NFC")
-    .replace(HYPHENS, " ")
-    .replace(APOSTROPHES, "'")
-    .replace(ZERO_WIDTH, "")
-    .replace(NBSP, " ")
-    .replace(/ё/g, "е")
-    .replace(/Ё/g, "Е")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
 export function mergeProductGraph({
   existingNodes,
   existingEdges,
@@ -54,14 +27,9 @@ export function mergeProductGraph({
   newEdges,
   registry,
 }: MergeInput): MergeOutput {
-  // 1) Индекс product-узлов из текущего графа по нормализованному label
-  const labelToId = new Map<string, string>();
-  for (const n of existingNodes) {
-    if (n.type !== "product") continue;
-    const label = typeof n.data?.label === "string" ? n.data.label : "";
-    if (!label) continue;
-    labelToId.set(normalizeLabel(label), n.id);
-  }
+  // 1) Указатель по product-узлам текущего графа: собственный идентификатор
+  //    продукта, а при его отсутствии — нормализованное название.
+  const index = createProductIndex(existingNodes);
 
   // 2) Глубоко копируем существующие узлы (чтобы не мутировать вход)
   const mutated: CustomNode[] = existingNodes.map((n) => ({
@@ -73,13 +41,11 @@ export function mergeProductGraph({
   const appended: CustomNode[] = [];
 
   for (const incoming of newNodes) {
-    const key = normalizeLabel(
-      typeof incoming.data?.label === "string" ? incoming.data.label : "",
-    );
+    const existingId =
+      incoming.type === "product" ? index.find(incoming.data) : null;
 
-    if (incoming.type === "product" && key && labelToId.has(key)) {
+    if (existingId) {
       // Схлопываем в существующий узел: объединяем презентации, пересчитываем цвет.
-      const existingId = labelToId.get(key)!;
       idRemap[incoming.id] = existingId;
       const target = mutated.find((n) => n.id === existingId);
       if (target) {
@@ -115,6 +81,24 @@ export function mergeProductGraph({
           merged[p] = incomingLabels[p] ?? incomingLabel ?? merged[p] ?? "";
         }
         target.data.labelsByPresentation = merged;
+        // Узлы сошлись по названию, а идентификатор был только у пришедшего —
+        // забираем его себе. Иначе он терялся бы при каждом объединении, и
+        // граф так и не набирал бы ключей, по которым схлопываться дальше.
+        if (
+          typeof incoming.data?.productId === "string" &&
+          incoming.data.productId.trim() &&
+          !(
+            typeof target.data.productId === "string" &&
+            target.data.productId.trim()
+          )
+        ) {
+          target.data.productId = incoming.data.productId;
+          target.data.productIdSource = incoming.data.productIdSource;
+          // У узла появился идентификатор — указатель должен о нём знать,
+          // иначе следующий продукт с тем же кодом, но другим названием,
+          // проедет мимо и заведёт себе отдельный узел.
+          index.add(existingId, target.data);
+        }
       }
       continue;
     }
@@ -151,8 +135,8 @@ export function mergeProductGraph({
           : {}),
       },
     });
-    if (incoming.type === "product" && key) {
-      labelToId.set(key, incoming.id);
+    if (incoming.type === "product") {
+      index.add(incoming.id, incoming.data);
     }
   }
 

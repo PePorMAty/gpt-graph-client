@@ -9,46 +9,26 @@
 }
 
 .window {
-  padding: 24px;
-  background: #fff;
-  border-radius: 8px;
+  padding: var(--s-6);
+  background: var(--c-surface);
+  border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: 420px;
+  gap: var(--s-4);
+  width: calc(560 * var(--u));
   max-height: 80vh;
   overflow-y: auto;
+  /* Прокрутка не выходит за окно: докрутив список до конца, колесо листало
+     полотно под ним. */
+  overscroll-behavior: contain;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-}
-
-.transformationName {
-  font-size: 15px;
-  font-weight: 600;
-  color: #2563eb;
-  padding: 8px 12px;
-  background: #f0f7ff;
-  border: 1px solid #d0e3ff;
-  border-radius: 6px;
-}
-
-.transformationDesc {
-  font-size: 13px;
-  color: #555;
-  line-height: 1.4;
-}
-
-.sectionTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: #444;
-  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--c-brand-ink);
 }
 
 .productList {
@@ -63,23 +43,10 @@
 .productItem {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #333;
-  padding: 4px 0;
-}
-
-.productCheckbox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.productCheckbox input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
 }
 
 .badgeExisting {
@@ -100,11 +67,13 @@
   white-space: nowrap;
 }
 
+/* Возврат слева, действие справа — как в остальных экранах мастера. */
 .actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
 }
 
 .retryBtn {
@@ -287,4 +256,166 @@
 
 .customAdd:hover {
   background: #1d4ed8;
+}
+
+/* ─── Шапка ─── */
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.closeX {
+  flex: none;
+  display: flex;
+  padding: var(--s-1);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+
+.closeX:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+
+/* ─── Карточка самого шага ─── */
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-md);
+}
+
+.cardIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(48 * var(--u));
+  height: calc(48 * var(--u));
+  color: var(--c-transform);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.cardText {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardCap {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.cardName {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+.cardDesc {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+}
+
+/* ─── Блок: входы, выходы, примечания ─── */
+
+.block {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.blockIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(32 * var(--u));
+  height: calc(32 * var(--u));
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-sm);
+}
+
+.blockBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.blockTitle {
+  display: block;
+  margin-bottom: var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.productCheck {
+  flex: none;
+  width: calc(15 * var(--u));
+  height: calc(15 * var(--u));
+  accent-color: var(--c-brand);
+  cursor: pointer;
+}
+
+.productIcon {
+  flex: none;
+  display: flex;
+  color: var(--c-product);
+}
+
+/* Имя занимает всё свободное место; бейдж «новый» не даёт себя сжать. */
+.productName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+.notes {
+  margin: 0;
+  padding-left: var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+}
+
+.notes li + li {
+  margin-top: var(--s-1);
+}
+
+/* Плюс в кружке — тот же приём, что у добавления источника. */
+.customPlus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(22 * var(--u));
+  height: calc(22 * var(--u));
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border-radius: 50%;
+}
+
+.actionsRight {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
 }

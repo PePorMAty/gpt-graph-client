@@ -6,6 +6,7 @@ import { CollapsibleBlock } from "./CollapsibleBlock";
 import { NodeSourcesBlock } from "./NodeSourcesBlock";
 import { CardTitleField } from "./CardTitleField";
 import { KeyInfoBlock } from "./KeyInfoBlock";
+import { NodeIdentifiers } from "./NodeIdentifiers";
 import { IndustryPanel } from "../industry/IndustryPanel";
 import { MarkdownEditor } from "../markdown-editor";
 import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
@@ -78,7 +79,7 @@ export const NodeCard: FC<NodeCardProps> = ({
   downTab,
   upTab,
 
-  hasOutgoingProductNeighbors = false,
+  hasProductNeighbors = false,
   onFetchTransformations,
   linkedProducts = [],
   onFocusLinkedProduct,
@@ -108,11 +109,7 @@ export const NodeCard: FC<NodeCardProps> = ({
     : isProduct
       ? "product"
       : "transformation";
-  const KIND_LABEL = {
-    product: "Продукт",
-    transformation: "Технология",
-    alt: "Альтернатива",
-  } as const;
+  const KIND_LABEL = { alt: "Альтернатива" } as const;
 
   const [tab, setTab] = useState<CardTab>("brief");
   const [buildOpen, setBuildOpen] = useState(false);
@@ -171,6 +168,16 @@ export const NodeCard: FC<NodeCardProps> = ({
   if (!isOpen) return null;
 
   const canBuild = !readOnly && (isProduct || (isAltNode && !!altDirection));
+  const canFetchTransformations =
+    isProduct && hasProductNeighbors && !!onFetchTransformations;
+  // Кнопка «…» прячется, когда прятать под ней нечего. Без этого она
+  // открывала пустой прямоугольник: в режиме «только продукты» readOnly
+  // снимал все пункты разом, и меню превращалось в сломанное на вид.
+  const hasMenu =
+    canBuild ||
+    canFetchTransformations ||
+    (!!onToggleBookmark && !isAltNode) ||
+    !!onDeleteNode;
 
   return (
     <>
@@ -196,27 +203,37 @@ export const NodeCard: FC<NodeCardProps> = ({
                 onBlur={onFieldBlur}
                 readOnly={readOnly}
               />
-              <span className={`${styles.kindBadge} ${styles[`kind_${kind}`]}`}>
-                {KIND_LABEL[kind]}
-              </span>
+              {/* Подпись типа осталась только у альтернативы. «Продукт» и
+                  «Технология» повторяли то, что и так сказано значком: синяя
+                  пробирка против оранжевой шестерёнки. У альтернативы пробирка
+                  тоже пробирка, только фиолетовая, — там слово нужно. */}
+              {kind === "alt" && (
+                <span className={`${styles.kindBadge} ${styles.kind_alt}`}>
+                  {KIND_LABEL.alt}
+                </span>
+              )}
             </div>
-            <div className={styles.nodeId} title={nodeId ?? undefined}>
-              ID: {shortNodeId(nodeId, effectiveNodeType)}
-            </div>
+            <NodeIdentifiers
+              nodeId={nodeId}
+              short={shortNodeId(nodeId, effectiveNodeType)}
+              productName={isProduct ? value : undefined}
+            />
           </div>
 
           <div className={styles.headerActions}>
             <div className={styles.menuWrap} ref={menuRef}>
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={() => setMenuOpen((v) => !v)}
-                aria-label="Ещё"
-                aria-expanded={menuOpen}
-              >
-                …
-              </button>
-              {menuOpen && (
+              {hasMenu && (
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label="Ещё"
+                  aria-expanded={menuOpen}
+                >
+                  …
+                </button>
+              )}
+              {hasMenu && menuOpen && (
                 <div className={styles.menu}>
                   {canBuild && (
                     <button
@@ -231,21 +248,19 @@ export const NodeCard: FC<NodeCardProps> = ({
                       {isAltNode ? "Построить альтернативу" : "Построить шаг"}
                     </button>
                   )}
-                  {isProduct &&
-                    hasOutgoingProductNeighbors &&
-                    onFetchTransformations && (
-                      <button
-                        type="button"
-                        className={styles.menuItem}
-                        onClick={() => {
-                          onFetchTransformations();
-                          setMenuOpen(false);
-                        }}
-                      >
-                        <BranchIcon size={16} className={styles.menuItemIcon} />
-                        Преобразования к соседям
-                      </button>
-                    )}
+                  {canFetchTransformations && (
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => {
+                        onFetchTransformations?.();
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <BranchIcon size={16} className={styles.menuItemIcon} />
+                      Преобразование между продуктами
+                    </button>
+                  )}
                   {/* Закладки только у продуктов и преобразований:
                       альтернатива живёт внутри шага, отмечать её незачем. */}
                   {onToggleBookmark && !isAltNode && (
@@ -357,12 +372,15 @@ export const NodeCard: FC<NodeCardProps> = ({
                 )}
               </CollapsibleBlock>
 
-              {/* Ключевая информация — параметры карточки технологии.
-                  У продукта их место занимают «Промышленные данные». */}
-              {kind === "transformation" && (
+              {/* Ключевая информация. Отрасль и назначение есть и у продукта,
+                  и у преобразования — блок нужен обоим; поля карточки
+                  технологии добавляются к ним там, где они есть. У
+                  альтернативы своего содержимого нет вовсе. */}
+              {kind !== "alt" && (
                 <KeyInfoBlock
-                  card={productCard}
-                  onEdit={() => setTab("tech")}
+                  card={isProduct ? null : productCard}
+                  nodeId={nodeId}
+                  readOnly={readOnly}
                 />
               )}
 
@@ -416,6 +434,28 @@ export const NodeCard: FC<NodeCardProps> = ({
                   onClick={() => setBuildOpen(true)}
                 >
                   {isAltNode ? "Построить альтернативу" : "Построить шаг"}
+                </button>
+              )}
+
+              {/* Преобразование между этим продуктом и соседними.
+                  Действие было только в меню «…» — то есть невидимо, пока не
+                  откроешь меню. Здесь оно на виду, ровно там, где человек уже
+                  смотрит на продукт.
+
+                  Намеренно НЕ через canBuild: тот выключается вместе с
+                  readOnly, а в режиме «только продукты» карточка как раз
+                  просмотровая — при том что именно там два продукта видны
+                  рядом и связать их преобразованием нужнее всего. Граф эта
+                  кнопка меняет не сама: она открывает модалку, которая идёт
+                  за преобразованием на сервер. */}
+              {canFetchTransformations && (
+                <button
+                  type="button"
+                  className={styles.transformButton}
+                  onClick={onFetchTransformations}
+                >
+                  <BranchIcon size={17} className={styles.transformButtonIcon} />
+                  Получить преобразование
                 </button>
               )}
 
@@ -510,6 +550,7 @@ export const NodeCard: FC<NodeCardProps> = ({
                   productName={value}
                   downTab={downTab}
                   upTab={upTab}
+                  onBack={() => setBuildOpen(false)}
                 />
               )}
             </div>

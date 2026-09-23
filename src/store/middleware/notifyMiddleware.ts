@@ -11,16 +11,22 @@ import {
 import { fetchProductCard } from "../api/product-card-api";
 import { continueGraph, getGraphData } from "../api/graph-api";
 import { showToast } from "../../components/toast/toastStore";
+import { describeFailure, type FailureStage } from "./failureText";
 
-function errorText(payload: unknown, fallback: string): string {
-  if (typeof payload === "string" && payload.trim()) return payload;
-  // Часть роутов отдаёт причину объектом { error: "…" } — достаём и её, иначе
-  // на экран ушла бы общая отговорка вместо того, что назвал сервер.
-  if (payload && typeof payload === "object") {
-    const inner = (payload as { error?: unknown }).error;
-    if (typeof inner === "string" && inner.trim()) return inner;
-  }
-  return fallback;
+/**
+ * Показать отказ понятно: что не вышло, для какого продукта и почему.
+ *
+ * Раньше в ленту уходила строка санка — «step/sources: server returned
+ * success=false». По ней нельзя было понять ни стадию, ни продукт, ни что
+ * делать дальше; сама строка теперь живёт второй строкой, для логов.
+ */
+function notifyFailure(
+  stage: FailureStage,
+  payload: unknown,
+  product?: string | null,
+) {
+  const { text, detail } = describeFailure(stage, payload, product);
+  showToast("error", text, detail);
 }
 
 /** Запрос пользователя в подписи уведомления: целиком он бывает на абзац. */
@@ -56,10 +62,14 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
       nodes
         ? `Граф построен: узлов ${nodes} — «${prompt}»`
         : `Граф не построен: в ответе нет узлов — «${prompt}»`,
+      nodes
+        ? undefined
+        : "Модель ответила, но цепочки в ответе нет. Обычно помогает более " +
+          "конкретный запрос: назовите продукт и способ производства.",
     );
   } else if (getGraphData.rejected.match(action)) {
     if (!action.meta.aborted) {
-      showToast("error", errorText(action.payload, "Не удалось построить граф"));
+      notifyFailure("graph", action.payload, short(action.meta.arg.promptValue));
     }
   }
 
@@ -76,7 +86,7 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
     );
   } else if (continueGraph.rejected.match(action)) {
     if (!action.meta.aborted) {
-      showToast("error", errorText(action.payload, "Не удалось продолжить граф"));
+      notifyFailure("continue", action.payload);
     }
   }
 
@@ -95,10 +105,7 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
     if (action.meta.aborted) {
       showToast("info", "Поиск источников отменён");
     } else {
-      showToast(
-        "error",
-        errorText(action.payload, "Поиск источников не удался"),
-      );
+      notifyFailure("sources", action.payload, action.meta.arg.productName);
     }
   }
 
@@ -110,10 +117,14 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
       needsSources
         ? "Обобщение: текущих источников не хватает"
         : "Обобщение готово",
+      needsSources
+        ? "Модель не нашла в найденных источниках достаточно данных. " +
+          "Поищите источники заново — можно с другим запросом или с другими сайтами."
+        : undefined,
     );
   } else if (aggregateStepSources.rejected.match(action)) {
     if (!action.meta.aborted) {
-      showToast("error", errorText(action.payload, "Обобщение не удалось"));
+      notifyFailure("aggregate", action.payload, action.meta.arg.productName);
     }
   }
 
@@ -125,10 +136,15 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
       insufficient
         ? "Шаг построен, но источников не хватило"
         : "Шаг построен",
+      insufficient
+        ? "Шаг собран по тому, что было: по части продуктов данных не нашлось. " +
+          "Их названия перечислены в панели продукта — найдите для них источники " +
+          "и постройте шаг заново."
+        : undefined,
     );
   } else if (buildStep.rejected.match(action)) {
     if (!action.meta.aborted) {
-      showToast("error", errorText(action.payload, "Построение не удалось"));
+      notifyFailure("build", action.payload, action.meta.arg.productName);
     }
   }
 
@@ -145,10 +161,7 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
     fetchTransformationBetween.rejected.match(action)
   ) {
     if (!action.meta.aborted) {
-      showToast(
-        "error",
-        errorText(action.payload, "Не удалось получить преобразования"),
-      );
+      notifyFailure("transformations", action.payload);
     }
   }
 
@@ -157,10 +170,7 @@ export const notifyMiddleware: Middleware = () => (next) => (action) => {
     showToast("success", "Карточка продукта заполнена");
   } else if (fetchProductCard.rejected.match(action)) {
     if (!action.meta.aborted) {
-      showToast(
-        "error",
-        errorText(action.payload, "Не удалось заполнить карточку"),
-      );
+      notifyFailure("card", action.payload);
     }
   }
 

@@ -27,9 +27,12 @@
   color: var(--c-brand);
 }
 
+/* Две строки в шапке высотой 72px: кегль на ступень ниже прежнего и плотный
+   интерлиньяж, иначе надпись вылезает за её пределы. */
 .logoText {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
+  line-height: 1.12;
   letter-spacing: -0.01em;
   color: var(--c-brand-ink);
   white-space: nowrap;

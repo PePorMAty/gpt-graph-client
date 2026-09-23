@@ -10,6 +10,17 @@ import {
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
+import { StepSourcesList } from "./StepSourcesList";
+import { useStepSearchSettings } from "./stepSearchSettings";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BookIcon,
+  DatabaseIcon,
+  FlaskIcon,
+  PencilIcon,
+  SearchIcon,
+} from "../icons";
 import { parseDomainsInput } from "../../utils/parseDomains";
 import {
   AI_MODELS,
@@ -18,6 +29,7 @@ import {
   useAiConfig,
 } from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
+import wiz from "./StepWizard.module.css";
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
@@ -56,6 +68,7 @@ type StepByStepContentProps = Pick<
   | "onChangeStepAggregatedText"
   | "isAlternativeNode"
   | "altDescription"
+  | "stageOverride"
 >;
 
 export const StepByStepContent: FC<StepByStepContentProps> = ({
@@ -97,6 +110,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   isAlternativeNode = false,
   altDescription,
+  stageOverride,
 }) => {
   const productName = stepChainCurrentProductLabel || "";
   const hasSources = stepSources.length > 0;
@@ -118,6 +132,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview =
     !!pendingStep && stepBuildStatus === "succeeded" && !buildNeedsSources;
+
+  // Какой экран мастера показать. Обычно его определяет состояние, но при
+  // возврате назад по полосе шагов решает stageOverride: обобщение готово, а
+  // человек смотрит источники — состояние иначе утянуло бы его вперёд.
+  const showSourcesStage =
+    sourcesUsable &&
+    !stepNeedsSources &&
+    !showPreview &&
+    (stageOverride === 2 || (!hasValidAggregate && stageOverride !== 3));
+  const showAggregateStage =
+    sourcesUsable && hasValidAggregate && !showPreview && stageOverride !== 2;
 
   // ── Выбор источников для обобщения шага (3.1) ──
   const [excludedUrls, setExcludedUrls] = useState<Set<string>>(new Set());
@@ -149,13 +174,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     });
   };
 
-  // ── Sources prompt state ──
-  const [maxItems, setMaxItems] = useState(5);
-  const [srcPromptOpen, setSrcPromptOpen] = useState(false);
-  const [manualSrcPrompt, setManualSrcPrompt] = useState<string | null>(null);
-
-  // ── Белый список доменов поиска (3.3) ──
-  const [domainsText, setDomainsText] = useState("");
+  // ── Настройки поиска: общие с первым экраном мастера ──
+  // Промпт, домены и число источников заданы ДО первого поиска и остаются
+  // теми же при «Найти источники заново» — одно состояние на оба экрана.
+  const {
+    maxItems,
+    setMaxItems,
+    open: srcPromptOpen,
+    setOpen: setSrcPromptOpen,
+    manualPrompt: manualSrcPrompt,
+    setManualPrompt: setManualSrcPrompt,
+    domainsText,
+    setDomainsText,
+  } = useStepSearchSettings();
 
   const autoSrcPrompt = useMemo(
     () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
@@ -267,7 +298,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     </button>
   ) : null;
 
-  const searchPromptEditor = (
+  // hideToggle — только там, где тумблер уже есть в сводке над источниками.
+  // На стадии поиска сводки нет, и без своей надписи редактор стал бы
+  // недостижим.
+  const renderSearchPromptEditor = (hideToggle = false) => (
     <SearchPromptEditor
       open={srcPromptOpen}
       onToggle={() => setSrcPromptOpen((v) => !v)}
@@ -278,6 +312,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       isEmpty={isSrcPromptEmpty}
       domainsText={domainsText}
       onChangeDomains={setDomainsText}
+      hideToggle={hideToggle}
     />
   );
 
@@ -425,9 +460,15 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   // ── Regular product node: standard flow ──
   return (
     <div className={styles.formGroup}>
-      <div className={styles.sourcesTitle}>
-        Текущий продукт: <b>{productName || "—"}</b>
-      </div>
+      {/* На экране источников продукт назван в сводке — здесь он был бы
+          второй раз подряд. На остальных стадиях сводки нет. */}
+      {/* Продукт назван в сводке над источниками и в заголовке окна на
+          превью — здесь он был бы второй раз подряд. */}
+      {!showSourcesStage && !showAggregateStage && !showPreview && (
+          <div className={styles.sourcesTitle}>
+            Текущий продукт: <b>{productName || "—"}</b>
+          </div>
+        )}
 
       {/* Маркер с build родителя: этому продукту нужны свежие источники */}
       {stepNeedsFreshSources && (
@@ -506,7 +547,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </div>
 
           {/* Редактор поиска: промпт + белый список доменов (3.3) */}
-          {searchPromptEditor}
+          {renderSearchPromptEditor()}
 
           {sourcesLoading && (
             <div className={styles.tabLoader}>
@@ -543,11 +584,85 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Источники есть (унаследованные ИЛИ найденные сами) → ручное обобщение,
-          затем ручное построение. Унаследованные обобщаем сразу, без поиска. */}
-      {sourcesUsable && !hasValidAggregate && !stepNeedsSources && (
+      {/* ── Экран 2 мастера: найденные источники и отбор для обобщения ──
+          Список, поле фильтра и ручное добавление собраны в отдельной
+          карточке; здесь остаются действия над ней. */}
+      {showSourcesStage && (
         <>
-          {/* Aggregate prompt editor */}
+          <div className={wiz.summary}>
+            <span className={wiz.summaryCell}>
+              <span className={wiz.summaryIcon}>
+                <FlaskIcon size={20} />
+              </span>
+              <span>
+                <span className={wiz.summaryCap}>Текущий продукт</span>
+                <span className={wiz.summaryValue}>{productName || "—"}</span>
+              </span>
+            </span>
+            <span className={wiz.summaryCell}>
+              <span className={wiz.summaryIcon}>
+                {direction === "up" ? (
+                  <ArrowUpIcon size={20} />
+                ) : (
+                  <ArrowDownIcon size={20} />
+                )}
+              </span>
+              <span>
+                <span className={wiz.summaryCap}>Направление</span>
+                <span className={wiz.summaryValue}>
+                  {direction === "up" ? "Построить вверх" : "Построить вниз"}
+                </span>
+                <span className={wiz.summaryHint}>
+                  {direction === "up"
+                    ? "Найти, из чего производится"
+                    : "Найти, что получается"}
+                </span>
+              </span>
+            </span>
+            <button
+              type="button"
+              className={wiz.summaryAction}
+              onClick={() => setSrcPromptOpen((v) => !v)}
+            >
+              <PencilIcon size={15} />
+              {srcPromptOpen ? "Скрыть промпт поиска" : "Редактировать промпт поиска"}
+            </button>
+          </div>
+
+          <StepSourcesList
+            sources={stepSources}
+            excluded={excludedUrls}
+            onToggle={toggleSourceSelected}
+            onAddManualSource={onAddManualSource}
+            disabled={aggregateLoading}
+            rightAction={
+              <button
+                type="button"
+                onClick={handleFetchSources}
+                disabled={sourcesLoading || aggregateLoading || isSrcPromptEmpty}
+                className={wiz.secondary}
+              >
+                <SearchIcon size={17} />
+                {sourcesLoading ? "Ищем…" : "Найти источники заново"}
+              </button>
+            }
+          />
+          {cancelSearchButton}
+
+          {isBorrowedSources && (
+            <div className={styles.warningText}>
+              Источники взяты у «{stepSourcesOrigin}».
+            </div>
+          )}
+          {stepSourcesExhausted && (
+            <div className={styles.warningText}>
+              Источники закончились — повторный поиск не дал новых сверх уже
+              найденных.
+            </div>
+          )}
+
+          {/* Промпт обобщения — реже нужен, чем поисковый, поэтому не в
+              сводке, а отдельной строкой над кнопкой. */}
           <button
             type="button"
             onClick={() => setAggPromptOpen((v) => !v)}
@@ -587,46 +702,44 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
 
-          {aggregateLoading && (
-            <div className={styles.tabLoader}>
-              <div className={styles.tabSpinner} />
-              <span>Обобщение одного шага...</span>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={handleAggregate}
-            disabled={
-              aggregateLoading ||
-              selectedStepSources.length < 1 ||
-              isAggPromptEmpty
-            }
-            className={styles.findSourcesButton}
-          >
-            {aggregateLoading
-              ? "Обобщение..."
-              : isAggPromptDirty
-                ? "Обобщить (свой промпт)"
-                : "Обобщить (один шаг)"}
-          </button>
-          {searchPromptEditor}
-          <button
-            type="button"
-            onClick={handleFetchSources}
-            disabled={sourcesLoading || aggregateLoading || isSrcPromptEmpty}
-            className={styles.findSourcesButton}
-            style={{ marginTop: 4 }}
-          >
-            {sourcesLoading
-              ? "Поиск..."
-              : isSrcPromptDirty
-                ? "Найти источники заново (свой промпт)"
-                : "Найти источники заново"}
-          </button>
-          {cancelSearchButton}
+          {srcPromptOpen && renderSearchPromptEditor(true)}
+
           {stepAggregateError && (
-            <div className={styles.errorText}>Ошибка: {stepAggregateError}</div>
+            <div className={wiz.error}>Ошибка: {stepAggregateError}</div>
           )}
+
+          <div className={wiz.footer}>
+            <button
+              type="button"
+              onClick={onClearStepState}
+              disabled={sourcesLoading || aggregateLoading}
+              className={wiz.secondary}
+            >
+              Начать заново
+            </button>
+            <button
+              type="button"
+              onClick={handleAggregate}
+              disabled={
+                aggregateLoading ||
+                selectedStepSources.length < 1 ||
+                isAggPromptEmpty
+              }
+              className={`${wiz.primary} ${aggregateLoading ? wiz.primaryBusy : ""}`}
+            >
+              {aggregateLoading ? (
+                <>
+                  <span className={wiz.spinner} aria-hidden="true" />
+                  Обобщаем…
+                </>
+              ) : (
+                <>
+                  Обобщить источники
+                  <ArrowDownIcon size={17} className={wiz.arrowRight} />
+                </>
+              )}
+            </button>
+          </div>
         </>
       )}
 
@@ -649,7 +762,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
           {/* Стадия 1 (!sourcesUsable) может рендериться параллельно — не дублируем редактор. */}
-          {sourcesUsable && searchPromptEditor}
+          {sourcesUsable && renderSearchPromptEditor()}
           <button
             type="button"
             onClick={handleFetchSources}
@@ -666,29 +779,67 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </>
       )}
 
-      {/* Stage: aggregated ready → build */}
-      {sourcesUsable && hasValidAggregate && (
+      {/* Stage: aggregated ready → build. Скрыт, когда шаг уже построен:
+          превью занимает тот же экран, и обобщение под ним только уводило бы
+          внимание. */}
+      {showAggregateStage && (
         <>
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel}>
-              Обобщённое описание шага:
-            </label>
-            <MarkdownEditor
-              value={stepAggregatedText ?? ""}
-              onChange={onChangeStepAggregatedText}
-            />
+          <div className={wiz.summary}>
+            <span className={wiz.summaryCell}>
+              <span className={wiz.summaryIcon}>
+                <FlaskIcon size={20} />
+              </span>
+              <span>
+                <span className={wiz.summaryCap}>Текущий продукт</span>
+                <span className={wiz.summaryValue}>{productName || "—"}</span>
+              </span>
+            </span>
+            <span className={wiz.summaryCell}>
+              <span className={wiz.summaryIcon}>
+                <DatabaseIcon size={20} />
+              </span>
+              <span>
+                <span className={wiz.summaryCap}>Обобщено источников</span>
+                <span className={wiz.summaryValue}>
+                  {selectedStepSources.length} из {stepSources.length}
+                </span>
+              </span>
+            </span>
+            <button
+              type="button"
+              className={wiz.summaryAction}
+              onClick={() => setBuildPromptOpen((v) => !v)}
+            >
+              <PencilIcon size={15} />
+              {buildPromptOpen
+                ? "Скрыть промпт построения"
+                : "Редактировать промпт построения"}
+              {isBuildPromptDirty && " (изменён)"}
+            </button>
           </div>
 
-          {/* Build prompt editor */}
-          <button
-            type="button"
-            onClick={() => setBuildPromptOpen((v) => !v)}
-            className={styles.promptToggle}
-          >
-            {buildPromptOpen
-              ? "Скрыть промпт построения"
-              : "Редактировать промпт построения"}
-          </button>
+          {/* Текст обобщения — то, из чего будет построен шаг. Правится здесь
+              же: шаг соберётся именно по нему, и заметить неточность проще
+              до построения, чем разбирать её потом в превью. */}
+          <div className={wiz.aggregate}>
+            <div className={wiz.aggregateHead}>
+              <span className={wiz.sourcesHeadIcon}>
+                <BookIcon size={20} />
+              </span>
+              <span className={wiz.sourcesHeadText}>
+                <span className={wiz.sourcesTitle}>Обобщённое описание шага</span>
+                <span className={wiz.sourcesHint}>
+                  Из этого текста соберётся шаг — можно поправить
+                </span>
+              </span>
+            </div>
+            <div className={wiz.aggregateBody}>
+              <MarkdownEditor
+                value={stepAggregatedText ?? ""}
+                onChange={onChangeStepAggregatedText}
+              />
+            </div>
+          </div>
 
           {buildPromptOpen && (
             <div className={styles.promptEditor}>
@@ -719,66 +870,57 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
 
-          {buildLoading && (
-            <div className={styles.tabLoader}>
-              <div className={styles.tabSpinner} />
-              <span>Построение шага...</span>
+          {/* Шаг из этого текста уже построен: повторное построение дало бы
+              тот же результат, и честнее сказать это, чем оставить кнопку,
+              которая ничего не меняет. */}
+          {stepBuiltFromAggregate && (
+            <div className={styles.warningText}>
+              Шаг из этого обобщения уже построен. Чтобы построить ещё раз —
+              обобщите заново.
             </div>
           )}
-          {sourcesUsable &&
-            (stepBuiltFromAggregate ? (
-              <div className={styles.warningText}>
-                Шаг из этого обобщения уже построен. Чтобы построить ещё раз —
-                переобобщите (или найдите источники заново и обобщите).
-              </div>
-            ) : (
+
+          {stepBuildError && (
+            <div className={wiz.error}>Ошибка: {stepBuildError}</div>
+          )}
+
+          <div className={wiz.footer}>
+            <span className={wiz.footerLeft}>
               <button
                 type="button"
-                onClick={() => handleBuild()}
-                disabled={buildLoading || isBuildPromptEmpty}
-                className={`${styles.findSourcesButton} ${styles.primaryButton}`}
+                onClick={handleAggregate}
+                disabled={
+                  aggregateLoading ||
+                  buildLoading ||
+                  selectedStepSources.length < 1
+                }
+                className={wiz.secondary}
+                title="Собрать описание шага из источников заново"
               >
-                {buildLoading
-                  ? "Построение..."
-                  : isBuildPromptDirty
-                    ? "Построить шаг (свой промпт)"
-                    : "Построить шаг"}
+                {aggregateLoading ? "Обобщаем…" : "Обобщить заново"}
               </button>
-            ))}
-          <button
-            type="button"
-            onClick={handleAggregate}
-            disabled={
-              aggregateLoading || buildLoading || selectedStepSources.length < 1
-            }
-            className={styles.findSourcesButton}
-            style={{ marginTop: 4 }}
-          >
-            Переобобщить (свежий шаг)
-          </button>
-          {searchPromptEditor}
-          <button
-            type="button"
-            onClick={handleFetchSources}
-            disabled={
-              sourcesLoading ||
-              aggregateLoading ||
-              buildLoading ||
-              isSrcPromptEmpty
-            }
-            className={styles.findSourcesButton}
-            style={{ marginTop: 4 }}
-          >
-            {sourcesLoading
-              ? "Поиск..."
-              : isSrcPromptDirty
-                ? "Найти источники заново (свой промпт)"
-                : "Найти источники заново"}
-          </button>
-          {cancelSearchButton}
-          {stepBuildError && (
-            <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
-          )}
+            </span>
+            <button
+              type="button"
+              onClick={() => handleBuild()}
+              disabled={
+                buildLoading || isBuildPromptEmpty || stepBuiltFromAggregate
+              }
+              className={`${wiz.primary} ${buildLoading ? wiz.primaryBusy : ""}`}
+            >
+              {buildLoading ? (
+                <>
+                  <span className={wiz.spinner} aria-hidden="true" />
+                  Строим шаг…
+                </>
+              ) : (
+                <>
+                  Построить шаг
+                  <ArrowDownIcon size={17} className={wiz.arrowRight} />
+                </>
+              )}
+            </button>
+          </div>
         </>
       )}
 
@@ -816,91 +958,27 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </>
         )}
 
-      {/* Список источников — скрыт при маркере «нужны свежие» (показывать
-          непригодные/унаследованные источники незачем — ведём к поиску). */}
-      {sourcesUsable && (
-        <div className={styles.sourcesBox}>
-          <div className={styles.sourcesTitle}>
-            Источники ({stepSources.length}){" "}
-            <span className={styles.selectedCounter}>
-              · для обобщения выбрано: {selectedStepSources.length}
-            </span>
-          </div>
-          {isBorrowedSources && (
-            <div className={styles.warningText}>
-              Источники взяты у «{stepSourcesOrigin}».
-            </div>
-          )}
-          {stepSourcesExhausted && (
-            <div className={styles.warningText}>
-              Источники закончились — повторный поиск не дал новых сверх уже
-              найденных.
-            </div>
-          )}
-          {stepSources.map((s) => (
-            <details key={s.url} className={styles.sourceItem}>
-              <summary className={styles.sourceSummary}>
-                <span className={styles.sourceSelectRow}>
-                  {/* Чекбокс выбора источника для обобщения шага (3.1). */}
-                  <input
-                    type="checkbox"
-                    checked={
-                      !excludedUrls.has((s.url || "").trim().toLowerCase())
-                    }
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() => toggleSourceSelected(s.url)}
-                    title="Использовать этот источник при обобщении"
-                  />
-                  <span className={styles.sourceTitle}>{s.title}</span>
-                </span>
-              </summary>
-              <div className={styles.sourceBody}>
-                <a
-                  href={s.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={styles.sourceLink}
-                >
-                  {s.url}
-                </a>
-                <div className={styles.sourceDesc}>
-                  {s.technology_description}
-                </div>
-              </div>
-            </details>
-          ))}
+      {/* Списка источников на этом экране нет: из чего собран текст, сказано
+          счётчиком в сводке, а сам список — на предыдущем шаге, куда ведёт
+          номер «2» в полосе. Сброс всего шага живёт там же. */}
 
-          {/* Ручное добавление источников ПОСЛЕ поиска (3.2). */}
-          <AddSourceForm onAdd={onAddManualSource} />
+      {/* Откат последнего шага — действие над уже построенным, а не часть
+          мастера: стоит особняком и оформлено как второстепенная кнопка, а не
+          как шаг вперёд. */}
+      {hasSteps && (
+        <div className={wiz.undoRow}>
+          <button type="button" onClick={onUndoStep} className={wiz.secondary}>
+            <ArrowUpIcon size={17} className={wiz.arrowBack} />
+            Отменить последний шаг
+          </button>
+          <span className={wiz.undoNote}>
+            Построено шагов: {stepChainStepCount}
+          </span>
         </div>
       )}
 
-      {/* Reset */}
-      {(sourcesUsable || hasValidAggregate) && (
-        <button
-          type="button"
-          onClick={onClearStepState}
-          disabled={sourcesLoading || aggregateLoading || buildLoading}
-          className={styles.findSourcesButton}
-          style={{ marginTop: 8 }}
-        >
-          Сбросить и начать шаг заново
-        </button>
-      )}
-
-      {hasSteps && (
-        <button
-          type="button"
-          onClick={onUndoStep}
-          className={styles.findSourcesButton}
-          style={{ marginTop: 8 }}
-        >
-          Отменить последний шаг
-        </button>
-      )}
-
       {stepChainError && (
-        <div className={styles.errorText}>Ошибка: {stepChainError}</div>
+        <div className={wiz.error}>Ошибка: {stepChainError}</div>
       )}
 
       {showPreview && pendingStep && (
@@ -909,6 +987,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           anchorProductName={productName}
           stepNumber={stepChainStepCount + 1}
           direction={direction}
+          // Третий экран того же окна, а не модалка поверх него: заголовок и
+          // полосу шагов даёт окно построения.
+          inline
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.
