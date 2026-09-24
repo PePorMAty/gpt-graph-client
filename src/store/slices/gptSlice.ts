@@ -499,7 +499,14 @@ const gptSlice = createSlice({
       for (const node of state.data.nodes) {
         const id = byNodeId[node.id];
         if (!id) continue;
-        if (typeof node.data?.productId === "string" && node.data.productId.trim()) {
+        // Прежний ответ справочника заменяем — он мог устареть (см.
+        // resolveProductIds). Заданное иначе не трогаем: пока справочник
+        // отвечал, человек мог вписать идентификатор руками.
+        if (
+          typeof node.data?.productId === "string" &&
+          node.data.productId.trim() &&
+          node.data.productIdSource !== "dictionary"
+        ) {
           continue;
         }
         node.data = { ...node.data, productId: id, productIdSource: "dictionary" };

@@ -353,11 +353,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     (async () => {
       const nodes = nodesRef.current;
       const next = await resolveProductIds(nodes);
-      // Тот же массив — справочник ничего не добавил, будить стор незачем.
+      // Тот же массив — справочнику нечего ни добавить, ни поправить.
       if (cancelled || next === nodes) return;
 
       // Берём только изменившиеся узлы: resolveProductIds отображает список
-      // один в один, и несовпадение ссылки — это и есть «сюда проставили».
+      // один в один, и несовпадение ссылки — это и есть «сюда проставили»
+      // (или обновили устаревший ответ справочника).
       const byNodeId: Record<string, string> = {};
       next.forEach((n, i) => {
         if (n === nodes[i]) return;
