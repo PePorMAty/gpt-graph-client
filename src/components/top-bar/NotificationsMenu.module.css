@@ -122,6 +122,25 @@
   background: var(--c-surface-hover);
 }
 
+/* Уведомление о узле — вся строка кнопка: по ней переходят к узлу. */
+.itemLink {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.itemGo {
+  font-size: var(--fs-sm);
+  color: var(--c-brand);
+}
+
+.itemLink:hover .itemGo {
+  text-decoration: underline;
+}
+
 .marker {
   flex: 0 0 auto;
   width: 7px;

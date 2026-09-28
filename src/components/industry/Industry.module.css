@@ -743,3 +743,396 @@ a.codeValue:hover {
   font-size: var(--fs-sm);
   color: var(--c-text-faint);
 }
+
+/* ─── Отбор по компании ─── */
+
+.company {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 300px;
+}
+
+/* В узкой панели — во всю ширину: названия компаний длинные, а обрезанное
+   «АО «Группа комп…» не говорит, какая компания выбрана. */
+.companyWide {
+  flex-basis: 100%;
+  max-width: none;
+}
+
+.companyTrigger {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  text-align: left;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.companyTrigger svg {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+/* Отбор включён — видно издалека: по нему весь список сейчас одна компания. */
+.companyTriggerOn {
+  /* Место под крестик, который лежит поверх кнопки. */
+  padding-right: calc(var(--s-3) + 20px);
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+}
+
+.companyTriggerOn svg {
+  color: var(--c-brand-strong);
+}
+
+.companyValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companyClear {
+  position: absolute;
+  top: 50%;
+  right: var(--s-2);
+  display: inline-flex;
+  padding: 4px;
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  border-radius: var(--r-pill);
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.companyClear:hover {
+  background: var(--c-surface);
+}
+
+.companyMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  /* Шире кнопки: названия компаний длинные, а кнопка бывает узкой. */
+  width: max(100%, 320px);
+  max-width: min(380px, calc(100vw - 32px));
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+  overflow: hidden;
+}
+
+.companySearch {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
+  color: var(--c-text-muted);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.companySearch input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--s-2) 0;
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.companyList {
+  max-height: 300px;
+  margin: 0;
+  padding: var(--s-1) 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.companyOption {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  cursor: pointer;
+}
+
+.companyOptionActive {
+  background: var(--c-surface-hover);
+}
+
+.companyOptionName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.companyOptionSelected .companyOptionName {
+  color: var(--c-brand-strong);
+}
+
+.companyOptionCount {
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.companyOptionMeta {
+  grid-column: 1 / -1;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-muted);
+}
+
+.companyEmpty {
+  padding: var(--s-4) var(--s-3);
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--c-text-muted);
+}
+
+/* Название предприятия в списке: щелчок — вся продукция компании. Выглядит
+   названием, а не ссылкой, пока на него не навели: ссылок в строке и без
+   того хватает. */
+.companyLink {
+  padding: 0;
+  font: inherit;
+  font-weight: var(--fw-medium);
+  text-align: left;
+  color: var(--c-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.companyLink:hover,
+.companyLink:focus-visible {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+/* ─── Вложенный список: продукт графа → предприятия ─── */
+
+.listBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
+}
+
+.listBarText {
+  min-width: 0;
+  color: var(--c-text-soft);
+}
+
+.listBarActions {
+  display: inline-flex;
+  gap: var(--s-3);
+  margin-left: auto;
+}
+
+.linkBtn {
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.linkBtn:hover {
+  text-decoration: underline;
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group {
+  flex: none;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.groupHead {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  text-align: left;
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* Стрелка — по первой строке, с названием, а не посередине двух строк. */
+.groupHead > svg {
+  margin-top: 4px;
+}
+
+.groupHead:hover {
+  background: var(--c-surface-soft);
+}
+
+.groupTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.groupName {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+/* Класс продукции под названием: код и расшифровка. Переносится, а не
+   обрезается — расшифровка ради того тут и стоит. */
+.groupClass {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+/* Строкой текста, а не гибким рядом: в ряду расшифровка целиком уезжала под
+   код, стоило ей не поместиться рядом. */
+.groupCode {
+  margin-right: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-soft);
+}
+
+.groupTag {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-1);
+  white-space: nowrap;
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+  border-radius: var(--r-sm);
+}
+
+.groupCount {
+  padding-top: 1px;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-muted);
+}
+
+.groupBody {
+  border-top: 1px solid var(--c-border-soft);
+  background: var(--c-surface-soft);
+}
+
+/* Предприятия продукта в панели: строками внутри карточки продукта. Отступ
+   слева — под стрелку заголовка, чтобы вложенность читалась. */
+.entList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3) var(--s-2) calc(var(--s-3) + 12px + var(--s-2));
+}
+
+.ent + .ent {
+  border-top: 1px solid var(--c-border-soft);
+}
+
+/* Таблица предприятий в библиотеке: рамку даёт карточка продукта. */
+.groupTable {
+  overflow-x: auto;
+}
+
+.groupTable .table thead th {
+  background: var(--c-surface-soft);
+}
+
+.groupTable .table tbody tr {
+  background: var(--c-surface);
+}
+
+.groupTable .table tbody tr:hover {
+  background: var(--c-surface-soft);
+}
+
+/* Таблиц столько же, сколько продуктов, и при автоматической ширине колонки
+   у каждой вставали по-своему: «ИНН» одной таблицы съезжал относительно
+   соседней, и список читался рваным. Ширины заданы — колонки идут ровно
+   через все продукты. На узком экране таблица прокручивается, а не
+   сплющивается. */
+.groupTable .table {
+  table-layout: fixed;
+  min-width: 820px;
+}
+
+.groupTable .table th:nth-child(1) {
+  width: 24%;
+}
+
+.groupTable .table th:nth-child(2) {
+  width: 11%;
+}
+
+.groupTable .table th:nth-child(3) {
+  width: 27%;
+}
+
+.groupTable .table th:nth-child(4) {
+  width: 15%;
+}
+
+.groupTable .table th:nth-child(5) {
+  width: 11%;
+}
+
+.groupTable .table th:nth-child(6) {
+  width: 12%;
+}
+
+.groupTable .table td {
+  overflow-wrap: break-word;
+}

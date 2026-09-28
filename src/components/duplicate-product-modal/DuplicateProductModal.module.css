@@ -1,0 +1,10 @@
+.text {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+}
+
+.text + .text {
+  margin-top: var(--s-3);
+}

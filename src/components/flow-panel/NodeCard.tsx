@@ -12,6 +12,8 @@ import { MarkdownEditor } from "../markdown-editor";
 import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
 import { useDismiss } from "../../hooks/useDismiss";
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   BookmarkIcon,
   BranchIcon,
   ChainLengthIcon,
@@ -391,39 +393,62 @@ export const NodeCard: FC<NodeCardProps> = ({
                   count={linkedProducts.length}
                   icon={<LinkIcon size={17} />}
                 >
-                  <ul className={styles.linked}>
-                    {linkedProducts.map((p) => (
-                      <li key={`${p.role}-${p.nodeId}`}>
-                        <button
-                          type="button"
-                          className={styles.linkedItem}
-                          onClick={() => onFocusLinkedProduct?.(p.nodeId)}
-                          title={
-                            (p.screenDirection === "up"
-                              ? "Выше по графу"
-                              : "Ниже по графу") +
-                            (p.viaTransformation
-                              ? ` через «${p.viaTransformation}»`
-                              : "")
-                          }
-                        >
-                          <FlaskIcon size={15} className={styles.linkedIcon} />
-                          <span className={styles.linkedLabel}>
-                            {p.label || p.nodeId}
-                          </span>
-                          {p.viaTransformation && (
-                            <span className={styles.linkedVia}>
-                              {p.viaTransformation}
-                            </span>
+                  {/* Двумя группами по направлению: сплошным списком не
+                      было видно, какой сосед ведёт вверх, а какой вниз, —
+                      это пряталось во всплывающую подсказку. Направление —
+                      как на полотне: выше или ниже этого продукта. */}
+                  {(["up", "down"] as const).map((dir) => {
+                    const group = linkedProducts.filter(
+                      (p) => p.screenDirection === dir,
+                    );
+                    if (!group.length) return null;
+                    return (
+                      <div key={dir} className={styles.linkedGroup}>
+                        <div className={styles.linkedGroupHead}>
+                          {dir === "up" ? (
+                            <ArrowUpIcon size={14} />
+                          ) : (
+                            <ArrowDownIcon size={14} />
                           )}
-                          <ChevronRightIcon
-                            size={15}
-                            className={styles.linkedArrow}
-                          />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                          {dir === "up" ? "Вверх по графу" : "Вниз по графу"}
+                          <span className={styles.linkedGroupCount}>
+                            {group.length}
+                          </span>
+                        </div>
+                        <ul className={styles.linked}>
+                          {group.map((p) => (
+                            <li key={`${p.role}-${p.nodeId}`}>
+                              <button
+                                type="button"
+                                className={styles.linkedItem}
+                                onClick={() => onFocusLinkedProduct?.(p.nodeId)}
+                                title={
+                                  (dir === "up" ? "Выше по графу" : "Ниже по графу") +
+                                  (p.viaTransformation
+                                    ? ` через «${p.viaTransformation}»`
+                                    : "")
+                                }
+                              >
+                                <FlaskIcon size={15} className={styles.linkedIcon} />
+                                <span className={styles.linkedLabel}>
+                                  {p.label || p.nodeId}
+                                </span>
+                                {p.viaTransformation && (
+                                  <span className={styles.linkedVia}>
+                                    {p.viaTransformation}
+                                  </span>
+                                )}
+                                <ChevronRightIcon
+                                  size={15}
+                                  className={styles.linkedArrow}
+                                />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
                 </CollapsibleBlock>
               )}
 

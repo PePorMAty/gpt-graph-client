@@ -15,7 +15,7 @@ const initialState: BookmarksState = { items: [] };
  * Закладки текущего графа: узлы, к которым нужно быстро возвращаться.
  *
  * Привязаны к id узлов текущего полотна: смена графа их сбрасывает, удаление
- * узла убирает его закладку.
+ * узла убирает его закладку, пересчёт раскладки не трогает.
  *
  * У сохранённого графа закладки живут на сервере: graphExtrasMiddleware
  * отправляет туда каждую правку, а при открытии графа они подтягиваются
@@ -83,8 +83,14 @@ const bookmarksSlice = createSlice({
       .addCase(loadGraphFromFile, (state) => {
         state.items = [];
       })
-      .addCase(setGraphData, (state) => {
-        state.items = [];
+      // setGraphData — не смена графа. Им пересчитывают раскладку и
+      // переворачивают граф: узлы те же, меняются только координаты. Раньше
+      // закладки тут обнулялись целиком, и кнопка «Рассчитать раскладку»
+      // стирала их все. Теперь уходят только закладки узлов, которых в новом
+      // наборе нет: при очистке полотна набор пуст — уходят все.
+      .addCase(setGraphData, (state, action) => {
+        const present = new Set(action.payload.nodes.map((n) => n.id));
+        state.items = state.items.filter((b) => present.has(b.nodeId));
       })
       .addCase(removeNodes, (state, action) => {
         const removed = new Set(action.payload);

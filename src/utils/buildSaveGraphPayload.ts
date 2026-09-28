@@ -13,10 +13,31 @@ export interface BuildSaveGraphPayloadArgs {
   sourcesSeqCounter: { up: number; down: number };
 }
 
+const urlKey = (u: unknown) => String(u ?? "").trim().toLowerCase();
+
+/** Ссылки источников, чей полный текст лежит в данных узлов (sourcesUp/Down). */
+function urlsWithTextInNodes(nodes: CustomNode[]): Set<string> {
+  const out = new Set<string>();
+  for (const n of nodes) {
+    for (const field of ["sourcesUp", "sourcesDown"] as const) {
+      const list = n.data?.[field];
+      if (!Array.isArray(list)) continue;
+      for (const s of list) {
+        if (String(s?.technology_description ?? "").trim()) out.add(urlKey(s?.url));
+      }
+    }
+  }
+  return out;
+}
+
 // Собрать payload текущего состояния полотна (общий для save и update).
-// Полные источники уже лежат в node.data (sourcesUp/Down). В пуле для сейва
-// оставляем только лёгкие url/title (по ним считается номер набора) + номер;
-// тяжёлые поля не дублируем, чтобы не раздувать тело запроса.
+// Тяжёлые поля источника (текст технологии и остальное) в пуле не дублируем,
+// если они уже лежат в node.data (sourcesUp/Down): по пути восстановления
+// (enrichSourcesFromNodes) они вернутся оттуда. Но пошаговый поиск кладёт
+// найденное ТОЛЬКО в пул — в узлах его нет. Облегчённый пул терял такой текст
+// насовсем: после открытия сохранённого графа обобщать было нечего, и сервер
+// отвечал «Need at least 1 technology_description block to aggregate».
+// Поэтому текст, которого нет в узлах, остаётся в пуле как есть.
 export function buildSaveGraphPayload({
   name,
   originalPrompt,
@@ -28,19 +49,24 @@ export function buildSaveGraphPayload({
   sourcesSeqCounter,
 }: BuildSaveGraphPayloadArgs): SaveGraphPayload {
   const prompt = originalPrompt ?? name ?? "graph";
+  const inNodes = urlsWithTextInNodes(nodes);
   const lightPool = Object.fromEntries(
     Object.entries(sourcesPool).map(([k, e]) => [
       k,
       {
         ...e,
-        sources: e.sources.map((s) => ({
-          title: s.title,
-          url: s.url,
-          access_hint: "",
-          technology_description: "",
-          inputs_outputs_hint: [],
-          evidence_snippets: [],
-        })),
+        sources: e.sources.map((s) =>
+          inNodes.has(urlKey(s.url))
+            ? {
+                title: s.title,
+                url: s.url,
+                access_hint: "",
+                technology_description: "",
+                inputs_outputs_hint: [],
+                evidence_snippets: [],
+              }
+            : s,
+        ),
       },
     ]),
   );

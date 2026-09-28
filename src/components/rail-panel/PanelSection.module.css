@@ -203,6 +203,13 @@
   align-self: flex-start;
 }
 
+/* Несколько отборов в строку: тип закладки и порядок. */
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
 .filterBtn {
   display: inline-flex;
   align-items: center;
@@ -468,6 +475,18 @@
 
 .objectLinkLabel {
   overflow-wrap: break-word;
+}
+
+/* Название и дата закладки — одна колонка рядом со значком. */
+.objectText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.objectDate {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
 }
 
 .kindBadge {

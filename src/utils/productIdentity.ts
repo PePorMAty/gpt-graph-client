@@ -66,6 +66,24 @@ interface ProductNodeLike {
   data?: NodeDataLike;
 }
 
+/**
+ * Можно ли сравнивать два идентификатора как значения одной системы.
+ *
+ * Каноническое название из справочника («Изопропилбензол») и номер CAS
+ * («98-82-8») — разные системы: их несовпадение не значит, что вещества
+ * разные. Раньше это считалось запретом на слияние, и узел, которому человек
+ * вписал CAS, не сходился с продуктом шага, опознанным справочником, даже при
+ * одинаковых названиях. Пара «справочник — CAS» сравнению не подлежит; все
+ * остальные расхождения, как и прежде, запрещают слияние.
+ */
+function comparable(
+  a: ProductIdSource | null,
+  b: ProductIdSource | null,
+): boolean {
+  const pair = new Set([a, b]);
+  return !(pair.has("dictionary") && pair.has("cas"));
+}
+
 /** Указатель «этот продукт у нас уже есть — вот он». */
 export interface ProductIndex {
   /** id уже имеющегося узла того же продукта, либо null. */
@@ -97,6 +115,8 @@ export function createProductIndex(
   // Идентификатор уже учтённого узла — чтобы поймать расхождение кодов при
   // совпавших названиях.
   const idOfNode = new Map<string, string>();
+  // И откуда он взялся: сравнивать можно только идентификаторы одной системы.
+  const sourceOfNode = new Map<string, ProductIdSource | null>();
 
   const idKey = (data: NodeDataLike | undefined) => {
     const id = readProductId(data);
@@ -125,6 +145,7 @@ export function createProductIndex(
     const id = idKey(data);
     if (id) {
       idOfNode.set(nodeId, id);
+      sourceOfNode.set(nodeId, readProductIdSource(data));
       if (!byId.has(id)) byId.set(id, nodeId);
     }
     const name = nameKey(data);
@@ -150,7 +171,14 @@ export function createProductIndex(
       const hit = byName.get(name);
       if (!hit) continue;
       const other = idOfNode.get(hit);
-      if (id && other && other !== id) continue;
+      if (
+        id &&
+        other &&
+        other !== id &&
+        comparable(readProductIdSource(data), sourceOfNode.get(hit) ?? null)
+      ) {
+        continue;
+      }
       return hit;
     }
     return null;
@@ -175,9 +203,17 @@ export function findExistingProductNode(
   productName: string,
   nodes: ReadonlyArray<ProductNodeLike>,
   productId?: string | null,
+  /**
+   * Откуда идентификатор. Без него каноническое название из справочника не
+   * сравнивалось с названиями узлов: шаг с «Кумолом» (опознан как
+   * «Изопропилбензол») не находил на полотне узел «Изопропилбензол», если
+   * тому идентификатор ещё не проставили, — и заводил второй узел.
+   */
+  productIdSource?: ProductIdSource | null,
 ): string | null {
   return createProductIndex(nodes).find({
     label: productName,
     productId: productId ?? undefined,
+    productIdSource: productIdSource ?? undefined,
   });
 }

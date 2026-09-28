@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
@@ -7,9 +7,11 @@ import {
   type Bookmark,
 } from "../../store/slices/bookmarksSlice";
 import { useFocusNode } from "../../hooks/useFocusNode";
+import { useDismiss } from "../../hooks/useDismiss";
 import {
   BookmarkIcon,
   ChevronDownIcon,
+  ClockIcon,
   FilterIcon,
   FlaskIcon,
   GearIcon,
@@ -26,6 +28,39 @@ const KIND_LABEL: Record<KindFilter, string> = {
   product: "Закладки продуктов",
   transformation: "Закладки преобразований",
 };
+
+/** Порядок закладок — как в библиотеке графов: по дате или по названию. */
+type SortMode = "new" | "old" | "name";
+
+const SORT_LABEL: Record<SortMode, string> = {
+  new: "Сначала новые",
+  old: "Сначала старые",
+  name: "По названию",
+};
+
+const SORT_KEY = "bookmarks-sort";
+
+/** Выбранный порядок переживает перезагрузку, как в библиотеке. */
+function readSort(): SortMode {
+  try {
+    const raw = localStorage.getItem(SORT_KEY);
+    if (raw === "new" || raw === "old" || raw === "name") return raw;
+  } catch {
+    // Хранилище недоступно — берём порядок по умолчанию.
+  }
+  return "new";
+}
+
+function formatDate(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 /**
  * Раздел «Закладки»: узлы, которые пользователь отметил правым кликом на
@@ -48,6 +83,25 @@ export const BookmarksSection = () => {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [kindOpen, setKindOpen] = useState(false);
+  const [sort, setSort] = useState<SortMode>(readSort);
+  const [sortOpen, setSortOpen] = useState(false);
+  // Меню закрываются и щелчком мимо, а не только выбором пункта.
+  const kindRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
+  const closeKind = useCallback(() => setKindOpen(false), []);
+  const closeSort = useCallback(() => setSortOpen(false), []);
+  useDismiss(kindRef, closeKind, kindOpen);
+  useDismiss(sortRef, closeSort, sortOpen);
+
+  const changeSort = (mode: SortMode) => {
+    setSort(mode);
+    setSortOpen(false);
+    try {
+      localStorage.setItem(SORT_KEY, mode);
+    } catch {
+      // Не сохранится — порядок просто сбросится при перезагрузке.
+    }
+  };
   // Заметка, которую сейчас правят: id узла + черновик текста.
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -64,14 +118,23 @@ export const BookmarksSection = () => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return items.filter((b) => {
+    const list = items.filter((b) => {
       if (kind !== "all" && b.kind !== kind) return false;
       if (!q) return true;
       return (
         b.label.toLowerCase().includes(q) || b.note.toLowerCase().includes(q)
       );
     });
-  }, [items, query, kind]);
+    if (sort === "name") {
+      return list.sort((a, b) => a.label.localeCompare(b.label, "ru"));
+    }
+    // Дата — строка ISO: сравнивается как строка. У закладок одного момента
+    // порядок сохраняется прежний (сортировка устойчивая).
+    return list.sort((a, b) => {
+      const d = a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
+      return sort === "new" ? -d : d;
+    });
+  }, [items, query, kind, sort]);
 
   const startEdit = (b: Bookmark) => {
     setEditing(b.nodeId);
@@ -118,36 +181,68 @@ export const BookmarksSection = () => {
           />
         </div>
 
-        <div className={styles.filter}>
-          <button
-            type="button"
-            className={`${styles.filterBtn} ${kind !== "all" ? styles.filterBtnActive : ""}`}
-            onClick={() => setKindOpen((v) => !v)}
-            aria-expanded={kindOpen}
-          >
-            <FilterIcon size={15} className={styles.filterIcon} />
-            {KIND_LABEL[kind]}
-            <ChevronDownIcon size={14} className={styles.filterCaret} />
-          </button>
-          {kindOpen && (
-            <div className={styles.filterMenu}>
-              {(Object.keys(KIND_LABEL) as KindFilter[]).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={`${styles.filterItem} ${
-                    kind === k ? styles.filterItemActive : ""
-                  }`}
-                  onClick={() => {
-                    setKind(k);
-                    setKindOpen(false);
-                  }}
-                >
-                  {KIND_LABEL[k]}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className={styles.filterRow}>
+          <div className={styles.filter} ref={kindRef}>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${kind !== "all" ? styles.filterBtnActive : ""}`}
+              onClick={() => setKindOpen((v) => !v)}
+              aria-expanded={kindOpen}
+            >
+              <FilterIcon size={15} className={styles.filterIcon} />
+              {KIND_LABEL[kind]}
+              <ChevronDownIcon size={14} className={styles.filterCaret} />
+            </button>
+            {kindOpen && (
+              <div className={styles.filterMenu}>
+                {(Object.keys(KIND_LABEL) as KindFilter[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`${styles.filterItem} ${
+                      kind === k ? styles.filterItemActive : ""
+                    }`}
+                    onClick={() => {
+                      setKind(k);
+                      setKindOpen(false);
+                    }}
+                  >
+                    {KIND_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className={styles.filter} ref={sortRef}>
+            <button
+              type="button"
+              className={styles.filterBtn}
+              onClick={() => setSortOpen((v) => !v)}
+              aria-expanded={sortOpen}
+              aria-label={`Порядок: ${SORT_LABEL[sort]}`}
+            >
+              <ClockIcon size={15} className={styles.filterIcon} />
+              {SORT_LABEL[sort]}
+              <ChevronDownIcon size={14} className={styles.filterCaret} />
+            </button>
+            {sortOpen && (
+              <div className={styles.filterMenu}>
+                {(Object.keys(SORT_LABEL) as SortMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`${styles.filterItem} ${
+                      sort === mode ? styles.filterItemActive : ""
+                    }`}
+                    onClick={() => changeSort(mode)}
+                  >
+                    {SORT_LABEL[mode]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -190,7 +285,15 @@ export const BookmarksSection = () => {
                       ) : (
                         <GearIcon size={14} className={styles.objectIconTransform} />
                       )}
-                      <span className={styles.objectLinkLabel}>{b.label}</span>
+                      <span className={styles.objectText}>
+                        <span className={styles.objectLinkLabel}>{b.label}</span>
+                        {/* Когда поставлена — по ней закладки и сортируются. */}
+                        {formatDate(b.createdAt) && (
+                          <span className={styles.objectDate}>
+                            {formatDate(b.createdAt)}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   </td>
                   <td>
