@@ -1386,14 +1386,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }),
       ).unwrap();
 
+      // Спрошенные пары «откуда → куда». Модель вправе перепутать стороны и
+      // вернуть уксусную кислоту входом, а метанол выходом: тогда технология
+      // вставала задом наперёд, а прямая связь оставалась рядом с ней.
+      const askedPair = (ins: string[], outs: string[]) =>
+        ins.some((i) => outs.some((o) => edgeIdsByPair.has(`${i}->${o}`)));
+
       const groups = result.transformations
         .map((t) => {
-          const inputNodeIds = t.inputNodeIds.filter((id) =>
+          let inputNodeIds = t.inputNodeIds.filter((id) =>
             knownNodeIds.has(id),
           );
-          const outputNodeIds = t.outputNodeIds.filter((id) =>
+          let outputNodeIds = t.outputNodeIds.filter((id) =>
             knownNodeIds.has(id),
           );
+          // Ни одна спрошенная пара не сошлась, а перевёрнутая сходится —
+          // значит, стороны перепутаны: разворачиваем в спрошенную сторону.
+          if (
+            !askedPair(inputNodeIds, outputNodeIds) &&
+            askedPair(outputNodeIds, inputNodeIds)
+          ) {
+            [inputNodeIds, outputNodeIds] = [outputNodeIds, inputNodeIds];
+          }
           const removeEdgeIds: string[] = [];
           const removeNodeIds: string[] = [];
           for (const inId of inputNodeIds) {

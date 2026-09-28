@@ -1244,6 +1244,22 @@ const gptSlice = createSlice({
       for (const g of groups) {
         for (const eid of g.removeEdgeIds) edgesToRemove.add(eid);
         for (const nid of g.removeNodeIds ?? []) nodesToRemove.add(nid);
+        // Прямую связь между продуктами, которые теперь соединило найденное
+        // преобразование, убираем в любом случае — не только ту, что
+        // ожидали. Модель вправе назвать вход и выход иначе, чем их спросили
+        // (поменять местами), и тогда ожидаемое ребро не находилось:
+        // прямая связь оставалась рядом с найденной технологией, а в
+        // карточке продукта так и висела кнопка «Получить преобразование».
+        const ins = new Set(g.inputNodeIds);
+        const outs = new Set(g.outputNodeIds);
+        for (const e of state.data.edges) {
+          if (
+            (ins.has(e.source) && outs.has(e.target)) ||
+            (outs.has(e.source) && ins.has(e.target))
+          ) {
+            edgesToRemove.add(e.id);
+          }
+        }
       }
       if (edgesToRemove.size) {
         state.data.edges = state.data.edges.filter(

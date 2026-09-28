@@ -603,6 +603,27 @@
   gap: 2px;
 }
 
+/* Группа связанных продуктов одного направления: «Вверх» / «Вниз». */
+.linkedGroup + .linkedGroup {
+  margin-top: var(--s-3);
+}
+
+.linkedGroupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 0 var(--s-2) var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+}
+
+.linkedGroupCount {
+  margin-left: auto;
+  color: var(--c-text-faint);
+  font-weight: normal;
+}
+
 .linkedItem {
   display: flex;
   align-items: center;
