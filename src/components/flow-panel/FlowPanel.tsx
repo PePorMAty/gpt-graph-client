@@ -714,6 +714,58 @@ function wizardStepOf(tab: DirectionTabProps): WizardStep {
   return 1;
 }
 
+/**
+ * Направление, выбранное в мастере последним, — по продукту.
+ *
+ * Живёт вне компонента: мастер размонтируется вместе с окном, а вернуться
+ * человек хочет туда, откуда ушёл.
+ */
+const lastDirection = new Map<string, BuildDirection>();
+
+/** Идёт ли по направлению запрос: поиск, обобщение или построение. */
+function isBusy(tab: DirectionTabProps): boolean {
+  return (
+    tab.stepSourcesStatus === "loading" ||
+    tab.stepAggregateStatus === "loading" ||
+    tab.stepBuildStatus === "loading"
+  );
+}
+
+/** Докуда дошли по направлению: 0 — не начинали, дальше номер шага мастера. */
+function progressOf(tab: DirectionTabProps): number {
+  const step = wizardStepOf(tab);
+  return step > 1 ? step : 0;
+}
+
+/**
+ * С какого направления открыть мастер.
+ *
+ * Раньше мастер всякий раз начинался с выбора направления, даже когда по
+ * продукту уже нашли источники и обобщили их: чтобы вернуться к обобщению,
+ * надо было заново жать «вверх», потом «к источникам» и дальше. Теперь окно
+ * открывается там, где остановились. Порядок: сначала направление, где идёт
+ * запрос, затем то, где продвинулись дальше, при равенстве — выбранное
+ * последним. Не начинали нигде — первый экран, как и был.
+ */
+function resumeDirection(
+  productName: string,
+  upTab: DirectionTabProps,
+  downTab: DirectionTabProps,
+): BuildDirection | null {
+  const remembered = lastDirection.get(productName) ?? null;
+  const upBusy = isBusy(upTab);
+  const downBusy = isBusy(downTab);
+  if (upBusy !== downBusy) return upBusy ? "up" : "down";
+
+  const up = progressOf(upTab);
+  const down = progressOf(downTab);
+  if (up !== down) return up > down ? "up" : "down";
+  // Нигде не начинали: первый экран, но с уже выбранным направлением, если
+  // его выбирали, — поиск от этого ничего не теряет.
+  if (up === 0 && !upBusy) return remembered;
+  return remembered ?? "down";
+}
+
 // ─────────────────────────────────────────────────
 // PanelBuildView — мастер построения шага.
 // Экран 1 — направление, дальше существующий DirectionContent.
@@ -724,7 +776,11 @@ const PanelBuildViewInner: FC<{
   upTab: DirectionTabProps;
   onBack?: () => void;
 }> = ({ productName, downTab, upTab, onBack }) => {
-  const [dir, setDir] = useState<BuildDirection | null>(null);
+  // Направление выбирается один раз, при открытии окна: дальше его меняет
+  // только человек.
+  const [dir, setDir] = useState<BuildDirection | null>(() =>
+    resumeDirection(productName, upTab, downTab),
+  );
   const tab = dir === "up" ? upTab : downTab;
 
   // Пока направление не выбрано, мастер стоит на первом шаге независимо от
@@ -749,6 +805,7 @@ const PanelBuildViewInner: FC<{
   const chooseDirection = (value: BuildDirection) => {
     setDir(value);
     setBackTo(null);
+    lastDirection.set(productName, value);
   };
 
   // Настройки поиска общие со вторым экраном: что задали здесь, тем и

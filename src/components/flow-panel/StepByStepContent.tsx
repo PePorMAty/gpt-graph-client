@@ -459,7 +459,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   // ── Regular product node: standard flow ──
   return (
-    <div className={styles.formGroup}>
+    <div className={`${styles.formGroup} ${wiz.stageStack}`}>
       {/* На экране источников продукт назван в сводке — здесь он был бы
           второй раз подряд. На остальных стадиях сводки нет. */}
       {/* Продукт назван в сводке над источниками и в заголовке окна на
