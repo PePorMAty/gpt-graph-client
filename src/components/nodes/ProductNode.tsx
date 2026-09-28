@@ -1,6 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import React from "react";
 import type { ProductNodeProps } from "../../types";
+import { BookmarkBadge } from "./BookmarkBadge";
 import { nodeBoxStyle } from "./nodeBox";
 
 const DEFAULT_BORDER = "#2196f3";
@@ -253,6 +254,8 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
           ✎ не заполнен
         </div>
       )}
+
+      {data.bookmarked === true && <BookmarkBadge />}
 
       <div style={{ fontSize: box.fontSize, lineHeight: box.lineHeight }}>
         {data.label}

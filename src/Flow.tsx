@@ -890,6 +890,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Крупная подпись — только у фокус-проекции: в полном графе и в
         // «только продукты» узлы остаются прежними.
         const compact = !!focusView;
+        // Значок закладки — у продукта и у преобразования одинаково.
+        const bookmarked = bookmarkedIds.has(n.id);
 
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
@@ -911,6 +913,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...n.data,
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
+              ...(bookmarked ? { bookmarked: true } : {}),
               showIndustryData: industryData,
               ...(gisp
                 ? {
@@ -922,8 +925,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           };
         }
 
-        return compact
-          ? { ...n, className: cls, data: { ...n.data, focusCompact: true } }
+        return compact || bookmarked
+          ? {
+              ...n,
+              className: cls,
+              data: {
+                ...n.data,
+                ...(compact ? { focusCompact: true } : {}),
+                ...(bookmarked ? { bookmarked: true } : {}),
+              },
+            }
           : { ...n, className: cls };
       }),
     [
@@ -937,6 +948,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       showAlternatives,
       industryData,
       industryResults,
+      bookmarkedIds,
     ],
   );
 
