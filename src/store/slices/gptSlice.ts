@@ -179,6 +179,56 @@ const gptSlice = createSlice({
         }
       }
     },
+    /**
+     * Слить узел продукта в другой: это один и тот же продукт.
+     *
+     * Нужно, когда человек назвал узел так же, как уже стоящий на полотне,
+     * или синонимом того же вещества. Остаётся узел, который был раньше: у
+     * него свои источники и история. Связи уходящего переезжают на него
+     * (без петель и повторов), а пустые описания дополняются из уходящего —
+     * чтобы слияние ничего не теряло.
+     */
+    mergeProductNodes: (
+      state,
+      action: PayloadAction<{ fromId: string; intoId: string }>,
+    ) => {
+      const { fromId, intoId } = action.payload;
+      if (fromId === intoId) return;
+      const from = state.data.nodes.find((n) => n.id === fromId);
+      const into = state.data.nodes.find((n) => n.id === intoId);
+      if (!from || !into || from.type !== "product" || into.type !== "product") {
+        return;
+      }
+
+      for (const key of ["description", "upDescription", "downDescription"] as const) {
+        const mine = String(into.data?.[key] ?? "").trim();
+        const theirs = String(from.data?.[key] ?? "").trim();
+        if (!mine && theirs) into.data = { ...into.data, [key]: theirs };
+      }
+
+      const keyOf = (s: string, t: string) => `${s}->${t}`;
+      const seen = new Set(
+        state.data.edges
+          .filter((e) => e.source !== fromId && e.target !== fromId)
+          .map((e) => keyOf(e.source, e.target)),
+      );
+      const edges: Edge[] = [];
+      for (const e of state.data.edges) {
+        if (e.source !== fromId && e.target !== fromId) {
+          edges.push(e);
+          continue;
+        }
+        const source = e.source === fromId ? intoId : e.source;
+        const target = e.target === fromId ? intoId : e.target;
+        if (source === target || seen.has(keyOf(source, target))) continue;
+        seen.add(keyOf(source, target));
+        edges.push({ ...e, source, target });
+      }
+
+      state.data.nodes = state.data.nodes.filter((n) => n.id !== fromId);
+      state.data.edges = applyHandlesByGeometry(state.data.nodes, edges);
+      state.leafNodes = state.leafNodes.filter((id) => id !== fromId);
+    },
     onNodesChange: (state, action: PayloadAction<NodeChange[]>) => {
       state.data.nodes = applyNodeChanges(
         action.payload,
@@ -383,6 +433,11 @@ const gptSlice = createSlice({
             label ||
             (type === "product" ? "Новый продукт" : "Новое преобразование"),
           description: "",
+          // Продукт, созданный руками, помечается «не заполнен», пока у него
+          // нет описания, — как свой продукт из превью шага. Раньше пометку
+          // получали только те: созданный на полотне узел ничем не
+          // отличался от заполненного.
+          ...(type === "product" ? { isUserAdded: true } : {}),
         },
       };
 
@@ -1822,5 +1877,6 @@ export const {
   removeStepAlternativeNodes,
   insertTransformationBetween,
   insertTransformationsForNeighbors,
+  mergeProductNodes,
 } = gptSlice.actions;
 export default gptSlice.reducer;
