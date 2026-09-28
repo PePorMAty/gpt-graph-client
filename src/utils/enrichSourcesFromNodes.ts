@@ -3,6 +3,23 @@ import type { CustomNode } from "../types";
 import type { TechnologySource } from "../store/types";
 
 /**
+ * Есть ли у источников текст технологии — то, из чего обобщение и строится.
+ *
+ * Без него сервер отвечает отказом «Need at least 1 technology_description
+ * block to aggregate», и в ленте это читалось как сбой. Проверяем заранее:
+ * обобщать нечего — значит, нужен новый поиск, а не повтор запроса.
+ */
+export function hasSourceText(sources: TechnologySource[]): boolean {
+  return sources.some((s) => String(s?.technology_description ?? "").trim());
+}
+
+/** Что сказать, когда обобщать нечего: у источников нет текста. */
+export const NO_SOURCE_TEXT_HINT =
+  "У найденных источников нет текста технологии — обобщать нечего. Так " +
+  "бывает у графа, сохранённого раньше: там у источников хранились только " +
+  "название и ссылка. Найдите источники заново — описание придёт вместе с ними.";
+
+/**
  * Восстанавливает содержимое источников (technology_description и остальные
  * «тяжёлые» поля) по понодовым данным графа.
  *
