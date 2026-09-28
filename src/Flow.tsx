@@ -125,6 +125,7 @@ import {
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { DuplicateProductModal } from "./components/duplicate-product-modal";
+import { OPEN_NODE_CARD_EVENT } from "./hooks/useGoToNode";
 import {
   findDuplicateProduct,
   type DuplicateProduct,
@@ -1675,6 +1676,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [data.nodes, dispatch, saveChanges, setCenter],
   );
+
+  // Переход к узлу из уведомления (лента под колокольчиком, всплывающий
+  // тост): карточка открывается на этом узле, камера подлетает к нему.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const nodeId = (e as CustomEvent<unknown>).detail;
+      if (typeof nodeId === "string") handleFocusLinkedProduct(nodeId);
+    };
+    window.addEventListener(OPEN_NODE_CARD_EVENT, handler);
+    return () => window.removeEventListener(OPEN_NODE_CARD_EVENT, handler);
+  }, [handleFocusLinkedProduct]);
 
   /**
    * Слить переименованный узел с уже стоящим продуктом.

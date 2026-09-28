@@ -1,6 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useDismiss } from "../../hooks/useDismiss";
+import { useGoToNode } from "../../hooks/useGoToNode";
+import { useAppSelector } from "../../store/hooks";
 import {
   clearNotificationHistory,
   useNotificationHistory,
@@ -36,16 +38,21 @@ export const NotificationsMenu = () => {
 
   const history = useNotificationHistory();
   const close = useCallback(() => setOpen(false), []);
+  // По уведомлению о узле переходят к нему — если узел ещё на полотне.
+  const goToNode = useGoToNode();
+  const nodes = useAppSelector((s) => s.graph.data.nodes);
+  const nodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
   useDismiss(menuRef, close, open);
 
-  // Непрочитанное считаем грубо: пока ленту не открывали после последнего
-  // уведомления, на колокольчике горит точка.
-  const [seenCount, setSeenCount] = useState(0);
-  const unread = Math.max(0, history.length - seenCount);
+  // Непрочитанное — уведомления новее последнего увиденного. Считаем по
+  // номеру, а не по длине ленты: лента у каждого графа своя, и после смены
+  // графа счёт по длине переставал зажигать точку.
+  const [seenUpTo, setSeenUpTo] = useState(0);
+  const unread = history.filter((r) => r.id > seenUpTo).length;
 
   const toggleOpen = () => {
     setOpen((v) => {
-      if (!v) setSeenCount(history.length);
+      if (!v) setSeenUpTo(Math.max(seenUpTo, ...history.map((r) => r.id)));
       return !v;
     });
   };
@@ -74,10 +81,7 @@ export const NotificationsMenu = () => {
                 <button
                   type="button"
                   className={styles.headBtn}
-                  onClick={() => {
-                    clearNotificationHistory();
-                    setSeenCount(0);
-                  }}
+                  onClick={() => clearNotificationHistory()}
                 >
                   Очистить
                 </button>
@@ -135,28 +139,57 @@ export const NotificationsMenu = () => {
 
           {history.length === 0 ? (
             <div className={styles.empty}>
-              Здесь появятся результаты запросов: поиск источников, обобщение,
-              построение шагов, сохранение графа.
+              Здесь появятся результаты запросов по этому графу: поиск
+              источников, обобщение, построение шагов. По уведомлению о продукте
+              можно перейти к его узлу.
             </div>
           ) : (
             <ul className={styles.list}>
-              {history.map((item) => (
-                <li key={item.id} className={styles.item}>
-                  <span
-                    className={`${styles.marker} ${styles[`marker_${item.kind}`]}`}
-                    aria-hidden
-                  />
-                  <span className={styles.itemBody}>
-                    <span className={styles.itemText}>{item.text}</span>
-                    {/* Пояснение и техническая причина: в тост не помещаются,
-                        а разбирают отказ именно здесь. */}
-                    {item.detail && (
-                      <span className={styles.itemDetail}>{item.detail}</span>
+              {history.map((item) => {
+                // Узел, о котором уведомление, — если он ещё на полотне.
+                const target =
+                  item.target && nodeIds.has(item.target.nodeId) ? item.target : null;
+                const content = (
+                  <>
+                    <span
+                      className={`${styles.marker} ${styles[`marker_${item.kind}`]}`}
+                      aria-hidden
+                    />
+                    <span className={styles.itemBody}>
+                      <span className={styles.itemText}>{item.text}</span>
+                      {/* Пояснение и техническая причина: в тост не помещаются,
+                          а разбирают отказ именно здесь. */}
+                      {item.detail && (
+                        <span className={styles.itemDetail}>{item.detail}</span>
+                      )}
+                      {target && (
+                        <span className={styles.itemGo}>
+                          Перейти к узлу{target.label ? ` «${target.label}»` : ""} →
+                        </span>
+                      )}
+                    </span>
+                    <span className={styles.itemTime}>{formatTime(item.at)}</span>
+                  </>
+                );
+                return (
+                  <li key={item.id}>
+                    {target ? (
+                      <button
+                        type="button"
+                        className={`${styles.item} ${styles.itemLink}`}
+                        onClick={() => {
+                          setOpen(false);
+                          goToNode(target.nodeId);
+                        }}
+                      >
+                        {content}
+                      </button>
+                    ) : (
+                      <div className={styles.item}>{content}</div>
                     )}
-                  </span>
-                  <span className={styles.itemTime}>{formatTime(item.at)}</span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

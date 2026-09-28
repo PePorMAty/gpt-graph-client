@@ -6,12 +6,14 @@ import {
   useToasts,
 } from "./toastStore";
 import { playChime } from "./chime";
+import { useGoToNode } from "../../hooks/useGoToNode";
 import styles from "./Toast.module.css";
 
 export const ToastContainer: FC = () => {
   const toasts = useToasts();
   const [soundEnabled, toggleSound] = useSoundToggle();
   const [volume, setVolume] = useSoundVolume();
+  const goToNode = useGoToNode();
 
   if (!toasts.length) return null;
 
@@ -19,7 +21,22 @@ export const ToastContainer: FC = () => {
     <div className={styles.container}>
       {toasts.map((t) => (
         <div key={t.id} className={`${styles.toast} ${styles[t.kind]}`}>
-          <span className={styles.text}>{t.text}</span>
+          {/* Уведомление о узле — по нему можно перейти к узлу. */}
+          {t.target ? (
+            <button
+              type="button"
+              className={`${styles.text} ${styles.textLink}`}
+              onClick={() => {
+                dismissToast(t.id);
+                goToNode(t.target!.nodeId);
+              }}
+              title="Перейти к узлу"
+            >
+              {t.text}
+            </button>
+          ) : (
+            <span className={styles.text}>{t.text}</span>
+          )}
           <input
             type="range"
             className={styles.volume}

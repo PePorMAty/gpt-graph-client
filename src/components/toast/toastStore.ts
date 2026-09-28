@@ -8,6 +8,10 @@ import {
 } from "./chime";
 
 export type ToastKind = "success" | "error" | "info";
+
+/** Узел, о котором уведомление: по нему из ленты переходят к продукту. */
+export type ToastTarget = { nodeId: string; label?: string };
+
 export type Toast = {
   id: number;
   kind: ToastKind;
@@ -19,9 +23,47 @@ export type Toast = {
    * показывается в ленте под колокольчиком, где отказ и разбирают.
    */
   detail?: string;
+  target?: ToastTarget;
 };
-/** Запись в ленте уведомлений: тот же тост, но со временем и без автоскрытия. */
-export type NotificationRecord = Toast & { at: string };
+/**
+ * Запись в ленте уведомлений: тот же тост, но со временем и без автоскрытия.
+ * canvas — полотно, к которому уведомление относится (см. setNotificationCanvas).
+ */
+export type NotificationRecord = Toast & { at: string; canvas: string };
+
+export interface ShowToastOptions {
+  /** Узел, о котором уведомление. */
+  target?: ToastTarget;
+  /**
+   * Полотно, для которого шёл запрос. Не задано — текущее. Отличается от
+   * текущего, когда ответ пришёл после того, как граф закрыли.
+   */
+  canvas?: string;
+}
+
+// ─── Чьё это уведомление ───
+// Лента была общей на всю вкладку: открыл новый граф — и видишь «Шаг
+// построен» с прошлого, а ответ на запрос закрытого графа всплывал поверх
+// нового. Теперь каждое уведомление помнит своё полотно, лента показывает
+// только текущее, а ответ для закрытого графа не всплывает.
+let currentCanvas = "canvas-1";
+
+/** Сменилось полотно: открыт другой граф, создан новый, полотно очищено. */
+export function setNotificationCanvas(key: string) {
+  if (key === currentCanvas) return;
+  currentCanvas = key;
+  // Всплывшие тосты прошлого полотна гасим сразу: к новому они отношения не
+  // имеют.
+  if (toasts.length) {
+    toasts = [];
+    emit();
+  }
+  refreshVisible();
+}
+
+export function getNotificationCanvas(): string {
+  return currentCanvas;
+}
 
 // Ошибку держим дольше: её нужно успеть прочитать.
 const AUTO_HIDE_MS: Record<ToastKind, number> = {
@@ -62,12 +104,26 @@ export function showToast(
   kind: ToastKind,
   text: string,
   detail?: string,
+  opts?: ShowToastOptions,
 ): number {
   const id = nextId++;
+  const canvas = opts?.canvas ?? currentCanvas;
+  const target = opts?.target;
+  pushHistory({
+    id,
+    kind,
+    text,
+    detail,
+    ...(target ? { target } : {}),
+    at: new Date().toISOString(),
+    canvas,
+  });
+  // Ответ для закрытого графа в ленту своего полотна ложится, а поверх
+  // нового не всплывает.
+  if (canvas !== currentCanvas) return id;
   // Больше трёх одновременно — стена вместо уведомлений.
-  toasts = [...toasts, { id, kind, text, detail }].slice(-3);
+  toasts = [...toasts, { id, kind, text, detail, ...(target ? { target } : {}) }].slice(-3);
   emit();
-  pushHistory({ id, kind, text, detail, at: new Date().toISOString() });
   playChime(kind);
   setTimeout(() => dismissToast(id), AUTO_HIDE_MS[kind]);
   return id;
@@ -85,6 +141,8 @@ export function useToasts(): Toast[] {
 const HISTORY_LIMIT = 50;
 
 let history: NotificationRecord[] = [];
+/** Записи текущего полотна — их и показывает лента. */
+let visible: NotificationRecord[] = [];
 const historyListeners = new Set<() => void>();
 
 function subscribeHistory(listener: () => void) {
@@ -95,15 +153,22 @@ function subscribeHistory(listener: () => void) {
 }
 
 function getHistorySnapshot(): NotificationRecord[] {
-  return history;
+  return visible;
+}
+
+/** Пересобрать видимую часть ленты и оповестить подписчиков. */
+function refreshVisible() {
+  visible = history.filter((r) => r.canvas === currentCanvas);
+  historyListeners.forEach((l) => l());
 }
 
 function pushHistory(record: NotificationRecord) {
   // Новые сверху; храним ограниченное число — лента не должна расти вечно.
   history = [record, ...history].slice(0, HISTORY_LIMIT);
-  historyListeners.forEach((l) => l());
+  refreshVisible();
 }
 
+/** Лента текущего полотна. */
 export function useNotificationHistory(): NotificationRecord[] {
   return useSyncExternalStore(
     subscribeHistory,
@@ -112,10 +177,11 @@ export function useNotificationHistory(): NotificationRecord[] {
   );
 }
 
+/** «Очистить» — ленту текущего полотна; чужие записи и так не видны. */
 export function clearNotificationHistory() {
-  if (!history.length) return;
-  history = [];
-  historyListeners.forEach((l) => l());
+  if (!visible.length) return;
+  history = history.filter((r) => r.canvas !== currentCanvas);
+  refreshVisible();
 }
 
 // Переключатель звука живёт рядом с тостами: включают/выключают его ровно в
