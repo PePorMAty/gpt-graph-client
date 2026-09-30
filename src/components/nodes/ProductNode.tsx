@@ -144,6 +144,47 @@ const GispPill: React.FC<{ count: number }> = ({ count }) => (
   </div>
 );
 
+/**
+ * Значок локальной базы: в скольких PDF заказчика на сервере упоминается
+ * продукт. Сами документы — в карточке продукта и в окне построения шага.
+ */
+const PdfPill: React.FC<{ count: number }> = ({ count }) => (
+  <div
+    title={`Упоминается в ${count} PDF из базы источников — список в карточке продукта`}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 3,
+      padding: "2px 6px",
+      borderRadius: 999,
+      background: "#475569",
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: 700,
+      lineHeight: 1,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+      pointerEvents: "none",
+      whiteSpace: "nowrap",
+    }}
+  >
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 3v5h5" />
+    </svg>
+    PDF {count}
+  </div>
+);
+
 export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
   const color =
     typeof data.presentationColor === "string" && data.presentationColor
@@ -166,6 +207,9 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
     data.showIndustryData === true && typeof data.gispProducers === "number"
       ? data.gispProducers
       : 0;
+
+  // PDF из локальной базы сервера, где упоминается продукт (см. Flow.tsx).
+  const pdfCount = typeof data.localPdfCount === "number" ? data.localPdfCount : 0;
 
   // Продукт добавлен вручную (в превью шага или на полотне) и ещё не описан. Пометку не храним
   // отдельным флагом: как только описание заполнено (в карточке узла), она
@@ -207,7 +251,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
 
-      {(upCount > 0 || downCount > 0 || gispCount > 0) && (
+      {(upCount > 0 || downCount > 0 || gispCount > 0 || pdfCount > 0) && (
         <div
           style={{
             position: "absolute",
@@ -226,6 +270,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
             <SourcesPill direction="down" count={downCount} color={color} />
           )}
           {gispCount > 0 && <GispPill count={gispCount} />}
+          {pdfCount > 0 && <PdfPill count={pdfCount} />}
         </div>
       )}
 

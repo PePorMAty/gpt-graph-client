@@ -35,11 +35,13 @@ import {
   insertTransformationsForNeighbors,
   mergeProductNodes,
   addSourcesToPool,
+  mergeBaseSources,
   clearGraphError,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
 import { openGraphExtras } from "./store/graphExtras";
 import { checkIndustry, industryKey } from "./store/slices/industrySlice";
+import { checkLocalSources } from "./store/slices/localSourcesSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -336,6 +338,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [industryData, productNamesKey, dispatch]);
+
+  // Есть ли у продуктов источники в базе сервера (PDF и найденное моделью
+  // раньше) — как опознание: появился продукт, спрашиваем. Санк спрашивает
+  // новые названия, а когда база изменилась (растёт version) — все.
+  const localSourcesVersion = useAppSelector((s) => s.localSources.version);
+  useEffect(() => {
+    if (!productNames.length) return;
+    dispatch(checkLocalSources(productNames));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productNamesKey, localSourcesVersion, dispatch]);
 
   /**
    * Опознаём продукты по справочнику и проставляем идентификаторы.
@@ -866,6 +878,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // с дефисами («Олефин-богатый…») — источники «не клались» в продукт.
   const poolKey = sourcesPoolKey;
 
+  const localSourceCounts = useAppSelector((s) => s.localSources.counts);
+
   // Flow.tsx
   const productsView = useMemo(
     () =>
@@ -913,6 +927,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           // Слой ГИСП: число производителей из реестра. Пока продукт не
           // проверен, поля нет — узел бейдж не рисует.
           const gisp = industryResults[industryKey(lbl)];
+          // В скольких PDF из базы сервера упоминается продукт. Нет таких —
+          // значка нет.
+          const pdfCount = localSourceCounts[industryKey(lbl)]?.local ?? 0;
           return {
             ...n,
             className: cls,
@@ -921,6 +938,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
               ...(bookmarked ? { bookmarked: true } : {}),
+              ...(pdfCount > 0 ? { localPdfCount: pdfCount } : {}),
               showIndustryData: industryData,
               ...(gisp
                 ? {
@@ -955,6 +973,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       showAlternatives,
       industryData,
       industryResults,
+      localSourceCounts,
       bookmarkedIds,
     ],
   );
@@ -2544,6 +2563,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         onFetchStepSources: handleFetchStepSourcesV2(direction),
         onCancelStepSources: handleCancelStepSources(direction),
+        onMergeBaseSources: (baseSources: TechnologySource[]) => {
+          const productName = String(selectedNode.data?.label ?? "").trim();
+          if (!productName) return;
+          dispatch(
+            mergeBaseSources({ productName, direction, sources: baseSources }),
+          );
+        },
         onAggregateStepSources: handleAggregateStepSources(direction),
         onBuildStep: handleBuildStep(direction),
         onClearStepState: handleClearStepState(direction),

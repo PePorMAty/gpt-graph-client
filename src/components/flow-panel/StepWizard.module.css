@@ -529,6 +529,39 @@
   border-radius: var(--r-xs);
 }
 
+/* Откуда источник: PDF заказчика или найденный моделью раньше (из базы
+   сервера). У PDF метка стоит на месте домена — домена у него нет. */
+.sourcePdf {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
+.sourceSaved {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
+.sourceIconPdf {
+  color: var(--c-danger);
+}
+
+.sourceHint {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
 .sourceMore {
   flex: none;
   display: flex;

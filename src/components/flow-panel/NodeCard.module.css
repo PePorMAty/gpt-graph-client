@@ -846,6 +846,50 @@
   color: var(--c-text-faint);
 }
 
+/* ─── Источники в базе сервера (PDF заказчика, сохранённое) ─── */
+
+.baseNote {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+}
+
+.baseList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+}
+
+.baseItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: var(--fs-md);
+}
+
+.baseIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--c-danger);
+}
+
+.baseMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.baseMeta {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
 .sourceLinks {
   margin: 0;
   padding-left: var(--s-5);

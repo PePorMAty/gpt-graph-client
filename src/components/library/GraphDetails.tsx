@@ -30,6 +30,8 @@ import {
   SearchIcon,
   TrashIcon,
 } from "../icons";
+import { sourceHref } from "../../store/api/local-sources-api";
+import { sourceLinkText } from "../../utils/sourceOrigin";
 import styles from "./LibraryScreen.module.css";
 
 type Tab = "sources" | "industry" | "merge";
@@ -423,13 +425,13 @@ export const GraphDetails = ({
                         <td className={styles.titleCell}>{row.title}</td>
                         <td>
                           <a
-                            href={row.url}
+                            href={sourceHref(row.url)}
                             target="_blank"
                             rel="noreferrer"
                             className={styles.sourceLink}
                             title={row.url}
                           >
-                            {row.url}
+                            {sourceLinkText(row.url)}
                           </a>
                         </td>
                       </tr>

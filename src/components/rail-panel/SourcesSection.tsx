@@ -17,6 +17,8 @@ import {
 } from "../icons";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
+import { sourceHref } from "../../store/api/local-sources-api";
+import { isLocalSourceUrl, localSourceLabel } from "../../utils/sourceOrigin";
 import styles from "./PanelSection.module.css";
 
 const DirectionBadge = ({ direction }: { direction: "up" | "down" | null }) => {
@@ -44,8 +46,12 @@ const ObjectCell = ({ row }: { row: GraphSourceRow }) => (
   </span>
 );
 
-/** Домен вместо полного URL: в узкой колонке «https://…» ничего не сообщает. */
+/**
+ * Домен вместо полного URL: в узкой колонке «https://…» ничего не сообщает.
+ * У PDF из локальной базы домена нет — «PDF · стр. N».
+ */
 function hostOf(url: string): string {
+  if (isLocalSourceUrl(url)) return localSourceLabel(url);
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -55,11 +61,11 @@ function hostOf(url: string): string {
 
 const SourceLink = ({ url }: { url: string }) => (
   <a
-    href={url}
+    href={sourceHref(url)}
     target="_blank"
     rel="noreferrer"
     className={styles.link}
-    title={url}
+    title={isLocalSourceUrl(url) ? "Открыть PDF" : url}
   >
     <span className={styles.linkText}>{hostOf(url)}</span>
     <LinkIcon size={13} className={styles.linkIcon} />

@@ -4,6 +4,7 @@ import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { FillCardBlock } from "./FillCardBlock";
 import { CollapsibleBlock } from "./CollapsibleBlock";
 import { NodeSourcesBlock } from "./NodeSourcesBlock";
+import { NodeBaseSourcesBlock } from "./NodeBaseSourcesBlock";
 import { CardTitleField } from "./CardTitleField";
 import { KeyInfoBlock } from "./KeyInfoBlock";
 import { NodeIdentifiers } from "./NodeIdentifiers";
@@ -25,6 +26,8 @@ import {
   PencilIcon,
   TrashIcon,
 } from "../icons";
+import { sourceHref } from "../../store/api/local-sources-api";
+import { sourceLinkText } from "../../utils/sourceOrigin";
 import styles from "./NodeCard.module.css";
 
 /** Вкладки карточки. У преобразования третья — маршруты, у продукта — ГИСП. */
@@ -491,6 +494,10 @@ export const NodeCard: FC<NodeCardProps> = ({
                 />
               )}
 
+              {isProduct && sourcesCurrentProduct && (
+                <NodeBaseSourcesBlock product={sourcesCurrentProduct} />
+              )}
+
               {/* Ссылки на источники преобразования лежат прямо на узле. */}
               {!isProduct &&
                 Array.isArray(transformationSources) &&
@@ -502,8 +509,8 @@ export const NodeCard: FC<NodeCardProps> = ({
                     <ol className={styles.sourceLinks}>
                       {transformationSources.map((url, i) => (
                         <li key={`${i}-${url}`}>
-                          <a href={url} target="_blank" rel="noreferrer">
-                            {url}
+                          <a href={sourceHref(url)} target="_blank" rel="noreferrer">
+                            {sourceLinkText(url)}
                           </a>
                         </li>
                       ))}

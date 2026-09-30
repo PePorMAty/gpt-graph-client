@@ -31,6 +31,7 @@ import {
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { readableReason } from "../../store/middleware/failureText";
+import { isOwnBaseSource } from "../../utils/sourceOrigin";
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
@@ -125,6 +126,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const isTerminalRecycle =
     stepNeedsFreshSources?.reason === "cycle" && stepSourcesExhausted;
   const isBorrowedSources = !!stepSourcesOrigin;
+  // Взятое из базы сервера для этого продукта — его собственное, даже если
+  // остальной список взят у предка.
+  const ownBaseCount = stepSources.filter((s) =>
+    isOwnBaseSource(s, productName),
+  ).length;
   const sourcesLoading = stepSourcesStatus === "loading";
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
@@ -177,7 +183,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
   // ── Настройки поиска: общие с первым экраном мастера ──
   // Промпт, домены и число источников заданы ДО первого поиска и остаются
-  // теми же при «Найти источники заново» — одно состояние на оба экрана.
+  // теми же при «Добрать через модель» — одно состояние на оба экрана.
   const {
     maxItems,
     setMaxItems,
@@ -287,7 +293,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   };
 
   // Редактор поиска (промпт + домены): стейт общий, поэтому один и тот же
-  // элемент рендерится на каждой стадии, где есть «Найти источники заново».
+  // элемент рендерится на каждой стадии, где есть «Добрать через модель».
   // Поиск источников идёт минутами — на время ожидания даём его прервать.
   const cancelSearchButton = sourcesLoading ? (
     <button
@@ -648,9 +654,12 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 onClick={handleFetchSources}
                 disabled={sourcesLoading || aggregateLoading || isSrcPromptEmpty}
                 className={wiz.secondary}
+                // Найденное ДОБАВЛЯЕТСЯ к списку, а не заменяет его: к PDF из
+                // базы и прошлым находкам модель добирает новые.
+                title="Найти ещё источники через модель и добавить их к списку"
               >
                 <SearchIcon size={17} />
-                {sourcesLoading ? "Ищем…" : "Найти источники заново"}
+                {sourcesLoading ? "Ищем…" : "Добрать через модель"}
               </button>
             }
           />
@@ -658,7 +667,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
 
           {isBorrowedSources && (
             <div className={styles.warningText}>
-              Источники взяты у «{stepSourcesOrigin}».
+              Источники взяты у «{stepSourcesOrigin}»
+              {ownBaseCount > 0
+                ? `; к ним добавлены из базы для «${productName}»: ${ownBaseCount}.`
+                : "."}
             </div>
           )}
           {stepSourcesExhausted && (
@@ -781,8 +793,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             {sourcesLoading
               ? "Поиск..."
               : isSrcPromptDirty
-                ? `Найти источники заново для «${productName}» (свой промпт)`
-                : `Найти источники заново для «${productName}»`}
+                ? `Добрать источники для «${productName}» через модель (свой промпт)`
+                : `Добрать источники для «${productName}» через модель`}
           </button>
           {cancelSearchButton}
         </>

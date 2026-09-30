@@ -147,6 +147,11 @@ export interface DirectionTabProps {
   }) => void;
   /** Прерывает идущий поиск источников (он может длиться минутами). */
   onCancelStepSources?: () => void;
+  /**
+   * Взять в список источников шага то, что есть у продукта в базе сервера:
+   * PDF заказчика и найденное моделью раньше. Только добавляет.
+   */
+  onMergeBaseSources?: (sources: TechnologySource[]) => void;
   /** selectedSources — подмножество источников (3.1); undefined = все. */
   onAggregateStepSources?: (
     customSystemPrompt?: string,

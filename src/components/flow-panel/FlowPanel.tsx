@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FC } from "react";
-import type { BuildDirection } from "../../store/types";
+import type { BuildDirection, TechnologySource } from "../../store/types";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { StepByStepContent } from "./StepByStepContent";
 import { MarkdownEditor } from "../markdown-editor";
@@ -16,6 +16,12 @@ import { getAiRequestFields } from "../../hooks/useAiConfig";
 import { StepWizardSteps, type WizardStep } from "./StepWizardSteps";
 import { StepSearchSettingsProvider } from "./StepSearchSettingsProvider";
 import { useStepSearchSettings } from "./stepSearchSettings";
+import { useBaseSources } from "./useBaseSources";
+import { sourceHref } from "../../store/api/local-sources-api";
+import { sourceUrlKey } from "../../utils/sourceUrl";
+import { isLocalSource, sourceLinkText } from "../../utils/sourceOrigin";
+import { plural } from "../../utils/plural";
+import { normalizeProductName } from "../../utils/normalizeProductName";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -680,12 +686,12 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
               <div className={styles.sourceBody}>
                 <a
-                  href={s.url}
+                  href={sourceHref(s.url)}
                   target="_blank"
                   rel="noreferrer"
                   className={styles.sourceLink}
                 >
-                  {s.url}
+                  {sourceLinkText(s.url)}
                 </a>
 
                 <div className={styles.sourceDesc}>
@@ -817,8 +823,58 @@ const PanelBuildViewInner: FC<{
     lastDirection.set(productName, value);
   };
 
-  // Настройки поиска общие со вторым экраном: что задали здесь, тем и
-  // повторится «Найти источники заново».
+  // ── Источники из базы сервера: PDF заказчика и найденное моделью раньше ──
+  // У альтернативы своих источников нет — она строится из описания.
+  const base = useBaseSources(productName, tab.isAlternativeNode ? null : dir);
+  // Что из базы ещё не в списке — и сколько записей списка базе надо
+  // поправить: вернуть текст (граф сохранён облегчённым) или пометить своими
+  // (тот же PDF пришёл от предка, но он и про этот продукт).
+  const { newBase, pending } = useMemo(() => {
+    const me = normalizeProductName(productName);
+    const inList = new Map(
+      (tab.stepSources ?? []).map((s) => [sourceUrlKey(String(s.url || "")), s]),
+    );
+    const fresh: TechnologySource[] = [];
+    let todo = 0;
+    for (const s of base.sources) {
+      const k = sourceUrlKey(String(s.url || ""));
+      if (!k) continue;
+      const cur = inList.get(k);
+      if (!cur) {
+        fresh.push(s);
+        todo += 1;
+      } else if (!String(cur.technology_description || "").trim() || cur.baseFor !== me) {
+        todo += 1;
+      }
+    }
+    return { newBase: fresh, pending: todo };
+  }, [base.sources, tab.stepSources, productName]);
+  const newLocal = newBase.filter((s) => isLocalSource(s)).length;
+  const newSaved = newBase.length - newLocal;
+  // Источники уже в работе — новое из базы (скажем, PDF, загруженный с тех
+  // пор) просто дописываем в список: экран мастера от этого не меняется.
+  // Пока в работу ничего не взято, новое предлагаем на первом экране.
+  useEffect(() => {
+    if (hasSources && pending > 0) tab.onMergeBaseSources?.(base.sources);
+    // Срабатывает, когда есть что взять, а не на каждую перерисовку: tab —
+    // новый объект при каждой.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSources, pending]);
+  const offerBase = dir !== null && !hasSources && newBase.length > 0;
+  // Пока не знаем, что в базе, — не ищем через модель: поиск идёт минутами,
+  // а нужное, может быть, уже лежит на сервере.
+  const baseChecking =
+    dir !== null && !hasSources && !tab.isAlternativeNode && base.status === "loading";
+  const baseText = [
+    newLocal > 0 && `${newLocal} PDF`,
+    newSaved > 0 &&
+      `${newSaved} ${plural(newSaved, "источник", "источника", "источников")}, найденных моделью раньше`,
+  ]
+    .filter(Boolean)
+    .join(" и ");
+
+  // Настройки поиска общие со вторым экраном: что задали здесь, с тем и
+  // пойдёт «Добрать через модель».
   const search = useStepSearchSettings();
   const autoSrcPrompt = useMemo(
     () =>
@@ -848,6 +904,11 @@ const PanelBuildViewInner: FC<{
     if (!dir) return;
     setBackTo(null);
     if (introGoesForward) return; // источники уже есть — просто идём дальше
+    if (offerBase) {
+      // Сначала — то, что есть в базе; добрать через модель можно дальше.
+      tab.onMergeBaseSources?.(base.sources);
+      return;
+    }
     const allowedDomains = parseDomainsInput(search.domainsText);
     tab.onFetchStepSources?.({
       maxItems: search.maxItems,
@@ -957,13 +1018,15 @@ const PanelBuildViewInner: FC<{
             <span>
               <span className={wiz.nextTitle}>Что дальше?</span>
               <p className={wiz.nextText}>
-                {dir
-                  ? `Найдём источники о том, ${
-                      dir === "up"
-                        ? "из чего производится"
-                        : "что производится из"
-                    } «${productName}», и обобщим их в один шаг. Поиск идёт минутами — окно можно закрыть.`
-                  : "Выберите направление — от него зависит, что мы будем искать в источниках."}
+                {offerBase
+                  ? `В базе уже есть источники для «${productName}»: ${baseText}. Начнём с них — PDF встанут первыми, а добрать ещё через модель можно на следующем шаге.`
+                  : dir
+                    ? `Найдём источники о том, ${
+                        dir === "up"
+                          ? "из чего производится"
+                          : "что производится из"
+                      } «${productName}», и обобщим их в один шаг. Поиск идёт минутами — окно можно закрыть.`
+                    : "Выберите направление — от него зависит, что мы будем искать в источниках."}
               </p>
             </span>
           </div>
@@ -1003,18 +1066,29 @@ const PanelBuildViewInner: FC<{
             )}
             <button
               type="button"
-              className={`${wiz.primary} ${searching ? wiz.primaryBusy : ""}`}
+              className={`${wiz.primary} ${searching || baseChecking ? wiz.primaryBusy : ""}`}
               onClick={startSearch}
-              disabled={!dir || searching || isSrcPromptEmpty}
+              disabled={
+                !dir || searching || baseChecking || (!offerBase && isSrcPromptEmpty)
+              }
             >
               {searching ? (
                 <>
                   <span className={wiz.spinner} aria-hidden="true" />
                   Ищем источники…
                 </>
+              ) : baseChecking ? (
+                <>
+                  <span className={wiz.spinner} aria-hidden="true" />
+                  Смотрим базу…
+                </>
               ) : (
                 <>
-                  {introGoesForward ? "К источникам" : "Найти источники"}
+                  {introGoesForward
+                    ? "К источникам"
+                    : offerBase
+                      ? "К источникам из базы"
+                      : "Найти источники"}
                   <ArrowDownIcon size={17} className={wiz.arrowRight} />
                 </>
               )}
