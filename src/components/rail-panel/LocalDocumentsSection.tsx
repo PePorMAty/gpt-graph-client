@@ -1,29 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import {
-  deleteLocalDocument,
-  listLocalDocuments,
-  type LocalDocument,
-} from "../../store/api/local-sources-api";
+import { deleteLocalDocument, type LocalDocument } from "../../store/api/local-sources-api";
 import {
   clearFinishedUploads,
   invalidateLocalSources,
-  uploadLocalDocuments,
-  watchDecoding,
   type UploadJob,
 } from "../../store/slices/localSourcesSlice";
 import { useAiConfig } from "../../hooks/useAiConfig";
 import { plural } from "../../utils/plural";
-import { DatabaseIcon, SearchIcon, UploadIcon } from "../icons";
+import { SearchIcon, UploadIcon } from "../icons";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
 import { LocalDocumentRow } from "./LocalDocumentRow";
 import panel from "./PanelSection.module.css";
 import styles from "./LocalDocuments.module.css";
-
-/** Как часто обновлять список, пока модель разбирает разделы. */
-const POLL_MS = 4000;
 
 function isActive(job: UploadJob): boolean {
   return job.state === "waiting" || job.state === "uploading";
@@ -86,57 +77,41 @@ const JobRow = ({ job }: { job: UploadJob }) => {
   );
 };
 
+interface Props {
+  /** null — ещё не получены. */
+  docs: LocalDocument[] | null;
+  error: string | null;
+  /** Над вкладкой держат файл — подсветить рамку. */
+  dragging: boolean;
+  onAddFiles: (files: FileList | null) => void;
+  onDeleted: (id: number) => void;
+  /** Документ поставлен в разбор — обновить список. */
+  onChanged: () => void;
+}
+
 /**
- * Вкладка «База источников» раздела «База данных»: документы заказчика на
- * сервере.
+ * «База источников» → «Документы»: документы заказчика на сервере.
  *
  * Документ — не источник сам по себе: сервер делит его на разделы (по
  * закладкам или содержанию), модель разбирает каждый — что производят, из
  * какого сырья, — и раздел становится источником для этих продуктов в любом
- * графе. Здесь — загрузка (кнопкой, перетаскиванием), ход разбора, разделы с
- * их продуктами и удаление.
+ * графе. Здесь — загрузка, ход разбора, разделы с их веществами и удаление.
  */
-export const LocalDocumentsSection = () => {
+export const LocalDocumentsSection = ({
+  docs,
+  error: loadError,
+  dragging,
+  onAddFiles,
+  onDeleted,
+  onChanged,
+}: Props) => {
   const dispatch = useAppDispatch();
-  const version = useAppSelector((s) => s.localSources.version);
   const uploads = useAppSelector((s) => s.localSources.uploads);
-
   const { config: aiConfig } = useAiConfig();
 
-  const [docs, setDocs] = useState<LocalDocument[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [dragging, setDragging] = useState(false);
-  const [reload, setReload] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Список — при открытии и после каждого изменения базы (загрузили,
-  // удалили, поставили в разбор — в том числе из другой вкладки окна).
-  useEffect(() => {
-    let cancelled = false;
-    listLocalDocuments()
-      .then((list) => {
-        if (cancelled) return;
-        setDocs(list);
-        setError(null);
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [version, reload]);
-
-  // Пока модель разбирает разделы — обновляем ход разбора; значки на узлах
-  // обновляет слежение в сторе (оно живёт и при закрытой вкладке).
-  const pendingTotal = (docs ?? []).reduce((n, d) => n + (d.sections?.pending ?? 0), 0);
-  useEffect(() => {
-    if (!pendingTotal) return;
-    dispatch(watchDecoding());
-    const t = setTimeout(() => setReload((r) => r + 1), POLL_MS);
-    return () => clearTimeout(t);
-  }, [docs, pendingTotal, dispatch]);
 
   const filtered = useMemo(() => {
     const list = docs ?? [];
@@ -149,63 +124,23 @@ export const LocalDocumentsSection = () => {
 
   const paged = usePaged(filtered);
 
-  const addFiles = (list: FileList | null) => {
-    const files = Array.from(list ?? []);
-    if (files.length) dispatch(uploadLocalDocuments(files));
-  };
-
   const remove = async (id: number) => {
     try {
       await deleteLocalDocument(id);
-      setDocs((prev) => prev?.filter((d) => d.id !== id) ?? prev);
+      onDeleted(id);
       dispatch(invalidateLocalSources());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  // Бросить файл можно на весь раздел, не только в рамку: промах мимо неё
-  // открыл бы PDF вместо приложения.
-  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setDragging(true);
-  };
-  const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    // Переход на вложенный элемент — не уход из раздела.
-    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-    setDragging(false);
-  };
-  const onDrop = (e: DragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    setDragging(false);
-    addFiles(e.dataTransfer.files);
-  };
-
   const total = docs?.length ?? 0;
-  const totalSections = (docs ?? []).reduce((n, d) => n + (d.sections?.total ?? 0), 0);
   const active = uploads.filter(isActive).length;
   const finished = uploads.length - active;
+  const shownError = error ?? loadError;
 
   return (
-    <div
-      className={panel.section}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      <div className={panel.summaryCard}>
-        <DatabaseIcon size={20} className={panel.summaryIcon} />
-        <span className={panel.summaryValue}>{totalSections}</span>
-        <span className={panel.summaryLabel}>
-          {plural(totalSections, "источник", "источника", "источников")} — разделы{" "}
-          {total} {plural(total, "документа", "документов", "документов")}
-          {pendingTotal > 0 && ` · в разборе ${pendingTotal}`}
-        </span>
-      </div>
-
+    <div className={styles.docsView}>
       <div className={styles.body}>
         <div className={`${styles.drop} ${dragging ? styles.dropActive : ""}`}>
           <span className={styles.dropText}>
@@ -233,7 +168,7 @@ export const LocalDocumentsSection = () => {
             multiple
             hidden
             onChange={(e) => {
-              addFiles(e.target.files);
+              onAddFiles(e.target.files);
               // Иначе тот же файл второй раз не выбрать: onChange не сработает.
               e.target.value = "";
             }}
@@ -266,7 +201,7 @@ export const LocalDocumentsSection = () => {
           </div>
         )}
 
-        {error && <div className={styles.error}>{error}</div>}
+        {shownError && <div className={styles.error}>{shownError}</div>}
 
         {total > 0 && (
           <div className={panel.search}>
@@ -281,7 +216,7 @@ export const LocalDocumentsSection = () => {
         )}
 
         {docs === null ? (
-          !error && <div className={panel.empty}>Загружаем список…</div>
+          !shownError && <div className={panel.empty}>Загружаем список…</div>
         ) : total === 0 ? (
           <div className={panel.empty}>
             Документов пока нет. Загруженный документ делится на разделы, и
@@ -294,15 +229,7 @@ export const LocalDocumentsSection = () => {
         ) : (
           <ul className={styles.docs}>
             {paged.slice.map((doc) => (
-              <LocalDocumentRow
-                key={doc.id}
-                doc={doc}
-                onDelete={remove}
-                onChanged={() => {
-                  setReload((r) => r + 1);
-                  dispatch(watchDecoding());
-                }}
-              />
+              <LocalDocumentRow key={doc.id} doc={doc} onDelete={remove} onChanged={onChanged} />
             ))}
           </ul>
         )}

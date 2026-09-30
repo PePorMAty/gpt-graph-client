@@ -46,45 +46,66 @@ function shortList(items: string[], max = 8): string {
     : items.join(", ");
 }
 
-const SectionRow = ({ s, docId }: { s: LocalSection; docId: number }) => (
-  <li className={styles.sec}>
-    <div className={styles.secHead}>
-      <span
-        className={`${styles.secStatus} ${styles[`sec_${s.status}`] ?? ""}`}
-        title={STATUS[s.status]?.title}
-      >
-        {STATUS[s.status]?.mark}
-      </span>
-      <a
-        className={styles.secTitle}
-        href={localDocumentHref(docId, s.pageFrom)}
-        target="_blank"
-        rel="noreferrer"
-        title="Открыть документ на этом разделе"
-      >
-        {s.title}
-      </a>
-      <span className={styles.secPages}>{s.pages}</span>
+/**
+ * Вещества раздела строками. Первые три — то, по чему раздел находят
+ * продукты: получаемое — «вверх», сырьё — «вниз». Остальное — в описании.
+ */
+const MAIN_ROLES: Array<[keyof LocalSection["products"], string]> = [
+  ["products", "Получают"],
+  ["byproducts", "Попутно"],
+  ["raw", "Сырьё"],
+];
+const MORE_ROLES: Array<[keyof LocalSection["products"], string]> = [
+  ["intermediates", "Промежуточные"],
+  ["auxiliaries", "Вспомогательное"],
+  ["wastes", "Отходы и выбросы"],
+];
+
+const RoleLine = ({ label, names }: { label: string; names: string[] }) =>
+  names.length ? (
+    <div className={styles.secProducts}>
+      <span className={styles.secRole}>{label}:</span> {shortList(names)}
     </div>
-    {s.products.up.length > 0 && (
-      <div className={styles.secProducts}>
-        <span className={styles.secRole}>Получают:</span> {shortList(s.products.up)}
+  ) : null;
+
+const SectionRow = ({ s, docId }: { s: LocalSection; docId: number }) => {
+  const more = MORE_ROLES.filter(([key]) => s.products[key]?.length);
+  return (
+    <li className={styles.sec}>
+      <div className={styles.secHead}>
+        <span
+          className={`${styles.secStatus} ${styles[`sec_${s.status}`] ?? ""}`}
+          title={STATUS[s.status]?.title}
+        >
+          {STATUS[s.status]?.mark}
+        </span>
+        <a
+          className={styles.secTitle}
+          href={localDocumentHref(docId, s.pageFrom)}
+          target="_blank"
+          rel="noreferrer"
+          title="Открыть документ на этом разделе"
+        >
+          {s.title}
+        </a>
+        <span className={styles.secPages}>{s.pages}</span>
       </div>
-    )}
-    {s.products.down.length > 0 && (
-      <div className={styles.secProducts}>
-        <span className={styles.secRole}>Сырьё:</span> {shortList(s.products.down)}
-      </div>
-    )}
-    {s.error && <div className={styles.secError}>{s.error}</div>}
-    {s.summary && (
-      <details className={styles.secSummary}>
-        <summary>Описание от модели</summary>
-        <p>{s.summary}</p>
-      </details>
-    )}
-  </li>
-);
+      {MAIN_ROLES.map(([key, label]) => (
+        <RoleLine key={key} label={label} names={s.products[key] ?? []} />
+      ))}
+      {s.error && <div className={styles.secError}>{s.error}</div>}
+      {(s.summary || more.length > 0) && (
+        <details className={styles.secSummary}>
+          <summary>{s.summary ? "Описание от модели" : "Ещё вещества раздела"}</summary>
+          {s.summary && <p>{s.summary}</p>}
+          {more.map(([key, label]) => (
+            <RoleLine key={key} label={label} names={s.products[key] ?? []} />
+          ))}
+        </details>
+      )}
+    </li>
+  );
+};
 
 /** Ход разбора разделов моделью. */
 const DecodeStatus = ({

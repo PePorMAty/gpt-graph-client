@@ -1,8 +1,26 @@
-/* Вкладка «PDF на сервере» раздела «База данных». Общие части (сводка, поиск,
-   пустое состояние) — из PanelSection.module.css; здесь только своё. */
+/* Вкладка «База источников» раздела «База данных». Каркас вида «Продукты»
+   (чипы, отборы, вложенный список) — из Industry.module.css, как у
+   «Промышленного знания»; общие части «Документов» (поиск, пустое состояние,
+   подвал) — из PanelSection.module.css; здесь только своё. */
 
-/* Всё, кроме сводки и подвала, прокручивается одним куском: у рамки,
-   очереди и списка своя прокрутка каждому оставила бы списку одну строку. */
+/* Переключатель «Продукты / Документы» — по ширине содержимого, слева. */
+.baseViews {
+  align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+/* Вид «Документы» занимает остаток высоты вкладки. */
+.docsView {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* Всё, кроме подвала, прокручивается одним куском: у рамки, очереди и
+   списка своя прокрутка каждому оставила бы списку одну строку. */
 .body {
   flex: 1 1 auto;
   min-height: 0;
@@ -468,7 +486,192 @@
   color: var(--c-text-muted);
 }
 
+/* В раскрытом описании строки веществ — без своего отступа: его уже дал
+   блок описания. */
+.secSummary .secProducts {
+  margin-left: 0;
+}
+
 .secSummary p {
+  margin: var(--s-1) 0 0;
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+  white-space: pre-wrap;
+}
+
+/* ─── Продукты базы: строка продукта ─── */
+
+/* Продукт есть на текущем графе. */
+.onGraph {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-1);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  vertical-align: 1px;
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-sm);
+}
+
+/* ↑ сколько «как получают», ↓ сколько «что получают из него». */
+.dirCounts {
+  display: inline-flex;
+  gap: var(--s-2);
+}
+
+.dirCounts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dirZero {
+  color: var(--c-text-faint);
+}
+
+/* ─── Продукты базы: источники раскрытого продукта ─── */
+
+.psBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3) var(--s-3) calc(var(--s-3) + 12px + var(--s-2));
+}
+
+.psNote {
+  padding: var(--s-3) var(--s-3) var(--s-3) calc(var(--s-3) + 12px + var(--s-2));
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.psGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.psGroupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-soft);
+}
+
+.psGroupIcon {
+  color: var(--c-brand);
+}
+
+.psCount {
+  margin-left: 2px;
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-muted);
+}
+
+.psNone {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
+.psList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.psItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+.psHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.psTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.psTitle:hover {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+/* Роль продукта в разделе. */
+.psRole {
+  flex: 0 0 auto;
+  padding: 0 var(--s-1);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
+}
+
+.psRole_product {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.psRole_raw {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+}
+
+.psRole_web {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+}
+
+/* Строкой текста, а не гибким рядом: длинный адрес в ряду уезжал на новую
+   строку целиком, оставляя значок одного. */
+.psMeta {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.psMetaIcon {
+  margin-right: 4px;
+  vertical-align: -2px;
+  color: var(--c-text-faint);
+}
+
+.psPending {
+  color: var(--c-warning);
+}
+
+.psDetails {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.psDetails summary {
+  cursor: pointer;
+}
+
+.psDetails p {
   margin: var(--s-1) 0 0;
   line-height: var(--lh-normal);
   color: var(--c-text-soft);

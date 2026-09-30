@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useAppSelector } from "../../store/hooks";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
-import { LocalDocumentsSection } from "./LocalDocumentsSection";
+import { LocalSourcesPanel } from "./LocalSourcesPanel";
 import { SourcesSection } from "./SourcesSection";
 import styles from "./PanelSection.module.css";
 
@@ -61,7 +61,7 @@ export const DatabaseSection = () => {
         ) : view === "industry" ? (
           <IndustryGraphPanel productNames={productNames} compact />
         ) : (
-          <LocalDocumentsSection />
+          <LocalSourcesPanel productNames={productNames} />
         )}
       </div>
     </div>

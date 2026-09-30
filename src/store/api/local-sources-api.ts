@@ -46,8 +46,67 @@ export interface LocalSection {
   summary: string | null;
   model: string | null;
   error: string | null;
-  /** Продукты: вверх — раздел о том, как их получают; вниз — они сырьё. */
-  products: { up: string[]; down: string[] };
+  /**
+   * Вещества раздела. Для получаемых (целевые, попутные) раздел — источник
+   * «вверх»: как их получают; для сырья — «вниз»: что из него делают.
+   * Вспомогательное и отходы с продуктами не связаны — только видны.
+   */
+  products: {
+    products: string[];
+    byproducts: string[];
+    intermediates: string[];
+    raw: string[];
+    auxiliaries: string[];
+    wastes: string[];
+  };
+}
+
+/**
+ * Продукт базы — названия, сведённые в одно вещество («Пропилен» и «Пропен»).
+ * Числа — сколько разделов раскроется по щелчку.
+ */
+export interface LocalProduct {
+  id: string;
+  label: string;
+  /** Другие написания того же вещества в разделах. */
+  names: string[];
+  /** Ключи названий — по ним сервер отдаёт источники продукта. */
+  keys: string[];
+  /** Разделов «вверх»: где его получают. */
+  up: number;
+  /** Разделов «вниз»: где он сырьё. */
+  down: number;
+  /** Сохранённых источников из интернета. */
+  web: { up: number; down: number };
+  /** Каким узлам текущего графа отвечает. */
+  onGraph: string[];
+}
+
+/** Роль продукта в разделе. */
+export type LocalRole = "product" | "byproduct" | "intermediate" | "raw";
+
+/** Раздел — источник продукта базы. */
+export interface LocalProductSection {
+  sectionId: number;
+  docId: number;
+  docTitle: string;
+  title: string;
+  /** «стр. 14–42» — печатными номерами документа. */
+  pages: string;
+  page: number;
+  /** Путь относительно API — ссылку даёт sourceHref. */
+  url: string;
+  role: LocalRole;
+  /** false — связь только по заголовку, модель раздел ещё не разобрала. */
+  byModel: boolean;
+  status: LocalSection["status"];
+  summary: string | null;
+}
+
+export interface LocalProductSources {
+  up: LocalProductSection[];
+  down: LocalProductSection[];
+  web: { up: TechnologySource[]; down: TechnologySource[] };
 }
 
 /**
@@ -234,6 +293,35 @@ export async function fetchBaseSources(
     direction,
   });
   return { local: data.local ?? [], web: data.web ?? [] };
+}
+
+/**
+ * Продукты базы, по алфавиту. graph — продукты графа: у продуктов базы
+ * сервер отметит, каким узлам они отвечают.
+ */
+export async function listLocalProducts(
+  graph: string[],
+): Promise<{ products: LocalProduct[]; hidden: { intermediates: number } }> {
+  try {
+    const { data } = await axios.post(`${base()}/local-sources/products`, { graph });
+    return { products: data.products ?? [], hidden: data.hidden ?? { intermediates: 0 } };
+  } catch (e) {
+    throw new Error(reason(e, "Не удалось получить продукты базы"));
+  }
+}
+
+/** Все источники продукта базы: разделы вверх и вниз, найденное в интернете. */
+export async function fetchLocalProductSources(keys: string[]): Promise<LocalProductSources> {
+  try {
+    const { data } = await axios.post(`${base()}/local-sources/product-sources`, { keys });
+    return {
+      up: data.up ?? [],
+      down: data.down ?? [],
+      web: { up: data.web?.up ?? [], down: data.web?.down ?? [] },
+    };
+  } catch (e) {
+    throw new Error(reason(e, "Не удалось получить источники продукта"));
+  }
 }
 
 /** Ссылка, по которой открыть PDF документа (на странице, если указана). */
