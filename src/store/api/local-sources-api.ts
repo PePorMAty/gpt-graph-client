@@ -1,9 +1,11 @@
-// Локальная база источников на сервере: PDF заказчика и источники, которые
-// модель находила раньше (сервер копит их сам). См. LOCAL-SOURCES.md сервера.
+// База источников на сервере: разделы документов заказчика (PDF делится на
+// разделы, модель разбирает каждый) и источники, которые модель находила
+// раньше (сервер копит их сам). См. LOCAL-SOURCES.md сервера.
 
 import axios from "axios";
 
 import type { TechnologySource } from "../types";
+import { getAiRequestFields } from "../../hooks/useAiConfig";
 import { serverReason } from "./serverReason";
 
 const base = () => import.meta.env.VITE_API_URL;
@@ -12,19 +14,49 @@ export interface LocalDocument {
   id: number;
   fileName: string;
   title: string;
+  /** Краткое имя для подписей: «ИТС 18—202_». */
+  shortTitle: string | null;
   pages: number;
-  /** Страниц без текста (сканы, рисунки) — их содержимое в поиск не попало. */
+  /** Страниц без текста (сканы, рисунки) — их содержимое в базу не попало. */
   textlessPages: number;
   chars: number;
   bytes: number;
-  chunks?: number;
   addedAt: string;
   addedVia: "ui" | "script";
+  /** По чему разбит на разделы: закладки, содержание, заголовки, страницы. */
+  structure: "outline" | "links" | "headings" | "pages" | null;
+  /** Модель, которой разбираются разделы. */
+  model: string | null;
+  /** Разделы-источники и ход их разбора моделью. */
+  sections: { total: number; done: number; failed: number; pending: number };
 }
 
-/** Сколько источников у продукта: PDF (без направления) и сохранённых веб. */
+/** Раздел документа — запись-источник базы. */
+export interface LocalSection {
+  id: number;
+  number: string | null;
+  title: string;
+  path: string;
+  pageFrom: number;
+  pageTo: number;
+  /** «стр. 14–42» — печатными номерами документа. */
+  pages: string;
+  chars: number;
+  status: "pending" | "working" | "done" | "failed";
+  summary: string | null;
+  model: string | null;
+  error: string | null;
+  /** Продукты: вверх — раздел о том, как их получают; вниз — они сырьё. */
+  products: { up: string[]; down: string[] };
+}
+
+/**
+ * Сколько источников у продукта: разделов документов (всего и по
+ * направлениям) и сохранённых веб-источников.
+ */
 export interface LocalSourceCounts {
   local: number;
+  localDir?: { up: number; down: number };
   web: { up: number; down: number };
 }
 
@@ -71,10 +103,15 @@ export async function uploadLocalDocument(
   onProgress?: (fraction: number) => void,
 ): Promise<UploadResult> {
   try {
+    // Модель разбора — выбранная в приложении (разбор раздела — такая же
+    // выжимка в JSON, как заполнение карточки).
+    const { provider, model } = getAiRequestFields({ stage: "card" });
     const { data } = await axios.post(`${base()}/local-sources/documents`, file, {
       headers: {
         "Content-Type": "application/pdf",
         "X-File-Name": encodeURIComponent(file.name),
+        ...(provider ? { "X-Provider": provider } : {}),
+        ...(model ? { "X-Model": model } : {}),
       },
       onUploadProgress: (ev) => {
         if (ev.total) onProgress?.(ev.loaded / ev.total);
@@ -94,6 +131,35 @@ export async function deleteLocalDocument(id: number): Promise<void> {
   }
 }
 
+/** Разделы документа с продуктами и ходом разбора. */
+export async function listLocalSections(docId: number): Promise<LocalSection[]> {
+  try {
+    const { data } = await axios.get(`${base()}/local-sources/documents/${docId}/sections`);
+    return data.sections ?? [];
+  } catch (e) {
+    throw new Error(reason(e, "Не удалось получить разделы документа"));
+  }
+}
+
+/**
+ * Разобрать разделы заново — упавшие или все — выбранной сейчас моделью.
+ * Возвращает, сколько разделов ушло в очередь.
+ */
+export async function redecodeLocalDocument(
+  docId: number,
+  only: "failed" | "all",
+): Promise<number> {
+  try {
+    const { data } = await axios.post(`${base()}/local-sources/documents/${docId}/decode`, {
+      only,
+      ...getAiRequestFields({ stage: "card" }),
+    });
+    return data.queued ?? 0;
+  } catch (e) {
+    throw new Error(reason(e, "Не удалось поставить разбор в очередь"));
+  }
+}
+
 /** Сколько источников у продуктов — пачкой, как опознание. */
 export async function lookupLocalSources(
   products: string[],
@@ -104,7 +170,7 @@ export async function lookupLocalSources(
   return data.products ?? {};
 }
 
-/** Источники продукта из базы: PDF и найденные моделью раньше. */
+/** Источники продукта из базы: разделы документов и найденные моделью раньше. */
 export async function fetchBaseSources(
   product: string,
   direction: "up" | "down",
@@ -122,8 +188,8 @@ export function localDocumentHref(id: number, page?: number): string {
 }
 
 /**
- * Адрес источника для ссылки. У PDF из локальной базы адрес — путь
- * относительно API сервера («local-sources/documents/12/file#page=3»): сервер
+ * Адрес источника для ссылки. У документа из базы адрес — путь относительно
+ * API сервера («local-sources/documents/12/file?section=40#page=24»): сервер
  * не знает, по какому адресу его видит браузер, и дописываем его здесь.
  */
 export function sourceHref(url: string): string {

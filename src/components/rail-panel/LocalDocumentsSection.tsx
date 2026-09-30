@@ -4,33 +4,26 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
   deleteLocalDocument,
   listLocalDocuments,
-  localDocumentHref,
   type LocalDocument,
 } from "../../store/api/local-sources-api";
 import {
   clearFinishedUploads,
   invalidateLocalSources,
   uploadLocalDocuments,
+  watchDecoding,
   type UploadJob,
 } from "../../store/slices/localSourcesSlice";
+import { useAiConfig } from "../../hooks/useAiConfig";
 import { plural } from "../../utils/plural";
-import { FilePdfIcon, SearchIcon, TrashIcon, UploadIcon } from "../icons";
+import { DatabaseIcon, SearchIcon, UploadIcon } from "../icons";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
+import { LocalDocumentRow } from "./LocalDocumentRow";
 import panel from "./PanelSection.module.css";
 import styles from "./LocalDocuments.module.css";
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} Б`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`;
-  const mb = n / 1024 / 1024;
-  return `${mb.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ru-RU");
-}
+/** Как часто обновлять список, пока модель разбирает разделы. */
+const POLL_MS = 4000;
 
 function isActive(job: UploadJob): boolean {
   return job.state === "waiting" || job.state === "uploading";
@@ -81,7 +74,7 @@ const JobRow = ({ job }: { job: UploadJob }) => {
       {job.document && (
         <div className={styles.jobNote}>
           {job.state === "duplicate" && "Этот файл уже загружен: "}
-          {`«${job.document.title}» · ${job.document.pages} стр.`}
+          {`«${job.document.title}» · ${job.document.pages} стр. · ${job.document.sections?.total ?? 0} ${plural(job.document.sections?.total ?? 0, "раздел", "раздела", "разделов")}`}
         </div>
       )}
       {job.warnings.map((w) => (
@@ -93,117 +86,32 @@ const JobRow = ({ job }: { job: UploadJob }) => {
   );
 };
 
-const DocRow = ({
-  doc,
-  onDelete,
-}: {
-  doc: LocalDocument;
-  onDelete: (id: number) => Promise<void>;
-}) => {
-  // Удаление — в два нажатия: документ пропадёт у всех графов сразу.
-  const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const meta = [
-    // Название берём из свойств PDF; имя файла — чтобы узнать документ.
-    doc.title !== doc.fileName.replace(/\.pdf$/i, "") ? doc.fileName : null,
-    `${doc.pages} стр.`,
-    formatBytes(doc.bytes),
-    formatDate(doc.addedAt),
-    doc.addedVia === "script" ? "скриптом" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  const remove = async () => {
-    setBusy(true);
-    try {
-      await onDelete(doc.id);
-    } finally {
-      setBusy(false);
-      setConfirm(false);
-    }
-  };
-
-  return (
-    <li className={styles.doc}>
-      <FilePdfIcon size={18} className={styles.docIcon} />
-      <div className={styles.docMain}>
-        <a
-          className={styles.docTitle}
-          href={localDocumentHref(doc.id)}
-          target="_blank"
-          rel="noreferrer"
-          title="Открыть PDF"
-        >
-          {doc.title}
-        </a>
-        <span className={styles.docMeta}>{meta}</span>
-        {doc.textlessPages > 0 && (
-          <span className={styles.docWarn}>
-            {doc.textlessPages} стр. без текста (сканы, рисунки) — в поиск не
-            попали
-          </span>
-        )}
-      </div>
-      <div className={styles.docActions}>
-        {confirm ? (
-          <>
-            <button
-              type="button"
-              className={styles.confirmBtn}
-              onClick={remove}
-              disabled={busy}
-            >
-              Удалить
-            </button>
-            <button
-              type="button"
-              className={styles.cancelBtn}
-              onClick={() => setConfirm(false)}
-              disabled={busy}
-            >
-              Отмена
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className={`${panel.rowBtn} ${panel.rowBtnDanger}`}
-            onClick={() => setConfirm(true)}
-            title="Удалить документ из базы"
-            aria-label="Удалить документ из базы"
-          >
-            <TrashIcon size={16} />
-          </button>
-        )}
-      </div>
-    </li>
-  );
-};
-
 /**
- * Вкладка «PDF на сервере» раздела «База данных»: документы заказчика в
- * локальной базе источников.
+ * Вкладка «База источников» раздела «База данных»: документы заказчика на
+ * сервере.
  *
- * Загруженный PDF становится источником для всех продуктов, которые в нём
- * упоминаются, — в любом графе: сервер сам находит его по названиям продукта
- * из справочника. Загрузить можно здесь (кнопкой или перетаскиванием) или
- * скриптом на сервере; удаляется документ отсюда.
+ * Документ — не источник сам по себе: сервер делит его на разделы (по
+ * закладкам или содержанию), модель разбирает каждый — что производят, из
+ * какого сырья, — и раздел становится источником для этих продуктов в любом
+ * графе. Здесь — загрузка (кнопкой, перетаскиванием), ход разбора, разделы с
+ * их продуктами и удаление.
  */
 export const LocalDocumentsSection = () => {
   const dispatch = useAppDispatch();
   const version = useAppSelector((s) => s.localSources.version);
   const uploads = useAppSelector((s) => s.localSources.uploads);
 
+  const { config: aiConfig } = useAiConfig();
+
   const [docs, setDocs] = useState<LocalDocument[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [reload, setReload] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Список — при открытии и после каждого изменения базы (загрузили,
-  // удалили — в том числе из другой вкладки этого окна).
+  // удалили, поставили в разбор — в том числе из другой вкладки окна).
   useEffect(() => {
     let cancelled = false;
     listLocalDocuments()
@@ -218,7 +126,17 @@ export const LocalDocumentsSection = () => {
     return () => {
       cancelled = true;
     };
-  }, [version]);
+  }, [version, reload]);
+
+  // Пока модель разбирает разделы — обновляем ход разбора; значки на узлах
+  // обновляет слежение в сторе (оно живёт и при закрытой вкладке).
+  const pendingTotal = (docs ?? []).reduce((n, d) => n + (d.sections?.pending ?? 0), 0);
+  useEffect(() => {
+    if (!pendingTotal) return;
+    dispatch(watchDecoding());
+    const t = setTimeout(() => setReload((r) => r + 1), POLL_MS);
+    return () => clearTimeout(t);
+  }, [docs, pendingTotal, dispatch]);
 
   const filtered = useMemo(() => {
     const list = docs ?? [];
@@ -267,7 +185,7 @@ export const LocalDocumentsSection = () => {
   };
 
   const total = docs?.length ?? 0;
-  const totalPages = (docs ?? []).reduce((s, d) => s + d.pages, 0);
+  const totalSections = (docs ?? []).reduce((n, d) => n + (d.sections?.total ?? 0), 0);
   const active = uploads.filter(isActive).length;
   const finished = uploads.length - active;
 
@@ -279,11 +197,12 @@ export const LocalDocumentsSection = () => {
       onDrop={onDrop}
     >
       <div className={panel.summaryCard}>
-        <FilePdfIcon size={20} className={panel.summaryIcon} />
-        <span className={panel.summaryValue}>{total}</span>
+        <DatabaseIcon size={20} className={panel.summaryIcon} />
+        <span className={panel.summaryValue}>{totalSections}</span>
         <span className={panel.summaryLabel}>
-          {plural(total, "документ", "документа", "документов")} на сервере
-          {totalPages > 0 && ` · ${totalPages} стр.`}
+          {plural(totalSections, "источник", "источника", "источников")} — разделы{" "}
+          {total} {plural(total, "документа", "документов", "документов")}
+          {pendingTotal > 0 && ` · в разборе ${pendingTotal}`}
         </span>
       </div>
 
@@ -301,8 +220,11 @@ export const LocalDocumentsSection = () => {
             Выбрать PDF
           </button>
           <span className={styles.hint}>
-            PDF с текстом, до 100 МБ, можно несколько сразу. Сканы без текстового
-            слоя не распознаются.
+            PDF с текстом, до 100 МБ, можно несколько сразу. Документ делится на
+            разделы по содержанию, и модель разбирает каждый: что производят и
+            из какого сырья
+            {aiConfig.model ? ` (модель ${aiConfig.model} — выбранная в приложении)` : ""}.
+            Сканы без текстового слоя не распознаются.
           </span>
           <input
             ref={inputRef}
@@ -362,16 +284,25 @@ export const LocalDocumentsSection = () => {
           !error && <div className={panel.empty}>Загружаем список…</div>
         ) : total === 0 ? (
           <div className={panel.empty}>
-            PDF пока нет. Загруженный документ станет источником для каждого
-            продукта, который в нём упоминается, — в окне построения шага он
-            встанет первым.
+            Документов пока нет. Загруженный документ делится на разделы, и
+            каждый становится источником для продуктов, которые в нём
+            производят или берут сырьём, — в окне построения шага такие
+            источники встают первыми.
           </div>
         ) : filtered.length === 0 ? (
           <div className={panel.empty}>Ничего не найдено.</div>
         ) : (
           <ul className={styles.docs}>
             {paged.slice.map((doc) => (
-              <DocRow key={doc.id} doc={doc} onDelete={remove} />
+              <LocalDocumentRow
+                key={doc.id}
+                doc={doc}
+                onDelete={remove}
+                onChanged={() => {
+                  setReload((r) => r + 1);
+                  dispatch(watchDecoding());
+                }}
+              />
             ))}
           </ul>
         )}

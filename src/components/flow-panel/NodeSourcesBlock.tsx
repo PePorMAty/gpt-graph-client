@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { SourceGroup } from "../../utils/sourceRows";
 import { sourceHref } from "../../store/api/local-sources-api";
-import { isLocalSource, localSourceLabel } from "../../utils/sourceOrigin";
+import { isLocalSource, localSourceTag } from "../../utils/sourceOrigin";
 import { CollapsibleBlock } from "./CollapsibleBlock";
 import {
   ArrowDownIcon,
@@ -27,7 +27,7 @@ interface Row {
   title: string;
   url: string;
   inheritedFrom: string | null;
-  /** PDF из локальной базы: вместо домена — «PDF · стр. N». */
+  /** Раздел документа из базы: вместо домена — «ИТС 18 · стр. 14–42». */
   pdfLabel: string | null;
   /** Найден моделью раньше, взят из базы сервера. */
   saved: boolean;
@@ -61,7 +61,7 @@ export const NodeSourcesBlock = ({ groups, product }: NodeSourcesBlockProps) => 
           title: s.title || hostOf(s.url),
           url: s.url,
           inheritedFrom: g.inheritedFrom,
-          pdfLabel: isLocalSource(s) ? localSourceLabel(s.url, s.page) : null,
+          pdfLabel: isLocalSource(s) ? localSourceTag(s) : null,
           saved: !!s.savedAt,
         });
       }
@@ -152,7 +152,7 @@ export const NodeSourcesBlock = ({ groups, product }: NodeSourcesBlockProps) => 
                         target="_blank"
                         rel="noreferrer"
                         className={styles.link}
-                        title={row.pdfLabel ? "Открыть PDF" : row.url}
+                        title={row.pdfLabel ? "Открыть документ на этом разделе" : row.url}
                       >
                         <span className={styles.linkText}>
                           {row.pdfLabel ?? hostOf(row.url)}

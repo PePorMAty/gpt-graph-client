@@ -4,9 +4,11 @@ import { normalizeProductName } from "./normalizeProductName";
 export interface SourceItem {
   title: string;
   url: string;
-  /** PDF из локальной базы сервера или веб (см. TechnologySource). */
+  /** Раздел документа из базы сервера или веб (см. TechnologySource). */
   origin?: "local" | "web";
   page?: number;
+  docTitle?: string;
+  pages?: string;
   /** Найден моделью раньше и взят из базы сервера. */
   savedAt?: string;
 }
@@ -58,6 +60,8 @@ export function collectSourceGroups(
           url: s.url,
           ...(s.origin ? { origin: s.origin } : {}),
           ...(s.page != null ? { page: s.page } : {}),
+          ...(s.docTitle ? { docTitle: s.docTitle } : {}),
+          ...(s.pages ? { pages: s.pages } : {}),
           ...(s.savedAt ? { savedAt: s.savedAt } : {}),
         });
       }

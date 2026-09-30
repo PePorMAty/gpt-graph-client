@@ -69,7 +69,10 @@ export function buildSaveGraphPayload({
                 // бы значки, а ручной источник стёр бы следующий поиск.
                 ...(s.origin ? { origin: s.origin } : {}),
                 ...(s.docId != null ? { docId: s.docId } : {}),
+                ...(s.sectionId != null ? { sectionId: s.sectionId } : {}),
                 ...(s.page != null ? { page: s.page } : {}),
+                ...(s.docTitle ? { docTitle: s.docTitle } : {}),
+                ...(s.pages ? { pages: s.pages } : {}),
                 ...(s.savedAt ? { savedAt: s.savedAt } : {}),
                 ...(s.baseFor ? { baseFor: s.baseFor } : {}),
                 ...(s.isManual ? { isManual: true } : {}),

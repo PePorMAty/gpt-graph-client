@@ -20,7 +20,7 @@ interface RailItem {
 
 const ITEMS: RailItem[] = [
   { id: "create", Icon: PlusIcon, title: "Создать граф" },
-  { id: "sources", Icon: DatabaseIcon, title: "База данных: источники графа и PDF" },
+  { id: "sources", Icon: DatabaseIcon, title: "База данных: источники графа и база источников" },
   { id: "bookmarks", Icon: BookmarkIcon, title: "Закладки" },
   { id: "history", Icon: ClockIcon, title: "История действий" },
 ];

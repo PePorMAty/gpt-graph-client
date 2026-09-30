@@ -6,6 +6,7 @@ import {
 
 import type { AppDispatch, RootState } from "../store";
 import {
+  listLocalDocuments,
   lookupLocalSources,
   uploadLocalDocument,
   type LocalDocument,
@@ -30,8 +31,9 @@ export interface UploadJob {
 }
 
 /**
- * Локальная база источников на сервере: PDF заказчика и источники, которые
- * модель находила раньше.
+ * База источников на сервере: разделы документов заказчика (PDF делится на
+ * разделы, модель разбирает каждый) и источники, которые модель находила
+ * раньше.
  *
  * Как опознание продуктов: появился продукт на полотне — спрашиваем сервер,
  * есть ли у него источники. Нет — ничего не показываем. Сами источники
@@ -230,14 +232,50 @@ async function runUpload(id: number, dispatch: AppDispatch): Promise<void> {
     });
     dispatch(uploadFinished({ id, result }));
     // Новый документ: у продуктов графа могли появиться источники, и список
-    // документов тоже устарел.
-    if (!result.duplicate) dispatch(invalidateLocalSources());
+    // документов тоже устарел. Дальше разделы разбирает модель — следим.
+    if (!result.duplicate) {
+      dispatch(invalidateLocalSources());
+      dispatch(watchDecoding());
+    }
   } catch (e) {
     dispatch(
       uploadFailed({ id, error: e instanceof Error ? e.message : String(e) }),
     );
   }
 }
+
+/** Как часто спрашивать сервер, пока модель разбирает разделы. */
+const WATCH_MS = 15000;
+let watchTimer: ReturnType<typeof setTimeout> | null = null;
+let watchDone = -1;
+
+/**
+ * Следить за разбором разделов, пока он идёт: разобранный раздел приносит
+ * продуктам новые связи (сырьё — «вниз»), и значки на узлах должны это
+ * показать, даже если вкладка базы закрыта.
+ */
+export const watchDecoding = () => (dispatch: AppDispatch) => {
+  if (watchTimer) return;
+  const tick = async () => {
+    watchTimer = null;
+    let docs: LocalDocument[];
+    try {
+      docs = await listLocalDocuments();
+    } catch {
+      return;
+    }
+    const pending = docs.reduce((n, d) => n + (d.sections?.pending ?? 0), 0);
+    const done = docs.reduce((n, d) => n + (d.sections?.done ?? 0), 0);
+    if (watchDone >= 0 && done !== watchDone) dispatch(invalidateLocalSources());
+    watchDone = done;
+    if (pending > 0) {
+      watchTimer = setTimeout(tick, WATCH_MS);
+    } else {
+      watchDone = -1;
+    }
+  };
+  watchTimer = setTimeout(tick, WATCH_MS / 3);
+};
 
 /** Числа по продукту, если сервер о нём уже ответил. */
 export const selectLocalSourceCounts = (

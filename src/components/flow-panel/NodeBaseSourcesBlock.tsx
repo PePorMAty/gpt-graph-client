@@ -7,18 +7,41 @@ import {
 } from "../../store/api/local-sources-api";
 import { selectLocalSourceCounts } from "../../store/slices/localSourcesSlice";
 import type { TechnologySource } from "../../store/types";
-import { localSourceLabel } from "../../utils/sourceOrigin";
-import { plural } from "../../utils/plural";
+import { localSourceTag } from "../../utils/sourceOrigin";
 import { CollapsibleBlock } from "./CollapsibleBlock";
-import { FilePdfIcon, LinkIcon } from "../icons";
+import { ArrowDownIcon, ArrowUpIcon, FilePdfIcon, LinkIcon } from "../icons";
 import styles from "./NodeCard.module.css";
+
+const SectionList = ({ items }: { items: TechnologySource[] }) => (
+  <ul className={styles.baseList}>
+    {items.map((d) => (
+      <li key={d.url} className={styles.baseItem}>
+        <FilePdfIcon size={16} className={styles.baseIcon} />
+        <span className={styles.baseMain}>
+          <a
+            href={sourceHref(d.url)}
+            target="_blank"
+            rel="noreferrer"
+            className={styles.link}
+            title="Открыть документ на этом разделе"
+          >
+            <span className={styles.linkText}>{d.title}</span>
+            <LinkIcon size={13} className={styles.linkIcon} />
+          </a>
+          <span className={styles.baseMeta}>{localSourceTag(d)}</span>
+        </span>
+      </li>
+    ))}
+  </ul>
+);
 
 /**
  * Блок «Источники в базе» карточки продукта: что лежит на сервере по этому
- * продукту — PDF заказчика, где он упоминается, и найденное моделью раньше.
+ * продукту — разделы документов, где его производят («вверх») и где он
+ * сырьё («вниз»), и сколько источников модель находила для него раньше.
  *
- * Как у опознания: сколько их, сервер сказал заранее (значок PDF на узле), а
- * сами документы спрашиваем, только когда открыта карточка. Ничего нет —
+ * Как у опознания: сколько их, сервер сказал заранее (значок на узле), а
+ * сами разделы спрашиваем, только когда открыта карточка. Ничего нет —
  * блока нет.
  */
 export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
@@ -27,18 +50,20 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
   const local = counts?.local ?? 0;
   const savedUp = counts?.web.up ?? 0;
   const savedDown = counts?.web.down ?? 0;
-  const [docs, setDocs] = useState<TechnologySource[] | null>(null);
+  const [sections, setSections] = useState<{
+    up: TechnologySource[];
+    down: TechnologySource[];
+  } | null>(null);
 
   useEffect(() => {
     if (!product || local === 0) return;
     let cancelled = false;
-    // У PDF направления нет — сервер отдаёт их одинаково в обе стороны.
-    fetchBaseSources(product, "down")
-      .then((r) => {
-        if (!cancelled) setDocs(r.local);
+    Promise.all([fetchBaseSources(product, "up"), fetchBaseSources(product, "down")])
+      .then(([up, down]) => {
+        if (!cancelled) setSections({ up: up.local, down: down.local });
       })
       .catch(() => {
-        if (!cancelled) setDocs([]);
+        if (!cancelled) setSections({ up: [], down: [] });
       });
     return () => {
       cancelled = true;
@@ -62,46 +87,32 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
     >
       <p className={styles.baseNote}>
         Есть на сервере для этого продукта — в любом графе. При построении шага
-        встанут в список источников, PDF первыми.
+        встанут в список источников первыми.
       </p>
 
       {local > 0 &&
-        (docs === null ? (
-          <div className={styles.blockEmpty}>Загружаем документы…</div>
+        (sections === null ? (
+          <div className={styles.blockEmpty}>Загружаем разделы…</div>
         ) : (
-          <ul className={styles.baseList}>
-            {docs.map((d) => (
-              <li key={d.url} className={styles.baseItem}>
-                <FilePdfIcon size={16} className={styles.baseIcon} />
-                <span className={styles.baseMain}>
-                  <a
-                    href={sourceHref(d.url)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={styles.link}
-                    title="Открыть PDF на странице, где продукт"
-                  >
-                    <span className={styles.linkText}>{d.title}</span>
-                    <LinkIcon size={13} className={styles.linkIcon} />
-                  </a>
-                  <span className={styles.baseMeta}>
-                    {localSourceLabel(d.url, d.page)}
-                    {d.mentions
-                      ? ` · ${d.mentions} ${plural(d.mentions, "упоминание", "упоминания", "упоминаний")}`
-                      : ""}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {sections.up.length > 0 && (
+              <>
+                <p className={styles.baseGroup}>
+                  <ArrowUpIcon size={12} /> Как его получают
+                </p>
+                <SectionList items={sections.up} />
+              </>
+            )}
+            {sections.down.length > 0 && (
+              <>
+                <p className={styles.baseGroup}>
+                  <ArrowDownIcon size={12} /> Что из него получают
+                </p>
+                <SectionList items={sections.down} />
+              </>
+            )}
+          </>
         ))}
-      {docs && local > docs.length && (
-        <p className={styles.baseNote}>
-          Показаны {docs.length} из {local}{" "}
-          {plural(local, "документа", "документов", "документов")} — где продукт
-          упоминается чаще.
-        </p>
-      )}
 
       {saved && (
         <p className={styles.baseNote}>

@@ -855,6 +855,16 @@
   color: var(--c-text-muted);
 }
 
+.baseGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin: var(--s-2) 0 var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-soft);
+}
+
 .baseList {
   display: flex;
   flex-direction: column;

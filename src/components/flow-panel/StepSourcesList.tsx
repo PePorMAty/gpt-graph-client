@@ -5,7 +5,7 @@ import { sourceHref } from "../../store/api/local-sources-api";
 import {
   isLocalSource,
   isSavedSource,
-  localSourceLabel,
+  localSourceTag,
 } from "../../utils/sourceOrigin";
 import { AddSourceForm } from "./AddSourceForm";
 import {
@@ -50,9 +50,9 @@ function savedTitle(s: TechnologySource): string {
 /**
  * Список найденных источников с отбором для обобщения.
  *
- * Источники из базы сервера помечены: PDF заказчика — «PDF · стр. N» (они
- * стоят первыми и первыми идут в обобщение), найденные моделью раньше —
- * «из базы».
+ * Источники из базы сервера помечены: разделы документов — «ИТС 18 · стр.
+ * 14–42» (они стоят первыми и первыми идут в обобщение), найденные моделью
+ * раньше — «из базы».
  *
  * Оценки качества здесь нет намеренно: поиск её не возвращает, и рисовать
  * «Высокая» / «Средняя» значило бы выдумать её на глазах у человека, который
@@ -123,7 +123,7 @@ export const StepSourcesList: FC<Props> = ({
             </span>
             <span className={styles.sourcesHint}>
               Выберите, какие пойдут в обобщение
-              {pdfCount > 0 && " · PDF из базы идут первыми"}
+              {pdfCount > 0 && " · разделы документов из базы идут первыми"}
             </span>
           </span>
           <span className={styles.sourcesCount}>
@@ -162,9 +162,9 @@ export const StepSourcesList: FC<Props> = ({
                     {local && (
                       <span
                         className={styles.sourcePdf}
-                        title="PDF из локальной базы сервера"
+                        title="Раздел документа из базы источников на сервере"
                       >
-                        {localSourceLabel(s.url, s.page)}
+                        {localSourceTag(s)}
                       </span>
                     )}
                     {!local && isSavedSource(s) && (
@@ -192,7 +192,7 @@ export const StepSourcesList: FC<Props> = ({
                         rel="noreferrer noopener"
                         className={styles.sourceLink}
                       >
-                        {local ? "Открыть PDF на этой странице" : s.url}
+                        {local ? "Открыть документ на этом разделе" : s.url}
                       </a>
                       {local && s.access_hint && (
                         <p className={styles.sourceHint}>{s.access_hint}</p>

@@ -823,7 +823,7 @@ const PanelBuildViewInner: FC<{
     lastDirection.set(productName, value);
   };
 
-  // ── Источники из базы сервера: PDF заказчика и найденное моделью раньше ──
+  // ── Источники из базы сервера: разделы документов и найденное моделью раньше ──
   // У альтернативы своих источников нет — она строится из описания.
   const base = useBaseSources(productName, tab.isAlternativeNode ? null : dir);
   // Что из базы ещё не в списке — и сколько записей списка базе надо
@@ -851,8 +851,9 @@ const PanelBuildViewInner: FC<{
   }, [base.sources, tab.stepSources, productName]);
   const newLocal = newBase.filter((s) => isLocalSource(s)).length;
   const newSaved = newBase.length - newLocal;
-  // Источники уже в работе — новое из базы (скажем, PDF, загруженный с тех
-  // пор) просто дописываем в список: экран мастера от этого не меняется.
+  // Источники уже в работе — новое из базы (скажем, раздел документа,
+  // загруженного с тех пор) просто дописываем в список: экран мастера от
+  // этого не меняется.
   // Пока в работу ничего не взято, новое предлагаем на первом экране.
   useEffect(() => {
     if (hasSources && pending > 0) tab.onMergeBaseSources?.(base.sources);
@@ -865,8 +866,10 @@ const PanelBuildViewInner: FC<{
   // а нужное, может быть, уже лежит на сервере.
   const baseChecking =
     dir !== null && !hasSources && !tab.isAlternativeNode && base.status === "loading";
+  const baseDocs = [...new Set(newBase.filter((x) => isLocalSource(x)).map((x) => x.docTitle).filter(Boolean))];
   const baseText = [
-    newLocal > 0 && `${newLocal} PDF`,
+    newLocal > 0 &&
+      `${newLocal} ${plural(newLocal, "раздел", "раздела", "разделов")} документов${baseDocs.length ? ` (${baseDocs.slice(0, 2).join(", ")}${baseDocs.length > 2 ? "…" : ""})` : ""}`,
     newSaved > 0 &&
       `${newSaved} ${plural(newSaved, "источник", "источника", "источников")}, найденных моделью раньше`,
   ]
@@ -1019,7 +1022,7 @@ const PanelBuildViewInner: FC<{
               <span className={wiz.nextTitle}>Что дальше?</span>
               <p className={wiz.nextText}>
                 {offerBase
-                  ? `В базе уже есть источники для «${productName}»: ${baseText}. Начнём с них — PDF встанут первыми, а добрать ещё через модель можно на следующем шаге.`
+                  ? `В базе уже есть источники для «${productName}»: ${baseText}. Начнём с них — разделы документов встанут первыми, а добрать ещё через модель можно на следующем шаге.`
                   : dir
                     ? `Найдём источники о том, ${
                         dir === "up"

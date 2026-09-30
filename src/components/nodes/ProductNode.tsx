@@ -145,12 +145,17 @@ const GispPill: React.FC<{ count: number }> = ({ count }) => (
 );
 
 /**
- * Значок локальной базы: в скольких PDF заказчика на сервере упоминается
- * продукт. Сами документы — в карточке продукта и в окне построения шага.
+ * Значок базы источников: сколько разделов документов на сервере про
+ * продукт — где его получают и где он сырьё. Сами разделы — в карточке
+ * продукта и в окне построения шага.
  */
-const PdfPill: React.FC<{ count: number }> = ({ count }) => (
+const BasePill: React.FC<{ total: number; up: number; down: number }> = ({
+  total,
+  up,
+  down,
+}) => (
   <div
-    title={`Упоминается в ${count} PDF из базы источников — список в карточке продукта`}
+    title={`В базе источников: ${total} — как получают: ${up}, что получают из него: ${down}. Список — в карточке продукта`}
     style={{
       display: "flex",
       alignItems: "center",
@@ -167,6 +172,7 @@ const PdfPill: React.FC<{ count: number }> = ({ count }) => (
       whiteSpace: "nowrap",
     }}
   >
+    {/* цилиндр базы данных */}
     <svg
       width="11"
       height="11"
@@ -178,10 +184,11 @@ const PdfPill: React.FC<{ count: number }> = ({ count }) => (
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
-      <path d="M14 3v5h5" />
+      <ellipse cx="12" cy="5.5" rx="7.5" ry="3" />
+      <path d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13" />
+      <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
     </svg>
-    PDF {count}
+    {total}
   </div>
 );
 
@@ -208,8 +215,12 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
       ? data.gispProducers
       : 0;
 
-  // PDF из локальной базы сервера, где упоминается продукт (см. Flow.tsx).
-  const pdfCount = typeof data.localPdfCount === "number" ? data.localPdfCount : 0;
+  // Разделы документов в базе сервера про продукт (см. Flow.tsx).
+  const base =
+    data.baseSources && typeof data.baseSources === "object"
+      ? (data.baseSources as { total: number; up: number; down: number })
+      : null;
+  const baseCount = base?.total ?? 0;
 
   // Продукт добавлен вручную (в превью шага или на полотне) и ещё не описан. Пометку не храним
   // отдельным флагом: как только описание заполнено (в карточке узла), она
@@ -251,7 +262,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
 
-      {(upCount > 0 || downCount > 0 || gispCount > 0 || pdfCount > 0) && (
+      {(upCount > 0 || downCount > 0 || gispCount > 0 || baseCount > 0) && (
         <div
           style={{
             position: "absolute",
@@ -270,7 +281,9 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
             <SourcesPill direction="down" count={downCount} color={color} />
           )}
           {gispCount > 0 && <GispPill count={gispCount} />}
-          {pdfCount > 0 && <PdfPill count={pdfCount} />}
+          {base && baseCount > 0 && (
+            <BasePill total={base.total} up={base.up} down={base.down} />
+          )}
         </div>
       )}
 

@@ -286,3 +286,191 @@
   border: 1px solid var(--c-danger-border);
   border-radius: var(--r-sm);
 }
+
+/* ─── Разбор разделов моделью ─── */
+
+.decode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.decodeText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+}
+
+.decodeOk {
+  font-size: var(--fs-sm);
+  color: var(--c-success);
+}
+
+.decodeWarn {
+  font-size: var(--fs-sm);
+  color: var(--c-warning);
+}
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--c-brand-border);
+  border-top-color: var(--c-brand);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.linkBtn {
+  align-self: flex-start;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.linkBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ─── Разделы документа ─── */
+
+.secToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  align-self: flex-start;
+  margin-top: var(--s-1);
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.secToggle:hover {
+  color: var(--c-brand-strong);
+}
+
+.secChevron {
+  transform: rotate(-90deg);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.secChevronOpen {
+  transform: none;
+}
+
+.secList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: var(--s-1) 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+}
+
+.sec {
+  padding: var(--s-2);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+.secHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.secStatus {
+  flex: 0 0 auto;
+  width: 14px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-align: center;
+  color: var(--c-text-faint);
+}
+
+.sec_done {
+  color: var(--c-success);
+}
+
+.sec_failed {
+  color: var(--c-danger);
+}
+
+.secTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.secTitle:hover {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+.secPages {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+.secProducts {
+  margin: 2px 0 0 22px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-soft);
+  overflow-wrap: break-word;
+}
+
+.secRole {
+  color: var(--c-text-muted);
+}
+
+.secError {
+  margin: 2px 0 0 22px;
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}
+
+.secSummary {
+  margin: 4px 0 0 22px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.secSummary summary {
+  cursor: pointer;
+  color: var(--c-text-muted);
+}
+
+.secSummary p {
+  margin: var(--s-1) 0 0;
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+  white-space: pre-wrap;
+}

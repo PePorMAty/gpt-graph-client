@@ -1,16 +1,16 @@
 // src/utils/sourceOrigin.ts
 //
-// Откуда источник: PDF из локальной базы сервера, найденный моделью раньше и
-// сохранённый в базе — или только что найденный поиском.
+// Откуда источник: раздел документа из базы сервера, найденный моделью раньше
+// и сохранённый в базе — или только что найденный поиском.
 
 import type { TechnologySource } from "../store/types";
 import { normalizeProductName } from "./normalizeProductName";
 
 /**
- * У PDF из локальной базы адрес — путь относительно API сервера
- * («local-sources/documents/12/file#page=3»). По нему узнаём PDF и там, где
- * поля origin нет: в графе, сохранённом облегчённым, и в ссылках
- * преобразований, где от источника остался только адрес.
+ * У документа из базы адрес — путь относительно API сервера
+ * («local-sources/documents/12/file?section=40#page=24»). По нему узнаём
+ * источник из базы и там, где поля origin нет: в графе, сохранённом
+ * облегчённым, и в ссылках преобразований, где от источника остался адрес.
  */
 export function isLocalSourceUrl(url: string): boolean {
   return String(url ?? "").trim().startsWith("local-sources/");
@@ -53,8 +53,22 @@ export function localSourceLabel(url: string, page?: number | null): string {
 }
 
 /**
- * Текст ссылки на источник: у PDF — «PDF · стр. N» вместо пути на сервере,
- * который человеку ничего не говорит; у веб-источника — сам адрес.
+ * Подпись источника из базы вместо домена: «ИТС 18—202_ · стр. 14–42». Если
+ * от источника остался только адрес — «PDF · стр. 24» (страница файла).
+ */
+export function localSourceTag(
+  s: Pick<TechnologySource, "url" | "page" | "docTitle" | "pages">,
+): string {
+  if (s.docTitle && s.pages) {
+    const doc = s.docTitle.length > 24 ? `${s.docTitle.slice(0, 23)}…` : s.docTitle;
+    return `${doc} · ${s.pages}`;
+  }
+  return localSourceLabel(s.url, s.page);
+}
+
+/**
+ * Текст ссылки на источник: у документа из базы — «PDF · стр. N» вместо пути
+ * на сервере, который человеку ничего не говорит; у веб-источника — адрес.
  */
 export function sourceLinkText(url: string): string {
   return isLocalSourceUrl(url) ? localSourceLabel(url) : url;

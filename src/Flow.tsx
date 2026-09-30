@@ -927,9 +927,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           // Слой ГИСП: число производителей из реестра. Пока продукт не
           // проверен, поля нет — узел бейдж не рисует.
           const gisp = industryResults[industryKey(lbl)];
-          // В скольких PDF из базы сервера упоминается продукт. Нет таких —
-          // значка нет.
-          const pdfCount = localSourceCounts[industryKey(lbl)]?.local ?? 0;
+          // Сколько разделов документов в базе сервера про продукт. Нет
+          // таких — значка нет.
+          const base = localSourceCounts[industryKey(lbl)];
           return {
             ...n,
             className: cls,
@@ -938,7 +938,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
               ...(bookmarked ? { bookmarked: true } : {}),
-              ...(pdfCount > 0 ? { localPdfCount: pdfCount } : {}),
+              ...(base && base.local > 0
+                ? {
+                    baseSources: {
+                      total: base.local,
+                      up: base.localDir?.up ?? 0,
+                      down: base.localDir?.down ?? 0,
+                    },
+                  }
+                : {}),
               showIndustryData: industryData,
               ...(gisp
                 ? {
