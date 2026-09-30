@@ -247,7 +247,8 @@ export const LocalDocumentRow = ({
               size={14}
               className={`${styles.secChevron} ${open ? styles.secChevronOpen : ""}`}
             />
-            {total} {plural(total, "раздел", "раздела", "разделов")}-источников
+            {total}{" "}
+            {plural(total, "раздел-источник", "раздела-источника", "разделов-источников")}
             {doc.structure ? ` · разбит ${STRUCTURE[doc.structure] ?? ""}` : ""}
           </button>
         )}

@@ -70,6 +70,11 @@ export interface UploadResult {
 /** Понятная причина отказа сервера (или прокси перед ним). */
 function reason(e: unknown, fallback: string): string {
   if (axios.isAxiosError(e)) {
+    // Ответа нет вовсе: оборвалась связь или браузер не пропустил ответ
+    // (CORS) — axios называет это «Network Error», что ничего не объясняет.
+    if (!e.response && e.code !== "ERR_CANCELED") {
+      return "Сервер не ответил: оборвалась связь или браузер не пропустил ответ (CORS). Если повторяется — проверьте, что сервер обновлён и запущен.";
+    }
     // 413 от nginx приходит HTML-страницей, без нашего JSON: прокси отрезал
     // файл раньше, чем он дошёл до сервера.
     if (e.response?.status === 413 && !serverReason(e.response.data)) {
@@ -95,29 +100,78 @@ export async function listLocalDocuments(): Promise<LocalDocument[]> {
 }
 
 /**
- * Загрузить PDF. Тело запроса — сам файл, имя — заголовком (кириллицу
- * кодируем: в заголовках она не ходит).
+ * Кусок загрузки. Перед сервером стоит nginx: запрос больше
+ * client_max_body_size (по умолчанию 1 МБ) он обрывает, не спросив сервер, —
+ * и без CORS-заголовков, так что браузер видит только «CORS error».
+ */
+const CHUNK_BYTES = 512 * 1024;
+
+/**
+ * Номер загрузки. crypto.randomUUID есть только на https и localhost, а
+ * getRandomValues — везде.
+ */
+function newUploadId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Загрузить PDF — кусками по 512 КБ: так файл любого размера проходит через
+ * nginx с настройками по умолчанию. Имя и модель — в адресе, а не своими
+ * заголовками: nginx ставит CORS сам и пропускает только заголовки из
+ * своего списка. Сервер собирает куски и, получив последний, добавляет
+ * документ — его и возвращает.
  */
 export async function uploadLocalDocument(
   file: File,
   onProgress?: (fraction: number) => void,
 ): Promise<UploadResult> {
+  if (!file.size) throw new Error("Файл пустой.");
+  // Модель разбора — выбранная в приложении (разбор раздела — такая же
+  // выжимка в JSON, как заполнение карточки).
+  const { provider, model } = getAiRequestFields({ stage: "card" });
+  const id = newUploadId();
+  const params = {
+    size: file.size,
+    name: file.name,
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+  };
+  let offset = 0;
+  // Обрывы связи и несовпадения с сервером — подряд, без удачного куска.
+  let retries = 0;
   try {
-    // Модель разбора — выбранная в приложении (разбор раздела — такая же
-    // выжимка в JSON, как заполнение карточки).
-    const { provider, model } = getAiRequestFields({ stage: "card" });
-    const { data } = await axios.post(`${base()}/local-sources/documents`, file, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "X-File-Name": encodeURIComponent(file.name),
-        ...(provider ? { "X-Provider": provider } : {}),
-        ...(model ? { "X-Model": model } : {}),
-      },
-      onUploadProgress: (ev) => {
-        if (ev.total) onProgress?.(ev.loaded / ev.total);
-      },
-    });
-    return data;
+    for (;;) {
+      const chunk = file.slice(offset, Math.min(file.size, offset + CHUNK_BYTES));
+      try {
+        const { data } = await axios.post(`${base()}/local-sources/uploads/${id}`, chunk, {
+          params: { ...params, offset },
+          headers: { "Content-Type": "application/octet-stream" },
+          onUploadProgress: (ev) =>
+            onProgress?.(Math.min(1, (offset + (ev.loaded ?? 0)) / file.size)),
+        });
+        // Последний кусок: документ добавлен.
+        if (data?.document) return data as UploadResult;
+        offset = typeof data?.received === "number" ? data.received : offset + chunk.size;
+        retries = 0;
+      } catch (e) {
+        if (!axios.isAxiosError(e) || retries >= 3) throw e;
+        const got = (e.response?.data as { received?: unknown } | undefined)?.received;
+        if (e.response?.status === 409 && typeof got === "number") {
+          // Сервер получил другое, чем мы думали, — продолжаем с его места.
+          offset = got;
+        } else if (e.response) {
+          throw e;
+        } else {
+          // Связь оборвалась — тот же кусок ещё раз, чуть погодя.
+          await pause(1000 * (retries + 1));
+        }
+        retries++;
+      }
+    }
   } catch (e) {
     throw new Error(reason(e, "Не удалось загрузить PDF"));
   }
