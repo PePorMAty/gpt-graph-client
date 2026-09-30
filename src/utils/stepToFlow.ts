@@ -98,13 +98,23 @@ export function stepToFlow(
   for (const { product } of uniqueProducts) {
     // Идентификатор сильнее названия: продукт шага может называться иначе, чем
     // тот же продукт на полотне («Кумол» из шага и «ИПБ» на полотне).
+    // Идентификатор продукту шага проставляет справочник (identifyStepProducts)
+    // — так и помечаем: иначе его каноническое название не сравнивалось бы с
+    // названиями узлов на полотне.
+    const idSource = product.productId ? ("dictionary" as const) : null;
     const existingNodeId =
-      findExistingProductNode(product.name, existingNodes, product.productId) ??
+      findExistingProductNode(
+        product.name,
+        existingNodes,
+        product.productId,
+        idSource,
+      ) ??
       (product.existingNodeLabel
         ? findExistingProductNode(
             product.existingNodeLabel,
             existingNodes,
             product.productId,
+            idSource,
           )
         : null);
 

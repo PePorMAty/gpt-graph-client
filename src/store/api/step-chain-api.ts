@@ -11,7 +11,11 @@ import type {
 } from "../types";
 import type { TechChain } from "../../utils/chainToFlow";
 import { addSourcesToPool, sourcesPoolKey } from "../slices/gptSlice";
-import { enrichSourcesFromNodes } from "../../utils/enrichSourcesFromNodes";
+import {
+  enrichSourcesFromNodes,
+  hasSourceText,
+  NO_SOURCE_TEXT_HINT,
+} from "../../utils/enrichSourcesFromNodes";
 import { getAncestorProductLabels } from "../../utils/graphReachability";
 import { identifyStepProducts } from "../../utils/resolveProductIds";
 
@@ -207,7 +211,14 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       const poolSources =
         graph.sourcesPool[sourcesPoolKey(args.productName, args.direction)]
           ?.sources ?? [];
-      if (poolSources.length && !blocked) {
+      // Автообобщение имеет смысл, только если есть из чего обобщать. Новых
+      // источников не нашлось, а у прежних нет текста (граф открыт из
+      // сохранения) — запускать нечего: сервер ответил бы отказом, и в ленте
+      // появилась бы ошибка там, где на деле просто «ничего нового».
+      const withText = hasSourceText(
+        enrichSourcesFromNodes(poolSources, graph.data.nodes),
+      );
+      if (poolSources.length && !blocked && withText) {
         const node = graph.data.nodes.find((n) => n.id === args.nodeId);
         const nodeData = (node?.data ?? {}) as Record<string, unknown>;
         const descField =
@@ -283,6 +294,13 @@ export const aggregateStepSources = createAsyncThunk<
   },
   { state: RootState; rejectValue: string }
 >("stepBuild/aggregate", async (args, thunkApi) => {
+  // Обобщать нечего: у источников нет текста технологии. Сервер ответил бы
+  // «Need at least 1 technology_description block to aggregate» — отказываем
+  // сами и объясняем, что делать. Отказ пройдёт обычным путём: причина
+  // встанет в окне построения и в ленте уведомлений.
+  if (!hasSourceText(args.sources)) {
+    return thunkApi.rejectWithValue(NO_SOURCE_TEXT_HINT);
+  }
   try {
     // Список всех product-нод графа: aggregate должен избегать их в качестве
     // НОВЫХ выходов шага (иначе модель повторяет уже построенный продукт).

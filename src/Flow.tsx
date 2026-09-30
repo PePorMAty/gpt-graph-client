@@ -33,6 +33,7 @@ import {
   createStepAlternativeNodes,
   removeStepAlternativeNodes,
   insertTransformationsForNeighbors,
+  mergeProductNodes,
   addSourcesToPool,
   clearGraphError,
 } from "./store/slices/gptSlice";
@@ -123,6 +124,12 @@ import {
 } from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
+import { DuplicateProductModal } from "./components/duplicate-product-modal";
+import { OPEN_NODE_CARD_EVENT } from "./hooks/useGoToNode";
+import {
+  findDuplicateProduct,
+  type DuplicateProduct,
+} from "./utils/findDuplicateProduct";
 import { ConfirmUnsavedModal } from "./components/ui/ConfirmUnsavedModal";
 import { graphSignature } from "./utils/graphSignature";
 import {
@@ -353,11 +360,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     (async () => {
       const nodes = nodesRef.current;
       const next = await resolveProductIds(nodes);
-      // Тот же массив — справочник ничего не добавил, будить стор незачем.
+      // Тот же массив — справочнику нечего ни добавить, ни поправить.
       if (cancelled || next === nodes) return;
 
       // Берём только изменившиеся узлы: resolveProductIds отображает список
-      // один в один, и несовпадение ссылки — это и есть «сюда проставили».
+      // один в один, и несовпадение ссылки — это и есть «сюда проставили»
+      // (или обновили устаревший ответ справочника).
       const byNodeId: Record<string, string> = {};
       next.forEach((n, i) => {
         if (n === nodes[i]) return;
@@ -889,6 +897,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Крупная подпись — только у фокус-проекции: в полном графе и в
         // «только продукты» узлы остаются прежними.
         const compact = !!focusView;
+        // Значок закладки — у продукта и у преобразования одинаково.
+        const bookmarked = bookmarkedIds.has(n.id);
 
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
@@ -910,6 +920,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...n.data,
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
+              ...(bookmarked ? { bookmarked: true } : {}),
               showIndustryData: industryData,
               ...(gisp
                 ? {
@@ -921,8 +932,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           };
         }
 
-        return compact
-          ? { ...n, className: cls, data: { ...n.data, focusCompact: true } }
+        return compact || bookmarked
+          ? {
+              ...n,
+              className: cls,
+              data: {
+                ...n.data,
+                ...(compact ? { focusCompact: true } : {}),
+                ...(bookmarked ? { bookmarked: true } : {}),
+              },
+            }
           : { ...n, className: cls };
       }),
     [
@@ -936,6 +955,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       showAlternatives,
       industryData,
       industryResults,
+      bookmarkedIds,
     ],
   );
 
@@ -1373,14 +1393,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }),
       ).unwrap();
 
+      // Спрошенные пары «откуда → куда». Модель вправе перепутать стороны и
+      // вернуть уксусную кислоту входом, а метанол выходом: тогда технология
+      // вставала задом наперёд, а прямая связь оставалась рядом с ней.
+      const askedPair = (ins: string[], outs: string[]) =>
+        ins.some((i) => outs.some((o) => edgeIdsByPair.has(`${i}->${o}`)));
+
       const groups = result.transformations
         .map((t) => {
-          const inputNodeIds = t.inputNodeIds.filter((id) =>
+          let inputNodeIds = t.inputNodeIds.filter((id) =>
             knownNodeIds.has(id),
           );
-          const outputNodeIds = t.outputNodeIds.filter((id) =>
+          let outputNodeIds = t.outputNodeIds.filter((id) =>
             knownNodeIds.has(id),
           );
+          // Ни одна спрошенная пара не сошлась, а перевёрнутая сходится —
+          // значит, стороны перепутаны: разворачиваем в спрошенную сторону.
+          if (
+            !askedPair(inputNodeIds, outputNodeIds) &&
+            askedPair(outputNodeIds, inputNodeIds)
+          ) {
+            [inputNodeIds, outputNodeIds] = [outputNodeIds, inputNodeIds];
+          }
           const removeEdgeIds: string[] = [];
           const removeNodeIds: string[] = [];
           for (const inId of inputNodeIds) {
@@ -1495,6 +1529,29 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Сохранение изменённых полей узла (имя/описание).
   // Возвращает true, если что-то действительно было сохранено.
+  // ─── «Такой продукт уже есть на графе» ───
+  // Узел продукта назвали так же, как уже стоящий на полотне, или синонимом
+  // того же вещества — спрашиваем, не слить ли их (см. findDuplicateProduct).
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    nodeId: string;
+    newLabel: string;
+    dup: DuplicateProduct;
+  } | null>(null);
+  // Последнее название, под которое спрошен справочник, — по узлу. Ответ
+  // приходит не сразу, и за это время узел могут переименовать ещё раз:
+  // тогда старый ответ окна открывать не должен.
+  const duplicateAsked = useRef(new Map<string, string>());
+
+  const checkDuplicateProduct = useCallback((nodeId: string, label: string) => {
+    duplicateAsked.current.set(nodeId, label);
+    void (async () => {
+      const dup = await findDuplicateProduct(nodeId, label, nodesRef.current);
+      if (!dup || duplicateAsked.current.get(nodeId) !== label) return;
+      if (!nodesRef.current.some((n) => n.id === nodeId)) return;
+      setDuplicatePrompt({ nodeId, newLabel: label, dup });
+    })();
+  }, []);
+
   const saveChanges = useCallback(() => {
     if (!selectedNodeId) return false;
 
@@ -1517,6 +1574,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       }),
     );
 
+    // Продукт получил новое название — нет ли на полотне того же продукта.
+    if (updatedData.label !== undefined && !readOnly) {
+      const node = nodesRef.current.find((n) => n.id === selectedNodeId);
+      if (node?.type === "product") {
+        checkDuplicateProduct(selectedNodeId, updatedData.label);
+      }
+    }
+
     // Обновляем "исходные" значения, чтобы повторный blur/закрытие
     // не сохраняли одно и то же ещё раз.
     setInitialLabel(tempNodeLabel);
@@ -1530,6 +1595,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     initialLabel,
     initialDescription,
     dispatch,
+    readOnly,
+    checkDuplicateProduct,
   ]);
 
   useEffect(() => {
@@ -1609,6 +1676,42 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [data.nodes, dispatch, saveChanges, setCenter],
   );
+
+  // Переход к узлу из уведомления (лента под колокольчиком, всплывающий
+  // тост): карточка открывается на этом узле, камера подлетает к нему.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const nodeId = (e as CustomEvent<unknown>).detail;
+      if (typeof nodeId === "string") handleFocusLinkedProduct(nodeId);
+    };
+    window.addEventListener(OPEN_NODE_CARD_EVENT, handler);
+    return () => window.removeEventListener(OPEN_NODE_CARD_EVENT, handler);
+  }, [handleFocusLinkedProduct]);
+
+  /**
+   * Слить переименованный узел с уже стоящим продуктом.
+   *
+   * Закладка уходящего узла переезжает на оставшийся, карточка — тоже: она
+   * была открыта на узле, которого больше нет.
+   */
+  const handleMergeDuplicate = useCallback(() => {
+    if (!duplicatePrompt) return;
+    const { nodeId: fromId, dup } = duplicatePrompt;
+    setDuplicatePrompt(null);
+    if (!data.nodes.some((n) => n.id === fromId)) return;
+
+    if (bookmarkedIds.has(fromId)) {
+      dispatch(removeBookmark(fromId));
+      if (!bookmarkedIds.has(dup.nodeId)) {
+        dispatch(
+          addBookmark({ nodeId: dup.nodeId, label: dup.label, kind: "product" }),
+        );
+      }
+    }
+    dispatch(mergeProductNodes({ fromId, intoId: dup.nodeId }));
+    handleFocusLinkedProduct(dup.nodeId);
+    showToast("success", `Узлы объединены — «${dup.label}»`);
+  }, [duplicatePrompt, data.nodes, bookmarkedIds, dispatch, handleFocusLinkedProduct]);
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(
@@ -2992,6 +3095,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         message="Изменения сохранены"
         isVisible={isSavedToastVisible}
       />
+
+      {duplicatePrompt && (
+        <DuplicateProductModal
+          open
+          newLabel={duplicatePrompt.newLabel}
+          existingLabel={duplicatePrompt.dup.label}
+          by={duplicatePrompt.dup.by}
+          onMerge={handleMergeDuplicate}
+          onKeep={() => setDuplicatePrompt(null)}
+        />
+      )}
 
       {pendingDeleteIds &&
         pendingDeleteIds.length > 0 &&
