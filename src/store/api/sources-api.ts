@@ -9,6 +9,7 @@ import type {
   TechnologySource,
 } from "../types";
 import { getAiRequestFields } from "../../hooks/useAiConfig";
+import { serverReason } from "./serverReason";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "",
@@ -40,7 +41,9 @@ export const fetchSources = createAsyncThunk<
     });
 
     if (!res.data?.success) {
-      return thunkApi.rejectWithValue("sources: server returned success=false");
+      return thunkApi.rejectWithValue(
+        serverReason(res.data) || "sources: server returned success=false",
+      );
     }
 
     // сохраняем источники в node.data per-direction

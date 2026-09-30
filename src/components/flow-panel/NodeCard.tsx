@@ -513,12 +513,16 @@ export const NodeCard: FC<NodeCardProps> = ({
             </>
           )}
 
-          {/* ── Технологическое описание ── */}
+          {/* ── Технологическое описание ──
+              Вид результата зависит от узла: у преобразования — текст
+              технологии, у продукта — все поля карточки списком. Вид «tech»
+              у продукта не показывал ничего: он выводит только описание
+              технологии, а в карточке продукта такого поля нет. */}
           {activeTab === "tech" && (
             <FillCardBlock
               key={nodeId ?? "tech"}
               nodeType={effectiveNodeType}
-              layout="tech"
+              layout={isProduct ? "list" : "tech"}
               onBuildProductCard={onBuildProductCard}
               productCardStatus={productCardStatus}
               productCardError={productCardError}

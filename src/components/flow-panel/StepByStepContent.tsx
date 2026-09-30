@@ -30,6 +30,7 @@ import {
 } from "../../hooks/useAiConfig";
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
+import { readableReason } from "../../store/middleware/failureText";
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
@@ -422,7 +423,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         </button>
 
         {stepBuildError && (
-          <div className={styles.errorText}>Ошибка: {stepBuildError}</div>
+          <div className={styles.errorText}>
+            Ошибка: {readableReason(stepBuildError)}
+          </div>
         )}
 
         {buildNeedsSources &&
@@ -436,7 +439,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
 
         {stepChainError && (
-          <div className={styles.errorText}>Ошибка: {stepChainError}</div>
+          <div className={styles.errorText}>
+            Ошибка: {readableReason(stepChainError)}
+          </div>
         )}
 
         {showPreview && pendingStep && (
@@ -576,7 +581,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           </button>
           {cancelSearchButton}
           {stepSourcesError && (
-            <div className={styles.errorText}>Ошибка: {stepSourcesError}</div>
+            <div className={styles.errorText}>
+              Ошибка: {readableReason(stepSourcesError)}
+            </div>
           )}
 
           {/* Ручное добавление источников доступно и ДО поиска (3.2). */}
@@ -705,7 +712,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           {srcPromptOpen && renderSearchPromptEditor(true)}
 
           {stepAggregateError && (
-            <div className={wiz.error}>Ошибка: {stepAggregateError}</div>
+            <div className={wiz.error}>
+              Ошибка: {readableReason(stepAggregateError)}
+            </div>
           )}
 
           <div className={wiz.footer}>
@@ -881,7 +890,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
 
           {stepBuildError && (
-            <div className={wiz.error}>Ошибка: {stepBuildError}</div>
+            <div className={wiz.error}>
+              Ошибка: {readableReason(stepBuildError)}
+            </div>
           )}
 
           <div className={wiz.footer}>
@@ -978,7 +989,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       )}
 
       {stepChainError && (
-        <div className={wiz.error}>Ошибка: {stepChainError}</div>
+        <div className={wiz.error}>
+          Ошибка: {readableReason(stepChainError)}
+        </div>
       )}
 
       {showPreview && pendingStep && (

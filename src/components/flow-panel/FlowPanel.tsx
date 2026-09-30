@@ -28,6 +28,7 @@ import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { AiModelSelect } from "../ai-model-select";
 import { NodeCard } from "./NodeCard";
+import { readableReason } from "../../store/middleware/failureText";
 
 // ─────────────────────────────────────────────────
 // DirectionContent — reusable block for "down" / "up" tab
@@ -320,7 +321,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
           </button>
 
           {sourcesError && (
-            <div className={styles.errorText}>Ошибка: {sourcesError}</div>
+            <div className={styles.errorText}>
+              Ошибка: {readableReason(sourcesError)}
+            </div>
           )}
 
           {/* Ручное добавление источников доступно и ДО поиска (3.2). */}
@@ -450,7 +453,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
           )}
 
           {aggregateError && (
-            <div className={styles.errorText}>Ошибка: {aggregateError}</div>
+            <div className={styles.errorText}>
+              Ошибка: {readableReason(aggregateError)}
+            </div>
           )}
         </div>
       )}
@@ -526,7 +531,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
                     : `Обобщить повторно (${selectedSources.length})`}
               </button>
               {aggregateError && (
-                <div className={styles.errorText}>Ошибка: {aggregateError}</div>
+                <div className={styles.errorText}>
+                  Ошибка: {readableReason(aggregateError)}
+                </div>
               )}
             </div>
           )}
@@ -635,7 +642,9 @@ const DirectionContent: FC<DirectionTabProps> = ({
           )}
 
           {chainError && (
-            <div className={styles.errorText}>Ошибка: {chainError}</div>
+            <div className={styles.errorText}>
+              Ошибка: {readableReason(chainError)}
+            </div>
           )}
         </div>
       )}
@@ -960,7 +969,9 @@ const PanelBuildViewInner: FC<{
           </div>
 
           {tab.stepSourcesError && (
-            <div className={wiz.error}>Ошибка: {tab.stepSourcesError}</div>
+            <div className={wiz.error}>
+              Ошибка: {readableReason(tab.stepSourcesError)}
+            </div>
           )}
 
           <div

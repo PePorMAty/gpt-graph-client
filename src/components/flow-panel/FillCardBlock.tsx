@@ -21,6 +21,7 @@ import {
 } from "../../prompts/fillCardPrompts";
 import { AiModelSelect } from "../ai-model-select";
 import { PencilIcon } from "../icons";
+import { readableReason } from "../../store/middleware/failureText";
 
 import styles from "./FillCardBlock.module.css";
 
@@ -355,7 +356,9 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
           </div>
 
           {productCardStatus === "failed" && productCardError && (
-            <div className={styles.error}>Ошибка: {productCardError}</div>
+            <div className={styles.error}>
+              Ошибка: {readableReason(productCardError)}
+            </div>
           )}
         </>
       )}
