@@ -21,6 +21,12 @@ export interface InitialGraphStateI {
   leafNodes: string[];
   originalPrompt: string | null;
   source: "new" | "loaded" | "continued" | null;
+  /**
+   * Счётчик открытий графа целиком (из библиотеки, из файла, объединением).
+   * Полотно живёт дольше графа на нём: по счётчику оно закрывает карточку
+   * узла прошлого графа.
+   */
+  loadSeq: number;
   chainBuild: {
     status: "idle" | "loading" | "succeeded" | "failed";
     error: string | null;

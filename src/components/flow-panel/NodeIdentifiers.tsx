@@ -154,6 +154,14 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                     {industry.okpd2Name}
                   </span>
                 )}
+                {/* Код уточнён по классификатору: у записей реестра стоит код
+                    категории над ним — его и называем, чтобы расхождение с
+                    реестром не выглядело ошибкой. */}
+                {industry?.okpd2Registry && (
+                  <span className={styles.idPopNote}>
+                    уточнён по классификатору; в реестре — {industry.okpd2Registry}
+                  </span>
+                )}
               </span>
             </div>
           )}

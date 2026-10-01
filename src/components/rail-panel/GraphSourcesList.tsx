@@ -18,6 +18,9 @@ import {
   SearchIcon,
 } from "../icons";
 import industry from "../industry/Industry.module.css";
+import { DetailsToggle } from "./DetailsToggle";
+import { usePanelDetails } from "./usePanelDetails";
+import details from "./PanelDetails.module.css";
 import styles from "./LocalDocuments.module.css";
 
 type Kind = "all" | "product" | "transformation";
@@ -77,6 +80,11 @@ interface Props {
   graphTitle?: string;
   /** Пустой граф без источников — что сказать. */
   emptyText?: string;
+  /**
+   * Боковая панель: над списком только поиск, сводка и отборы — по кнопке
+   * рядом с ним (usePanelDetails). В библиотеке места хватает — там всё видно.
+   */
+  collapsible?: boolean;
 }
 
 /**
@@ -92,7 +100,10 @@ export const GraphSourcesList: FC<Props> = ({
   summary,
   graphTitle,
   emptyText = "Источники появятся после их поиска в окне построения шага — здесь соберутся все, что использовались при построении графа.",
+  collapsible = false,
 }) => {
+  const [detailsOpen, toggleDetails] = usePanelDetails();
+  const showDetails = !collapsible || detailsOpen;
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<Kind>("all");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
@@ -176,58 +187,91 @@ export const GraphSourcesList: FC<Props> = ({
     );
   }
 
+  const chips = (
+    <div className={industry.chips}>
+      <span className={industry.chip}>
+        <DatabaseIcon size={13} />
+        {summary.total} {plural(summary.total, "источник", "источника", "источников")}
+      </span>
+      <span className={industry.chip}>
+        <FlaskIcon size={13} />
+        {counts.product} {plural(counts.product, "продукт", "продукта", "продуктов")}
+      </span>
+      {counts.transformation > 0 && (
+        <span className={industry.chip}>
+          <GearIcon size={13} />
+          {counts.transformation}{" "}
+          {plural(counts.transformation, "преобразование", "преобразования", "преобразований")}
+        </span>
+      )}
+    </div>
+  );
+
+  const kinds = (
+    <div className={`${industry.segmented} ${industry.viewSwitch}`}>
+      {(
+        [
+          ["all", `Все (${groups.length})`],
+          ["product", `Продукты (${counts.product})`],
+          ["transformation", `Преобразования (${counts.transformation})`],
+        ] as Array<[Kind, string]>
+      ).map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          className={`${industry.segment} ${kind === value ? industry.segmentActive : ""}`}
+          onClick={() => setKind(value)}
+          aria-pressed={kind === value}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const search = (
+    <label className={industry.search}>
+      <SearchIcon size={14} />
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Поиск по объекту или источнику…"
+      />
+    </label>
+  );
+
   return (
     <div className={`${industry.wrap} ${industry.wrapPanel}`}>
-      <div className={industry.chips}>
-        <span className={industry.chip}>
-          <DatabaseIcon size={13} />
-          {summary.total} {plural(summary.total, "источник", "источника", "источников")}
-        </span>
-        <span className={industry.chip}>
-          <FlaskIcon size={13} />
-          {counts.product} {plural(counts.product, "продукт", "продукта", "продуктов")}
-        </span>
-        {counts.transformation > 0 && (
-          <span className={industry.chip}>
-            <GearIcon size={13} />
-            {counts.transformation}{" "}
-            {plural(counts.transformation, "преобразование", "преобразования", "преобразований")}
-          </span>
-        )}
-      </div>
+      {collapsible ? (
+        <>
+          <div className={details.searchRow}>
+            {search}
+            <DetailsToggle
+              open={detailsOpen}
+              onToggle={toggleDetails}
+              active={kind !== "all"}
+            />
+          </div>
+          {detailsOpen && (
+            <div className={details.details}>
+              {chips}
+              {kinds}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {chips}
+          <div className={industry.filters}>
+            {search}
+            {kinds}
+          </div>
+        </>
+      )}
 
-      <div className={industry.filters}>
-        <label className={industry.search}>
-          <SearchIcon size={14} />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по объекту или источнику…"
-          />
-        </label>
-        <div className={`${industry.segmented} ${industry.viewSwitch}`}>
-          {(
-            [
-              ["all", `Все (${groups.length})`],
-              ["product", `Продукты (${counts.product})`],
-              ["transformation", `Преобразования (${counts.transformation})`],
-            ] as Array<[Kind, string]>
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={`${industry.segment} ${kind === value ? industry.segmentActive : ""}`}
-              onClick={() => setKind(value)}
-              aria-pressed={kind === value}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {shown.length > 0 && (
+      {/* Без сводки — только когда что-то отобрано: «Найдено» и сброс. */}
+      {shown.length > 0 && (showDetails || filtered) && (
         <div className={industry.listBar}>
           <span className={industry.listBarText}>
             {filtered
@@ -362,7 +406,7 @@ export const GraphSourcesList: FC<Props> = ({
         unit="объектов"
       />
 
-      {graphTitle && (
+      {graphTitle && showDetails && (
         <p className={industry.foot}>
           Источники графа «{graphTitle}». Унаследованные от продукта выше по
           цепочке помечены «взят у …» и в общее число не входят.

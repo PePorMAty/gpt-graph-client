@@ -1197,6 +1197,24 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     );
   }, [isPanelOpen, cardShown]);
 
+  // Открыли другой граф (из библиотеки, из файла): полотно смонтировано
+  // всегда, и карточка узла прошлого графа оставалась открытой. Закрываем без
+  // сохранения: правки сохраняются при уходе из поля, а узел с тем же id в
+  // новом графе получил бы чужие название и описание.
+  const loadSeq = useAppSelector((s) => s.graph.loadSeq);
+  const loadSeqRef = useRef(loadSeq);
+  useEffect(() => {
+    if (loadSeqRef.current === loadSeq) return;
+    loadSeqRef.current = loadSeq;
+    setIsPanelOpen(false);
+    setSelectedNodeId(null);
+    setTempNodeLabel("");
+    setTempNodeDescription("");
+    setInitialLabel("");
+    setInitialDescription("");
+    setContextMenu(null);
+  }, [loadSeq]);
+
   // Клик по пустому пространству — закрыть контекстные меню
   const onPaneClick = useCallback(() => {
     setContextMenu(null);

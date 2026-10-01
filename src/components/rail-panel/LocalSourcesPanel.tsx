@@ -13,6 +13,7 @@ import { BookIcon, FilePdfIcon, FlaskIcon, LinkIcon } from "../icons";
 import industry from "../industry/Industry.module.css";
 import { LocalDocumentsSection } from "./LocalDocumentsSection";
 import { LocalProductsList } from "./LocalProductsList";
+import { usePanelDetails, type PanelDetailsSlot } from "./usePanelDetails";
 import styles from "./LocalDocuments.module.css";
 
 /** Как часто обновлять, пока модель разбирает разделы. */
@@ -35,6 +36,10 @@ let lastView: View = "products";
  *   • «Документы» — загрузка PDF, ход разбора моделью, разделы, удаление.
  * PDF можно бросить на вкладку в любом виде — откроется «Документы» с
  * очередью загрузки.
+ *
+ * Сводка (чипы) и переключатель видов скрыты за кнопкой рядом с поиском:
+ * на экране 1080p они оставляли списку продуктов три строки. Собирает их
+ * вкладка, а показывает вид — под своей строкой поиска.
  */
 export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) => {
   const dispatch = useAppDispatch();
@@ -52,6 +57,7 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
   const [hidden, setHidden] = useState(0);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [detailsOpen, toggleDetails] = usePanelDetails();
 
   // Документы — при открытии и после каждого изменения базы (загрузили,
   // удалили, поставили в разбор — в том числе из другой вкладки окна).
@@ -144,6 +150,55 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
   const web = (products ?? []).reduce((n, p) => n + p.web.up + p.web.down, 0);
   const productCount = products?.length ?? 0;
 
+  const details: PanelDetailsSlot = {
+    open: detailsOpen,
+    toggle: toggleDetails,
+    content: (
+      <>
+        <div className={industry.chips}>
+          <span className={industry.chip}>
+            <FilePdfIcon size={13} />
+            {docCount} {plural(docCount, "документ", "документа", "документов")}
+          </span>
+          <span className={industry.chip}>
+            <BookIcon size={13} />
+            {sections} {plural(sections, "раздел", "раздела", "разделов")}
+            {decoding > 0 && ` · в разборе ${decoding}`}
+          </span>
+          <span className={industry.chip}>
+            <FlaskIcon size={13} />
+            {productCount} {plural(productCount, "продукт", "продукта", "продуктов")}
+          </span>
+          {web > 0 && (
+            <span className={industry.chip} title="Источники, которые модель находила в интернете">
+              <LinkIcon size={13} />
+              {web} из интернета
+            </span>
+          )}
+        </div>
+
+        <div className={`${industry.segmented} ${styles.baseViews}`}>
+          {(
+            [
+              ["products", `Продукты (${productCount})`],
+              ["documents", `Документы (${docCount})`],
+            ] as Array<[View, string]>
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`${industry.segment} ${view === value ? industry.segmentActive : ""}`}
+              onClick={() => setView(value)}
+              aria-pressed={view === value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </>
+    ),
+  };
+
   return (
     <div
       className={`${industry.wrap} ${industry.wrapPanel}`}
@@ -151,47 +206,6 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className={industry.chips}>
-        <span className={industry.chip}>
-          <FilePdfIcon size={13} />
-          {docCount} {plural(docCount, "документ", "документа", "документов")}
-        </span>
-        <span className={industry.chip}>
-          <BookIcon size={13} />
-          {sections} {plural(sections, "раздел", "раздела", "разделов")}
-          {decoding > 0 && ` · в разборе ${decoding}`}
-        </span>
-        <span className={industry.chip}>
-          <FlaskIcon size={13} />
-          {productCount} {plural(productCount, "продукт", "продукта", "продуктов")}
-        </span>
-        {web > 0 && (
-          <span className={industry.chip} title="Источники, которые модель находила в интернете">
-            <LinkIcon size={13} />
-            {web} из интернета
-          </span>
-        )}
-      </div>
-
-      <div className={`${industry.segmented} ${styles.baseViews}`}>
-        {(
-          [
-            ["products", `Продукты (${productCount})`],
-            ["documents", `Документы (${docCount})`],
-          ] as Array<[View, string]>
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={`${industry.segment} ${view === value ? industry.segmentActive : ""}`}
-            onClick={() => setView(value)}
-            aria-pressed={view === value}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {view === "products" ? (
         <LocalProductsList
           products={products}
@@ -201,6 +215,7 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
           documents={docCount}
           decoding={decoding}
           onOpenDocuments={() => setView("documents")}
+          details={details}
         />
       ) : (
         <LocalDocumentsSection
@@ -213,6 +228,7 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
             setReload((r) => r + 1);
             dispatch(watchDecoding());
           }}
+          details={details}
         />
       )}
     </div>

@@ -17,6 +17,9 @@ import { collectCompanies, companyKey } from "./companies";
 import { CompanyFilter } from "./CompanyFilter";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
+import { DetailsToggle } from "../rail-panel/DetailsToggle";
+import { usePanelDetails } from "../rail-panel/usePanelDetails";
+import details from "../rail-panel/PanelDetails.module.css";
 import {
   IndustryDataIcon,
   ShieldCheckIcon,
@@ -120,6 +123,9 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
    * непрофильная продукция, либо название, под которым реестр её не знает.
    */
   const [view, setView] = useState<"entries" | "missing">("entries");
+  /** В панели сводка и отборы — по кнопке рядом с поиском. */
+  const [detailsOpen, toggleDetails] = usePanelDetails();
+  const showDetails = !compact || detailsOpen;
 
   // По алфавиту: в порядке узлов список продуктов читался бы вразнобой.
   const names = useMemo(
@@ -454,165 +460,194 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       </div>
     );
 
-  return (
-    <div className={`${styles.wrap} ${compact ? styles.wrapPanel : ""}`}>
-      {compact ? (
-        /* На экране 1080p четыре плитки занимали почти всю высоту панели, и на
-           сам список оставалась одна строка. Те же числа — строкой чипов. */
-        <div className={styles.chips}>
-          <span className={styles.chip}>
-            <PlantIcon size={13} />
-            {stats.producers}{" "}
-            {plural(stats.producers, "производитель", "производителя", "производителей")}
-          </span>
-          <span className={styles.chip}>
-            <FlaskIcon size={13} />
-            {confirmed} из {names.length}{" "}
-            {plural(names.length, "продукта", "продуктов", "продуктов")}
-          </span>
-          <span className={styles.chip}>
-            <BookIcon size={13} />
-            {stats.entries} {plural(stats.entries, "запись", "записи", "записей")}
-          </span>
-          <span className={styles.chip}>
-            <FocusIcon size={13} />
-            {stats.regions} {plural(stats.regions, "регион", "региона", "регионов")}
-          </span>
-        </div>
-      ) : (
-      <div className={styles.tiles}>
-        <div className={styles.tile}>
-          <PlantIcon size={20} className={styles.tileIcon} />
-          <div>
-            <span className={styles.tileLabel}>Производителей</span>
-            <span className={styles.tileValue}>{stats.producers}</span>
-          </div>
-        </div>
-        <div className={styles.tile}>
-          <FlaskIcon size={20} className={styles.tileIcon} />
-          <div>
-            <span className={styles.tileLabel}>Продуктов в реестре</span>
-            <span className={styles.tileValue}>
-              {confirmed} <span className={styles.tileOf}>из {names.length}</span>
-            </span>
-          </div>
-        </div>
-        <div className={styles.tile}>
-          <BookIcon size={20} className={styles.tileIcon} />
-          <div>
-            <span className={styles.tileLabel}>Реестровых позиций</span>
-            <span className={styles.tileValue}>{stats.entries}</span>
-          </div>
-        </div>
-        <div className={styles.tile}>
-          <FocusIcon size={20} className={styles.tileIcon} />
-          <div>
-            <span className={styles.tileLabel}>Регионов</span>
-            <span className={styles.tileValue}>{stats.regions}</span>
-          </div>
-        </div>
-      </div>
-      )}
+  const searchBox = (
+    <label className={styles.search}>
+      <SearchIcon size={14} />
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={
+          showMissing
+            ? "Поиск по названию продукта…"
+            : "Поиск по продукту, производителю или ИНН…"
+        }
+      />
+    </label>
+  );
 
-      <div className={styles.filters}>
-        <label className={styles.search}>
-          <SearchIcon size={14} />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              showMissing
-                ? "Поиск по названию продукта…"
-                : "Поиск по продукту, производителю или ИНН…"
-            }
+  /** Отборы после поиска и переключатель «в реестре / нет в реестре». */
+  const filterControls = (
+    <>
+      {/* Отборы описывают запись реестра: у ненайденных описывать нечего. */}
+      {!showMissing && (
+        <>
+          <CompanyFilter
+            options={companies}
+            value={activeCompany?.key ?? ""}
+            onChange={setCompany}
+            wide={compact}
           />
-        </label>
 
-        {/* Отборы описывают запись реестра: у ненайденных описывать нечего. */}
-        {!showMissing && (
-          <>
-            <CompanyFilter
-              options={companies}
-              value={activeCompany?.key ?? ""}
-              onChange={setCompany}
-              wide={compact}
-            />
-
-            {/* В панели продукт и так строка списка, а найти его быстрее
-                поиском: место под отбор там нужнее компании и региону. */}
-            {!compact && (
-              <select
-                className={styles.select}
-                value={product}
-                onChange={(e) => setProduct(e.target.value)}
-                aria-label="Продукт"
-              >
-                <option value="">Продукт</option>
-                {names.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            )}
-
+          {/* В панели продукт и так строка списка, а найти его быстрее
+              поиском: место под отбор там нужнее компании и региону. */}
+          {!compact && (
             <select
               className={styles.select}
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              aria-label="Регион"
+              value={product}
+              onChange={(e) => setProduct(e.target.value)}
+              aria-label="Продукт"
             >
-              <option value="">Регион</option>
-              {regionOptions.map((r) => (
-                <option key={r} value={r}>
-                  {r}
+              <option value="">Продукт</option>
+              {names.map((n) => (
+                <option key={n} value={n}>
+                  {n}
                 </option>
               ))}
             </select>
+          )}
 
-            <div className={styles.segmented}>
-              {STATUS_FILTERS.map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`${styles.segment} ${
-                    statusFilter === value ? styles.segmentActive : ""
-                  }`}
-                  onClick={() => setStatusFilter(value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+          <select
+            className={styles.select}
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            aria-label="Регион"
+          >
+            <option value="">Регион</option>
+            {regionOptions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
 
-        {/* Найденные и ненайденные продукты — два разных списка, а не два
-            состояния одного отбора: у ненайденных нет ни производителя, ни
-            региона, ни статуса, и отборы выше для них просто скрыты.
+          <div className={styles.segmented}>
+            {STATUS_FILTERS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`${styles.segment} ${
+                  statusFilter === value ? styles.segmentActive : ""
+                }`}
+                onClick={() => setStatusFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
-            Стоит в конце строки и прижат вправо, чтобы не прыгал с места на
-            место, когда середина строки исчезает. */}
-        <div className={`${styles.segmented} ${styles.viewSwitch}`}>
-          {(
-            [
-              ["entries", `В реестре (${confirmed})`],
-              ["missing", `Нет в реестре (${missing.length})`],
-            ] as Array<["entries" | "missing", string]>
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={`${styles.segment} ${view === value ? styles.segmentActive : ""}`}
-              onClick={() => setView(value)}
-              aria-pressed={view === value}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* Найденные и ненайденные продукты — два разных списка, а не два
+          состояния одного отбора: у ненайденных нет ни производителя, ни
+          региона, ни статуса, и отборы выше для них просто скрыты.
+
+          Стоит в конце строки и прижат вправо, чтобы не прыгал с места на
+          место, когда середина строки исчезает. */}
+      <div className={`${styles.segmented} ${styles.viewSwitch}`}>
+        {(
+          [
+            ["entries", `В реестре (${confirmed})`],
+            ["missing", `Нет в реестре (${missing.length})`],
+          ] as Array<["entries" | "missing", string]>
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`${styles.segment} ${view === value ? styles.segmentActive : ""}`}
+            onClick={() => setView(value)}
+            aria-pressed={view === value}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+    </>
+  );
+
+  return (
+    <div className={`${styles.wrap} ${compact ? styles.wrapPanel : ""}`}>
+      {compact ? (
+        <>
+          <div className={details.searchRow}>
+            {searchBox}
+            <DetailsToggle
+              open={detailsOpen}
+              onToggle={toggleDetails}
+              active={Boolean(
+                activeCompany || product || region || statusFilter !== "all" || showMissing,
+              )}
+            />
+          </div>
+          {/* На экране 1080p четыре плитки занимали почти всю высоту панели, и
+              на сам список оставалась одна строка. Те же числа — строкой чипов,
+              и вместе с отборами — по кнопке. */}
+          {detailsOpen && (
+            <div className={details.details}>
+              <div className={styles.chips}>
+                <span className={styles.chip}>
+                  <PlantIcon size={13} />
+                  {stats.producers}{" "}
+                  {plural(stats.producers, "производитель", "производителя", "производителей")}
+                </span>
+                <span className={styles.chip}>
+                  <FlaskIcon size={13} />
+                  {confirmed} из {names.length}{" "}
+                  {plural(names.length, "продукта", "продуктов", "продуктов")}
+                </span>
+                <span className={styles.chip}>
+                  <BookIcon size={13} />
+                  {stats.entries} {plural(stats.entries, "запись", "записи", "записей")}
+                </span>
+                <span className={styles.chip}>
+                  <FocusIcon size={13} />
+                  {stats.regions} {plural(stats.regions, "регион", "региона", "регионов")}
+                </span>
+              </div>
+              <div className={styles.filters}>{filterControls}</div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className={styles.tiles}>
+            <div className={styles.tile}>
+              <PlantIcon size={20} className={styles.tileIcon} />
+              <div>
+                <span className={styles.tileLabel}>Производителей</span>
+                <span className={styles.tileValue}>{stats.producers}</span>
+              </div>
+            </div>
+            <div className={styles.tile}>
+              <FlaskIcon size={20} className={styles.tileIcon} />
+              <div>
+                <span className={styles.tileLabel}>Продуктов в реестре</span>
+                <span className={styles.tileValue}>
+                  {confirmed} <span className={styles.tileOf}>из {names.length}</span>
+                </span>
+              </div>
+            </div>
+            <div className={styles.tile}>
+              <BookIcon size={20} className={styles.tileIcon} />
+              <div>
+                <span className={styles.tileLabel}>Реестровых позиций</span>
+                <span className={styles.tileValue}>{stats.entries}</span>
+              </div>
+            </div>
+            <div className={styles.tile}>
+              <FocusIcon size={20} className={styles.tileIcon} />
+              <div>
+                <span className={styles.tileLabel}>Регионов</span>
+                <span className={styles.tileValue}>{stats.regions}</span>
+              </div>
+            </div>
+          </div>
+          <div className={styles.filters}>
+            {searchBox}
+            {filterControls}
+          </div>
+        </>
+      )}
 
       {checked < names.length && (
         <p className={styles.note}>
@@ -627,7 +662,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
           {/* Почему их тут много: реестр про товарную продукцию, а граф — про
               промежуточные потоки. Без этой строки список читается как
               «программа не справилась». */}
-          {missing.length > 0 && (
+          {missing.length > 0 && showDetails && (
             <p className={styles.note}>
               Реестр ПП №719 охватывает товарную продукцию. Промежуточных
               веществ цепочки в нём нет — их не продают, и на подтверждение
@@ -679,7 +714,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
         <>
           {/* Что осталось после отборов и как вернуть всё. С компанией — прямо
               ответ на вопрос, ради которого её выбирали. */}
-          {groups.length > 0 && (
+          {groups.length > 0 && (showDetails || filtered) && (
             <div className={styles.listBar}>
               <span className={styles.listBarText}>
                 {activeCompany
@@ -784,6 +819,20 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
                 {confirmed
                   ? "По этим условиям ничего нет. Снимите отбор или измените запрос."
                   : "Ни один продукт графа в реестре не найден."}
+                {/* Переключатель «Нет в реестре» в панели спрятан в сводке —
+                    дорога к этому списку здесь. */}
+                {!confirmed && missing.length > 0 && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className={styles.linkBtn}
+                      onClick={() => setView("missing")}
+                    >
+                      Чего нет в реестре
+                    </button>
+                  </>
+                )}
                 {filtered && confirmed > 0 && (
                   <>
                     {" "}
@@ -808,11 +857,13 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
         unit="продуктов"
       />
 
-      <p className={styles.foot}>
-        Источник: Реестр российской промышленной продукции (ПП №719), ГИСП
-        Минпромторга России.
-        {actualAt ? ` Данные актуальны на ${actualAt}.` : ""}
-      </p>
+      {showDetails && (
+        <p className={styles.foot}>
+          Источник: Реестр российской промышленной продукции (ПП №719), ГИСП
+          Минпромторга России.
+          {actualAt ? ` Данные актуальны на ${actualAt}.` : ""}
+        </p>
+      )}
     </div>
   );
 };

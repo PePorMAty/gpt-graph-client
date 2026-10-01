@@ -22,6 +22,9 @@ import {
   SearchIcon,
 } from "../icons";
 import industry from "../industry/Industry.module.css";
+import { DetailsToggle } from "./DetailsToggle";
+import type { PanelDetailsSlot } from "./usePanelDetails";
+import detailsCss from "./PanelDetails.module.css";
 import styles from "./LocalDocuments.module.css";
 
 type Scope = "all" | "graph";
@@ -180,6 +183,8 @@ interface Props {
   /** Разделов в разборе: список ещё пополняется. */
   decoding: number;
   onOpenDocuments: () => void;
+  /** Сводка вкладки: чипы и «Продукты / Документы» — по кнопке у поиска. */
+  details: PanelDetailsSlot;
 }
 
 /**
@@ -200,6 +205,7 @@ export const LocalProductsList: FC<Props> = ({
   documents,
   decoding,
   onOpenDocuments,
+  details,
 }) => {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
@@ -276,23 +282,30 @@ export const LocalProductsList: FC<Props> = ({
 
   if (!all.length) {
     return (
-      <div className={industry.empty}>
-        <div className={industry.emptyTitle}>
-          {documents ? "Продуктов пока нет" : "В базе пока нет документов"}
+      <>
+        {/* Искать нечего, а сводка с переключателем видов нужна и здесь. */}
+        <div className={detailsCss.searchRow}>
+          <span className={detailsCss.spacer} />
+          <DetailsToggle open={details.open} onToggle={details.toggle} />
         </div>
-        <p className={industry.emptyText}>
-          {documents
-            ? decoding
-              ? `Модель разбирает разделы (осталось ${decoding}) — продукты появятся по ходу разбора.`
-              : "В разделах документов не нашлось веществ, которые получают или берут сырьём."
-            : "Загрузите PDF: сервер разделит документ на разделы, модель разберёт каждый — что производят и из какого сырья, — и вещества появятся здесь с источниками."}
-        </p>
-        {!documents && (
+        {details.open && <div className={detailsCss.details}>{details.content}</div>}
+        <div className={industry.empty}>
+          <div className={industry.emptyTitle}>
+            {documents ? "Продуктов пока нет" : "В базе пока нет документов"}
+          </div>
+          <p className={industry.emptyText}>
+            {documents
+              ? decoding
+                ? `Модель разбирает разделы (осталось ${decoding}) — продукты появятся по ходу разбора.`
+                : "В разделах документов не нашлось веществ, которые получают или берут сырьём."
+              : "Загрузите PDF: сервер разделит документ на разделы, модель разберёт каждый — что производят и из какого сырья, — и вещества появятся здесь с источниками."}
+          </p>
+          {/* Переключатель видов спрятан в сводке — дорога к документам здесь. */}
           <button type="button" className={industry.checkBtn} onClick={onOpenDocuments}>
             К документам
           </button>
-        )}
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -300,7 +313,7 @@ export const LocalProductsList: FC<Props> = ({
 
   return (
     <>
-      <div className={industry.filters}>
+      <div className={detailsCss.searchRow}>
         <label className={industry.search}>
           <SearchIcon size={14} />
           <input
@@ -310,25 +323,32 @@ export const LocalProductsList: FC<Props> = ({
             placeholder="Поиск по продукту…"
           />
         </label>
-        <div className={`${industry.segmented} ${industry.viewSwitch}`}>
-          {(
-            [
-              ["all", `Вся база (${all.length})`],
-              ["graph", `На графе (${onGraph.length})`],
-            ] as Array<[Scope, string]>
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={`${industry.segment} ${scope === value ? industry.segmentActive : ""}`}
-              onClick={() => setScope(value)}
-              aria-pressed={scope === value}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <DetailsToggle open={details.open} onToggle={details.toggle} active={scope !== "all"} />
       </div>
+
+      {details.open && (
+        <div className={detailsCss.details}>
+          {details.content}
+          <div className={`${industry.segmented} ${styles.baseViews}`}>
+            {(
+              [
+                ["all", `Вся база (${all.length})`],
+                ["graph", `На графе (${onGraph.length})`],
+              ] as Array<[Scope, string]>
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`${industry.segment} ${scope === value ? industry.segmentActive : ""}`}
+                onClick={() => setScope(value)}
+                aria-pressed={scope === value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <div className={styles.error}>{error}</div>}
       {decoding > 0 && (
@@ -337,7 +357,8 @@ export const LocalProductsList: FC<Props> = ({
         </p>
       )}
 
-      {shown.length > 0 && (
+      {/* Без сводки — только когда что-то отобрано: «Найдено» и сброс. */}
+      {shown.length > 0 && (details.open || filtered) && (
         <div className={industry.listBar}>
           <span className={industry.listBarText}>
             {filtered
@@ -455,11 +476,13 @@ export const LocalProductsList: FC<Props> = ({
         unit="продуктов"
       />
 
-      <p className={industry.foot}>
-        Написания одного вещества («Пропилен», «Пропен») сведены в строку.
-        {hiddenIntermediates > 0 &&
-          ` Промежуточных потоков («контактный газ», «сырец») — ${hiddenIntermediates}: они у разделов в «Документах».`}
-      </p>
+      {details.open && (
+        <p className={industry.foot}>
+          Написания одного вещества («Пропилен», «Пропен») сведены в строку.
+          {hiddenIntermediates > 0 &&
+            ` Промежуточных потоков («контактный газ», «сырец») — ${hiddenIntermediates}: они у разделов в «Документах».`}
+        </p>
+      )}
     </>
   );
 };

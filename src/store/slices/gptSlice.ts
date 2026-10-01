@@ -71,6 +71,7 @@ const initialState: InitialGraphStateI = {
   leafNodes: [],
   originalPrompt: null,
   source: null,
+  loadSeq: 0,
   chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
   stepChainSessions: {},
@@ -489,6 +490,7 @@ const gptSlice = createSlice({
         reconstructPresentationColors(state.data.nodes);
 
       state.source = "loaded";
+      state.loadSeq += 1;
 
       state.rootId =
         state.data.nodes.length > 0
@@ -531,6 +533,8 @@ const gptSlice = createSlice({
       // позиции корректны. Если поставить "new", Flow перезапустит свой
       // applyLayout без direction и перевернёт граф обратно в BT.
       state.source = "loaded";
+      // Узел открытой карточки мог слиться с другим — карточку закрываем.
+      state.loadSeq += 1;
       state.rootId =
         state.data.nodes.length > 0
           ? findRootNodeId(state.data.nodes, state.data.edges)

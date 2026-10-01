@@ -12,8 +12,12 @@ import { plural } from "../../utils/plural";
 import { SearchIcon, UploadIcon } from "../icons";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
+import { DetailsToggle } from "./DetailsToggle";
 import { LocalDocumentRow } from "./LocalDocumentRow";
+import type { PanelDetailsSlot } from "./usePanelDetails";
+import industry from "../industry/Industry.module.css";
 import panel from "./PanelSection.module.css";
+import detailsCss from "./PanelDetails.module.css";
 import styles from "./LocalDocuments.module.css";
 
 function isActive(job: UploadJob): boolean {
@@ -87,6 +91,8 @@ interface Props {
   onDeleted: (id: number) => void;
   /** Документ поставлен в разбор — обновить список. */
   onChanged: () => void;
+  /** Сводка вкладки: чипы и «Продукты / Документы» — по кнопке у поиска. */
+  details: PanelDetailsSlot;
 }
 
 /**
@@ -104,6 +110,7 @@ export const LocalDocumentsSection = ({
   onAddFiles,
   onDeleted,
   onChanged,
+  details,
 }: Props) => {
   const dispatch = useAppDispatch();
   const uploads = useAppSelector((s) => s.localSources.uploads);
@@ -141,6 +148,26 @@ export const LocalDocumentsSection = ({
 
   return (
     <div className={styles.docsView}>
+      {/* Строка поиска с кнопкой сводки — как у продуктов: обратно к ним
+          ведёт переключатель в сводке. Поиска нет, пока нет документов. */}
+      <div className={detailsCss.searchRow}>
+        {total > 0 ? (
+          <label className={industry.search}>
+            <SearchIcon size={14} />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Поиск по документам…"
+            />
+          </label>
+        ) : (
+          <span className={detailsCss.spacer} />
+        )}
+        <DetailsToggle open={details.open} onToggle={details.toggle} />
+      </div>
+      {details.open && <div className={detailsCss.details}>{details.content}</div>}
+
       <div className={styles.body}>
         <div className={`${styles.drop} ${dragging ? styles.dropActive : ""}`}>
           <span className={styles.dropText}>
@@ -154,13 +181,15 @@ export const LocalDocumentsSection = ({
           >
             Выбрать PDF
           </button>
-          <span className={styles.hint}>
-            PDF с текстом, до 100 МБ, можно несколько сразу. Документ делится на
-            разделы по содержанию, и модель разбирает каждый: что производят и
-            из какого сырья
-            {aiConfig.model ? ` (модель ${aiConfig.model} — выбранная в приложении)` : ""}.
-            Сканы без текстового слоя не распознаются.
-          </span>
+          {details.open && (
+            <span className={styles.hint}>
+              PDF с текстом, до 100 МБ, можно несколько сразу. Документ делится
+              на разделы по содержанию, и модель разбирает каждый: что
+              производят и из какого сырья
+              {aiConfig.model ? ` (модель ${aiConfig.model})` : ""}. Сканы без
+              текстового слоя не распознаются.
+            </span>
+          )}
           <input
             ref={inputRef}
             type="file"
@@ -203,18 +232,6 @@ export const LocalDocumentsSection = ({
 
         {shownError && <div className={styles.error}>{shownError}</div>}
 
-        {total > 0 && (
-          <div className={panel.search}>
-            <SearchIcon size={15} className={panel.searchIcon} />
-            <input
-              className={panel.searchInput}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по документам…"
-            />
-          </div>
-        )}
-
         {docs === null ? (
           !shownError && <div className={panel.empty}>Загружаем список…</div>
         ) : total === 0 ? (
@@ -243,13 +260,6 @@ export const LocalDocumentsSection = ({
           onChange={paged.setPage}
           unit="документов"
         />
-      </div>
-
-      <div className={panel.footer}>
-        <span>
-          Много файлов разом удобнее загрузить скриптом на сервере:{" "}
-          <code>node scripts/import-pdf.js ~/pdf/</code>
-        </span>
       </div>
     </div>
   );

@@ -21,5 +21,5 @@ export const SourcesSection = () => {
     [data.nodes, sourcesPool],
   );
 
-  return <GraphSourcesList summary={summary} graphTitle={title} />;
+  return <GraphSourcesList summary={summary} graphTitle={title} collapsible />;
 };
