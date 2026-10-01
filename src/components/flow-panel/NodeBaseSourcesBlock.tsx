@@ -7,7 +7,7 @@ import {
 } from "../../store/api/local-sources-api";
 import { selectLocalSourceCounts } from "../../store/slices/localSourcesSlice";
 import type { TechnologySource } from "../../store/types";
-import { localSourceTag } from "../../utils/sourceOrigin";
+import { LOCAL_ROLE_TEXT, localSourceTag } from "../../utils/sourceOrigin";
 import { CollapsibleBlock } from "./CollapsibleBlock";
 import { ArrowDownIcon, ArrowUpIcon, FilePdfIcon, LinkIcon } from "../icons";
 import styles from "./NodeCard.module.css";
@@ -28,7 +28,25 @@ const SectionList = ({ items }: { items: TechnologySource[] }) => (
             <span className={styles.linkText}>{d.title}</span>
             <LinkIcon size={13} className={styles.linkIcon} />
           </a>
-          <span className={styles.baseMeta}>{localSourceTag(d)}</span>
+          <span className={styles.baseMeta}>
+            {localSourceTag(d)}
+            {d.role && (
+              <span
+                className={`${styles.baseTag} ${styles[`baseTag_${d.role}`] ?? ""}`}
+                title="Кем продукт приходится этому разделу"
+              >
+                {LOCAL_ROLE_TEXT[d.role]}
+              </span>
+            )}
+            {d.prospective && (
+              <span
+                className={`${styles.baseTag} ${styles.baseTag_prospective}`}
+                title="Процесс ещё не освоен промышленностью: в построении шага пойдёт альтернативой, а не основным путём"
+              >
+                перспективная технология
+              </span>
+            )}
+          </span>
         </span>
       </li>
     ))}

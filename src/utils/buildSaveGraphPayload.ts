@@ -73,6 +73,8 @@ export function buildSaveGraphPayload({
                 ...(s.page != null ? { page: s.page } : {}),
                 ...(s.docTitle ? { docTitle: s.docTitle } : {}),
                 ...(s.pages ? { pages: s.pages } : {}),
+                ...(s.role ? { role: s.role } : {}),
+                ...(s.prospective ? { prospective: true } : {}),
                 ...(s.savedAt ? { savedAt: s.savedAt } : {}),
                 ...(s.baseFor ? { baseFor: s.baseFor } : {}),
                 ...(s.isManual ? { isManual: true } : {}),

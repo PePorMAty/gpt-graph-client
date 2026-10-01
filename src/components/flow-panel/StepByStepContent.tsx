@@ -685,8 +685,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           <button
             type="button"
             onClick={() => setAggPromptOpen((v) => !v)}
-            className={styles.promptToggle}
+            className={`${wiz.promptButton} ${aggPromptOpen ? wiz.promptButtonOpen : ""}`}
+            aria-expanded={aggPromptOpen}
           >
+            <PencilIcon size={15} />
             {aggPromptOpen
               ? "Скрыть промпт обобщения"
               : "Редактировать промпт обобщения"}

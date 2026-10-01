@@ -677,3 +677,21 @@
   color: var(--c-text-soft);
   white-space: pre-wrap;
 }
+
+/* ─── Источники графа: строка объекта ─── */
+
+.objectName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.objectIconProduct {
+  flex: 0 0 auto;
+  color: var(--c-brand);
+}
+
+.objectIconTransform {
+  flex: 0 0 auto;
+  color: var(--c-transform);
+}

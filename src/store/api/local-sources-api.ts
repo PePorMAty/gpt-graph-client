@@ -101,6 +101,8 @@ export interface LocalProductSection {
   byModel: boolean;
   status: LocalSection["status"];
   summary: string | null;
+  /** Раздел о перспективных технологиях: в промышленности ещё не освоены. */
+  prospective?: boolean;
 }
 
 export interface LocalProductSources {

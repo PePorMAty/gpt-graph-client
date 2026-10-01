@@ -675,6 +675,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Состояния для панели
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(false);
+  /** Сколько раз карточку показали щелчком: каждый показ убирает панель раздела. */
+  const [cardShown, setCardShown] = useState(0);
   const [tempNodeLabel, setTempNodeLabel] = useState<string>("");
   const [tempNodeDescription, setTempNodeDescription] = useState<string>("");
   const [initialLabel, setInitialLabel] = useState<string>("");
@@ -1138,6 +1140,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (node.id !== selectedNodeId) saveChangesRef.current();
       setSelectedNodeId(node.id);
       setIsPanelOpen(true);
+      setCardShown((n) => n + 1);
       setContextMenu(null);
     },
     [focusOnNode, selectedNodeId],
@@ -1185,12 +1188,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Карточка узла и панель раздела (источники, закладки, история) занимают
   // одно место слева, и панель над холстом сдвигается на их ширину. Каркас
-  // живёт выше Flow, поэтому состояние карточки уходит ему событием.
+  // живёт выше Flow, поэтому состояние карточки уходит ему событием — и при
+  // каждом щелчке по узлу (cardShown): карточка могла быть уже открыта под
+  // панелью раздела, и без этого панель так и закрывала бы её.
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("node-card-toggle", { detail: { open: isPanelOpen } }),
     );
-  }, [isPanelOpen]);
+  }, [isPanelOpen, cardShown]);
 
   // Клик по пустому пространству — закрыть контекстные меню
   const onPaneClick = useCallback(() => {
@@ -3091,6 +3096,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         linkedProducts={linkedProducts}
         onFocusLinkedProduct={handleFocusLinkedProduct}
         readOnly={structureLocked}
+        lockReason={readOnly ? "shared" : productsOnly ? "productsOnly" : focusOn ? "focus" : null}
+        onUnlock={
+          readOnly
+            ? undefined
+            : productsOnly
+              ? () => setProductsOnly(false)
+              : focusOn
+                ? exitFocusMode
+                : undefined
+        }
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}

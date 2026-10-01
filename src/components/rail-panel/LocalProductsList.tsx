@@ -6,10 +6,9 @@ import {
   type LocalProduct,
   type LocalProductSection,
   type LocalProductSources,
-  type LocalRole,
 } from "../../store/api/local-sources-api";
 import type { TechnologySource } from "../../store/types";
-import { sourceLinkText } from "../../utils/sourceOrigin";
+import { LOCAL_ROLE_TEXT, sourceLinkText } from "../../utils/sourceOrigin";
 import { plural } from "../../utils/plural";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
@@ -24,13 +23,6 @@ import {
 } from "../icons";
 import industry from "../industry/Industry.module.css";
 import styles from "./LocalDocuments.module.css";
-
-const ROLE_TEXT: Record<LocalRole, string> = {
-  product: "целевой продукт",
-  byproduct: "попутный",
-  intermediate: "промежуточный",
-  raw: "сырьё",
-};
 
 type Scope = "all" | "graph";
 
@@ -74,12 +66,21 @@ const SectionItem: FC<{ s: LocalProductSection }> = ({ s }) => (
         {s.title}
       </a>
       <span className={`${styles.psRole} ${styles[`psRole_${s.role}`] ?? ""}`}>
-        {ROLE_TEXT[s.role]}
+        {LOCAL_ROLE_TEXT[s.role]}
       </span>
     </div>
     <div className={styles.psMeta}>
       <FilePdfIcon size={12} className={styles.psMetaIcon} />
       {s.docTitle} · {s.pages}
+      {s.prospective && (
+        <span
+          className={styles.psPending}
+          title="Процесс ещё не освоен промышленностью: в построении шага пойдёт альтернативой"
+        >
+          {" "}
+          · перспективная технология
+        </span>
+      )}
       {!s.byModel && (
         <span className={styles.psPending}> · по заголовку — модель ещё не разобрала</span>
       )}

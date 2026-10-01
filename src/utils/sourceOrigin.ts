@@ -40,6 +40,18 @@ export function isOwnBaseSource(
   );
 }
 
+/**
+ * Кем продукт приходится разделу документа. «Производство этилена» у
+ * пропилена — не ошибка: при пиролизе пропилен получают вместе с этиленом, и
+ * подпись роли это объясняет.
+ */
+export const LOCAL_ROLE_TEXT: Record<NonNullable<TechnologySource["role"]>, string> = {
+  product: "целевой продукт",
+  byproduct: "попутный продукт",
+  intermediate: "промежуточный поток",
+  raw: "сырьё",
+};
+
 /** Страница PDF из адреса (#page=N), если указана. */
 export function localSourcePage(url: string): number | null {
   const m = /#page=(\d+)/.exec(String(url ?? ""));

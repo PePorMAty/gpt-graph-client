@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import type { ProductCard } from "../../store/types";
-import { TRANSFORMATION_FIELDS } from "../../prompts/fillCardPrompts";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { updateNodeData } from "../../store/slices/gptSlice";
 import { CollapsibleBlock } from "./CollapsibleBlock";
 import { FocusIcon, IndustryDataIcon, PencilIcon } from "../icons";
 import styles from "./NodeCard.module.css";
-
-/** Поле, которое показывается отдельным описанием, а не строкой таблицы. */
-const SHORT_DESCRIPTION_KEY = "technology_short_description";
 
 const ICON_SIZE = 15;
 
@@ -36,27 +31,25 @@ interface Row {
 }
 
 interface KeyInfoBlockProps {
-  card?: ProductCard | null;
   /** Узел — из него берутся и в него пишутся отрасль с назначением. */
   nodeId?: string | null;
   readOnly?: boolean;
 }
 
 /**
- * «Ключевая информация»: чем узел является и какими параметрами описан.
+ * «Ключевая информация»: чем узел является — отрасль и основное назначение.
  *
- * Строки двух разных происхождений. Отрасль и назначение приходят с
- * построением шага и лежат в самом узле — они есть и у продукта, и у
- * преобразования. Остальное — поля карточки технологии, которых у продукта
- * нет вовсе.
+ * Они приходят с построением шага и лежат в самом узле — есть и у продукта,
+ * и у преобразования. Параметры технологии (оборудование, условия…) сюда не
+ * выводятся: они приходят с технологическим описанием и живут на его
+ * вкладке — раньше они показывались здесь, и технологическое описание
+ * читалось в «Кратком описании».
  *
  * Правка идёт ЗДЕСЬ ЖЕ. Раньше карандаш отправлял на вкладку
  * «Технологическое описание» — и это была неправда: отрасль с назначением там
- * не правятся, их там нет. Поля карточки технологии остаются на своей
- * вкладке: они приходят одним запросом и по одному не редактируются.
+ * не правятся, их там нет.
  */
 export const KeyInfoBlock = ({
-  card,
   nodeId,
   readOnly = false,
 }: KeyInfoBlockProps) => {
@@ -85,17 +78,6 @@ export const KeyInfoBlock = ({
     setEditing(false);
   }, [nodeId, stored]);
 
-  const cardRows = useMemo<Row[]>(() => {
-    if (!card) return [];
-    const source = card as Record<string, unknown>;
-    return TRANSFORMATION_FIELDS.filter((f) => f.key !== SHORT_DESCRIPTION_KEY)
-      .map((f) => ({
-        label: f.label,
-        value: String(source[f.key] ?? "").trim(),
-      }))
-      .filter((row) => row.value.length > 0);
-  }, [card]);
-
   const nodeRows = NODE_FIELDS.map((f) => ({
     label: f.label,
     value: stored[f.key].trim(),
@@ -116,7 +98,7 @@ export const KeyInfoBlock = ({
     setEditing(false);
   };
 
-  const rows = [...nodeRows, ...cardRows];
+  const rows: Row[] = nodeRows;
   const canEdit = !readOnly && Boolean(nodeId);
 
   return (
@@ -156,13 +138,6 @@ export const KeyInfoBlock = ({
               />
             </label>
           ))}
-
-          {cardRows.length > 0 && (
-            <p className={styles.keyInfoNote}>
-              Остальные параметры приходят вместе с технологическим описанием и
-              правятся там же, целиком.
-            </p>
-          )}
 
           <div className={styles.keyInfoActions}>
             <button
