@@ -675,6 +675,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
               // «нет записи» читается как «мы не справились»: человек шёл на
               // сайт ОКПД2, находил там вещество и переставал верить списку.
               const category = results[industryKey(name)]?.category ?? null;
+              const tnvedCategory = results[industryKey(name)]?.tnvedCategory ?? null;
               return (
                 <li key={name} className={styles.card}>
                   <div className={styles.cardHead}>
@@ -696,6 +697,18 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
                         {category.code}
                       </a>
                       <span className={styles.codeName}>{category.name}</span>
+                    </div>
+                  )}
+                  {tnvedCategory && (
+                    <div className={styles.cardMeta}>
+                      <span className={styles.codeLabel}>ТН ВЭД</span>
+                      <span
+                        className={styles.codeValue}
+                        title="Позиция в классификаторе по названию вещества"
+                      >
+                        {tnvedCategory.code}
+                      </span>
+                      <span className={styles.codeName}>{tnvedCategory.name}</span>
                     </div>
                   )}
                 </li>

@@ -77,6 +77,9 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   const source = readProductIdSource(data);
   const okpd2 = industry?.found ? industry.okpd2 : null;
   const tnved = industry?.found ? industry.tnved : null;
+  // Кода из реестра нет (или нет записи) — позиция по названию вещества из
+  // классификатора, с пометкой: это справка, а не код заявителя.
+  const tnvedByName = !tnved ? (industry?.tnvedCategory ?? null) : null;
   // CAS — факт справочника, а не реестра: он есть и у вещества, которого в
   // ГИСП нет вовсе. Потому и не прячется за found, в отличие от кодов.
   const cas = industry?.cas ?? null;
@@ -176,6 +179,19 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                     {industry.tnvedName}
                   </span>
                 )}
+              </span>
+            </div>
+          )}
+
+          {tnvedByName && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ТН ВЭД</span>
+              <span className={styles.idPopValue}>
+                {tnvedByName.code}
+                <span className={styles.idPopNote}>{tnvedByName.name}</span>
+                <span className={styles.idPopNote}>
+                  по классификатору, по названию вещества
+                </span>
               </span>
             </div>
           )}

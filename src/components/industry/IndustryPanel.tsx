@@ -275,6 +275,14 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
             </span>
           </div>
         )}
+        {/* Позиция ТН ВЭД по названию вещества — тоже классификатор. */}
+        {info.tnvedCategory && (
+          <div className={styles.categoryNote}>
+            <span className={styles.categoryLabel}>В ТН ВЭД это</span>
+            <span className={styles.codeValue}>{info.tnvedCategory.code}</span>
+            <span className={styles.codeName}>{info.tnvedCategory.name}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -364,6 +372,34 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
             <span className={styles.codeExtra}>
               у остальных записей ещё{" "}
               {info.okpd2Others === 1 ? "код" : `кодов: ${info.okpd2Others}`}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ТН ВЭД: самый частый код записей реестра, а нет его — позиция по
+          названию вещества из классификатора, с пометкой. */}
+      {(info.tnved || info.tnvedCategory) && (
+        <div className={styles.classLine}>
+          <span className={styles.codeLabel}>ТН ВЭД</span>
+          <span className={styles.codeValue}>{info.tnved ?? info.tnvedCategory?.code}</span>
+          {(info.tnved ? info.tnvedName : info.tnvedCategory?.name) && (
+            <span className={styles.codeName}>
+              {info.tnved ? info.tnvedName : info.tnvedCategory?.name}
+            </span>
+          )}
+          {!info.tnved && (
+            <span
+              className={styles.codeExtra}
+              title="У записей реестра кода ТН ВЭД нет — позиция найдена в классификаторе по названию вещества"
+            >
+              по классификатору
+            </span>
+          )}
+          {!!info.tnved && !!info.tnvedOthers && (
+            <span className={styles.codeExtra}>
+              у остальных записей ещё{" "}
+              {info.tnvedOthers === 1 ? "код" : `кодов: ${info.tnvedOthers}`}
             </span>
           )}
         </div>
