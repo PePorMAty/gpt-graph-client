@@ -147,6 +147,11 @@ export interface DirectionTabProps {
   }) => void;
   /** Прерывает идущий поиск источников (он может длиться минутами). */
   onCancelStepSources?: () => void;
+  /**
+   * Взять в список источников шага то, что есть у продукта в базе сервера:
+   * PDF заказчика и найденное моделью раньше. Только добавляет.
+   */
+  onMergeBaseSources?: (sources: TechnologySource[]) => void;
   /** selectedSources — подмножество источников (3.1); undefined = все. */
   onAggregateStepSources?: (
     customSystemPrompt?: string,
@@ -242,4 +247,12 @@ export interface FlowPanelProps {
 
   /** Режим «только просмотр» (шар-ссылка): имя/описание read-only, без заполнения карточки. */
   readOnly?: boolean;
+  /**
+   * Почему карточка только для просмотра: шар-ссылка, режим «Только
+   * продукты» или «Фокус». Без подсказки пропавшие «Построить шаг» и
+   * «Получить описание» выглядели поломкой.
+   */
+  lockReason?: "shared" | "productsOnly" | "focus" | null;
+  /** Выключить режим, из-за которого карточка только для просмотра. */
+  onUnlock?: () => void;
 }

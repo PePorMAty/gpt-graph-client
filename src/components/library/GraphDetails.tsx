@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { SavedGraphFile, SavedGraphMeta } from "../../store/types";
 import { sourcesPoolKey } from "../../store/slices/gptSlice";
-import { collectGraphSources } from "../../utils/graphSources";
+import { collectGraphSources, type GraphSourcesSummary } from "../../utils/graphSources";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { graphChainLength } from "../../utils/viewportStats";
 import { exportGraphJson } from "../../utils/exportGraph";
@@ -11,28 +11,24 @@ import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
-import { Pagination } from "../ui/Pagination";
-import { usePaged } from "../ui/usePaged";
+import { GraphSourcesList } from "../rail-panel/GraphSourcesList";
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
   BranchIcon,
   ChainLengthIcon,
   DatabaseIcon,
   ExportIcon,
-  FlaskIcon,
-  GearIcon,
   GraphIcon,
   IndustryDataIcon,
   LinkIcon,
   NodesCountIcon,
   PencilIcon,
-  SearchIcon,
   TrashIcon,
 } from "../icons";
 import styles from "./LibraryScreen.module.css";
 
 type Tab = "sources" | "industry" | "merge";
+
+const EMPTY_SOURCES: GraphSourcesSummary = { rows: [], total: 0, products: 0, transformations: 0 };
 
 interface GraphDetailsProps {
   meta: SavedGraphMeta;
@@ -85,7 +81,6 @@ export const GraphDetails = ({
   onSaveDescription,
 }: GraphDetailsProps) => {
   const [tab, setTab] = useState<Tab>("sources");
-  const [query, setQuery] = useState("");
   const [editingAbout, setEditingAbout] = useState(false);
   const [aboutDraft, setAboutDraft] = useState("");
   const [savingAbout, setSavingAbout] = useState(false);
@@ -124,21 +119,6 @@ export const GraphDetails = ({
       file?.state.sources?.pool ?? reconstructSourcesPool(nodes).pool;
     return collectGraphSources(nodes, pool, sourcesPoolKey);
   }, [file, nodes]);
-
-  const filteredSources = useMemo(() => {
-    if (!sources) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return sources.rows;
-    return sources.rows.filter(
-      (r) =>
-        r.title.toLowerCase().includes(q) ||
-        r.url.toLowerCase().includes(q) ||
-        r.objectLabel.toLowerCase().includes(q),
-    );
-  }, [sources, query]);
-
-  // Источников бывают сотни: сплошная прокрутка в такой таблице бесполезна.
-  const pagedSources = usePaged(filteredSources);
 
   // Описание правится отдельно от промта; у графов, сохранённых до появления
   // поля, его нет — там показываем исходный промт, как и раньше.
@@ -345,110 +325,10 @@ export const GraphDetails = ({
 
       <div className={styles.detailsBody}>
         {tab === "sources" && (
-          <>
-            <div className={styles.summaryCard}>
-              <DatabaseIcon size={20} className={styles.summaryIcon} />
-              <span className={styles.summaryValue}>{sources?.total ?? 0}</span>
-              <span className={styles.summaryLabel}>
-                {sources?.total === 1 ? "источник в графе" : "источников в графе"}
-              </span>
-            </div>
-
-            <div className={styles.listSearch}>
-              <SearchIcon size={15} className={styles.listSearchIcon} />
-              <input
-                className={styles.listSearchInput}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Поиск по источникам, объектам графа…"
-              />
-            </div>
-
-            {filteredSources.length === 0 ? (
-              <div className={styles.listEmpty}>
-                {sources && sources.rows.length > 0
-                  ? "Ничего не найдено."
-                  : "В этом графе источников нет."}
-              </div>
-            ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <colgroup>
-                    <col className={styles.colObject} />
-                    <col className={styles.colDirection} />
-                    <col className={styles.colTitle} />
-                    <col className={styles.colLink} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Объект графа</th>
-                      <th>Направление</th>
-                      <th>Название источника</th>
-                      <th>Ссылка</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedSources.slice.map((row) => (
-                      <tr key={row.id}>
-                        <td>
-                          <span className={styles.objectCell}>
-                            {row.objectKind === "product" ? (
-                              <FlaskIcon size={15} className={styles.iconProduct} />
-                            ) : (
-                              <GearIcon size={15} className={styles.iconTransform} />
-                            )}
-                            {row.objectLabel}
-                          </span>
-                        </td>
-                        <td>
-                          {row.direction ? (
-                            <span
-                              className={`${styles.dirBadge} ${
-                                row.direction === "up"
-                                  ? styles.dirUp
-                                  : styles.dirDown
-                              }`}
-                            >
-                              {row.direction === "up" ? (
-                                <ArrowUpIcon size={11} />
-                              ) : (
-                                <ArrowDownIcon size={11} />
-                              )}
-                              {row.direction === "up" ? "вверх" : "вниз"}
-                            </span>
-                          ) : (
-                            <span className={styles.dirEmpty}>—</span>
-                          )}
-                        </td>
-                        <td className={styles.titleCell}>{row.title}</td>
-                        <td>
-                          <a
-                            href={row.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={styles.sourceLink}
-                            title={row.url}
-                          >
-                            {row.url}
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <Pagination
-              page={pagedSources.page}
-              pages={pagedSources.pages}
-              from={pagedSources.from}
-              to={pagedSources.to}
-              total={pagedSources.total}
-              onChange={pagedSources.setPage}
-              unit="источников"
-            />
-          </>
+          <GraphSourcesList
+            summary={sources ?? EMPTY_SOURCES}
+            emptyText="В этом графе источников нет."
+          />
         )}
 
         {tab === "industry" && (

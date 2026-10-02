@@ -144,6 +144,54 @@ const GispPill: React.FC<{ count: number }> = ({ count }) => (
   </div>
 );
 
+/**
+ * Значок базы источников: сколько разделов документов на сервере про
+ * продукт — где его получают и где он сырьё. Сами разделы — в карточке
+ * продукта и в окне построения шага.
+ */
+const BasePill: React.FC<{ total: number; up: number; down: number }> = ({
+  total,
+  up,
+  down,
+}) => (
+  <div
+    title={`В базе источников: ${total} — как получают: ${up}, что получают из него: ${down}. Список — в карточке продукта`}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 3,
+      padding: "2px 6px",
+      borderRadius: 999,
+      background: "#475569",
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: 700,
+      lineHeight: 1,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+      pointerEvents: "none",
+      whiteSpace: "nowrap",
+    }}
+  >
+    {/* цилиндр базы данных */}
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <ellipse cx="12" cy="5.5" rx="7.5" ry="3" />
+      <path d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13" />
+      <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
+    </svg>
+    {total}
+  </div>
+);
+
 export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
   const color =
     typeof data.presentationColor === "string" && data.presentationColor
@@ -166,6 +214,13 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
     data.showIndustryData === true && typeof data.gispProducers === "number"
       ? data.gispProducers
       : 0;
+
+  // Разделы документов в базе сервера про продукт (см. Flow.tsx).
+  const base =
+    data.baseSources && typeof data.baseSources === "object"
+      ? (data.baseSources as { total: number; up: number; down: number })
+      : null;
+  const baseCount = base?.total ?? 0;
 
   // Продукт добавлен вручную (в превью шага или на полотне) и ещё не описан. Пометку не храним
   // отдельным флагом: как только описание заполнено (в карточке узла), она
@@ -207,7 +262,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
 
-      {(upCount > 0 || downCount > 0 || gispCount > 0) && (
+      {(upCount > 0 || downCount > 0 || gispCount > 0 || baseCount > 0) && (
         <div
           style={{
             position: "absolute",
@@ -226,6 +281,9 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
             <SourcesPill direction="down" count={downCount} color={color} />
           )}
           {gispCount > 0 && <GispPill count={gispCount} />}
+          {base && baseCount > 0 && (
+            <BasePill total={base.total} up={base.up} down={base.down} />
+          )}
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import type { CustomNode } from "../types";
 import type { BuildDirection, SourcesPoolEntry } from "../store/types";
-import { collectSourceGroups } from "./sourceRows";
+import { collectSourceGroups, type SourceItem } from "./sourceRows";
+import { isLocalSource, localSourceTag } from "./sourceOrigin";
 
 /** Одна строка таблицы источников графа. */
 export interface GraphSourceRow {
@@ -12,8 +13,36 @@ export interface GraphSourceRow {
   direction: BuildDirection | null;
   title: string;
   url: string;
+  /**
+   * Подпись вместо адреса: у раздела документа из базы — «ИТС 18—202_ ·
+   * стр. 14–42», у сайта — домен.
+   */
+  tag: string;
+  /** Раздел документа из базы сервера. */
+  local: boolean;
+  /** Найден моделью раньше и взят из базы сервера. */
+  saved: boolean;
   /** Источники унаследованы от этого продукта-предка (иначе null). */
   inheritedFrom: string | null;
+}
+
+/** Домен вместо адреса: в узкой строке «https://…» ничего не сообщает. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/** Подпись и происхождение источника для строки списка. */
+function describe(s: Pick<SourceItem, "url" | "origin" | "page" | "docTitle" | "pages" | "savedAt">) {
+  const local = isLocalSource(s);
+  return {
+    tag: local ? localSourceTag(s) : hostOf(s.url),
+    local,
+    saved: !!s.savedAt,
+  };
 }
 
 export interface GraphSourcesSummary {
@@ -67,6 +96,7 @@ export function collectGraphSources(
         direction: group.direction,
         title: s.title || titleFromUrl(s.url),
         url: s.url,
+        ...describe(s),
         inheritedFrom: group.inheritedFrom,
       });
     }
@@ -95,6 +125,7 @@ export function collectGraphSources(
         direction: null,
         title: titleFromUrl(url),
         url,
+        ...describe({ url }),
         inheritedFrom: null,
       });
       transformations += 1;

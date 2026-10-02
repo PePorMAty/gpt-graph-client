@@ -131,8 +131,10 @@
   border-radius: var(--r-md);
 }
 
+/* По ширине подписи, а не поровну: «Промышленное знание» длиннее соседей и
+   в равной доле переносилось на вторую строку, отнимая высоту у списка. */
 .viewBtn {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   padding: var(--s-2) var(--s-3);
   font: inherit;
   font-size: var(--fs-md);
@@ -302,24 +304,6 @@
   font-size: var(--fs-md);
 }
 
-.colObject {
-  width: 26%;
-}
-
-/* Под заголовок «Направление»: в прежних 15% слово не помещалось, переноситься
-   ему негде, и tableWrap срезал его до «Направл». */
-.colDirection {
-  width: 20%;
-}
-
-.colTitle {
-  width: 31%;
-}
-
-.colLink {
-  width: 23%;
-}
-
 .table thead th {
   position: sticky;
   top: 0;
@@ -347,13 +331,7 @@
   background: var(--c-surface-soft);
 }
 
-.object {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  min-width: 0;
-}
-
+/* Значок типа объекта в таблице закладок. */
 .objectIconProduct {
   flex: 0 0 auto;
   margin-top: 2px;
@@ -364,74 +342,6 @@
   flex: 0 0 auto;
   margin-top: 2px;
   color: var(--c-transform);
-}
-
-.objectLabel {
-  /* Перенос, а не многоточие: в узкой колонке «Жидкая …» ничего не говорит. */
-  overflow-wrap: break-word;
-  hyphens: auto;
-  color: var(--c-text);
-}
-
-.dirBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  border-radius: var(--r-pill);
-  white-space: nowrap;
-}
-
-.dirUp {
-  color: var(--c-success);
-  background: var(--c-success-soft);
-}
-
-.dirDown {
-  color: var(--c-brand-strong);
-  background: var(--c-brand-soft);
-}
-
-.dirEmpty {
-  color: var(--c-text-faint);
-}
-
-.titleCell {
-  color: var(--c-text-soft);
-  word-break: break-word;
-}
-
-.inherited {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--fs-sm);
-  font-style: italic;
-  color: var(--c-text-faint);
-}
-
-.linkCell {
-  min-width: 0;
-}
-
-.link {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-1);
-  min-width: 0;
-  color: var(--c-brand-strong);
-}
-
-.linkText {
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-
-.linkIcon {
-  flex: 0 0 auto;
-  margin-top: 3px;
-  color: var(--c-text-faint);
 }
 
 /* ─── Таблица закладок ─── */

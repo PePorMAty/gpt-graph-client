@@ -381,10 +381,36 @@
   margin-bottom: 0;
 }
 
-/* Кнопка-ссылка («Редактировать промпт обобщения») остаётся у левого края, а
-   не растягивается на всю ширину с надписью посередине. */
+/* Кнопка «Редактировать промпт обобщения» остаётся у левого края, а не
+   растягивается на всю ширину с надписью посередине. */
 .stageStack > button {
   align-self: flex-start;
+}
+
+/* Промпт обобщения — контурной кнопкой с карандашом, как «Изменить промпт»
+   во вкладке техописания. Голой синей ссылкой она читалась как подпись, а не
+   как действие. */
+.promptButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  height: var(--h-control-sm);
+  padding: 0 var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-brand-strong);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+
+.promptButton:hover,
+.promptButtonOpen {
+  background: var(--c-brand-soft);
 }
 
 /* ─── Источники ─── */
@@ -527,6 +553,39 @@
   color: var(--c-text-muted);
   background: var(--c-surface-hover);
   border-radius: var(--r-xs);
+}
+
+/* Откуда источник: PDF заказчика или найденный моделью раньше (из базы
+   сервера). У PDF метка стоит на месте домена — домена у него нет. */
+.sourcePdf {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
+.sourceSaved {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
+.sourceIconPdf {
+  color: var(--c-danger);
+}
+
+.sourceHint {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
 }
 
 .sourceMore {

@@ -4,6 +4,13 @@ import { normalizeProductName } from "./normalizeProductName";
 export interface SourceItem {
   title: string;
   url: string;
+  /** Раздел документа из базы сервера или веб (см. TechnologySource). */
+  origin?: "local" | "web";
+  page?: number;
+  docTitle?: string;
+  pages?: string;
+  /** Найден моделью раньше и взят из базы сервера. */
+  savedAt?: string;
 }
 
 /** Группа источников одного продукта по одному направлению построения. */
@@ -48,7 +55,15 @@ export function collectSourceGroups(
         const key = (s.url || s.title || "").trim().toLowerCase();
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        sources.push({ title: s.title, url: s.url });
+        sources.push({
+          title: s.title,
+          url: s.url,
+          ...(s.origin ? { origin: s.origin } : {}),
+          ...(s.page != null ? { page: s.page } : {}),
+          ...(s.docTitle ? { docTitle: s.docTitle } : {}),
+          ...(s.pages ? { pages: s.pages } : {}),
+          ...(s.savedAt ? { savedAt: s.savedAt } : {}),
+        });
       }
 
       groups.push({

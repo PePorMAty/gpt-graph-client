@@ -101,6 +101,23 @@ export const FileJsonIcon: Icon = (p) => (
   </svg>
 );
 
+/** Документ PDF из локальной базы: лист с загнутым углом и строками текста. */
+export const FilePdfIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+    <path d="M14 3v5h5" />
+    <path d="M9 13h6M9 16.5h4" />
+  </svg>
+);
+
+/** Загрузка файла на сервер: стрелка вверх над основанием. */
+export const UploadIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+    <path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
+  </svg>
+);
+
 /* ──────────────────── Левая вертикальная панель ─────────── */
 
 export const PlusIcon: Icon = (p) => (

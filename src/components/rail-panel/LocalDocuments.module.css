@@ -1,0 +1,697 @@
+/* Вкладка «База источников» раздела «База данных». Каркас вида «Продукты»
+   (чипы, отборы, вложенный список) — из Industry.module.css, как у
+   «Промышленного знания»; общие части «Документов» (поиск, пустое состояние,
+   подвал) — из PanelSection.module.css; здесь только своё. */
+
+/* Переключатель «Продукты / Документы» — по ширине содержимого, слева. */
+.baseViews {
+  align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+/* Вид «Документы» занимает остаток высоты вкладки. */
+.docsView {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* Всё, кроме подвала, прокручивается одним куском: у рамки, очереди и
+   списка своя прокрутка каждому оставила бы списку одну строку. */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  overflow-y: auto;
+}
+
+/* ─── Загрузка ─── */
+
+.drop {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-4);
+  text-align: center;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border: 1.5px dashed var(--c-border-strong);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.dropActive {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
+}
+
+.dropText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.dropIcon {
+  flex: 0 0 auto;
+  color: var(--c-brand);
+}
+
+.pickBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-on-brand);
+  background: var(--c-brand);
+  border: none;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.pickBtn:hover {
+  background: var(--c-brand-hover);
+}
+
+.hint {
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-faint);
+}
+
+/* ─── Очередь загрузки ─── */
+
+.queue {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.queueHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+}
+
+/* Очередь из десятков файлов не должна вытеснять список документов. */
+.jobs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  max-height: 200px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-md);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+.jobHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.jobName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text);
+}
+
+.jobState {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jobOk {
+  color: var(--c-success);
+}
+
+.jobError {
+  color: var(--c-danger);
+}
+
+.jobNote {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+  overflow-wrap: break-word;
+}
+
+.jobNoteError {
+  color: var(--c-danger);
+}
+
+.jobNoteWarn {
+  color: var(--c-warning);
+}
+
+.bar {
+  height: 3px;
+  overflow: hidden;
+  background: var(--c-border);
+  border-radius: var(--r-pill);
+}
+
+.barFill {
+  height: 100%;
+  background: var(--c-brand);
+  transition: width var(--t-fast) var(--ease);
+}
+
+/* ─── Список документов ─── */
+
+.docs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+}
+
+.doc:hover {
+  border-color: var(--c-border);
+}
+
+.docIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--c-danger);
+}
+
+.docMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docTitle {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.docTitle:hover {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+.docMeta {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.docWarn {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-warning);
+}
+
+.docActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.confirmBtn,
+.cancelBtn {
+  padding: 4px var(--s-2);
+  font-size: var(--fs-sm);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+
+.confirmBtn {
+  color: var(--c-text-on-brand);
+  background: var(--c-danger);
+  border: 1px solid var(--c-danger);
+}
+
+.confirmBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cancelBtn {
+  color: var(--c-text-soft);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+}
+
+.cancelBtn:hover {
+  border-color: var(--c-border-strong);
+}
+
+.error {
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
+  color: var(--c-danger);
+  background: var(--c-danger-soft);
+  border: 1px solid var(--c-danger-border);
+  border-radius: var(--r-sm);
+}
+
+/* ─── Разбор разделов моделью ─── */
+
+.decode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.decodeText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+}
+
+.decodeOk {
+  font-size: var(--fs-sm);
+  color: var(--c-success);
+}
+
+.decodeWarn {
+  font-size: var(--fs-sm);
+  color: var(--c-warning);
+}
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--c-brand-border);
+  border-top-color: var(--c-brand);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.linkBtn {
+  align-self: flex-start;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.linkBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ─── Разделы документа ─── */
+
+.secToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  align-self: flex-start;
+  margin-top: var(--s-1);
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.secToggle:hover {
+  color: var(--c-brand-strong);
+}
+
+.secChevron {
+  transform: rotate(-90deg);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.secChevronOpen {
+  transform: none;
+}
+
+.secList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: var(--s-1) 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+}
+
+.sec {
+  padding: var(--s-2);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+.secHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.secStatus {
+  flex: 0 0 auto;
+  width: 14px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-align: center;
+  color: var(--c-text-faint);
+}
+
+.sec_done {
+  color: var(--c-success);
+}
+
+.sec_failed {
+  color: var(--c-danger);
+}
+
+.secTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.secTitle:hover {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+.secPages {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+.secProducts {
+  margin: 2px 0 0 22px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-soft);
+  overflow-wrap: break-word;
+}
+
+.secRole {
+  color: var(--c-text-muted);
+}
+
+.secError {
+  margin: 2px 0 0 22px;
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}
+
+.secSummary {
+  margin: 4px 0 0 22px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.secSummary summary {
+  cursor: pointer;
+  color: var(--c-text-muted);
+}
+
+/* В раскрытом описании строки веществ — без своего отступа: его уже дал
+   блок описания. */
+.secSummary .secProducts {
+  margin-left: 0;
+}
+
+.secSummary p {
+  margin: var(--s-1) 0 0;
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+  white-space: pre-wrap;
+}
+
+/* ─── Продукты базы: строка продукта ─── */
+
+/* Продукт есть на текущем графе. */
+.onGraph {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-1);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  vertical-align: 1px;
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-sm);
+}
+
+/* ↑ сколько «как получают», ↓ сколько «что получают из него». */
+.dirCounts {
+  display: inline-flex;
+  gap: var(--s-2);
+}
+
+.dirCounts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dirZero {
+  color: var(--c-text-faint);
+}
+
+/* ─── Продукты базы: источники раскрытого продукта ─── */
+
+.psBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3) var(--s-3) calc(var(--s-3) + 12px + var(--s-2));
+}
+
+.psNote {
+  padding: var(--s-3) var(--s-3) var(--s-3) calc(var(--s-3) + 12px + var(--s-2));
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.psGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.psGroupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-soft);
+}
+
+.psGroupIcon {
+  color: var(--c-brand);
+}
+
+.psCount {
+  margin-left: 2px;
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-muted);
+}
+
+.psNone {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
+.psList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.psItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+.psHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.psTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--c-text);
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.psTitle:hover {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+/* Роль продукта в разделе. */
+.psRole {
+  flex: 0 0 auto;
+  padding: 0 var(--s-1);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
+}
+
+.psRole_product {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.psRole_raw {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+}
+
+.psRole_web {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+}
+
+/* Строкой текста, а не гибким рядом: длинный адрес в ряду уезжал на новую
+   строку целиком, оставляя значок одного. */
+.psMeta {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.psMetaIcon {
+  margin-right: 4px;
+  vertical-align: -2px;
+  color: var(--c-text-faint);
+}
+
+.psPending {
+  color: var(--c-warning);
+}
+
+.psDetails {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.psDetails summary {
+  cursor: pointer;
+}
+
+.psDetails p {
+  margin: var(--s-1) 0 0;
+  line-height: var(--lh-normal);
+  color: var(--c-text-soft);
+  white-space: pre-wrap;
+}
+
+/* ─── Источники графа: строка объекта ─── */
+
+.objectName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.objectIconProduct {
+  flex: 0 0 auto;
+  color: var(--c-brand);
+}
+
+.objectIconTransform {
+  flex: 0 0 auto;
+  color: var(--c-transform);
+}

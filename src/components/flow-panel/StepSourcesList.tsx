@@ -1,8 +1,20 @@
 import { useMemo, useState, type FC } from "react";
 
 import type { TechnologySource } from "../../store/types";
+import { sourceHref } from "../../store/api/local-sources-api";
+import {
+  isLocalSource,
+  isSavedSource,
+  localSourceTag,
+} from "../../utils/sourceOrigin";
 import { AddSourceForm } from "./AddSourceForm";
-import { ChevronDownIcon, DatabaseIcon, FileJsonIcon, SearchIcon } from "../icons";
+import {
+  ChevronDownIcon,
+  DatabaseIcon,
+  FileJsonIcon,
+  FilePdfIcon,
+  SearchIcon,
+} from "../icons";
 import styles from "./StepWizard.module.css";
 
 interface Props {
@@ -29,8 +41,18 @@ function domainOf(url: string): string {
   }
 }
 
+function savedTitle(s: TechnologySource): string {
+  const d = s.savedAt ? new Date(s.savedAt) : null;
+  const when = d && !Number.isNaN(d.getTime()) ? ` ${d.toLocaleDateString("ru-RU")}` : "";
+  return `Найден моделью раньше${when} и сохранён в базе сервера — повторно искать не пришлось`;
+}
+
 /**
  * Список найденных источников с отбором для обобщения.
+ *
+ * Источники из базы сервера помечены: разделы документов — «ИТС 18 · стр.
+ * 14–42» (они стоят первыми и первыми идут в обобщение), найденные моделью
+ * раньше — «из базы».
  *
  * Оценки качества здесь нет намеренно: поиск её не возвращает, и рисовать
  * «Высокая» / «Средняя» значило бы выдумать её на глазах у человека, который
@@ -64,6 +86,7 @@ export const StepSourcesList: FC<Props> = ({
   const selected = sources.filter(
     (s) => !excluded.has((s.url || "").trim().toLowerCase()),
   ).length;
+  const pdfCount = sources.filter((s) => isLocalSource(s)).length;
 
   const toggleOpen = (url: string) =>
     setOpenUrls((prev) => {
@@ -100,6 +123,7 @@ export const StepSourcesList: FC<Props> = ({
             </span>
             <span className={styles.sourcesHint}>
               Выберите, какие пойдут в обобщение
+              {pdfCount > 0 && " · разделы документов из базы идут первыми"}
             </span>
           </span>
           <span className={styles.sourcesCount}>
@@ -116,7 +140,8 @@ export const StepSourcesList: FC<Props> = ({
             {shown.map((s) => {
               const key = (s.url || "").trim().toLowerCase();
               const open = openUrls.has(s.url);
-              const domain = domainOf(s.url);
+              const local = isLocalSource(s);
+              const domain = local ? "" : domainOf(s.url);
               return (
                 <li key={s.url} className={styles.sourceRow}>
                   <div className={styles.sourceMain}>
@@ -128,10 +153,33 @@ export const StepSourcesList: FC<Props> = ({
                       disabled={disabled}
                       title="Использовать этот источник при обобщении"
                     />
-                    <span className={styles.sourceIcon}>
-                      <FileJsonIcon size={17} />
+                    <span
+                      className={`${styles.sourceIcon} ${local ? styles.sourceIconPdf : ""}`}
+                    >
+                      {local ? <FilePdfIcon size={17} /> : <FileJsonIcon size={17} />}
                     </span>
                     <span className={styles.sourceName}>{s.title || s.url}</span>
+                    {local && s.prospective && (
+                      <span
+                        className={styles.sourceSaved}
+                        title="Процесс ещё не освоен промышленностью: обобщение поставит его альтернативой, а не основным путём"
+                      >
+                        перспективная
+                      </span>
+                    )}
+                    {local && (
+                      <span
+                        className={styles.sourcePdf}
+                        title="Раздел документа из базы источников на сервере"
+                      >
+                        {localSourceTag(s)}
+                      </span>
+                    )}
+                    {!local && isSavedSource(s) && (
+                      <span className={styles.sourceSaved} title={savedTitle(s)}>
+                        из базы
+                      </span>
+                    )}
                     {domain && <span className={styles.sourceDomain}>{domain}</span>}
                     <button
                       type="button"
@@ -147,13 +195,16 @@ export const StepSourcesList: FC<Props> = ({
                   {open && (
                     <div className={styles.sourceBody}>
                       <a
-                        href={s.url}
+                        href={sourceHref(s.url)}
                         target="_blank"
                         rel="noreferrer noopener"
                         className={styles.sourceLink}
                       >
-                        {s.url}
+                        {local ? "Открыть документ на этом разделе" : s.url}
                       </a>
+                      {local && s.access_hint && (
+                        <p className={styles.sourceHint}>{s.access_hint}</p>
+                      )}
                       {s.technology_description && (
                         <p className={styles.sourceDesc}>
                           {s.technology_description}

@@ -1,0 +1,64 @@
+/* Строка над списком боковой панели: поиск и кнопка сводки рядом с ним.
+   По высоте кнопка равна полю — растягиваем, а не задаём числом. */
+.searchRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-2);
+}
+
+.searchRow > label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Поиска нет (документов ещё нет) — кнопка остаётся справа. */
+.spacer {
+  flex: 1 1 auto;
+}
+
+.toggle {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(42 * var(--u));
+  min-height: calc(38 * var(--u));
+  padding: 0;
+  color: var(--c-text-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.toggle:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+
+.toggleOpen,
+.toggleOpen:hover {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+}
+
+/* Отбор включён, а сводка скрыта. */
+.dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  background: var(--c-brand);
+  border-radius: 50%;
+}
+
+/* Раскрытая сводка: чипы и переключатели одной колонкой. */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}

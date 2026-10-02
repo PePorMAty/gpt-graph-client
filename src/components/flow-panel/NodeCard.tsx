@@ -4,6 +4,7 @@ import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { FillCardBlock } from "./FillCardBlock";
 import { CollapsibleBlock } from "./CollapsibleBlock";
 import { NodeSourcesBlock } from "./NodeSourcesBlock";
+import { NodeBaseSourcesBlock } from "./NodeBaseSourcesBlock";
 import { CardTitleField } from "./CardTitleField";
 import { KeyInfoBlock } from "./KeyInfoBlock";
 import { NodeIdentifiers } from "./NodeIdentifiers";
@@ -25,10 +26,26 @@ import {
   PencilIcon,
   TrashIcon,
 } from "../icons";
+import { sourceHref } from "../../store/api/local-sources-api";
+import { sourceLinkText } from "../../utils/sourceOrigin";
 import styles from "./NodeCard.module.css";
 
 /** Вкладки карточки. У преобразования третья — маршруты, у продукта — ГИСП. */
 type CardTab = "brief" | "tech" | "industry" | "routes";
+
+/** Почему карточка только для просмотра — вместо молча пропавших кнопок. */
+const LOCK_TEXT: Record<NonNullable<FlowPanelProps["lockReason"]>, string> = {
+  productsOnly:
+    "Включён режим «Только продукты»: граф в нём только для просмотра — построить шаг или получить описание нельзя.",
+  focus: "Включён «Фокус»: карточка только для просмотра — построить шаг или получить описание нельзя.",
+  shared: "Граф открыт по ссылке — только для просмотра.",
+};
+
+const UNLOCK_TEXT: Record<NonNullable<FlowPanelProps["lockReason"]>, string> = {
+  productsOnly: "Показать весь граф",
+  focus: "Выйти из фокуса",
+  shared: "",
+};
 
 interface NodeCardProps extends FlowPanelProps {
   /** Поток построения цепочки по одному направлению (живёт в FlowPanel). */
@@ -86,6 +103,8 @@ export const NodeCard: FC<NodeCardProps> = ({
   linkedProducts = [],
   onFocusLinkedProduct,
   readOnly = false,
+  lockReason = null,
+  onUnlock,
   nodeId,
   sourceGroups = [],
   sourcesCurrentProduct = "",
@@ -322,6 +341,18 @@ export const NodeCard: FC<NodeCardProps> = ({
         </nav>
 
         <div className={styles.content}>
+          {/* Почему нет «Построить шаг» и «Получить описание». */}
+          {readOnly && lockReason && (
+            <div className={styles.lockHint} role="note">
+              <span>{LOCK_TEXT[lockReason]}</span>
+              {onUnlock && (
+                <button type="button" className={styles.lockHintBtn} onClick={onUnlock}>
+                  {UNLOCK_TEXT[lockReason]}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* ── Краткое описание ── */}
           {activeTab === "brief" && (
             <>
@@ -374,17 +405,11 @@ export const NodeCard: FC<NodeCardProps> = ({
                 )}
               </CollapsibleBlock>
 
-              {/* Ключевая информация. Отрасль и назначение есть и у продукта,
-                  и у преобразования — блок нужен обоим; поля карточки
-                  технологии добавляются к ним там, где они есть. У
+              {/* Ключевая информация — отрасль и назначение, есть и у
+                  продукта, и у преобразования. Параметры технологии — на
+                  вкладке «Технологическое описание», вместе с ним. У
                   альтернативы своего содержимого нет вовсе. */}
-              {kind !== "alt" && (
-                <KeyInfoBlock
-                  card={isProduct ? null : productCard}
-                  nodeId={nodeId}
-                  readOnly={readOnly}
-                />
-              )}
+              {kind !== "alt" && <KeyInfoBlock nodeId={nodeId} readOnly={readOnly} />}
 
               {/* Связанные продукты — только у продукта и только если есть. */}
               {isProduct && linkedProducts.length > 0 && (
@@ -491,6 +516,10 @@ export const NodeCard: FC<NodeCardProps> = ({
                 />
               )}
 
+              {isProduct && sourcesCurrentProduct && (
+                <NodeBaseSourcesBlock product={sourcesCurrentProduct} />
+              )}
+
               {/* Ссылки на источники преобразования лежат прямо на узле. */}
               {!isProduct &&
                 Array.isArray(transformationSources) &&
@@ -502,8 +531,8 @@ export const NodeCard: FC<NodeCardProps> = ({
                     <ol className={styles.sourceLinks}>
                       {transformationSources.map((url, i) => (
                         <li key={`${i}-${url}`}>
-                          <a href={url} target="_blank" rel="noreferrer">
-                            {url}
+                          <a href={sourceHref(url)} target="_blank" rel="noreferrer">
+                            {sourceLinkText(url)}
                           </a>
                         </li>
                       ))}
@@ -513,12 +542,16 @@ export const NodeCard: FC<NodeCardProps> = ({
             </>
           )}
 
-          {/* ── Технологическое описание ── */}
+          {/* ── Технологическое описание ──
+              Вид результата зависит от узла: у преобразования — текст
+              технологии, у продукта — все поля карточки списком. Вид «tech»
+              у продукта не показывал ничего: он выводит только описание
+              технологии, а в карточке продукта такого поля нет. */}
           {activeTab === "tech" && (
             <FillCardBlock
               key={nodeId ?? "tech"}
               nodeType={effectiveNodeType}
-              layout="tech"
+              layout={isProduct ? "list" : "tech"}
               onBuildProductCard={onBuildProductCard}
               productCardStatus={productCardStatus}
               productCardError={productCardError}

@@ -64,6 +64,20 @@ export function buildSaveGraphPayload({
                 technology_description: "",
                 inputs_outputs_hint: [],
                 evidence_snippets: [],
+                // Лёгкие пометки остаются: откуда источник (PDF, из базы) и
+                // что добавлен вручную — без них после открытия графа пропали
+                // бы значки, а ручной источник стёр бы следующий поиск.
+                ...(s.origin ? { origin: s.origin } : {}),
+                ...(s.docId != null ? { docId: s.docId } : {}),
+                ...(s.sectionId != null ? { sectionId: s.sectionId } : {}),
+                ...(s.page != null ? { page: s.page } : {}),
+                ...(s.docTitle ? { docTitle: s.docTitle } : {}),
+                ...(s.pages ? { pages: s.pages } : {}),
+                ...(s.role ? { role: s.role } : {}),
+                ...(s.prospective ? { prospective: true } : {}),
+                ...(s.savedAt ? { savedAt: s.savedAt } : {}),
+                ...(s.baseFor ? { baseFor: s.baseFor } : {}),
+                ...(s.isManual ? { isManual: true } : {}),
               }
             : s,
         ),

@@ -453,6 +453,37 @@
   pointer-events: none;
 }
 
+/* Название узла под указателем — рядом с ним, над превью. Указатель сквозь
+   подпись проходит: иначе она ловила бы наведение и мигала. */
+.previewHover {
+  position: absolute;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  max-width: min(320px, 70%);
+  padding: 3px var(--s-2);
+  transform: translate(10px, -130%);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-sm);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewHoverDot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
 /* Кнопки масштаба поверх превью. */
 .previewTools {
   position: absolute;
@@ -626,145 +657,6 @@
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
-}
-
-/* ─── Сводка по источникам ─── */
-
-.summaryCard {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-2);
-  align-self: flex-start;
-  padding: var(--s-3) var(--s-4);
-  background: var(--c-surface-soft);
-  border: 1px solid var(--c-border-soft);
-  border-radius: var(--r-md);
-}
-
-.summaryIcon {
-  align-self: center;
-  color: var(--c-brand);
-}
-
-.summaryValue {
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text);
-}
-
-.summaryLabel {
-  font-size: var(--fs-md);
-  color: var(--c-text-muted);
-}
-
-/* ─── Таблица источников ─── */
-
-.tableWrap {
-  overflow-x: hidden;
-  border: 1px solid var(--c-border-soft);
-  border-radius: var(--r-md);
-}
-
-.table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: var(--fs-md);
-}
-
-.colObject {
-  width: 24%;
-}
-
-.colDirection {
-  width: 14%;
-}
-
-.colTitle {
-  width: 32%;
-}
-
-.colLink {
-  width: 30%;
-}
-
-.table thead th {
-  padding: var(--s-2) var(--s-3);
-  text-align: left;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-  color: var(--c-text-muted);
-  background: var(--c-surface-soft);
-  border-bottom: 1px solid var(--c-border-soft);
-}
-
-.table tbody td {
-  padding: var(--s-2) var(--s-3);
-  vertical-align: top;
-  border-bottom: 1px solid var(--c-border-soft);
-}
-
-.table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.table tbody tr:hover {
-  background: var(--c-surface-soft);
-}
-
-.objectCell {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  color: var(--c-text);
-  overflow-wrap: break-word;
-}
-
-.iconProduct {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  color: var(--c-product);
-}
-
-.iconTransform {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  color: var(--c-transform);
-}
-
-.dirBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  border-radius: var(--r-pill);
-  white-space: nowrap;
-}
-
-.dirUp {
-  color: var(--c-success);
-  background: var(--c-success-soft);
-}
-
-.dirDown {
-  color: var(--c-brand-strong);
-  background: var(--c-brand-soft);
-}
-
-.dirEmpty {
-  color: var(--c-text-faint);
-}
-
-.titleCell {
-  color: var(--c-text-soft);
-  overflow-wrap: break-word;
-}
-
-.sourceLink {
-  color: var(--c-brand-strong);
-  overflow-wrap: break-word;
 }
 
 /* ─── Заглушки ─── */

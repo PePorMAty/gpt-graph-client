@@ -62,6 +62,8 @@ function notifyFailure(
   target?: ToastTarget,
 ) {
   const { text, detail } = describeFailure(stage, payload, product);
+  // Техническая причина в уведомление не попадает — оставляем её в консоли.
+  console.warn(`[${stage}] отказ:`, payload);
   notify("error", text, detail, canvas, target);
 }
 
