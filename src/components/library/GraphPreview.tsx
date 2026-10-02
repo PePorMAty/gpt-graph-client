@@ -20,9 +20,13 @@ const MIN_SCALE = 0.6;
 const MAX_SCALE = 40;
 /** С какой ширины узла (px) подписывать его. */
 const LABEL_MIN_PX = 46;
+/** Шаг приближения за один щелчок колеса. */
+const WHEEL_STEP = 1.2;
 
 const NODE_W = 180;
 const NODE_H = 50;
+
+const viewBoxOf = (v: Rect) => `${v.x} ${v.y} ${v.w} ${v.h}`;
 
 /**
  * Превью графа в библиотеке: узлы прямоугольниками в их цветах, связи —
@@ -30,14 +34,20 @@ const NODE_H = 50;
  *
  * Настоящий React Flow сюда не ставим — это второй холст со своей физикой и
  * своим состоянием. Зато превью интерактивное: большой граф в статичном кадре
- * не разобрать, поэтому его можно таскать и приближать колесом, а на близком
- * плане появляются подписи узлов.
+ * не разобрать, поэтому его можно таскать и приближать колесом; наведённый
+ * узел подписан сразу, а на близком плане подписаны все.
+ *
+ * Плавность. Перетаскивание не перерисовывает узлы: кадр (viewBox) меняется
+ * прямо у SVG раз в кадр анимации и сохраняется в состояние, когда кнопку
+ * отпустили. Сдвиг считается от точки, где начали тянуть, а не от прошлого
+ * события: раньше несколько событий мыши между перерисовками складывали один
+ * и тот же сдвиг дважды, и граф прыгал. Колесо копит приближение до
+ * следующего кадра — сотни узлов не пересобираются на каждый щелчок.
  */
 export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 320, h: 220 });
-  const drag = useRef<{ x: number; y: number } | null>(null);
 
   // Габариты контейнера: держим соотношение сторон viewBox равным ему, чтобы
   // экранные координаты переводились в координаты графа простым масштабом.
@@ -131,40 +141,46 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
   useEffect(() => setView(null), [boxes]);
 
   const current = view ?? fitted;
+  /** Самый свежий кадр — и между перерисовками, пока граф тащат. */
+  const liveView = useRef<Rect | null>(current);
+  liveView.current = current;
 
-  /** Экранная точка → координаты графа. */
-  const toGraph = useCallback(
-    (clientX: number, clientY: number) => {
-      const rect = svgRef.current?.getBoundingClientRect();
-      if (!rect || !current) return null;
+  /** Экранная точка → координаты графа в свежем кадре. */
+  const toGraph = useCallback((clientX: number, clientY: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    const v = liveView.current;
+    if (!rect || !v || !rect.width || !rect.height) return null;
+    return {
+      x: v.x + ((clientX - rect.left) / rect.width) * v.w,
+      y: v.y + ((clientY - rect.top) / rect.height) * v.h,
+    };
+  }, []);
+
+  /** Кадр, приближенный в k раз к точке (по умолчанию — к центру). */
+  const zoomed = useCallback(
+    (v: Rect, k: number, anchor?: { x: number; y: number }): Rect => {
+      if (!fitted) return v;
+      const min = fitted.w / MAX_SCALE;
+      const max = fitted.w / MIN_SCALE;
+      const w = Math.min(Math.max(v.w / k, min), max);
+      const factor = w / v.w;
+      const a = anchor ?? { x: v.x + v.w / 2, y: v.y + v.h / 2 };
       return {
-        x: current.x + ((clientX - rect.left) / rect.width) * current.w,
-        y: current.y + ((clientY - rect.top) / rect.height) * current.h,
+        x: a.x - (a.x - v.x) * factor,
+        y: a.y - (a.y - v.y) * factor,
+        w,
+        h: v.h * factor,
       };
     },
-    [current],
+    [fitted],
   );
 
-  /** Приблизить/отдалить в k раз относительно точки (по умолчанию — центра). */
   const zoomBy = useCallback(
-    (k: number, anchor?: { x: number; y: number }) => {
-      setView((prev) => {
-        const v = prev ?? fitted;
-        if (!v || !fitted) return prev;
-        const min = fitted.w / MAX_SCALE;
-        const max = fitted.w / MIN_SCALE;
-        const w = Math.min(Math.max(v.w / k, min), max);
-        const factor = w / v.w;
-        const a = anchor ?? { x: v.x + v.w / 2, y: v.y + v.h / 2 };
-        return {
-          x: a.x - (a.x - v.x) * factor,
-          y: a.y - (a.y - v.y) * factor,
-          w,
-          h: v.h * factor,
-        };
-      });
+    (k: number) => {
+      const v = liveView.current;
+      if (v) setView(zoomed(v, k));
     },
-    [fitted],
+    [zoomed],
   );
 
   /**
@@ -172,71 +188,123 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
    *
    * Через onWheel этого не добиться: React вешает колесо пассивным слушателем,
    * и preventDefault там не работает — прокрутка уходила окну превью, а дальше
-   * и странице. Поэтому слушатель свой, с passive: false.
+   * и странице. Поэтому слушатель свой, с passive: false. Щелчки колеса за
+   * один кадр складываются в одно приближение.
    */
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
+    let pending = 1;
+    let anchor: { x: number; y: number } | undefined;
+    let frame = 0;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const anchor = toGraph(e.clientX, e.clientY) ?? undefined;
-      zoomBy(e.deltaY < 0 ? 1.25 : 1 / 1.25, anchor);
+      pending *= e.deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP;
+      anchor = toGraph(e.clientX, e.clientY) ?? undefined;
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const v = liveView.current;
+        if (v) {
+          const next = zoomed(v, pending, anchor);
+          liveView.current = next;
+          setView(next);
+        }
+        pending = 1;
+      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [toGraph, zoomBy]);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [toGraph, zoomed]);
 
-  if (!boxes.length || !current) {
-    return <div className={styles.previewEmpty}>Граф пуст</div>;
-  }
+  // ── Перетаскивание ──
+  const drag = useRef<{
+    x: number;
+    y: number;
+    view: Rect;
+    frame: number;
+    moved: boolean;
+  } | null>(null);
 
-  const scale = size.w / current.w;
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0 || !current) return;
+    drag.current = { x: e.clientX, y: e.clientY, view: current, frame: 0, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setHover(null);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d) {
+      trackHover(e);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    // Сдвиг — от точки, где начали тянуть, в масштабе кадра на тот момент.
+    const next: Rect = {
+      ...d.view,
+      x: d.view.x - ((e.clientX - d.x) / rect.width) * d.view.w,
+      y: d.view.y - ((e.clientY - d.y) / rect.height) * d.view.h,
+    };
+    d.moved = true;
+    liveView.current = next;
+    if (d.frame) return;
+    d.frame = requestAnimationFrame(() => {
+      d.frame = 0;
+      const v = liveView.current;
+      if (v) svgRef.current?.setAttribute("viewBox", viewBoxOf(v));
+    });
+  };
+
+  const endDrag = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    if (d.frame) cancelAnimationFrame(d.frame);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    if (d.moved && liveView.current) setView(liveView.current);
+  };
+
+  // ── Подпись узла под указателем ──
+  const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
+
+  const trackHover = (e: React.PointerEvent<SVGSVGElement>) => {
+    const index = Number((e.target as Element).getAttribute?.("data-index") ?? NaN);
+    if (!Number.isInteger(index)) {
+      if (hover) setHover(null);
+      return;
+    }
+    const box = boxRef.current?.getBoundingClientRect();
+    if (!box) return;
+    setHover({ index, x: e.clientX - box.left, y: e.clientY - box.top });
+  };
+
+  const scale = current ? size.w / current.w : 1;
   const widestPx = boxes.reduce((m, b) => Math.max(m, b.w * scale), 0);
   const showLabels = widestPx >= LABEL_MIN_PX;
   const fontSize = 12 / scale;
-  const zoomed = Math.abs(current.w - fitted!.w) > 1;
 
-  return (
-    <div className={styles.previewBox} ref={boxRef}>
-      <svg
-        ref={svgRef}
-        className={styles.preview}
-        viewBox={`${current.x} ${current.y} ${current.w} ${current.h}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Схема графа: перетаскивание и колесо меняют вид"
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          const p = toGraph(e.clientX, e.clientY);
-          if (!p) return;
-          drag.current = p;
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const start = drag.current;
-          if (!start) return;
-          const p = toGraph(e.clientX, e.clientY);
-          if (!p) return;
-          setView((prev) => {
-            const v = prev ?? fitted;
-            if (!v) return prev;
-            return { ...v, x: v.x - (p.x - start.x), y: v.y - (p.y - start.y) };
-          });
-        }}
-        onPointerUp={(e) => {
-          drag.current = null;
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }}
-      >
+  // Узлы и связи — одним куском, который пересобирается только при смене
+  // графа или масштаба: подпись под указателем его не трогает.
+  const content = useMemo(
+    () => (
+      <>
         <g className={styles.previewEdges} strokeWidth={1.4 / scale}>
           {lines.map((l) => (
             <line key={l.id} x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y} />
           ))}
         </g>
 
-        {boxes.map((b) => (
+        {boxes.map((b, i) => (
           <rect
             key={b.id}
+            data-index={i}
             x={b.x}
             y={b.y}
             width={Math.max(b.w, 4 / scale)}
@@ -262,7 +330,46 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
                 : b.label}
             </text>
           ))}
+      </>
+    ),
+    [boxes, lines, scale, showLabels, fontSize],
+  );
+
+  if (!boxes.length || !current || !fitted) {
+    return <div className={styles.previewEmpty}>Граф пуст</div>;
+  }
+
+  const isZoomed = Math.abs(current.w - fitted.w) > 1;
+  const hovered = hover ? boxes[hover.index] : null;
+
+  return (
+    <div className={styles.previewBox} ref={boxRef}>
+      <svg
+        ref={svgRef}
+        className={styles.preview}
+        viewBox={viewBoxOf(current)}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Схема графа: перетаскивание и колесо меняют вид, наведение показывает название узла"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerLeave={() => setHover(null)}
+      >
+        {content}
       </svg>
+
+      {hovered?.label && (
+        <div
+          className={styles.previewHover}
+          style={{ left: hover!.x, top: hover!.y }}
+          role="tooltip"
+        >
+          <span className={styles.previewHoverDot} style={{ background: hovered.color }} />
+          {hovered.label}
+        </div>
+      )}
 
       <div className={styles.previewTools}>
         <button
@@ -287,7 +394,7 @@ export const GraphPreview = ({ nodes, edges = [] }: GraphPreviewProps) => {
           type="button"
           className={styles.previewTool}
           onClick={() => setView(null)}
-          disabled={!zoomed}
+          disabled={!isZoomed}
           aria-label="Вписать граф"
           title="Вписать граф"
         >

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import type { BuildDirection } from "../../store/types";
 import type { SourceGroup } from "../../utils/sourceRows";
 import { normalizeProductName } from "../../utils/normalizeProductName";
+import { sourceHref } from "../../store/api/local-sources-api";
+import { sourceLinkText } from "../../utils/sourceOrigin";
 import styles from "./SourcesTableModal.module.css";
 
 interface SourcesTableModalProps {
@@ -52,8 +54,8 @@ const SourceTable: FC<{
             </td>
             <td className={styles.cellTitle}>{s.title}</td>
             <td className={styles.cellLink}>
-              <a href={s.url} target="_blank" rel="noreferrer">
-                {s.url}
+              <a href={sourceHref(s.url)} target="_blank" rel="noreferrer">
+                {sourceLinkText(s.url)}
               </a>
             </td>
           </tr>

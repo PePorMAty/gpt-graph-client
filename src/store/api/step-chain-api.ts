@@ -18,6 +18,7 @@ import {
 } from "../../utils/enrichSourcesFromNodes";
 import { getAncestorProductLabels } from "../../utils/graphReachability";
 import { identifyStepProducts } from "../../utils/resolveProductIds";
+import { serverReason } from "./serverReason";
 
 export const fetchChainStep = createAsyncThunk<
   { sessionKey: string; response: StepChainApiResponse },
@@ -107,7 +108,9 @@ export const fetchStepSources = createAsyncThunk<
     );
 
     if (!res.data?.success) {
-      return thunkApi.rejectWithValue("sources: server returned success=false");
+      return thunkApi.rejectWithValue(
+        serverReason(res.data) || "sources: server returned success=false",
+      );
     }
 
     return { sessionKey: args.sessionKey, sources: res.data.sources };
@@ -179,8 +182,10 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     );
 
     if (!res.data?.success) {
+      // Сервер называет причину в error (какая модель и что с ней не так);
+      // раньше она терялась, и в ленту уходило «отказ без причины».
       return thunkApi.rejectWithValue(
-        "step/sources: server returned success=false",
+        serverReason(res.data) || "step/sources: server returned success=false",
       );
     }
 

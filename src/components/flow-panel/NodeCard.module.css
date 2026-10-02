@@ -454,6 +454,33 @@
   color: var(--c-text-faint);
 }
 
+/* Карточка только для просмотра: чем вызвано и как выйти. */
+.lockHint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--r-sm);
+}
+
+.lockHintBtn {
+  padding: 0;
+  font: inherit;
+  font-weight: var(--fw-medium);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .hintWarning {
   margin-bottom: var(--s-2);
   padding: var(--s-2) var(--s-3);
@@ -561,13 +588,6 @@
   outline: none;
   border-color: var(--c-brand);
   box-shadow: var(--sh-ring);
-}
-
-.keyInfoNote {
-  margin: 0;
-  font-size: var(--fs-xs);
-  line-height: var(--lh-normal);
-  color: var(--c-text-muted);
 }
 
 .keyInfoActions {
@@ -844,6 +864,87 @@
   flex: 0 0 auto;
   margin-top: 3px;
   color: var(--c-text-faint);
+}
+
+/* ─── Источники в базе сервера (PDF заказчика, сохранённое) ─── */
+
+.baseNote {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  color: var(--c-text-muted);
+}
+
+.baseGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin: var(--s-2) 0 var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-soft);
+}
+
+.baseList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+}
+
+.baseItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: var(--fs-md);
+}
+
+.baseIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--c-danger);
+}
+
+.baseMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.baseMeta {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
+/* Роль продукта в разделе и «перспективная технология» — после страниц. */
+.baseTag {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-1);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  color: var(--c-text-muted);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
+}
+
+.baseTag_product {
+  color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.baseTag_raw {
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+}
+
+.baseTag_prospective {
+  color: var(--c-warning);
+  background: var(--c-warning-soft);
 }
 
 .sourceLinks {

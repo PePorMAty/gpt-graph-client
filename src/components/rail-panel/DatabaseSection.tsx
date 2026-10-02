@@ -2,23 +2,26 @@ import { useMemo, useState } from "react";
 
 import { useAppSelector } from "../../store/hooks";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
+import { LocalSourcesPanel } from "./LocalSourcesPanel";
 import { SourcesSection } from "./SourcesSection";
 import styles from "./PanelSection.module.css";
 
-type View = "sources" | "industry";
+type View = "sources" | "industry" | "local";
 
 const VIEWS: Array<[View, string]> = [
   ["sources", "Источники графа"],
   ["industry", "Промышленное знание"],
+  ["local", "База источников"],
 ];
 
 /**
  * Раздел «База данных» левого рельса.
  *
  * Сюда стекается всё, на что граф опирается: источники, найденные при
- * построении, и записи реестра промышленной продукции по его продуктам. Это
- * разные ответы на один вопрос — «откуда это известно», — поэтому они лежат в
- * одном разделе и переключаются, а не соседствуют двумя списками.
+ * построении, записи реестра промышленной продукции по его продуктам и база
+ * источников на сервере — разделы документов заказчика. Это разные ответы
+ * на один вопрос — «откуда это известно», — поэтому они лежат в одном
+ * разделе и переключаются, а не соседствуют несколькими списками.
  */
 export const DatabaseSection = () => {
   const [view, setView] = useState<View>("sources");
@@ -55,8 +58,10 @@ export const DatabaseSection = () => {
       <div className={styles.viewBody}>
         {view === "sources" ? (
           <SourcesSection />
-        ) : (
+        ) : view === "industry" ? (
           <IndustryGraphPanel productNames={productNames} compact />
+        ) : (
+          <LocalSourcesPanel productNames={productNames} />
         )}
       </div>
     </div>

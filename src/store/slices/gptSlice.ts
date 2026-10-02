@@ -37,6 +37,8 @@ import {
 } from "../api/step-chain-api";
 import { stepToFlow } from "../../utils/stepToFlow";
 import { normalizeProductName } from "../../utils/normalizeProductName";
+import { sourceUrlKey } from "../../utils/sourceUrl";
+import { isOwnBaseSource, localFirst } from "../../utils/sourceOrigin";
 
 import {
   areNodesLinked,
@@ -69,6 +71,7 @@ const initialState: InitialGraphStateI = {
   leafNodes: [],
   originalPrompt: null,
   source: null,
+  loadSeq: 0,
   chainBuild: { status: "idle", error: null, nodeId: null, direction: null },
   chainSessions: {},
   stepChainSessions: {},
@@ -487,6 +490,7 @@ const gptSlice = createSlice({
         reconstructPresentationColors(state.data.nodes);
 
       state.source = "loaded";
+      state.loadSeq += 1;
 
       state.rootId =
         state.data.nodes.length > 0
@@ -529,6 +533,8 @@ const gptSlice = createSlice({
       // позиции корректны. Если поставить "new", Flow перезапустит свой
       // applyLayout без direction и перевернёт граф обратно в BT.
       state.source = "loaded";
+      // Узел открытой карточки мог слиться с другим — карточку закрываем.
+      state.loadSeq += 1;
       state.rootId =
         state.data.nodes.length > 0
           ? findRootNodeId(state.data.nodes, state.data.edges)
@@ -1012,26 +1018,18 @@ const gptSlice = createSlice({
         sources: import("../../store/types").TechnologySource[];
       }>,
     ) => {
-      // Замена, а не merge: каждый успешный поиск источников полностью затирает
-      // pool именно этого (productName, direction). Pool братьев / предков /
+      // Найденное ДОБАВЛЯЕТСЯ к тому, что у продукта уже есть: к разделам
+      // документов из базы и к прошлым находкам модель «добирает» новые, и в
+      // сумме источников бывает больше пяти. Pool братьев / предков /
       // потомков не трогается — у них другие ключи.
-      // Исключение — источники, добавленные пользователем вручную: их поиск не
-      // вправе удалять (иначе ссылка пропадала из списка, но продолжала ловиться
-      // проверкой дублей как «URL уже есть»).
+      // Заменяются только источники, взятые взаймы у предка: они про предка,
+      // а не про этот продукт, — и разделы документов тоже. Своё продукта —
+      // взятое из базы для него самого, добавленное вручную — остаётся и
+      // тогда (ручное поиск не вправе удалять: иначе ссылка пропадала из
+      // списка, но продолжала ловиться проверкой дублей как «URL уже есть»).
       const { productName, direction } = action.payload;
       const key = sourcesPoolKey(productName, direction);
       const prev = state.sourcesPool[key];
-      const incomingUrls = new Set(
-        action.payload.sources.map((s) =>
-          String(s.url || "").trim().toLowerCase(),
-        ),
-      );
-      const keptManual = (prev?.sources ?? []).filter(
-        (s) =>
-          s.isManual &&
-          !incomingUrls.has(String(s.url || "").trim().toLowerCase()),
-      );
-      const sources = [...action.payload.sources, ...keptManual];
       // Номер бейджа — глобальный сквозной (per-direction). Присваивается при
       // ПЕРВОМ собственном поиске продукта; повторный поиск/добор того же
       // продукта (у него уже свой номер) номер НЕ меняет. Унаследованный пул
@@ -1041,6 +1039,19 @@ const gptSlice = createSlice({
         prev?.seq != null &&
         normalizeProductName(prev.originProduct ?? "") ===
           normalizeProductName(productName);
+      const kept = (prev?.sources ?? []).filter(
+        (s) => owned || s.isManual || isOwnBaseSource(s, productName),
+      );
+      // Новое — раньше прежнего; при совпадении адреса берём свежую запись.
+      const seen = new Set<string>();
+      const sources = localFirst(
+        [...action.payload.sources, ...kept].filter((s) => {
+          const k = sourceUrlKey(String(s.url || ""));
+          if (!k || seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        }),
+      );
       // По умолчанию сохраняем прежний номер. Новый номер выдаём только если
       // источники реально найдены и это не «своё» (иначе пустой/повторный поиск
       // съедал бы номер и создавал дыры в нумерации).
@@ -1052,7 +1063,7 @@ const gptSlice = createSlice({
         seq = state.sourcesSeqCounter[direction];
       }
       state.sourcesPool[key] = {
-        sources: [...sources],
+        sources,
         product: prev?.product || productName,
         // Свежий поиск — источники «родные» для этого продукта.
         originProduct: productName,
@@ -1061,6 +1072,74 @@ const gptSlice = createSlice({
       };
       // Свежий поиск снимает маркер «нужны свежие источники».
       delete state.needsFreshSources[key];
+    },
+
+    /**
+     * Источники продукта из базы сервера — разделы документов и найденное
+     * моделью раньше — в список источников шага. Разделы встают первыми.
+     *
+     * Только добавляет: что уже в списке, остаётся как есть. Исключение —
+     * запись без текста (граф сохранён облегчённым): её текст берём из базы,
+     * иначе обобщать было бы нечего.
+     */
+    mergeBaseSources: (
+      state,
+      action: PayloadAction<{
+        productName: string;
+        direction: "up" | "down";
+        sources: import("../../store/types").TechnologySource[];
+      }>,
+    ) => {
+      const { productName, direction } = action.payload;
+      if (!action.payload.sources.length) return;
+      const key = sourcesPoolKey(productName, direction);
+      const prev = state.sourcesPool[key];
+      const list = [...(prev?.sources ?? [])];
+      const at = new Map(list.map((s, i) => [sourceUrlKey(String(s.url || "")), i]));
+      // Пометка «взят для этого продукта»: унаследованный список несёт и разделы
+      // предка, а свои у продукта — только эти.
+      const baseFor = normalizeProductName(productName);
+      let added = 0;
+      for (const s of action.payload.sources) {
+        const k = sourceUrlKey(String(s.url || ""));
+        if (!k) continue;
+        const i = at.get(k);
+        if (i === undefined) {
+          at.set(k, list.length);
+          list.push({ ...s, baseFor });
+          added += 1;
+        } else if (!String(list[i].technology_description || "").trim()) {
+          list[i] = {
+            ...s,
+            baseFor,
+            ...(list[i].isManual ? { isManual: true } : {}),
+          };
+        } else if (list[i].baseFor !== baseFor) {
+          // Тот же документ пришёл от предка — но база говорит, что он и
+          // про этот продукт: теперь он свой.
+          list[i] = { ...list[i], baseFor };
+        }
+      }
+      const sources = localFirst(list);
+      if (prev && prev.sources.length > 0) {
+        // Номер и происхождение не трогаем: у своего пула они и так верные,
+        // а у взятого взаймы источники предка по-прежнему в списке.
+        prev.sources = sources;
+      } else {
+        // Пула не было (или он пуст) — источники из базы становятся своими
+        // для продукта, с номером, как после поиска.
+        state.sourcesSeqCounter[direction] += 1;
+        state.sourcesPool[key] = {
+          sources,
+          product: prev?.product || productName,
+          originProduct: productName,
+          seq: state.sourcesSeqCounter[direction],
+          lastFetchedAt: new Date().toISOString(),
+        };
+      }
+      // Появилось новое своё — «нужны свежие источники» больше не про него.
+      // Если всё из базы уже было в списке, маркер (петля, нехватка) верен.
+      if (added > 0) delete state.needsFreshSources[key];
     },
 
     /**
@@ -1871,6 +1950,7 @@ export const {
   undoLastStep,
   setStepChainContinueProduct,
   addSourcesToPool,
+  mergeBaseSources,
   clearSourcesPool,
   renamePresentation,
   createStepAlternativeNodes,

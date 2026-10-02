@@ -15,8 +15,8 @@ export type AiConfig = { provider: string; model: string };
 
 export const AI_PROVIDERS: AiModelOption[] = [
   // Значение "qwen" — ключ провайдера на сервере (DashScope-совместимый шлюз),
-  // менять его нельзя; через него же идут DeepSeek-модели тарифного плана.
-  { value: "qwen", label: "DashScope (Qwen / DeepSeek)" },
+  // менять его нельзя; через него же идут DeepSeek и GLM тарифного плана.
+  { value: "qwen", label: "DashScope (Qwen / DeepSeek / GLM)" },
   { value: "openai", label: "OpenAI" },
 ];
 
@@ -24,11 +24,13 @@ export const AI_PROVIDERS: AiModelOption[] = [
 // лишние варианты в выпадашке дают 403 AccessDenied уже после отправки запроса.
 // Первая модель в списке — дефолт провайдера (см. defaultModelFor).
 export const AI_MODELS: Record<string, AiModelOption[]> = {
-  // Состав списка — под тарифный план подписки (Token Plan). qwen-plus и
-  // qwen-flash убраны: по подписке они не обслуживаются.
-  // qwen3.8-max-preview и kimi-k2.7-code не добавлены: обе отдают
-  // access_denied. glm-5.2 не добавлена: не поддерживает enable_search, то
-  // есть непригодна для поиска источников.
+  // Состав — все текстовые модели тарифа (Token Plan). Что каждая умеет,
+  // проверено на сервере прогонами scripts/check-models.js (30.09): поиск
+  // источников, карточка, шаг, граф целиком. Карточку, шаг и граф делают все.
+  // Поиск у одной и той же модели то находит пять источников, то в этот раз
+  // не ищет вовсе — отказ случайный, и сервер повторяет пустой поиск сам.
+  // Скрыты на поиске (unsupportedIn: ["search"]) только GLM: они искать в
+  // интернете не умеют совсем. Там в запрос уходит первая пригодная модель.
   qwen: [
     {
       value: "qwen3.7-plus",
@@ -36,28 +38,58 @@ export const AI_MODELS: Record<string, AiModelOption[]> = {
       hint: "По умолчанию: баланс качества, скорости и цены",
     },
     {
+      value: "qwen3.8-max",
+      label: "Qwen3.8 Max",
+      hint: "Новый флагман: лучшее качество, отвечает дольше",
+    },
+    {
+      value: "qwen3.8-flash",
+      label: "Qwen3.8 Flash",
+      hint: "Быстрая: поиск источников ~20 с, карточка и шаг — секунды",
+    },
+    {
       value: "qwen3.7-max",
       label: "Qwen3.7 Max",
-      hint: "Флагман: лучшее качество и глубокие рассуждения, дороже",
+      hint: "Флагман прошлого поколения: глубокие ответы, дороже",
     },
     {
       value: "qwen3.6-flash",
       label: "Qwen3.6 Flash",
-      hint: "Быстрая и дешёвая, для простых задач",
-      // Ограничение снято по просьбе: раньше модель была скрыта на поиске,
-      // карточке и построении графа — в одном прогоне весь бюджет токенов
-      // уходил в размышления и content приходил пустым. Проверяем на практике;
-      // механизм unsupportedIn оставлен рабочим, вернуть — одна строка.
+      hint: "Быстрая и дешёвая",
+    },
+    {
+      value: "deepseek-v4-pro-0813",
+      label: "DeepSeek V4 Pro (0813)",
+      hint: "Сильные рассуждения; граф — за полторы минуты",
     },
     {
       value: "deepseek-v4-pro",
       label: "DeepSeek V4 Pro",
-      hint: "Сильные рассуждения; ответ может целиком уходить в размышления",
+      hint: "Сильные рассуждения; поиск бывает долгим — до полутора минут",
     },
     {
       value: "deepseek-v4-flash-0731",
       label: "DeepSeek V4 Flash",
-      hint: "Быстрая версия DeepSeek",
+      hint: "Быстрая: граф — меньше минуты",
+    },
+    {
+      value: "deepseek-v4.1-flash",
+      label: "DeepSeek V4.1 Flash",
+      hint: "Самая быстрая для карточки и шага",
+    },
+    {
+      value: "glm-5.3",
+      label: "GLM-5.3 (Zhipu)",
+      hint: "Думает дольше остальных (карточка ~50 с); источники не ищет",
+      // Не умеет искать в интернете (отказ на enable_search).
+      unsupportedIn: ["search"],
+    },
+    {
+      value: "glm-5.2",
+      label: "GLM-5.2 (Zhipu)",
+      hint: "Карточка и шаг за секунды; источники не ищет",
+      // Не умеет искать в интернете (отказ на enable_search).
+      unsupportedIn: ["search"],
     },
   ],
   openai: [

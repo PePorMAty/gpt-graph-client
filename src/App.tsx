@@ -67,12 +67,14 @@ function Workspace() {
 
         {/* --panel-offset: ширина открытой панели. Панель над холстом
             сдвигается на неё вправо, чтобы её кнопки не оказались под
-            панелью раздела. */}
+            панелью раздела. Панель раздела шире карточки узла. */}
         <div
           className={styles.content}
           style={
             leftOccupied
-              ? ({ "--panel-offset": "var(--w-panel)" } as React.CSSProperties)
+              ? ({
+                  "--panel-offset": panelOpen ? "var(--w-rail-panel)" : "var(--w-panel)",
+                } as React.CSSProperties)
               : undefined
           }
         >

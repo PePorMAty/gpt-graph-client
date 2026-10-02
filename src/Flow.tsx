@@ -35,11 +35,13 @@ import {
   insertTransformationsForNeighbors,
   mergeProductNodes,
   addSourcesToPool,
+  mergeBaseSources,
   clearGraphError,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
 import { openGraphExtras } from "./store/graphExtras";
 import { checkIndustry, industryKey } from "./store/slices/industrySlice";
+import { checkLocalSources } from "./store/slices/localSourcesSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
 import { Notification } from "./components/notification";
@@ -336,6 +338,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // productNamesKey — стабильный слепок набора; productNames пересоздаётся.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [industryData, productNamesKey, dispatch]);
+
+  // Есть ли у продуктов источники в базе сервера (PDF и найденное моделью
+  // раньше) — как опознание: появился продукт, спрашиваем. Санк спрашивает
+  // новые названия, а когда база изменилась (растёт version) — все.
+  const localSourcesVersion = useAppSelector((s) => s.localSources.version);
+  useEffect(() => {
+    if (!productNames.length) return;
+    dispatch(checkLocalSources(productNames));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productNamesKey, localSourcesVersion, dispatch]);
 
   /**
    * Опознаём продукты по справочнику и проставляем идентификаторы.
@@ -663,6 +675,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Состояния для панели
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(false);
+  /** Сколько раз карточку показали щелчком: каждый показ убирает панель раздела. */
+  const [cardShown, setCardShown] = useState(0);
   const [tempNodeLabel, setTempNodeLabel] = useState<string>("");
   const [tempNodeDescription, setTempNodeDescription] = useState<string>("");
   const [initialLabel, setInitialLabel] = useState<string>("");
@@ -866,6 +880,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // с дефисами («Олефин-богатый…») — источники «не клались» в продукт.
   const poolKey = sourcesPoolKey;
 
+  const localSourceCounts = useAppSelector((s) => s.localSources.counts);
+
   // Flow.tsx
   const productsView = useMemo(
     () =>
@@ -913,6 +929,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           // Слой ГИСП: число производителей из реестра. Пока продукт не
           // проверен, поля нет — узел бейдж не рисует.
           const gisp = industryResults[industryKey(lbl)];
+          // Сколько разделов документов в базе сервера про продукт. Нет
+          // таких — значка нет.
+          const base = localSourceCounts[industryKey(lbl)];
           return {
             ...n,
             className: cls,
@@ -921,6 +940,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...(hasBadge ? { sourcesBadge: badge } : {}),
               ...(compact ? { focusCompact: true } : {}),
               ...(bookmarked ? { bookmarked: true } : {}),
+              ...(base && base.local > 0
+                ? {
+                    baseSources: {
+                      total: base.local,
+                      up: base.localDir?.up ?? 0,
+                      down: base.localDir?.down ?? 0,
+                    },
+                  }
+                : {}),
               showIndustryData: industryData,
               ...(gisp
                 ? {
@@ -955,6 +983,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       showAlternatives,
       industryData,
       industryResults,
+      localSourceCounts,
       bookmarkedIds,
     ],
   );
@@ -1111,6 +1140,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (node.id !== selectedNodeId) saveChangesRef.current();
       setSelectedNodeId(node.id);
       setIsPanelOpen(true);
+      setCardShown((n) => n + 1);
       setContextMenu(null);
     },
     [focusOnNode, selectedNodeId],
@@ -1158,12 +1188,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Карточка узла и панель раздела (источники, закладки, история) занимают
   // одно место слева, и панель над холстом сдвигается на их ширину. Каркас
-  // живёт выше Flow, поэтому состояние карточки уходит ему событием.
+  // живёт выше Flow, поэтому состояние карточки уходит ему событием — и при
+  // каждом щелчке по узлу (cardShown): карточка могла быть уже открыта под
+  // панелью раздела, и без этого панель так и закрывала бы её.
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("node-card-toggle", { detail: { open: isPanelOpen } }),
     );
-  }, [isPanelOpen]);
+  }, [isPanelOpen, cardShown]);
+
+  // Открыли другой граф (из библиотеки, из файла): полотно смонтировано
+  // всегда, и карточка узла прошлого графа оставалась открытой. Закрываем без
+  // сохранения: правки сохраняются при уходе из поля, а узел с тем же id в
+  // новом графе получил бы чужие название и описание.
+  const loadSeq = useAppSelector((s) => s.graph.loadSeq);
+  const loadSeqRef = useRef(loadSeq);
+  useEffect(() => {
+    if (loadSeqRef.current === loadSeq) return;
+    loadSeqRef.current = loadSeq;
+    setIsPanelOpen(false);
+    setSelectedNodeId(null);
+    setTempNodeLabel("");
+    setTempNodeDescription("");
+    setInitialLabel("");
+    setInitialDescription("");
+    setContextMenu(null);
+  }, [loadSeq]);
 
   // Клик по пустому пространству — закрыть контекстные меню
   const onPaneClick = useCallback(() => {
@@ -2544,6 +2594,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         onFetchStepSources: handleFetchStepSourcesV2(direction),
         onCancelStepSources: handleCancelStepSources(direction),
+        onMergeBaseSources: (baseSources: TechnologySource[]) => {
+          const productName = String(selectedNode.data?.label ?? "").trim();
+          if (!productName) return;
+          dispatch(
+            mergeBaseSources({ productName, direction, sources: baseSources }),
+          );
+        },
         onAggregateStepSources: handleAggregateStepSources(direction),
         onBuildStep: handleBuildStep(direction),
         onClearStepState: handleClearStepState(direction),
@@ -3057,6 +3114,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         linkedProducts={linkedProducts}
         onFocusLinkedProduct={handleFocusLinkedProduct}
         readOnly={structureLocked}
+        lockReason={readOnly ? "shared" : productsOnly ? "productsOnly" : focusOn ? "focus" : null}
+        onUnlock={
+          readOnly
+            ? undefined
+            : productsOnly
+              ? () => setProductsOnly(false)
+              : focusOn
+                ? exitFocusMode
+                : undefined
+        }
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
         sourcesCurrentProduct={sourcesCurrentProduct}

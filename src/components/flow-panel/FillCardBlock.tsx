@@ -21,6 +21,7 @@ import {
 } from "../../prompts/fillCardPrompts";
 import { AiModelSelect } from "../ai-model-select";
 import { PencilIcon } from "../icons";
+import { readableReason } from "../../store/middleware/failureText";
 
 import styles from "./FillCardBlock.module.css";
 
@@ -355,7 +356,9 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
           </div>
 
           {productCardStatus === "failed" && productCardError && (
-            <div className={styles.error}>Ошибка: {productCardError}</div>
+            <div className={styles.error}>
+              Ошибка: {readableReason(productCardError)}
+            </div>
           )}
         </>
       )}
@@ -412,8 +415,10 @@ const ListCardView: FC<{ card: ProductCard; fields: FillCardField[] }> = ({
 );
 
 /**
- * Карточка преобразования: здесь только описание технологии — параметры
- * читаются в блоке «Ключевая информация» вкладки «Краткое описание».
+ * Технологическое описание преобразования — всё, что пришло одним запросом:
+ * текст технологии и её параметры (оборудование, условия, ограничения…).
+ * Параметры раньше уезжали в «Ключевую информацию» вкладки «Краткое
+ * описание», и здесь, где их искали, оставался один абзац.
  */
 const TechCardView: FC<{ card: ProductCard; fields: FillCardField[] }> = ({
   card,
@@ -421,15 +426,31 @@ const TechCardView: FC<{ card: ProductCard; fields: FillCardField[] }> = ({
 }) => {
   const rows = cardRows(card, fields);
   const description = rows.find((r) => r.key === TECH_DESCRIPTION_KEY);
+  const params = rows.filter((r) => r.key !== TECH_DESCRIPTION_KEY);
 
-  if (!description) return null;
+  if (!description && !params.length) return null;
 
   return (
     <div className={styles.result}>
-      <div className={styles.resultBlock}>
-        <div className={styles.resultTitle}>Технологическое описание</div>
-        <div className={styles.resultText}>{description.value}</div>
-      </div>
+      {description && (
+        <div className={styles.resultBlock}>
+          <div className={styles.resultTitle}>Технологическое описание</div>
+          <div className={styles.resultText}>{description.value}</div>
+        </div>
+      )}
+      {params.length > 0 && (
+        <div className={styles.resultBlock}>
+          <div className={styles.resultTitle}>Параметры технологии</div>
+          <dl className={styles.params}>
+            {params.map(({ key, label, value }) => (
+              <div key={key} className={styles.paramRow}>
+                <dt className={styles.paramName}>{label}</dt>
+                <dd className={styles.paramValue}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
     </div>
   );
 };
