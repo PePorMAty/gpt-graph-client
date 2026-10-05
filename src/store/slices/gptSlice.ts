@@ -58,6 +58,27 @@ import {
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { sourcesKey } from "./sourcesSlice";
 
+/**
+ * Название технологии из карточки преобразования — или null, если модель его
+ * не дала: пусто, «нет данных», абзац вместо названия.
+ */
+function technologyNameFromCard(card: unknown): string | null {
+  const raw = (card as Record<string, unknown> | null)?.technology_name;
+  if (typeof raw !== "string") return null;
+  // Точку снимаем и до, и после кавычек: модель пишет и «Название».,
+  // и «Название.»
+  const name = raw
+    .split("\n")[0]
+    .trim()
+    .replace(/\.$/, "")
+    .replace(/^[«"“]+|[»"”]+$/g, "")
+    .replace(/\.$/, "")
+    .trim();
+  if (!name || name.length > 160) return null;
+  if (/^(нет данных|не указано|неизвестно|н\/д|—|-|\.\.\.|…)$/i.test(name)) return null;
+  return name;
+}
+
 const initialState: InitialGraphStateI = {
   data: {
     nodes: [],
@@ -1776,6 +1797,15 @@ const gptSlice = createSlice({
           node.data.productCardKind = data.card_kind;
           node.data.productCardStatus = "succeeded";
           node.data.productCardError = null;
+          // Преобразование получает название технологии из карточки (решение
+          // заказчика): при построении шага модель называет его коротко
+          // («Переработка полиамида-6 в нити и пленки»), а карточка — тем
+          // именем, под которым технологию знают. У продукта название не
+          // трогаем: по нему продукт опознаётся и ищется в реестре.
+          if (node.type === "transformation") {
+            const name = technologyNameFromCard(data.productCard);
+            if (name) node.data.label = name;
+          }
         }
       })
       .addCase(fetchProductCard.rejected, (state, action) => {
