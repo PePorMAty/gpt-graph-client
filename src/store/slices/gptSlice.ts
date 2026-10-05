@@ -17,6 +17,7 @@ import {
   applyHandlesByGeometry,
 } from "../../utils/normalize-edges";
 import { normalizeNodes } from "../../utils/normalize-nodes";
+import { collapseDuplicateTransformations } from "../../utils/collapseDuplicateTransformations";
 import {
   buildChainLevel1,
   continueGraph,
@@ -726,22 +727,31 @@ const gptSlice = createSlice({
         anchorAggregatedText: anchorAggregatedText ?? null,
       });
 
-      // Тупик: шаг свёлся бы только к петле(ям) на предка → граф НЕ трогаем,
-      // помечаем продукт «нужны свежие источники» (тот же канал, что и
-      // серверный insufficientProducts) и закрываем превью.
+      // Тупик: шаг свёлся бы только к петле(ям) на предка или целиком уже
+      // стоит на графе → граф НЕ трогаем, помечаем продукт «нужны свежие
+      // источники» (тот же канал, что и серверный insufficientProducts) и
+      // закрываем превью.
       if (stepRecord.isDeadEnd) {
         const deadEndLabel =
           anchor.data?.label ||
           (anchor as unknown as { label?: string }).label ||
           "";
         if (deadEndLabel) {
+          const onGraph = stepRecord.alreadyOnGraph;
           state.needsFreshSources[
             sourcesPoolKey(deadEndLabel, session.direction)
-          ] = {
-            fromProduct: deadEndLabel,
-            reason: "cycle",
-            loopOn: stepRecord.cycleProductNames ?? [],
-          };
+          ] = onGraph
+            ? {
+                fromProduct: deadEndLabel,
+                reason: "exists",
+                loopOn: onGraph.products,
+                transformation: onGraph.transformation,
+              }
+            : {
+                fromProduct: deadEndLabel,
+                reason: "cycle",
+                loopOn: stepRecord.cycleProductNames ?? [],
+              };
         }
         session.pendingStep = null;
         session.status = "idle";
@@ -1541,11 +1551,16 @@ const gptSlice = createSlice({
           return;
         }
 
-        const normNodes = normalizeNodes(data.nodes);
-        const normEdges = normalizeEdges(data.edges) || [];
+        // Одинаковые преобразования, которые модель расписала отдельными
+        // узлами, — один узел (collapseDuplicateTransformations).
+        const same = collapseDuplicateTransformations(
+          normalizeNodes(data.nodes),
+          normalizeEdges(data.edges) || [],
+        );
+        const normNodes = same.nodes;
         state.data = {
           nodes: normNodes,
-          edges: applyHandlesByGeometry(normNodes, normEdges),
+          edges: applyHandlesByGeometry(normNodes, same.edges),
         };
 
         if (!state.rootId && action.payload.data.nodes.length > 0) {

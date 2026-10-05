@@ -174,6 +174,15 @@ function describe(
     }
 
     case "graph/acceptPendingStep":
+      // Шаг, который уже стоит на графе или замкнул бы петлю, граф не меняет:
+      // «Шаг принят» в истории тогда был бы неправдой.
+      if (added === 0 && addedEdges <= 0) {
+        return {
+          kind: "step",
+          title: "Шаг не добавлен",
+          details: "граф не изменился: такой шаг уже есть или он замкнул бы петлю",
+        };
+      }
       return {
         kind: "step",
         title: "Шаг принят",

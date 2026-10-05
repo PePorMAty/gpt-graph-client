@@ -8,6 +8,11 @@ import { computeShiftX } from "./resolveChainOverlap";
 import { wouldCreateCycle } from "./graphReachability";
 import { applyHandlesByGeometry } from "./normalize-edges";
 import type { TFlow } from "./edgeFlow";
+import {
+  sameProcess,
+  transformationIO,
+  type ProcessIO,
+} from "./collapseDuplicateTransformations";
 
 export interface StepToFlowOpts {
   sessionKey: string;
@@ -96,13 +101,21 @@ export function stepToFlow(
   // потомков (схождение DAG). Настоящая петля — только если существующий узел
   // уже ДОСТИЖИМ до якоря (его предок): тогда ребро anchor → tr → O замкнёт
   // направленный контур. Такие выходы НЕ рисуем и копим в cycleProductNames.
-  const cycleProductNames: string[] = [];
-  const renderProducts: Array<{
-    product: (typeof step.inputProducts)[0];
-    existingNodeId: string | null;
-  }> = [];
-
-  for (const { product } of uniqueProducts) {
+  // Предок — по родословной построения, то есть по рёбрам, как их клали шаги
+  // (от якоря); это намеренно: выход шага «вниз», найденный раньше шагом
+  // «вверх» от того же продукта, — не возврат по цепочке, его связь рисуется.
+  //
+  // Сторона продукта — по его роли в шаге: сырьё входит в преобразование,
+  // продукт выходит. Найденное шагом обычно лежит на дальней от якоря стороне,
+  // но не всё: у шага «вниз» бывает второе сырьё (бензол алкилируют этиленом),
+  // у шага «вверх» — попутный продукт (пиролиз даёт и этилен, и пропилен).
+  // Такие стоят на стороне якоря. Если модель перепутала роли и на дальней
+  // стороне не осталось ничего, кладём всё туда, как раньше.
+  const sides = uniqueProducts.map(({ role }) =>
+    role === "input" ? ("in" as const) : ("out" as const),
+  );
+  const farSideEmpty = !sides.some((f) => f === foundFlow);
+  const classified = uniqueProducts.map(({ product }, i) => {
     // Идентификатор сильнее названия: продукт шага может называться иначе, чем
     // тот же продукт на полотне («Кумол» из шага и «ИПБ» на полотне).
     // Идентификатор продукту шага проставляет справочник (identifyStepProducts)
@@ -124,15 +137,97 @@ export function stepToFlow(
             idSource,
           )
         : null);
+    const flow: TFlow = farSideEmpty ? foundFlow : sides[i];
+    return { product, existingNodeId, flow };
+  });
 
-    if (
-      existingNodeId &&
-      wouldCreateCycle(existingNodeId, anchorNodeId, existingEdges)
-    ) {
-      cycleProductNames.push(product.name);
+  // --- 2б) то же преобразование уже на полотне? ---
+  // То же название и тот же процесс по сырью и продуктам (sameProcess):
+  // «Этан → Пиролиз → Этилен», потом шаг «вверх» от пропилена «Этан → Пиролиз
+  // → Пропилен» — один «Пиролиз» с двумя продуктами. Сырьё и продукты — по
+  // смыслу связей, поэтому направление шага не мешает: преобразование,
+  // построенное шагом «вниз», узнаётся и шагом «вверх». Такой узел
+  // переиспользуем вместо создания дубля.
+  const trNorm = normalizeProductName(step.transformation.name);
+  let reusedTrNode: CustomNode | null = null;
+  // Продукты, уже связанные с переиспользуемым преобразованием: второй раз
+  // их не связываем.
+  let linked = new Set<string>();
+  if (trNorm) {
+    const stepIO: ProcessIO = { ins: new Set(), outs: new Set() };
+    const sideOf = (flow: TFlow) => (flow === "in" ? stepIO.ins : stepIO.outs);
+    sideOf(anchorFlow).add(anchorNodeId);
+    for (const c of classified) {
+      sideOf(c.flow).add(
+        c.existingNodeId ?? `new::${normalizeProductName(c.product.name)}`,
+      );
+    }
+    const io = transformationIO(existingNodes, existingEdges);
+    for (const n of existingNodes) {
+      if (n.type !== "transformation") continue;
+      if (n.data?.chainVariant === "alt") continue;
+      const label = typeof n.data?.label === "string" ? n.data.label : "";
+      if (normalizeProductName(label) !== trNorm) continue;
+      const cur = io.get(n.id);
+      if (cur && sameProcess(cur, stepIO)) {
+        reusedTrNode = n;
+        linked = new Set([...cur.ins, ...cur.outs]);
+        break;
+      }
+    }
+  }
+
+  const cycleProductNames: string[] = [];
+  const renderProducts: typeof classified = [];
+  for (const c of classified) {
+    // Уже связан с тем же преобразованием — это та же связь, а не петля.
+    if (c.existingNodeId && linked.has(c.existingNodeId)) {
+      renderProducts.push(c);
       continue;
     }
-    renderProducts.push({ product, existingNodeId });
+    if (
+      c.existingNodeId &&
+      c.flow === foundFlow &&
+      wouldCreateCycle(c.existingNodeId, anchorNodeId, existingEdges)
+    ) {
+      cycleProductNames.push(c.product.name);
+      continue;
+    }
+    renderProducts.push(c);
+  }
+
+  // Шаг целиком уже стоит на графе: то же преобразование, и якорь, и все
+  // продукты шага уже связаны с ним. Граф не трогаем — тупик «уже есть» (см.
+  // acceptPendingStep): раньше такой шаг «вверх» по уже построенному шагом
+  // «вниз» переходу считался петлёй.
+  if (
+    reusedTrNode &&
+    linked.has(anchorNodeId) &&
+    cycleProductNames.length === 0 &&
+    renderProducts.every((r) => r.existingNodeId && linked.has(r.existingNodeId))
+  ) {
+    const trLabel = reusedTrNode.data?.label;
+    return {
+      nodes: [],
+      edges: [],
+      stepRecord: {
+        stepNumber,
+        fromProductNodeId: anchorNodeId,
+        transformationNodeId: "",
+        newProductNodeIds: [],
+        mergedProductNodeIds: [],
+        addedEdgeIds: [],
+        cycleProductNames,
+        isDeadEnd: true,
+        alreadyOnGraph: {
+          transformation:
+            typeof trLabel === "string" && trLabel
+              ? trLabel
+              : step.transformation.name,
+          products: renderProducts.map((r) => r.product.name),
+        },
+      },
+    };
   }
 
   // --- 3) тупик: соединять нечего, ИЛИ вырожденный «дрейф к предку» ---
@@ -170,34 +265,7 @@ export function stepToFlow(
   const mergedProductNodeIds: string[] = [];
   const addedEdgeIds: string[] = [];
 
-  // --- 4) узел-трансформация ---
-  // Преобразование с тем же именем, уже построенное от этого же якоря (и
-  // только от него), переиспользуем вместо создания дубля: «Нефть → Пиролиз →
-  // Этилен» и следующий шаг «Пиролиз → Пропилен» дают ОДИН узел «Пиролиз» с
-  // двумя выходами (правило «имя + входные продукты»).
-  const trNorm = normalizeProductName(step.transformation.name);
-  let reusedTrNode: CustomNode | null = null;
-  if (trNorm) {
-    for (const n of existingNodes) {
-      if (n.type !== "transformation") continue;
-      if (n.data?.chainVariant === "alt") continue;
-      const label = typeof n.data?.label === "string" ? n.data.label : "";
-      if (normalizeProductName(label) !== trNorm) continue;
-      // Направление должно совпадать: одноимённые up/down-процессы от одного
-      // якоря — разные шаги (вверх — к прекурсорам, вниз — к продуктам).
-      const dir = n.data?.chainDirection;
-      if (dir && dir !== direction) continue;
-      // Единственный «вход» существующего преобразования — тот же якорь.
-      const inputs = new Set(
-        existingEdges.filter((e) => e.target === n.id).map((e) => e.source),
-      );
-      if (inputs.size === 1 && inputs.has(anchorNodeId)) {
-        reusedTrNode = n;
-        break;
-      }
-    }
-  }
-
+  // --- 4) узел-трансформация (новый или переиспользуемый, см. 2б) ---
   const trId = step.transformation.id || String(stepNumber);
   const trFlowId = reusedTrNode
     ? reusedTrNode.id
@@ -235,15 +303,15 @@ export function stepToFlow(
         stepChainStepNumber: stepNumber,
       },
     });
+  }
 
-    // --- 5) ребро: anchor → transformation (у реюза оно уже есть) ---
+  // --- 5) ребро: anchor → transformation (у реюза его может и не быть) ---
+  if (!linked.has(anchorNodeId)) {
     const anchorToTrEdgeId = `step::${sessionKey}::e::${anchorNodeId}::${trFlowId}`;
     edges.push({
       id: anchorToTrEdgeId,
       source: anchorNodeId,
       target: trFlowId,
-      sourceHandle: isDown ? "bottom" : "top-source",
-      targetHandle: isDown ? "top" : "bottom-target",
       type: "straight",
       data: { tFlow: anchorFlow },
     });
@@ -251,32 +319,46 @@ export function stepToFlow(
   }
 
   // --- 6) узлы-продукты ---
-  const productCount = renderProducts.length;
+  // Дальняя сторона — рядом под (над) преобразованием, как всегда. Сторона
+  // якоря — в ряд якоря; места им ищутся после развода коллизий (шаг 7).
+  // Новые продукты дальней стороны — первыми в списке: следующий шаг по
+  // умолчанию идёт от первого из них.
+  const far = renderProducts.filter((r) => r.flow === foundFlow);
+  const near = renderProducts.filter((r) => r.flow !== foundFlow);
   const productsY = trY + sign * stepY2;
-  const rowWidth = productCount > 1 ? (productCount - 1) * spacingX : 0;
+  const nearY = trY - sign * stepY1;
+  const rowWidth = far.length > 1 ? (far.length - 1) * spacingX : 0;
   const startX = trX - rowWidth / 2;
+  const nearNodes: CustomNode[] = [];
 
-  renderProducts.forEach(({ product, existingNodeId }, idx) => {
+  [...far, ...near].forEach(({ product, existingNodeId, flow }, idx) => {
+    const isFar = flow === foundFlow;
     const x = startX + idx * spacingX;
+    // Ребро продукта стороны якоря идёт к преобразованию, как ребро якоря;
+    // дальней — от преобразования. Смысл в tFlow, хэндлы — в конце.
+    const link = (pid: string) => {
+      const edgeId = isFar
+        ? `step::${sessionKey}::e::${trFlowId}::${pid}`
+        : `step::${sessionKey}::e::${pid}::${trFlowId}`;
+      edges.push({
+        id: edgeId,
+        source: isFar ? trFlowId : pid,
+        target: isFar ? pid : trFlowId,
+        type: "straight",
+        data: { tFlow: flow },
+      });
+      addedEdgeIds.push(edgeId);
+    };
 
     if (existingNodeId) {
-      // Существующий продукт (законное схождение) — только ребро, без узла
-      mergedProductNodeIds.push(existingNodeId);
-
+      // Существующий продукт (законное схождение) — только ребро, без узла.
       // Хэндлы — по смыслу связи, а не по одной геометрии: существующий узел
       // может стоять где угодно. Выход шага «вниз», уже стоящий выше
       // преобразования, всё равно выходит из его низа (просьба заказчика,
-      // 2026-10-05) — раньше он цеплялся к верху, как сырьё. Выставляет их
-      // applyHandlesByGeometry в конце.
-      const edgeId = `step::${sessionKey}::e::${trFlowId}::${existingNodeId}`;
-      edges.push({
-        id: edgeId,
-        source: trFlowId,
-        target: existingNodeId,
-        type: "straight",
-        data: { tFlow: foundFlow },
-      });
-      addedEdgeIds.push(edgeId);
+      // 2026-10-05) — раньше он цеплялся к верху, как сырьё.
+      if (linked.has(existingNodeId)) return;
+      mergedProductNodeIds.push(existingNodeId);
+      link(existingNodeId);
     } else {
       // Новый продукт — узел + ребро
       const sanitizedName = normalizeProductName(product.name).replace(
@@ -285,10 +367,10 @@ export function stepToFlow(
       );
       const pFlowId = `step::${sessionKey}::pid::${stepNumber}::${sanitizedName}`;
 
-      nodes.push({
+      const node: CustomNode = {
         id: pFlowId,
         type: "product",
-        position: { x, y: productsY },
+        position: { x, y: isFar ? productsY : nearY },
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
         data: {
@@ -320,20 +402,10 @@ export function stepToFlow(
           // помечается «не заполнен» (см. ProductNode).
           ...(product.isUserAdded ? { isUserAdded: true } : {}),
         },
-      });
+      };
+      (isFar ? nodes : nearNodes).push(node);
       newProductNodeIds.push(pFlowId);
-
-      const edgeId = `step::${sessionKey}::e::${trFlowId}::${pFlowId}`;
-      edges.push({
-        id: edgeId,
-        source: trFlowId,
-        target: pFlowId,
-        sourceHandle: isDown ? "bottom" : "top-source",
-        targetHandle: isDown ? "top" : "bottom-target",
-        type: "straight",
-        data: { tFlow: foundFlow },
-      });
-      addedEdgeIds.push(edgeId);
+      link(pFlowId);
     }
   });
 
@@ -346,6 +418,17 @@ export function stepToFlow(
     for (const n of nodes) {
       n.position = { x: n.position.x + dx, y: n.position.y };
     }
+  }
+  // Сторона якоря: ближайшее свободное место в ряду якоря, начиная справа от
+  // преобразования.
+  const trFinalX =
+    nodes.find((n) => n.id === trFlowId)?.position.x ?? trX;
+  for (const n of nearNodes) {
+    n.position = { x: trFinalX + spacingX, y: nearY };
+    const taken = [...existingForCollision, ...nodes];
+    const shift = computeShiftX([n], taken, spacingX);
+    n.position = { x: n.position.x + shift, y: nearY };
+    nodes.push(n);
   }
 
   // Хэндлы по смыслу и по итоговым позициям (после развода коллизий).

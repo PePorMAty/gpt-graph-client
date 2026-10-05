@@ -73,6 +73,8 @@ import {
   type FocusTransitionHandle,
 } from "./utils/focusTransition";
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
+import { collapseDuplicateTransformations } from "./utils/collapseDuplicateTransformations";
+import { pushHistory } from "./store/slices/historySlice";
 import { inferLayoutDirection } from "./utils/inferLayoutDirection";
 import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
 // Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
@@ -283,9 +285,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     if (!data.nodes.length) return;
     setIsApplyingLayout(true);
     try {
+      // Одинаковые преобразования — один узел (collapseDuplicateTransformations).
+      // Шаги новые дублей не плодят, а графы, построенные раньше, приводятся
+      // к этому здесь.
+      const same = collapseDuplicateTransformations(data.nodes, data.edges);
       const { layoutForMergeTab } = await import("./hooks/useMergeGraph");
-      const laid = await layoutForMergeTab(data.nodes, data.edges);
+      const laid = await layoutForMergeTab(same.nodes, same.edges);
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
+      if (same.collapsed.length) {
+        const names = [...new Set(same.collapsed)];
+        const details =
+          names.length > 3
+            ? `«${names.slice(0, 3).join("», «")}» и ещё ${names.length - 3}`
+            : `«${names.join("», «")}»`;
+        dispatch(
+          pushHistory({
+            kind: "merge",
+            title: `Схлопнуты одинаковые преобразования: ${same.collapsed.length}`,
+            details,
+          }),
+        );
+        showToast(
+          "info",
+          `Одинаковые преобразования схлопнуты: ${same.collapsed.length}`,
+          details,
+        );
+      }
       requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
     } catch (e) {
       console.error("[relayout] не удалось пересчитать раскладку:", e);
