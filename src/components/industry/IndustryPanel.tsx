@@ -4,7 +4,11 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
 import { updateNodeData } from "../../store/slices/gptSlice";
 import type { CodeOverride } from "../../types";
-import type { IndustryMatch, IndustryProducer } from "../../store/api/industry-api";
+import type {
+  IndustryMatch,
+  IndustryProducer,
+  IndustryProductInfo,
+} from "../../store/api/industry-api";
 import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
 import {
   STATUS_FILTERS,
@@ -43,6 +47,16 @@ const MATCH_LABELS: Record<IndustryMatch, string> = {
 };
 
 const STRONG: IndustryMatch[] = ["exact", "all-words"];
+
+/**
+ * Записи реестра под названием разнородные: разных кодов ОКПД2 три и больше,
+ * а под выбранным — меньше половины записей.
+ */
+function isHeterogeneous(info: IndustryProductInfo): boolean {
+  const codes = info.okpd2Codes ?? [];
+  if (codes.length < 3 || !info.entryCount) return false;
+  return (codes[0]?.count ?? 0) * 2 < info.entryCount;
+}
 
 /** Сколько производителей показываем сразу: остальные по кнопке. */
 const VISIBLE = 6;
@@ -427,6 +441,27 @@ export const IndustryPanel: FC<Props> = ({
           editable={editable}
           onChange={(v) => setOverride("tnved", v)}
         />
+      )}
+
+      {/* Записи под названием разнородные: кодов много, и выбранный не
+          покрывает и половины записей. Так бывает, когда название общее —
+          «Плёнки» без материала собирают записи о любых плёнках, и код в
+          карточке относится к чужому продукту. */}
+      {!overrides.okpd2 && isHeterogeneous(info) && (
+        <p className={styles.formulationNote}>
+          Записи под этим названием разнородные: у них{" "}
+          {info.okpd2Codes?.length ?? 0}{" "}
+          {plural(
+            info.okpd2Codes?.length ?? 0,
+            "разный код",
+            "разных кода",
+            "разных кодов",
+          )}{" "}
+          ОКПД2. Похоже, название
+          общее и реестр собрал записи о разных продуктах. Уточните название
+          — например, материалом: «Плёнки полиамидные» вместо «Плёнки», — или
+          выберите код вручную.
+        </p>
       )}
 
       {/* Вещество найдено в составе препарата, а не как самостоятельный
