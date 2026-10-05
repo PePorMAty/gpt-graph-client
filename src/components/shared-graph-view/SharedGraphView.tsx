@@ -7,14 +7,17 @@ import { Flow } from "../../Flow";
 import { useAppDispatch } from "../../store/hooks";
 import { loadGraphFromFile } from "../../store/slices/gptSlice";
 import { loadSharedGraph } from "../../store/api/share-api";
+import { StatusBar } from "../status-bar/StatusBar";
 import styles from "./SharedGraphView.module.css";
 
 type Status = "loading" | "ready" | "notfound" | "error";
 
 /**
  * Страница просмотра графа по шар-ссылке (`/g/:shareId`).
- * Грузит снапшот с сервера, кладёт его на холст и показывает ТОЛЬКО полотно
- * (без боковой/нижней панели и кнопок редактирования).
+ * Грузит снапшот с сервера и кладёт его на холст. Без шапки, рельса и
+ * кнопок редактирования: над полотном — переключатели представления
+ * («Только продукты», «Промышленные данные», «Альтернативы»), под ним —
+ * строка счётчиков и масштаба.
  */
 export const SharedGraphView = () => {
   const { shareId } = useParams<{ shareId: string }>();
@@ -65,10 +68,15 @@ export const SharedGraphView = () => {
     return <div className={styles.message}>Не удалось загрузить граф</div>;
   }
 
+  // Строка состояния — в одном ReactFlowProvider с полотном: счётчики берут
+  // из него камеру и нарисованные узлы.
   return (
     <div className={styles.fullscreen}>
       <ReactFlowProvider>
-        <Flow sharedView />
+        <div className={styles.canvas}>
+          <Flow sharedView />
+        </div>
+        <StatusBar readOnly />
       </ReactFlowProvider>
     </div>
   );

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useReactFlow, useStore, useViewport } from "@xyflow/react";
+import {
+  useEdges,
+  useNodes,
+  useReactFlow,
+  useStore,
+  useViewport,
+} from "@xyflow/react";
 
 import { useAppSelector } from "../../store/hooks";
+import type { CustomNode } from "../../types";
 import { computeViewportStats } from "../../utils/viewportStats";
 import { graphSignature } from "../../utils/graphSignature";
 import {
@@ -21,6 +28,14 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+interface StatusBarProps {
+  /**
+   * Просмотр по ссылке: граф чужой, сохранять нечего — остаются счётчики и
+   * масштаб, без строки о сохранении.
+   */
+  readOnly?: boolean;
+}
+
 /**
  * Нижняя строка состояния: счётчики по видимой области, масштаб и состояние
  * сохранения. Кнопки масштаба переехали сюда с правого рельса полотна.
@@ -29,11 +44,17 @@ function formatTime(iso: string): string {
  * на объединённых графах в несколько сотен узлов «всего узлов» ни о чём не
  * говорит, а «сколько сейчас на экране» — говорит.
  */
-export const StatusBar = () => {
+export const StatusBar = ({ readOnly = false }: StatusBarProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const viewport = useViewport();
   const width = useStore((s) => s.width);
   const height = useStore((s) => s.height);
+
+  // Считаем то, что нарисовано, а не граф целиком: «Только продукты»,
+  // выключенные альтернативы и фокус-режим — проекции графа, и по самому
+  // графу строка числила бы и скрытые ими узлы.
+  const shownNodes = useNodes<CustomNode>();
+  const shownEdges = useEdges();
 
   const { nodes, edges } = useAppSelector((s) => s.graph.data);
   const { savedAt, savedSignature } = useAppSelector((s) => s.savedGraphs);
@@ -63,16 +84,17 @@ export const StatusBar = () => {
   }, [viewport, width, height]);
 
   const stats = useMemo(
-    () => computeViewportStats(nodes, edges, view, confirmedNames),
-    [nodes, edges, view, confirmedNames],
+    () => computeViewportStats(shownNodes, shownEdges, view, confirmedNames),
+    [shownNodes, shownEdges, view, confirmedNames],
   );
 
   const zoomPercent = Math.round(viewport.zoom * 100);
 
-  // Пустое полотно «грязным» не считаем: сохранять нечего.
+  // Пустое полотно «грязным» не считаем: сохранять нечего. Сохраняется сам
+  // граф, а не проекция, — поэтому подпись по данным графа.
   const signature = useMemo(
-    () => graphSignature(nodes, edges),
-    [nodes, edges],
+    () => (readOnly ? "" : graphSignature(nodes, edges)),
+    [readOnly, nodes, edges],
   );
   const dirty = nodes.length > 0 && signature !== savedSignature;
   const savedTime = savedAt ? formatTime(savedAt) : null;
@@ -98,7 +120,7 @@ export const StatusBar = () => {
         </span>
         <span
           className={styles.stat}
-          title="Продукты, подтверждённые в ГИСП (база пока не подключена)"
+          title="Продукты в видимой области, найденные в реестре ГИСП"
         >
           <ShieldCheckIcon size={15} className={styles.statIconSuccess} />
           Подтверждено в ГИСП:{" "}
@@ -142,20 +164,22 @@ export const StatusBar = () => {
           </button>
         </div>
 
-        <span
-          className={`${styles.save} ${dirty ? styles.saveDirty : ""}`}
-          title={
-            dirty
-              ? "На полотне есть правки, которых нет в сохранённом графе"
-              : "Полотно совпадает с сохранённым графом"
-          }
-        >
-          <span className={styles.saveDot} aria-hidden />
-          {dirty ? "Изменения не сохранены" : "Все изменения сохранены"}
-          {!dirty && savedTime && (
-            <span className={styles.saveTime}>{savedTime}</span>
-          )}
-        </span>
+        {!readOnly && (
+          <span
+            className={`${styles.save} ${dirty ? styles.saveDirty : ""}`}
+            title={
+              dirty
+                ? "На полотне есть правки, которых нет в сохранённом графе"
+                : "Полотно совпадает с сохранённым графом"
+            }
+          >
+            <span className={styles.saveDot} aria-hidden />
+            {dirty ? "Изменения не сохранены" : "Все изменения сохранены"}
+            {!dirty && savedTime && (
+              <span className={styles.saveTime}>{savedTime}</span>
+            )}
+          </span>
+        )}
       </div>
     </footer>
   );

@@ -161,7 +161,10 @@ const nodeTypes: NodeTypes = {
 };
 
 interface FlowProps {
-  /** Режим просмотра графа по шар-ссылке: только полотно, без редактирования и «обвеса». */
+  /**
+   * Режим просмотра графа по шар-ссылке: полотно без редактирования, из
+   * «обвеса» — только переключатели представления над ним.
+   */
   sharedView?: boolean;
 }
 
@@ -3031,26 +3034,26 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       )}
 
       {/* Панель над холстом. Обёртка нужна для замера высоты при подгонке
-          камеры в фокус-режиме (см. fitFocusCamera). */}
-      {!sharedView && (
-        <div ref={toolbarWrapRef} className={styles.toolbarWrap}>
-          <GraphToolbar
-            graphName={graphDisplayName}
-            productsOnly={productsOnly}
-            onToggleProductsOnly={() => setProductsOnly((v) => !v)}
-            focusOn={focusOn}
-            onToggleFocus={() => (focusOn ? exitFocusMode() : enterFocusMode())}
-            focusScope={focusScope}
-            onFocusScopeChange={setFocusScope}
-            focusDepth={focusDepth}
-            onFocusDepthChange={setFocusDepth}
-            industryData={industryData}
-            onToggleIndustryData={() => setIndustryData((v) => !v)}
-            alternatives={showAlternatives}
-            onToggleAlternatives={() => setShowAlternatives((v) => !v)}
-          />
-        </div>
-      )}
+          камеры в фокус-режиме (см. fitFocusCamera). В просмотре по ссылке
+          на ней остаются переключатели представления: они граф не меняют. */}
+      <div ref={toolbarWrapRef} className={styles.toolbarWrap}>
+        <GraphToolbar
+          graphName={graphDisplayName}
+          productsOnly={productsOnly}
+          onToggleProductsOnly={() => setProductsOnly((v) => !v)}
+          focusOn={focusOn}
+          onToggleFocus={() => (focusOn ? exitFocusMode() : enterFocusMode())}
+          focusScope={focusScope}
+          onFocusScopeChange={setFocusScope}
+          focusDepth={focusDepth}
+          onFocusDepthChange={setFocusDepth}
+          industryData={industryData}
+          onToggleIndustryData={() => setIndustryData((v) => !v)}
+          alternatives={showAlternatives}
+          onToggleAlternatives={() => setShowAlternatives((v) => !v)}
+          readOnly={sharedView}
+        />
+      </div>
 
       <CanvasTools
         mode={canvasMode}
