@@ -6,6 +6,8 @@ import { normalizeProductName } from "./normalizeProductName";
 import { findExistingProductNode } from "./productIdentity";
 import { computeShiftX } from "./resolveChainOverlap";
 import { wouldCreateCycle } from "./graphReachability";
+import { applyHandlesByGeometry } from "./normalize-edges";
+import type { TFlow } from "./edgeFlow";
 
 export interface StepToFlowOpts {
   sessionKey: string;
@@ -48,6 +50,11 @@ export function stepToFlow(
 
   const isDown = direction === "down";
   const sign = direction === "down" ? 1 : -1;
+  // Смысл связей шага (см. edgeFlow.ts). Якорь шага «вниз» — его сырьё, а
+  // найденное — продукты; у шага «вверх» наоборот: якорь — продукт, найденное
+  // — сырьё. Рёбра при этом всегда идут от якоря.
+  const anchorFlow: TFlow = isDown ? "in" : "out";
+  const foundFlow: TFlow = isDown ? "out" : "in";
 
   // --- 1) собрать продукты (исключая якорь) ---
   const anchorNode = existingNodes.find((n) => n.id === anchorNodeId);
@@ -238,6 +245,7 @@ export function stepToFlow(
       sourceHandle: isDown ? "bottom" : "top-source",
       targetHandle: isDown ? "top" : "bottom-target",
       type: "straight",
+      data: { tFlow: anchorFlow },
     });
     addedEdgeIds.push(anchorToTrEdgeId);
   }
@@ -255,24 +263,18 @@ export function stepToFlow(
       // Существующий продукт (законное схождение) — только ребро, без узла
       mergedProductNodeIds.push(existingNodeId);
 
-      // Handle'ы по РЕАЛЬНОЙ геометрии, а не по направлению построения:
-      // существующий узел может стоять где угодно. Напр. при схождении ВВЕРХ
-      // сосед-якоря (Этилен) стоит НИЖЕ трансформации, а не над ней — и UP-handle'ы
-      // («top-source»→«bottom-target») увели бы ребро «низ узла → верх
-      // трансформации» с заворотом. Берём ту же логику, что applyHandlesByGeometry:
-      // трансформация выше/на уровне узла → поток вниз (bottom→top), иначе вверх.
-      const existingNode = existingNodes.find((n) => n.id === existingNodeId);
-      const existingY = existingNode?.position?.y ?? productsY;
-      const flowDown = existingY >= trY;
-
+      // Хэндлы — по смыслу связи, а не по одной геометрии: существующий узел
+      // может стоять где угодно. Выход шага «вниз», уже стоящий выше
+      // преобразования, всё равно выходит из его низа (просьба заказчика,
+      // 2026-10-05) — раньше он цеплялся к верху, как сырьё. Выставляет их
+      // applyHandlesByGeometry в конце.
       const edgeId = `step::${sessionKey}::e::${trFlowId}::${existingNodeId}`;
       edges.push({
         id: edgeId,
         source: trFlowId,
         target: existingNodeId,
-        sourceHandle: flowDown ? "bottom" : "top-source",
-        targetHandle: flowDown ? "top" : "bottom-target",
         type: "straight",
+        data: { tFlow: foundFlow },
       });
       addedEdgeIds.push(edgeId);
     } else {
@@ -329,6 +331,7 @@ export function stepToFlow(
         sourceHandle: isDown ? "bottom" : "top-source",
         targetHandle: isDown ? "top" : "bottom-target",
         type: "straight",
+        data: { tFlow: foundFlow },
       });
       addedEdgeIds.push(edgeId);
     }
@@ -344,6 +347,14 @@ export function stepToFlow(
       n.position = { x: n.position.x + dx, y: n.position.y };
     }
   }
+
+  // Хэндлы по смыслу и по итоговым позициям (после развода коллизий).
+  const placed = [
+    ...existingNodes.filter((n) => !nodes.some((m) => m.id === n.id)),
+    ...nodes,
+  ];
+  const handled = applyHandlesByGeometry(placed, edges);
+  edges.splice(0, edges.length, ...handled);
 
   const stepRecord: StepRecord = {
     stepNumber,

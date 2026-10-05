@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import { productTransformationEnds, semanticHandles, tFlowOf } from "./edgeFlow";
 
 /**
  * Отфильтровывает из newEdges те, для которых обратное ребро
@@ -53,17 +54,32 @@ export function normalizeEdges(edges: Edge[]): Edge[] {
  * bottom-target). Это нужно когда layout/server раскладывает граф
  * "снизу вверх" (root внизу), и захардкоженный bottom→top рисует линии
  * сквозь сам source-узел.
+ *
+ * Связь «продукт ↔ преобразование» с пометкой смысла (edge.data.tFlow, см.
+ * edgeFlow.ts) получает хэндлы по смыслу: сырьё — в верх преобразования,
+ * продукт — из низа, а продукт не на своей стороне рисуется в обход. Иначе
+ * выход шага «вниз», стоящий выше преобразования, цеплялся к его верху — как
+ * сырьё. semantic: false — по одной геометрии: фокус-режим раскладывает
+ * окрестность по-своему.
  */
 export function applyHandlesByGeometry(
   nodes: CustomNode[],
   edges: Edge[],
+  opts: { semantic?: boolean } = {},
 ): Edge[] {
+  const semantic = opts.semantic ?? true;
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const typeOf = (id: string) => nodeMap.get(id)?.type;
 
   return edges.map((e) => {
     const src = nodeMap.get(e.source);
     const tgt = nodeMap.get(e.target);
     if (!src || !tgt) return e;
+
+    const flow = semantic ? tFlowOf(e) : undefined;
+    if (flow && productTransformationEnds(e, typeOf)) {
+      return semanticHandles(e, flow, src, tgt);
+    }
 
     const sy = src.position?.y ?? 0;
     const ty = tgt.position?.y ?? 0;
@@ -73,6 +89,8 @@ export function applyHandlesByGeometry(
       ...e,
       sourceHandle: isDown ? "bottom" : "top-source",
       targetHandle: isDown ? "top" : "bottom-target",
+      // Обход нужен только связи со смыслом; по геометрии — прямая.
+      ...(e.type === "loop" ? { type: "straight" } : {}),
     };
   });
 }

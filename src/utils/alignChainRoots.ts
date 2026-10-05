@@ -107,6 +107,13 @@ export function alignChainRoots(
   const targetY = yOf(extreme(allRoots));
 
   // Сдвиг компоненты по primary + индивидуальная доводка остальных истоков.
+  //
+  // Доводим только ПОМЕЧЕННЫЕ истоки (chainBuiltRoot): это начальные продукты
+  // объединённых графов, их и ставим в общий ряд. Истоки по эвристике
+  // (in-degree 0) — это просто сырьё: у графа, построенного на полотне, флагов
+  // нет, и в «истоки» попадало всё сырьё, найденное шагами «вверх» в середине
+  // графа. Его тянуло в верхний ряд — через всё полотно от своего
+  // преобразования, отсюда длинные связи и пустоты (жалоба 2026-10-05).
   const dyByComp = new Map<number, number>();
   const snapToTarget = new Set<string>();
   components.forEach((_, ci) => {
@@ -115,7 +122,9 @@ export function alignChainRoots(
     const primary = extreme(roots);
     dyByComp.set(ci, targetY - yOf(primary));
     for (const r of roots) {
-      if (r !== primary) snapToTarget.add(r);
+      if (r !== primary && nodeById.get(r)!.data?.chainBuiltRoot === true) {
+        snapToTarget.add(r);
+      }
     }
   });
 

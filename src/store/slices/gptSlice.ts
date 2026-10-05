@@ -274,8 +274,20 @@ const gptSlice = createSlice({
       );
       if (exists) return;
 
+      // Ручная связь продукта с преобразованием: продукт выше — сырьё, ниже —
+      // выход (см. edgeFlow.ts). Так её поймёт и раскладка.
+      const src = state.data.nodes.find((n) => n.id === source);
+      const tgt = state.data.nodes.find((n) => n.id === target);
+      const tr = src?.type === "transformation" ? src : tgt?.type === "transformation" ? tgt : null;
+      const pr = src?.type === "product" ? src : tgt?.type === "product" ? tgt : null;
+      const flow =
+        tr && pr ? ((pr.position?.y ?? 0) <= (tr.position?.y ?? 0) ? "in" : "out") : null;
+
       state.data.edges = normalizeEdges(
-        addEdge({ ...action.payload, type: "straight" }, state.data.edges),
+        addEdge(
+          { ...action.payload, type: "straight", ...(flow ? { data: { tFlow: flow } } : {}) },
+          state.data.edges,
+        ),
       );
     },
     /**
@@ -336,6 +348,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "in" },
           },
           {
             id: `${trId}::out`,
@@ -344,6 +357,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "out" },
           },
         ]),
       );
@@ -1295,6 +1309,10 @@ const gptSlice = createSlice({
           targetHandle: direction === "down" ? "top" : "bottom-target",
           type: "straight",
           className: "edge--alt",
+          // Альтернатива шага «вниз» перерабатывает продукт, шага «вверх» —
+          // производит его (см. edgeFlow.ts). Без пометки раскладка уводила
+          // альтернативы шага «вверх» вниз.
+          data: { tFlow: direction === "down" ? "in" : "out" },
         });
       });
     },
@@ -1359,6 +1377,7 @@ const gptSlice = createSlice({
           sourceHandle: "bottom",
           targetHandle: "top",
           type: "straight",
+          data: { tFlow: "in" },
         },
         {
           id: outEdgeId,
@@ -1367,6 +1386,7 @@ const gptSlice = createSlice({
           sourceHandle: "bottom",
           targetHandle: "top",
           type: "straight",
+          data: { tFlow: "out" },
         },
       ];
 
@@ -1474,6 +1494,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "in" },
           });
         }
         for (const out of outputs) {
@@ -1484,6 +1505,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "out" },
           });
         }
       });

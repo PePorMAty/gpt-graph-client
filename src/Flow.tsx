@@ -127,6 +127,7 @@ import {
 } from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
 import { EdgeContextMenu } from "./components/node-context-menu/EdgeContextMenu";
+import { EDGE_TYPES } from "./components/edges";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { DuplicateProductModal } from "./components/duplicate-product-modal";
 import { OPEN_NODE_CARD_EVENT } from "./hooks/useGoToNode";
@@ -580,7 +581,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         nodes: centered,
         // Хэндлы из store соответствуют геометрии полного графа —
         // переназначаем по позициям фокус-раскладки.
-        edges: applyHandlesByGeometry(centered, sub.edges),
+        // Только по геометрии: окрестность раскладывается своим деревом, и
+        // хэндлы по смыслу связей рисовали бы там обходы.
+        edges: applyHandlesByGeometry(centered, sub.edges, { semantic: false }),
       };
 
       focusAnimRef.current?.cancel();
@@ -3071,6 +3074,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
         nodeTypes={nodeTypes}
+        edgeTypes={EDGE_TYPES}
         edgesFocusable={false}
         nodesFocusable={false}
         minZoom={0.1}

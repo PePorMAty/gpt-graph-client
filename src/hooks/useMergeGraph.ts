@@ -15,6 +15,7 @@ import {
 import { assignTopologicalLayers } from "../utils/assignTopologicalLayers";
 import { orientByBuildDirection } from "../utils/orientByBuildDirection";
 import { applyHandlesByGeometry } from "../utils/normalize-edges";
+import { inferTFlow, orientByTFlow, tFlowOf } from "../utils/edgeFlow";
 import { mergeProductGraph } from "../utils/mergeProductGraph";
 import { collapseDuplicateTransformations } from "../utils/collapseDuplicateTransformations";
 import { markChainRoots } from "../utils/markChainRoots";
@@ -137,7 +138,13 @@ export const layoutForMergeTab = async (
   nodes: CustomNode[],
   edges: Edge[],
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
-  const oriented = orientByBuildDirection(nodes, edges);
+  // Рёбра — по ходу производства (сырьё сверху). Связи «продукт ↔
+  // преобразование» разворачиваем по их смыслу (edgeFlow.ts); смысл тем, у
+  // кого его нет (старые графы, файлы), выводим. Прочие — прежним способом.
+  const marked = inferTFlow(nodes, edges);
+  const byFlow = orientByTFlow(nodes, marked);
+  const byBuild = orientByBuildDirection(nodes, byFlow);
+  const oriented = byFlow.map((e, i) => (tFlowOf(e) ? e : byBuild[i]));
   const layeredNodes = assignTopologicalLayers(nodes, oriented);
   try {
     const { layoutMergedGraphElk } = await import(
