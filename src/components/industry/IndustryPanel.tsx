@@ -2,6 +2,8 @@ import { useMemo, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
+import { updateNodeData } from "../../store/slices/gptSlice";
+import type { CodeOverride } from "../../types";
 import type { IndustryMatch, IndustryProducer } from "../../store/api/industry-api";
 import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
 import {
@@ -17,6 +19,12 @@ import {
   ChevronRightIcon,
 } from "../icons";
 import { plural } from "../../utils/plural";
+import { CodeLine } from "./CodeLine";
+import {
+  readCodeOverrides,
+  withCodeOverride,
+  type CodeKind,
+} from "./codeOverrides";
 import styles from "./Industry.module.css";
 
 /**
@@ -42,6 +50,10 @@ const VISIBLE = 6;
 interface Props {
   /** Название продукта так, как оно записано в узле графа. */
   productName: string;
+  /** Узел карточки: в нём живут коды, заданные вручную. */
+  nodeId?: string | null;
+  /** Общий просмотр: коды показываем, править не даём. */
+  readOnly?: boolean;
 }
 
 /** Одна строка списка: щелчок раскрывает подробности записи реестра. */
@@ -129,11 +141,30 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
 };
 
 /** Промышленное знание по одному продукту — вкладка карточки. */
-export const IndustryPanel: FC<Props> = ({ productName }) => {
+export const IndustryPanel: FC<Props> = ({
+  productName,
+  nodeId,
+  readOnly = false,
+}) => {
   const dispatch = useAppDispatch();
   const { results, ready, reason, actualAt, status, error } = useAppSelector(
     (s) => s.industry,
   );
+  // Коды, заданные вручную, — в данных узла (codeOverrides).
+  const nodeData = useAppSelector((s) =>
+    nodeId ? s.graph.data.nodes.find((n) => n.id === nodeId)?.data : undefined,
+  );
+  const overrides = useMemo(() => readCodeOverrides(nodeData), [nodeData]);
+  const editable = !!nodeId && !readOnly;
+  const setOverride = (kind: CodeKind, value: CodeOverride | null) => {
+    if (!nodeId) return;
+    dispatch(
+      updateNodeData({
+        nodeId,
+        data: { codeOverrides: withCodeOverride(overrides, kind, value) },
+      }),
+    );
+  };
   const [showAll, setShowAll] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
@@ -283,6 +314,30 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
             <span className={styles.codeName}>{info.tnvedCategory.name}</span>
           </div>
         )}
+
+        {/* Записи нет, а коды продукту нужны: их задают вручную, категория
+            классификатора подставляется в поле. */}
+        {(editable || overrides.okpd2 || overrides.tnved) && (
+          <div className={styles.ownCodes}>
+            <span className={styles.ownCodesTitle}>Коды продукта</span>
+            <CodeLine
+              kind="okpd2"
+              registry={null}
+              override={overrides.okpd2}
+              suggestion={info.category?.code}
+              editable={editable}
+              onChange={(v) => setOverride("okpd2", v)}
+            />
+            <CodeLine
+              kind="tnved"
+              registry={null}
+              override={overrides.tnved}
+              suggestion={info.tnvedCategory?.code}
+              editable={editable}
+              onChange={(v) => setOverride("tnved", v)}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -328,81 +383,50 @@ export const IndustryPanel: FC<Props> = ({ productName }) => {
 
       {/* Класс продукции отдельной строкой, а не плиткой: название из
           классификатора длиннее, чем помещается в плитку, а без него код
-          бесполезен. */}
-      {info.okpd2 && (
-        <div className={styles.classLine}>
-          <span className={styles.codeLabel}>ОКПД2</span>
-          <a
-            className={styles.codeValue}
-            href={okpd2Url(info.okpd2)}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="Открыть код в классификаторе"
-          >
-            {info.okpd2}
-          </a>
-          {/* Кода нет в действующем классификаторе. Пометка идёт сразу за
-              самим кодом, до названия: название-то у него найдётся — по живой
-              родительской группе, — и без пометки выглядело бы обычным. */}
-          {info.okpd2Retired && (
-            <span
-              className={styles.codeRetired}
-              title="Код был присвоен записи при регистрации, а сейчас в классификаторе его нет"
-            >
-              снят
-            </span>
-          )}
-          {info.okpd2Name && (
-            <span className={styles.codeName}>{info.okpd2Name}</span>
-          )}
-          {/* Код уточнён по классификатору: записи реестра стоят под кодом
-              категории над ним. */}
-          {info.okpd2Registry && (
-            <span
-              className={styles.codeExtra}
-              title="Записи реестра стоят под кодом категории, а в классификаторе под ней есть позиция этого вещества"
-            >
-              уточнён по классификатору; в реестре — {info.okpd2Registry}
-            </span>
-          )}
-          {/* У записей реестра коды разные, и продукту достаётся самый
-              частый. Сколько их всего — само по себе признак: много кодов
-              значит, что записи собрались разнородные. */}
-          {!!info.okpd2Others && (
-            <span className={styles.codeExtra}>
-              у остальных записей ещё{" "}
-              {info.okpd2Others === 1 ? "код" : `кодов: ${info.okpd2Others}`}
-            </span>
-          )}
-        </div>
+          бесполезен. Код можно поправить: выбрать другой из кодов записей
+          или вписать свой (CodeLine). */}
+      {(info.okpd2 || overrides.okpd2 || editable) && (
+        <CodeLine
+          kind="okpd2"
+          registry={
+            info.okpd2
+              ? {
+                  code: info.okpd2,
+                  name: info.okpd2Name ?? null,
+                  nameExact: info.okpd2NameExact,
+                  retired: info.okpd2Retired,
+                  refinedFrom: info.okpd2Registry ?? null,
+                }
+              : null
+          }
+          override={overrides.okpd2}
+          variants={info.okpd2Codes}
+          editable={editable}
+          onChange={(v) => setOverride("okpd2", v)}
+        />
       )}
 
       {/* ТН ВЭД: самый частый код записей реестра, а нет его — позиция по
           названию вещества из классификатора, с пометкой. */}
-      {(info.tnved || info.tnvedCategory) && (
-        <div className={styles.classLine}>
-          <span className={styles.codeLabel}>ТН ВЭД</span>
-          <span className={styles.codeValue}>{info.tnved ?? info.tnvedCategory?.code}</span>
-          {(info.tnved ? info.tnvedName : info.tnvedCategory?.name) && (
-            <span className={styles.codeName}>
-              {info.tnved ? info.tnvedName : info.tnvedCategory?.name}
-            </span>
-          )}
-          {!info.tnved && (
-            <span
-              className={styles.codeExtra}
-              title="У записей реестра кода ТН ВЭД нет — позиция найдена в классификаторе по названию вещества"
-            >
-              по классификатору
-            </span>
-          )}
-          {!!info.tnved && !!info.tnvedOthers && (
-            <span className={styles.codeExtra}>
-              у остальных записей ещё{" "}
-              {info.tnvedOthers === 1 ? "код" : `кодов: ${info.tnvedOthers}`}
-            </span>
-          )}
-        </div>
+      {(info.tnved || info.tnvedCategory || overrides.tnved || editable) && (
+        <CodeLine
+          kind="tnved"
+          registry={
+            info.tnved
+              ? { code: info.tnved, name: info.tnvedName ?? null }
+              : info.tnvedCategory
+                ? {
+                    code: info.tnvedCategory.code,
+                    name: info.tnvedCategory.name,
+                    byName: true,
+                  }
+                : null
+          }
+          override={overrides.tnved}
+          variants={info.tnvedCodes}
+          editable={editable}
+          onChange={(v) => setOverride("tnved", v)}
+        />
       )}
 
       {/* Вещество найдено в составе препарата, а не как самостоятельный

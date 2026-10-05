@@ -2,6 +2,10 @@ import type { Middleware } from "@reduxjs/toolkit";
 
 import type { RootState } from "../store";
 import type { CustomNode } from "../../types";
+import {
+  CODE_LABEL,
+  readCodeOverrides,
+} from "../../components/industry/codeOverrides";
 import { getGraphData } from "../api/graph-api";
 import {
   pushHistory,
@@ -119,6 +123,25 @@ function describe(
         | undefined;
       if (!p) return null;
       const was = prevNodes.find((n) => n.id === p.nodeId);
+      // Коды продукта, заданные вручную во вкладке «Промышленное знание»: что
+      // поменялось, видно по кодам до и после.
+      if ("codeOverrides" in p.data) {
+        const before = readCodeOverrides(was?.data);
+        const after = readCodeOverrides({
+          codeOverrides: p.data.codeOverrides as CustomNode["data"]["codeOverrides"],
+        });
+        const changes = (["okpd2", "tnved"] as const)
+          .filter((k) => before[k]?.code !== after[k]?.code)
+          .map((k) => `${CODE_LABEL[k]} — ${after[k]?.code ?? "код реестра"}`);
+        if (changes.length) {
+          return {
+            kind: "edit",
+            title: "Изменены коды продукта",
+            details: `«${labelOf(prevNodes, p.nodeId)}»: ${changes.join(", ")}`,
+            nodeIds: [p.nodeId],
+          };
+        }
+      }
       // Пишем только смысловые правки: подпись и описание. Прочие поля
       // (источники, техописание, флаги) приходят пачками и залили бы историю.
       if (typeof p.data.label === "string" && p.data.label !== was?.data?.label) {
