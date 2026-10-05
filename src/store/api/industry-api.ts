@@ -39,6 +39,7 @@ export interface IndustryProducer {
   /** Код товарной номенклатуры и его расшифровка. */
   tnved?: string | null;
   tnvedName?: string | null;
+  tnvedPath?: string | null;
   status: "active" | "archived";
   statusLabel: string;
   regNumber: string | null;
@@ -163,6 +164,11 @@ export interface IndustryProductInfo {
   okpd2Codes?: IndustryCodeVariant[];
   tnved?: string | null;
   tnvedName?: string | null;
+  /**
+   * Цепочка названий ТН ВЭД сверху вниз: у позиции имя бывает «прочие», и
+   * что это, видно только по уровням над ней (см. tnvedTitle).
+   */
+  tnvedPath?: string | null;
   /** Сколько ещё разных кодов ТН ВЭД у остальных записей. */
   tnvedOthers?: number;
   /** Все коды ТН ВЭД записей, первым — выбранный. */

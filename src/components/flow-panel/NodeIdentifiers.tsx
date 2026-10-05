@@ -7,7 +7,7 @@ import {
   readProductId,
   readProductIdSource,
 } from "../../utils/productIdentity";
-import { okpd2Url } from "../industry/gisp";
+import { okpd2Url, tnvedTitle } from "../industry/gisp";
 import { readCodeOverrides } from "../industry/codeOverrides";
 import styles from "./NodeCard.module.css";
 
@@ -200,7 +200,8 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
               <span className={styles.idPopValue}>
                 {own.tnved.code}
                 <span className={styles.idPopNote}>
-                  {own.tnved.name ?? "нет в классификаторе"}
+                  {tnvedTitle(own.tnved.name, own.tnved.path) ??
+                    "нет в классификаторе"}
                 </span>
                 <span className={styles.idPopNote}>задан вручную</span>
               </span>
@@ -214,7 +215,7 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                 {tnved}
                 {industry?.tnvedName && (
                   <span className={styles.idPopNote}>
-                    {industry.tnvedName}
+                    {tnvedTitle(industry.tnvedName, industry.tnvedPath)}
                   </span>
                 )}
               </span>

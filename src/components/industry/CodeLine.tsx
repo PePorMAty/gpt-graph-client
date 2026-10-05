@@ -8,7 +8,7 @@ import {
 import type { CodeOverride } from "../../types";
 import { plural } from "../../utils/plural";
 import { PencilIcon } from "../icons";
-import { okpd2Url } from "./gisp";
+import { okpd2Url, tnvedTitle } from "./gisp";
 import { CODE_LABEL, type CodeKind } from "./codeOverrides";
 import styles from "./Industry.module.css";
 
@@ -23,6 +23,8 @@ export interface RegistryCode {
   refinedFrom?: string | null;
   /** Позиция найдена в классификаторе по названию вещества, не в реестре. */
   byName?: boolean;
+  /** ТН ВЭД: цепочка названий сверху вниз (см. tnvedTitle). */
+  path?: string | null;
 }
 
 interface Props {
@@ -193,7 +195,13 @@ export const CodeLine: FC<Props> = ({
   const [open, setOpen] = useState(false);
 
   const shown = override?.code ?? registry?.code ?? null;
-  const name = override ? override.name : (registry?.name ?? null);
+  // У ТН ВЭД имя позиции читается только с уровнями над ним: «прочие».
+  const titled = (n: string | null, path?: string | null) =>
+    kind === "tnved" ? tnvedTitle(n, path) : n;
+  const name = override
+    ? titled(override.name, override.path)
+    : titled(registry?.name ?? null, registry?.path);
+  const fullPath = override ? override.path : registry?.path;
   const others = Math.max(0, variants.length - 1);
 
   // Тот же код, что дал реестр, — правки нет: вернуть код реестра.
@@ -226,10 +234,7 @@ export const CodeLine: FC<Props> = ({
           </span>
         )}
         {name && (
-          <span
-            className={styles.codeName}
-            title={override?.path ?? undefined}
-          >
+          <span className={styles.codeName} title={fullPath ?? undefined}>
             {name}
           </span>
         )}
@@ -326,6 +331,10 @@ export const CodeLine: FC<Props> = ({
             выбирает сам заявитель. В карточке — тот, что классификатор
             связывает с веществом, а среди таких — самый частый.
             {editable ? " Можно выбрать и другой." : ""}
+            {kind === "tnved" &&
+              " «Прочие» в ТН ВЭД — всё, что входит в уровень выше, но не" +
+                " попало в названные рядом позиции; поэтому у кодов показана" +
+                " цепочка уровней (полностью — в подсказке)."}
           </p>
           <ul className={styles.codeVariantList}>
             {variants.map((v) => (
@@ -333,7 +342,7 @@ export const CodeLine: FC<Props> = ({
                 <CodeValue kind={kind} code={v.code} />
                 {v.retired && <span className={styles.codeRetired}>снят</span>}
                 <span className={styles.codeName} title={v.path ?? undefined}>
-                  {v.name ?? "нет в классификаторе"}
+                  {titled(v.name, v.path) ?? "нет в классификаторе"}
                 </span>
                 <span className={styles.codeCount}>
                   {v.count} {plural(v.count, "запись", "записи", "записей")}

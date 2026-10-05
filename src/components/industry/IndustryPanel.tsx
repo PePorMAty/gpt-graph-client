@@ -9,7 +9,7 @@ import type {
   IndustryProducer,
   IndustryProductInfo,
 } from "../../store/api/industry-api";
-import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url, tnvedTitle } from "./gisp";
 import {
   STATUS_FILTERS,
   matchesStatus,
@@ -123,7 +123,12 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
               <span className={styles.codeLabel}>ТН ВЭД</span>
               <span className={styles.codeValue}>{p.tnved}</span>
               {p.tnvedName && (
-                <span className={styles.codeName}>{p.tnvedName}</span>
+                <span
+                  className={styles.codeName}
+                  title={p.tnvedPath ?? undefined}
+                >
+                  {tnvedTitle(p.tnvedName, p.tnvedPath)}
+                </span>
               )}
             </div>
           )}
@@ -427,7 +432,11 @@ export const IndustryPanel: FC<Props> = ({
           kind="tnved"
           registry={
             info.tnved
-              ? { code: info.tnved, name: info.tnvedName ?? null }
+              ? {
+                  code: info.tnved,
+                  name: info.tnvedName ?? null,
+                  path: info.tnvedPath ?? null,
+                }
               : info.tnvedCategory
                 ? {
                     code: info.tnvedCategory.code,
