@@ -39,6 +39,13 @@ export interface GraphToolbarProps {
 
   alternatives: boolean;
   onToggleAlternatives: () => void;
+
+  /**
+   * Просмотр по ссылке: только переключатели «Только продукты»,
+   * «Промышленные данные» и «Альтернативы». Меню графа (в нём правка
+   * легенды) и фокус-режим остаются рабочему месту.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -61,6 +68,7 @@ export const GraphToolbar = ({
   onToggleIndustryData,
   alternatives,
   onToggleAlternatives,
+  readOnly = false,
 }: GraphToolbarProps) => {
   const [focusMenuOpen, setFocusMenuOpen] = useState(false);
   const focusRef = useRef<HTMLDivElement>(null);
@@ -69,7 +77,7 @@ export const GraphToolbar = ({
 
   return (
     <div className={styles.bar}>
-      <GraphNameMenu name={graphName} />
+      {!readOnly && <GraphNameMenu name={graphName} />}
 
       {/* В фокус-режиме окрестность строит своя проекция — «только продукты»
           там неприменимо, поэтому кнопку убираем совсем. */}
@@ -88,71 +96,73 @@ export const GraphToolbar = ({
 
       {/* Фокус-режим: сама кнопка включает режим, стрелка открывает
           настройки охвата — раньше они жили в плашке поверх полотна. */}
-      <div className={styles.focusGroup} ref={focusRef}>
-        <button
-          type="button"
-          className={`${styles.chip} ${styles.chipSplit} ${
-            focusOn ? styles.chipActive : ""
-          }`}
-          onClick={onToggleFocus}
-          aria-pressed={focusOn}
-          title="Показать только окрестность выбранного узла"
-        >
-          <FocusIcon size={16} className={styles.chipIcon} />
-          Фокус
-        </button>
-        <button
-          type="button"
-          className={`${styles.chipCaret} ${focusOn ? styles.chipActive : ""} ${
-            focusMenuOpen ? styles.chipCaretOpen : ""
-          }`}
-          onClick={() => setFocusMenuOpen((v) => !v)}
-          aria-label="Настройки фокус-режима"
-          aria-expanded={focusMenuOpen}
-        >
-          <ChevronDownIcon size={14} />
-        </button>
+      {!readOnly && (
+        <div className={styles.focusGroup} ref={focusRef}>
+          <button
+            type="button"
+            className={`${styles.chip} ${styles.chipSplit} ${
+              focusOn ? styles.chipActive : ""
+            }`}
+            onClick={onToggleFocus}
+            aria-pressed={focusOn}
+            title="Показать только окрестность выбранного узла"
+          >
+            <FocusIcon size={16} className={styles.chipIcon} />
+            Фокус
+          </button>
+          <button
+            type="button"
+            className={`${styles.chipCaret} ${focusOn ? styles.chipActive : ""} ${
+              focusMenuOpen ? styles.chipCaretOpen : ""
+            }`}
+            onClick={() => setFocusMenuOpen((v) => !v)}
+            aria-label="Настройки фокус-режима"
+            aria-expanded={focusMenuOpen}
+          >
+            <ChevronDownIcon size={14} />
+          </button>
 
-        {focusMenuOpen && (
-          <div className={styles.focusMenu}>
-            <div className={styles.focusMenuHead}>Что показывать вокруг узла</div>
-            {SCOPE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`${styles.focusOption} ${
-                  focusScope === opt.value ? styles.focusOptionActive : ""
-                }`}
-                onClick={() => onFocusScopeChange(opt.value)}
-              >
-                <span className={styles.focusOptionLabel}>{opt.label}</span>
-                <span className={styles.focusOptionHint}>{opt.hint}</span>
-              </button>
-            ))}
+          {focusMenuOpen && (
+            <div className={styles.focusMenu}>
+              <div className={styles.focusMenuHead}>Что показывать вокруг узла</div>
+              {SCOPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`${styles.focusOption} ${
+                    focusScope === opt.value ? styles.focusOptionActive : ""
+                  }`}
+                  onClick={() => onFocusScopeChange(opt.value)}
+                >
+                  <span className={styles.focusOptionLabel}>{opt.label}</span>
+                  <span className={styles.focusOptionHint}>{opt.hint}</span>
+                </button>
+              ))}
 
-            {focusScope === "steps" && (
-              <div className={styles.depthRow}>
-                <span className={styles.depthLabel}>Глубина</span>
-                <div className={styles.depthButtons}>
-                  {DEPTH_OPTIONS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      className={`${styles.depthButton} ${
-                        d === focusDepth ? styles.depthButtonActive : ""
-                      }`}
-                      onClick={() => onFocusDepthChange(d)}
-                      aria-pressed={d === focusDepth}
-                    >
-                      {d}
-                    </button>
-                  ))}
+              {focusScope === "steps" && (
+                <div className={styles.depthRow}>
+                  <span className={styles.depthLabel}>Глубина</span>
+                  <div className={styles.depthButtons}>
+                    {DEPTH_OPTIONS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`${styles.depthButton} ${
+                          d === focusDepth ? styles.depthButtonActive : ""
+                        }`}
+                        onClick={() => onFocusDepthChange(d)}
+                        aria-pressed={d === focusDepth}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"
