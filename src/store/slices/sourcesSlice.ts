@@ -122,6 +122,9 @@ const sourcesSlice = createSlice({
       const key = sourcesKey(nodeId, direction);
       const s = state.byNodeId[key];
       if (!s) return;
+      // Начинаем шаг заново — с поиска: прежние источники здесь лежат запасной
+      // копией пула (см. stepSources в Flow) и вернули бы мастер на их экран.
+      s.sources = [];
       s.stepSourcesStatus = "idle";
       s.stepSourcesError = null;
       s.stepSourcesExhausted = false;

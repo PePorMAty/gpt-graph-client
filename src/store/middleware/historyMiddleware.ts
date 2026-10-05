@@ -161,8 +161,17 @@ function describe(
       };
     }
 
-    case "graph/removeEdge":
-      return { kind: "link", title: "Связь удалена" };
+    case "graph/removeEdge": {
+      const edge = before.graph.data.edges.find((e) => e.id === payload);
+      return edge
+        ? {
+            kind: "link",
+            title: "Связь удалена",
+            details: `«${labelOf(prevNodes, edge.source)}» → «${labelOf(prevNodes, edge.target)}»`,
+            nodeIds: [edge.source, edge.target],
+          }
+        : { kind: "link", title: "Связь удалена" };
+    }
 
     case "graph/acceptPendingStep":
       return {
