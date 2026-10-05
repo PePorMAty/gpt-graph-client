@@ -2,6 +2,12 @@ export interface FillCardField {
   key: string;
   label: string;
   custom?: boolean;
+  /**
+   * Что именно ждём в поле, если одной подписи мало: единицы, год, доли.
+   * Уходит в промпт блоком «Пояснения к полям». Те же пояснения — на
+   * сервере (routes/fill-card/utils/card.js, FIELD_HINTS).
+   */
+  hint?: string;
 }
 
 export const PRODUCT_FIELDS: FillCardField[] = [
@@ -12,10 +18,35 @@ export const PRODUCT_FIELDS: FillCardField[] = [
   { key: "allowed_impurities", label: "Допустимые примеси" },
   { key: "conversion_yield", label: "Коэффициент конверсии" },
   { key: "typical_scale", label: "Типичный масштаб производства" },
+  {
+    key: "production_volume_rf",
+    label: "Объём производства в РФ (т/г)",
+    hint: "в тоннах в год, с годом, к которому относятся цифры, и источником, если он известен",
+  },
+  {
+    key: "import_volume_rf",
+    label: "Объём импорта в РФ (т/г)",
+    hint: "в тоннах в год, с годом и источником, если известны",
+  },
+  {
+    key: "export_volume_rf",
+    label: "Объём экспорта из РФ (т/г)",
+    hint: "в тоннах в год, с годом и источником, если известны",
+  },
+  {
+    key: "production_methods_share",
+    label: "Распределение по способам производства",
+    hint: "способы получения продукта и их доли в выпуске (в процентах) в РФ и в мире",
+  },
   { key: "storage", label: "Условия хранения" },
   { key: "carbon_footprint", label: "Углеродный след" },
   { key: "producers", label: "Производители" },
   { key: "applications", label: "Основные применения" },
+  {
+    key: "derivatives_usage_share",
+    label: "Распределение по объёмам использования в производных продуктах",
+    hint: "производные продукты, на которые расходуется продукт, и их доли в потреблении (в процентах)",
+  },
   { key: "price", label: "Цена" },
 ];
 
@@ -25,6 +56,16 @@ export const TRANSFORMATION_FIELDS: FillCardField[] = [
   { key: "equipment", label: "Оборудование" },
   { key: "conditions", label: "Условия" },
   {
+    key: "material_balance",
+    label: "Материальный баланс (на тонну продукта)",
+    hint: "расход каждого вида сырья и вспомогательных веществ и выход продуктов на 1 тонну целевого продукта",
+  },
+  {
+    key: "by_products",
+    label: "Побочные продукты",
+    hint: "что образуется помимо целевого продукта, сколько и куда направляется",
+  },
+  {
     key: "constraints_or_key_property",
     label: "Ограничения или ключевое свойство технологии",
   },
@@ -33,6 +74,11 @@ export const TRANSFORMATION_FIELDS: FillCardField[] = [
     label: "Дополнительные вещества, материалы, расходники или катализаторы",
   },
   { key: "energy", label: "Энергетика" },
+  {
+    key: "ecology",
+    label: "Экология",
+    hint: "выбросы, сбросы и отходы процесса, их опасность и способы обезвреживания",
+  },
   { key: "enterprise_and_plant", label: "Предприятие и завод" },
 ];
 
@@ -115,6 +161,15 @@ export function getDefaultFillCardSystemPrompt(
     .map((f) => `${f.label}:\n...`)
     .join("\n\n");
 
+  // Пояснения к полям, которым мало подписи. Цифры объёмов модель охотно
+  // выдумывает — прямо разрешаем написать «нет данных».
+  const hintLines = fields
+    .filter((f) => f.hint)
+    .map((f) => `- ${f.label} — ${f.hint}.`);
+  const hints = hintLines.length
+    ? `\n\nПояснения к полям:\n${hintLines.join("\n")}\nЕсли надёжных цифр нет, так и напиши — не придумывай.`
+    : "";
+
   const intro =
     nodeType === "transformation" ? TRANSFORMATION_INTRO : PRODUCT_INTRO;
   const prefix =
@@ -122,5 +177,5 @@ export function getDefaultFillCardSystemPrompt(
       ? "Верни ответ строго в таком виде:"
       : "Нужно вернуть ответ строго в таком виде:";
 
-  return `${intro}\n\n${prefix}\n\n${formatLines}`;
+  return `${intro}\n\n${prefix}\n\n${formatLines}${hints}`;
 }

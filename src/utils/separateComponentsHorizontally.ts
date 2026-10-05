@@ -61,9 +61,10 @@ export function separateComponentsHorizontally(
     let minX = Infinity;
     let maxX = -Infinity;
     for (const id of comp) {
-      const x = nodeById.get(id)!.position.x;
+      const node = nodeById.get(id)!;
+      const x = node.position.x;
       minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x + NODE_WIDTH);
+      maxX = Math.max(maxX, x + (node.measured?.width ?? NODE_WIDTH));
     }
     return { minX, maxX };
   });

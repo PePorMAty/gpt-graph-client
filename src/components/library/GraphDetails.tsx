@@ -11,6 +11,7 @@ import { Button } from "../ui/Button";
 import { GraphPreview } from "./GraphPreview";
 import { MergeGraphsTab } from "./MergeGraphsTab";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
+import { codeOverridesByProduct } from "../industry/codeOverrides";
 import { GraphSourcesList } from "../rail-panel/GraphSourcesList";
 import {
   BranchIcon,
@@ -102,6 +103,8 @@ export const GraphDetails = ({
     [nodes],
   );
   const edges = useMemo(() => file?.graph.edges ?? [], [file]);
+  // Коды, заданные продуктам вручную, — из того же файла.
+  const codeOverrides = useMemo(() => codeOverridesByProduct(nodes), [nodes]);
 
   const stats = useMemo(
     () => ({
@@ -332,7 +335,10 @@ export const GraphDetails = ({
         )}
 
         {tab === "industry" && (
-          <IndustryGraphPanel productNames={productNames} />
+          <IndustryGraphPanel
+            productNames={productNames}
+            codeOverrides={codeOverrides}
+          />
         )}
 
         {tab === "merge" && (

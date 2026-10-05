@@ -8,6 +8,7 @@ import type {
 } from "../../store/api/industry-api";
 import { plural } from "../../utils/plural";
 import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
+import type { CodeOverrides } from "./codeOverrides";
 import {
   STATUS_FILTERS,
   matchesStatus,
@@ -65,6 +66,11 @@ interface Props {
   /** Названия продуктов текущего графа. */
   productNames: string[];
   /**
+   * Коды, заданные продуктам вручную (codeOverridesByProduct): показываются
+   * вместо кода реестра.
+   */
+  codeOverrides?: Map<string, CodeOverrides>;
+  /**
    * Узкая раскладка для левой панели.
    *
    * В библиотеке под таблицу отдан весь экран, и шесть колонок читаются. В
@@ -103,7 +109,11 @@ const Region: FC<{ row: Row }> = ({ row }) => (
  * Отбор «Компания» показывает продукцию одного производителя — например,
  * всё, что на графе выпускает «ГК «Титан»».
  */
-export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false }) => {
+export const IndustryGraphPanel: FC<Props> = ({
+  productNames,
+  codeOverrides,
+  compact = false,
+}) => {
   const dispatch = useAppDispatch();
   const { results, ready, reason, actualAt, status, error } = useAppSelector(
     (s) => s.industry,
@@ -195,11 +205,12 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       if (product && name !== product) continue;
       // Запрос о самом продукте — по названию или классу — оставляет его
       // целиком: искали продукт, а не одно из его предприятий.
+      const own = codeOverrides?.get(industryKey(name))?.okpd2;
       const aboutProduct =
         !q ||
         name.toLowerCase().includes(q) ||
-        (info.okpd2 ?? "").includes(q) ||
-        (info.okpd2Name ?? "").toLowerCase().includes(q);
+        (own?.code ?? info.okpd2 ?? "").includes(q) ||
+        ((own ? own.name : info.okpd2Name) ?? "").toLowerCase().includes(q);
       const matched: Row[] = [];
       for (const p of info.producers) {
         if (activeCompany && companyKey(p) !== activeCompany.key) continue;
@@ -221,7 +232,7 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
       }
     }
     return out;
-  }, [names, results, query, product, activeCompany, region, statusFilter]);
+  }, [names, results, query, product, activeCompany, region, statusFilter, codeOverrides]);
 
   const filtered = Boolean(
     query.trim() || activeCompany || product || region || statusFilter !== "all",
@@ -790,15 +801,26 @@ export const IndustryGraphPanel: FC<Props> = ({ productNames, compact = false })
                       <span className={styles.groupName}>{g.name}</span>
                       {/* Класс продукции: по одному названию не понять, к чему
                           реестр продукт отнёс. */}
-                      {g.info.okpd2 && (
-                        <span className={styles.groupClass}>
-                          <span className={styles.groupCode}>{g.info.okpd2}</span>
-                          {g.info.okpd2Name && <> {g.info.okpd2Name}</>}
-                          {g.info.viaFormulation && (
-                            <span className={styles.groupTag}>в составе препарата</span>
-                          )}
-                        </span>
-                      )}
+                      {(() => {
+                        // Код, заданный вручную, — вместо кода реестра.
+                        const own = codeOverrides?.get(industryKey(g.name))?.okpd2;
+                        const code = own?.code ?? g.info.okpd2;
+                        const codeName = own ? own.name : g.info.okpd2Name;
+                        return (
+                          code && (
+                            <span className={styles.groupClass}>
+                              <span className={styles.groupCode}>{code}</span>
+                              {codeName && <> {codeName}</>}
+                              {own && (
+                                <span className={styles.groupTag}>задан вручную</span>
+                              )}
+                              {g.info.viaFormulation && (
+                                <span className={styles.groupTag}>в составе препарата</span>
+                              )}
+                            </span>
+                          )
+                        );
+                      })()}
                     </span>
                     <span
                       className={styles.groupCount}

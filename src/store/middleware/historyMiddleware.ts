@@ -2,6 +2,10 @@ import type { Middleware } from "@reduxjs/toolkit";
 
 import type { RootState } from "../store";
 import type { CustomNode } from "../../types";
+import {
+  CODE_LABEL,
+  readCodeOverrides,
+} from "../../components/industry/codeOverrides";
 import { getGraphData } from "../api/graph-api";
 import {
   pushHistory,
@@ -119,6 +123,25 @@ function describe(
         | undefined;
       if (!p) return null;
       const was = prevNodes.find((n) => n.id === p.nodeId);
+      // Коды продукта, заданные вручную во вкладке «Промышленное знание»: что
+      // поменялось, видно по кодам до и после.
+      if ("codeOverrides" in p.data) {
+        const before = readCodeOverrides(was?.data);
+        const after = readCodeOverrides({
+          codeOverrides: p.data.codeOverrides as CustomNode["data"]["codeOverrides"],
+        });
+        const changes = (["okpd2", "tnved"] as const)
+          .filter((k) => before[k]?.code !== after[k]?.code)
+          .map((k) => `${CODE_LABEL[k]} — ${after[k]?.code ?? "код реестра"}`);
+        if (changes.length) {
+          return {
+            kind: "edit",
+            title: "Изменены коды продукта",
+            details: `«${labelOf(prevNodes, p.nodeId)}»: ${changes.join(", ")}`,
+            nodeIds: [p.nodeId],
+          };
+        }
+      }
       // Пишем только смысловые правки: подпись и описание. Прочие поля
       // (источники, техописание, флаги) приходят пачками и залили бы историю.
       if (typeof p.data.label === "string" && p.data.label !== was?.data?.label) {
@@ -161,10 +184,28 @@ function describe(
       };
     }
 
-    case "graph/removeEdge":
-      return { kind: "link", title: "Связь удалена" };
+    case "graph/removeEdge": {
+      const edge = before.graph.data.edges.find((e) => e.id === payload);
+      return edge
+        ? {
+            kind: "link",
+            title: "Связь удалена",
+            details: `«${labelOf(prevNodes, edge.source)}» → «${labelOf(prevNodes, edge.target)}»`,
+            nodeIds: [edge.source, edge.target],
+          }
+        : { kind: "link", title: "Связь удалена" };
+    }
 
     case "graph/acceptPendingStep":
+      // Шаг, который уже стоит на графе или замкнул бы петлю, граф не меняет:
+      // «Шаг принят» в истории тогда был бы неправдой.
+      if (added === 0 && addedEdges <= 0) {
+        return {
+          kind: "step",
+          title: "Шаг не добавлен",
+          details: "граф не изменился: такой шаг уже есть или он замкнул бы петлю",
+        };
+      }
       return {
         kind: "step",
         title: "Шаг принят",

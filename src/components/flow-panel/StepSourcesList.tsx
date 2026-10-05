@@ -159,14 +159,6 @@ export const StepSourcesList: FC<Props> = ({
                       {local ? <FilePdfIcon size={17} /> : <FileJsonIcon size={17} />}
                     </span>
                     <span className={styles.sourceName}>{s.title || s.url}</span>
-                    {local && s.prospective && (
-                      <span
-                        className={styles.sourceSaved}
-                        title="Процесс ещё не освоен промышленностью: обобщение поставит его альтернативой, а не основным путём"
-                      >
-                        перспективная
-                      </span>
-                    )}
                     {local && (
                       <span
                         className={styles.sourcePdf}

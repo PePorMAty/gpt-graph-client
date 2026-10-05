@@ -19,3 +19,30 @@ export const GISP_REGISTRY_URL = "https://gisp.gov.ru/pp719v2/pub/prod/";
  */
 export const okpd2Url = (code: string) =>
   `https://classifikators.ru/okpd/${encodeURIComponent(String(code ?? "").trim())}`;
+
+/** «Прочие», «прочая», «другие»… — имя, которое без уровня над ним пусто. */
+const GENERIC_TNVED = /^(прочи[еийхм]|прочая|прочее|други[ех]|остальные)$/i;
+
+/**
+ * Название позиции ТН ВЭД, которое можно прочесть.
+ *
+ * Номенклатура иерархическая, и имя позиции продолжает имя уровня над ней.
+ * «3920 10 250 0 — прочие» значит: плёнка из полимеров этилена толщиной не
+ * более 0,125 мм, из полиэтилена с удельным весом менее 0,94 — кроме
+ * названных рядом позиций (растягивающейся плёнки и т. п.). Само «прочие»
+ * этого не говорит, поэтому показываем цепочку уровней. Товарную позицию —
+ * первый уровень, длинное «Плиты, листы, плёнка…» — опускаем; если ниже
+ * неё одни «прочие», оставляем и её.
+ */
+export function tnvedTitle(
+  name: string | null | undefined,
+  path?: string | null,
+): string | null {
+  const levels = String(path ?? "")
+    .split(" → ")
+    .map((l) => l.trim())
+    .filter((l, i, all) => l && l !== all[i - 1]);
+  if (levels.length < 2) return name ?? levels[0] ?? null;
+  const below = levels.slice(1);
+  return (below.every((l) => GENERIC_TNVED.test(l)) ? levels : below).join(" → ");
+}

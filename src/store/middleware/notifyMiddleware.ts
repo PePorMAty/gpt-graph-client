@@ -18,6 +18,7 @@ import {
   type ToastTarget,
 } from "../../components/toast/toastStore";
 import type { RootState } from "../store";
+import { sourcesPoolKey } from "../slices/gptSlice";
 import { describeFailure, type FailureStage } from "./failureText";
 
 /**
@@ -67,6 +68,56 @@ function notifyFailure(
   notify("error", text, detail, canvas, target);
 }
 
+/**
+ * Шаг не лёг на граф: такой уже стоит на графе или он замкнул бы петлю.
+ *
+ * Окно мастера при этом закрывается так же, как после принятого шага, и без
+ * уведомления казалось, что шаг добавлен, — а на полотне ничего не менялось.
+ * Узнаётся по разнице «до/после»: шаг в сессию не записан, а у продукта
+ * появилась пометка «нужны свежие источники» с причиной.
+ */
+function notifyDeadEnd(
+  before: RootState["graph"],
+  after: RootState["graph"],
+  payload: unknown,
+  canvas: string,
+) {
+  const key = (payload as { sessionKey?: string } | undefined)?.sessionKey;
+  const session = key ? before.stepChainSessions[key] : undefined;
+  if (!key || !session?.pendingStep) return;
+  if ((after.stepChainSessions[key]?.steps.length ?? 0) !== session.steps.length) {
+    return;
+  }
+  const anchor = before.data.nodes.find(
+    (n) => n.id === session.currentProductNodeId,
+  );
+  const label = String(anchor?.data?.label ?? "").trim();
+  if (!anchor || !label) return;
+  const marker = after.needsFreshSources[sourcesPoolKey(label, session.direction)];
+  const target = { nodeId: anchor.id, label };
+  const names = marker?.loopOn?.length ? `«${marker.loopOn.join("», «")}»` : "";
+  if (marker?.reason === "exists") {
+    notify(
+      "info",
+      `Такой шаг уже есть на графе — «${label}»`,
+      `${marker.transformation ? `«${marker.transformation}»` : "Преобразование"}` +
+        `${names ? ` с ${names}` : ""} уже связано с этим продуктом, новых связей ` +
+        "не добавлено. Чтобы продолжить в новом направлении, найдите свежие источники.",
+      canvas,
+      target,
+    );
+  } else if (marker?.reason === "cycle") {
+    notify(
+      "info",
+      `Шаг не добавлен: он замкнул бы петлю — «${label}»`,
+      `${names ? `Шаг возвращается к ${names}. ` : ""}` +
+        "Чтобы продолжить в новом направлении, найдите свежие источники.",
+      canvas,
+      target,
+    );
+  }
+}
+
 /** Запрос пользователя в подписи уведомления: целиком он бывает на абзац. */
 function short(text: string, max = 40): string {
   const value = text.trim();
@@ -83,6 +134,11 @@ function short(text: string, max = 40): string {
  * какой продукт речь («Шаг построен — «Этилен»»).
  */
 export const notifyMiddleware: Middleware = (store) => (next) => (action) => {
+  // Шаг, не легший на граф, виден только по разнице «до/после».
+  const graphBefore =
+    (action as { type?: unknown }).type === "graph/acceptPendingStep"
+      ? (store.getState() as RootState).graph
+      : null;
   const result = next(action);
   const a = action as {
     type?: string;
@@ -111,6 +167,15 @@ export const notifyMiddleware: Middleware = (store) => (next) => (action) => {
   if (requestId && (type.endsWith("/fulfilled") || type.endsWith("/rejected"))) {
     canvas = requestCanvas.get(requestId) ?? canvas;
     requestCanvas.delete(requestId);
+  }
+
+  if (graphBefore) {
+    notifyDeadEnd(
+      graphBefore,
+      (store.getState() as RootState).graph,
+      a.payload,
+      canvas,
+    );
   }
 
   /** Узел по id — с подписью, какая у него сейчас на полотне. */

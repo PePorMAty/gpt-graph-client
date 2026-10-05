@@ -38,14 +38,6 @@ const SectionList = ({ items }: { items: TechnologySource[] }) => (
                 {LOCAL_ROLE_TEXT[d.role]}
               </span>
             )}
-            {d.prospective && (
-              <span
-                className={`${styles.baseTag} ${styles.baseTag_prospective}`}
-                title="Процесс ещё не освоен промышленностью: в построении шага пойдёт альтернативой, а не основным путём"
-              >
-                перспективная технология
-              </span>
-            )}
           </span>
         </span>
       </li>

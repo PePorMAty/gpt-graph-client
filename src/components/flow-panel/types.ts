@@ -121,8 +121,9 @@ export interface DirectionTabProps {
    *  Причины — см. InitialGraphStateI.needsFreshSources в store/types.ts. */
   stepNeedsFreshSources?: {
     fromProduct: string;
-    reason?: "insufficient" | "cycle" | "alternative" | "manual";
+    reason?: "insufficient" | "cycle" | "alternative" | "manual" | "exists";
     loopOn?: string[];
+    transformation?: string;
   } | null;
 
   stepAggregatedText?: string | null;

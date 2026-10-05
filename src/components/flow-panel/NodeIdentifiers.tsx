@@ -7,7 +7,8 @@ import {
   readProductId,
   readProductIdSource,
 } from "../../utils/productIdentity";
-import { okpd2Url } from "../industry/gisp";
+import { okpd2Url, tnvedTitle } from "../industry/gisp";
+import { readCodeOverrides } from "../industry/codeOverrides";
 import styles from "./NodeCard.module.css";
 
 interface Props {
@@ -75,11 +76,15 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
 
   const substance = readProductId(data);
   const source = readProductIdSource(data);
-  const okpd2 = industry?.found ? industry.okpd2 : null;
-  const tnved = industry?.found ? industry.tnved : null;
+  // Код, заданный вручную во вкладке «Промышленное знание», главнее кода
+  // реестра: человек поправил его сознательно.
+  const own = readCodeOverrides(data);
+  const okpd2 = own.okpd2 ? null : industry?.found ? industry.okpd2 : null;
+  const tnved = own.tnved ? null : industry?.found ? industry.tnved : null;
   // Кода из реестра нет (или нет записи) — позиция по названию вещества из
   // классификатора, с пометкой: это справка, а не код заявителя.
-  const tnvedByName = !tnved ? (industry?.tnvedCategory ?? null) : null;
+  const tnvedByName =
+    !tnved && !own.tnved ? (industry?.tnvedCategory ?? null) : null;
   // CAS — факт справочника, а не реестра: он есть и у вещества, которого в
   // ГИСП нет вовсе. Потому и не прячется за found, в отличие от кодов.
   const cas = industry?.cas ?? null;
@@ -134,6 +139,26 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             </div>
           )}
 
+          {own.okpd2 && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ОКПД2</span>
+              <span className={styles.idPopValue}>
+                <a
+                  className={styles.idPopLink}
+                  href={okpd2Url(own.okpd2.code)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {own.okpd2.code}
+                </a>
+                <span className={styles.idPopNote}>
+                  {own.okpd2.name ?? "нет в классификаторе"}
+                </span>
+                <span className={styles.idPopNote}>задан вручную</span>
+              </span>
+            </div>
+          )}
+
           {okpd2 && (
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ОКПД2</span>
@@ -169,6 +194,20 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             </div>
           )}
 
+          {own.tnved && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ТН ВЭД</span>
+              <span className={styles.idPopValue}>
+                {own.tnved.code}
+                <span className={styles.idPopNote}>
+                  {tnvedTitle(own.tnved.name, own.tnved.path) ??
+                    "нет в классификаторе"}
+                </span>
+                <span className={styles.idPopNote}>задан вручную</span>
+              </span>
+            </div>
+          )}
+
           {tnved && (
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ТН ВЭД</span>
@@ -176,7 +215,7 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                 {tnved}
                 {industry?.tnvedName && (
                   <span className={styles.idPopNote}>
-                    {industry.tnvedName}
+                    {tnvedTitle(industry.tnvedName, industry.tnvedPath)}
                   </span>
                 )}
               </span>

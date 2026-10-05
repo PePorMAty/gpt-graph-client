@@ -39,6 +39,7 @@ export interface IndustryProducer {
   /** Код товарной номенклатуры и его расшифровка. */
   tnved?: string | null;
   tnvedName?: string | null;
+  tnvedPath?: string | null;
   status: "active" | "archived";
   statusLabel: string;
   regNumber: string | null;
@@ -46,6 +47,40 @@ export interface IndustryProducer {
   /** Когда запись реестра прекратила действовать. */
   endedAt?: string | null;
   url: string | null;
+}
+
+/**
+ * Один из кодов записей реестра, найденных для продукта, — с названием по
+ * классификатору и числом записей под ним. Записи одного продукта стоят под
+ * разными кодами; карточка показывает самый подходящий, а этим списком
+ * раскрывает «у остальных записей ещё кодов: n».
+ */
+export interface IndustryCodeVariant {
+  code: string;
+  name: string | null;
+  /** Сколько записей реестра стоят под этим кодом. */
+  count: number;
+  /** ОКПД2: название относится к коду целиком, а не к группе над ним. */
+  exact?: boolean;
+  /** ОКПД2: кода нет в действующем классификаторе. */
+  retired?: boolean;
+  /** ТН ВЭД: полная цепочка названий — у позиции имя бывает «прочие». */
+  path?: string | null;
+}
+
+/** Код, вписанный человеком, — как его прочёл классификатор. */
+export interface DescribedCode {
+  /** Код как он записывается: ОКПД2 с точками, ТН ВЭД цифрами. */
+  code: string;
+  /** ТН ВЭД по группам: «2933 71 000 0». */
+  formatted?: string;
+  name: string | null;
+  path?: string | null;
+  /** Название относится к коду целиком, а не к группе над ним. */
+  exact: boolean;
+  /** Такой код в классификаторе есть. */
+  known: boolean;
+  retired?: boolean;
 }
 
 export interface IndustryProductInfo {
@@ -125,10 +160,19 @@ export interface IndustryProductInfo {
   okpd2Share?: number;
   /** Сколько ещё разных кодов у остальных записей. */
   okpd2Others?: number;
+  /** Все коды записей, первым — выбранный (okpd2Registry или okpd2). */
+  okpd2Codes?: IndustryCodeVariant[];
   tnved?: string | null;
   tnvedName?: string | null;
+  /**
+   * Цепочка названий ТН ВЭД сверху вниз: у позиции имя бывает «прочие», и
+   * что это, видно только по уровням над ней (см. tnvedTitle).
+   */
+  tnvedPath?: string | null;
   /** Сколько ещё разных кодов ТН ВЭД у остальных записей. */
   tnvedOthers?: number;
+  /** Все коды ТН ВЭД записей, первым — выбранный. */
+  tnvedCodes?: IndustryCodeVariant[];
   /**
    * Позиция ТН ВЭД по НАЗВАНИЮ вещества — по классификатору, без реестра
    * (группы 28–29: там названия — вещества). Показывается, когда кода из
@@ -202,6 +246,18 @@ export async function lookupIndustry(
 ): Promise<IndustryLookupResponse> {
   const { data } = await axios.post(`${base()}/industry/lookup`, { products });
   return data;
+}
+
+/**
+ * Прочитать код, вписанный человеком: формат и название по классификатору.
+ * null — код записан не по формату; undefined — его не спрашивали.
+ */
+export async function describeCodes(codes: {
+  okpd2?: string;
+  tnved?: string;
+}): Promise<{ okpd2?: DescribedCode | null; tnved?: DescribedCode | null }> {
+  const { data } = await axios.post(`${base()}/industry/codes`, codes);
+  return { okpd2: data?.okpd2, tnved: data?.tnved };
 }
 
 /**
