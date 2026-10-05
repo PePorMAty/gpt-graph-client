@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { useAppSelector } from "../../store/hooks";
+import { codeOverridesByProduct } from "../industry/codeOverrides";
 import { IndustryGraphPanel } from "../industry/IndustryGraphPanel";
 import { LocalSourcesPanel } from "./LocalSourcesPanel";
 import { SourcesSection } from "./SourcesSection";
@@ -38,6 +39,7 @@ export const DatabaseSection = () => {
     ],
     [nodes],
   );
+  const codeOverrides = useMemo(() => codeOverridesByProduct(nodes), [nodes]);
 
   return (
     <div className={styles.section}>
@@ -59,7 +61,11 @@ export const DatabaseSection = () => {
         {view === "sources" ? (
           <SourcesSection />
         ) : view === "industry" ? (
-          <IndustryGraphPanel productNames={productNames} compact />
+          <IndustryGraphPanel
+            productNames={productNames}
+            codeOverrides={codeOverrides}
+            compact
+          />
         ) : (
           <LocalSourcesPanel productNames={productNames} />
         )}

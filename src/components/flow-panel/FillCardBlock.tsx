@@ -89,7 +89,10 @@ export const FillCardBlock: FC<FillCardBlockProps> = ({
   // ── редактор промпта ──
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [manualPrompt, setManualPrompt] = useState<string | null>(null);
-  const [useWebSearch, setUseWebSearch] = useState(false);
+  // Поиск в интернете по умолчанию включён (решение заказчика): без него
+  // объёмы производства, импорта и экспорта модель берёт из памяти. Модель,
+  // которая искать не умеет, отвечает без поиска — сервер это учитывает.
+  const [useWebSearch, setUseWebSearch] = useState(true);
 
   const autoPrompt = useMemo(
     () => getDefaultFillCardSystemPrompt(nodeType, activeFields),

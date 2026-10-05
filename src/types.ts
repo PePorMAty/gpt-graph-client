@@ -7,6 +7,15 @@ import type {
 
 /* ====== DATA STRUCTURE FROM SERVER ====== */
 
+/** Код, заданный продукту вручную (см. CustomNodeData.codeOverrides). */
+export interface CodeOverride {
+  code: string;
+  /** Название по классификатору на момент выбора; null — кода там нет. */
+  name: string | null;
+  /** ТН ВЭД: полная цепочка названий. */
+  path?: string | null;
+}
+
 // Структура node.data
 export interface CustomNodeData {
   label: string;
@@ -23,6 +32,14 @@ export interface CustomNodeData {
    */
   productId?: string;
   productIdSource?: "manual" | "tnved" | "cas" | "dictionary";
+  /**
+   * Коды ОКПД2 и ТН ВЭД, которые человек задал продукту сам во вкладке
+   * «Промышленное знание»: выбрал среди кодов записей реестра или вписал.
+   * Показываются вместо кода реестра — в карточке, в подсказке «ID» и в
+   * списке «Промышленное знание»; код реестра остаётся рядом для сверки.
+   * Живут в узле и сохраняются вместе с графом.
+   */
+  codeOverrides?: { okpd2?: CodeOverride; tnved?: CodeOverride };
   /**
    * Обобщённое описание шага (markdown), прокинутое на transformation-ноду от
    * продукта-якоря, от которого строился шаг (step-by-step). Показывается в

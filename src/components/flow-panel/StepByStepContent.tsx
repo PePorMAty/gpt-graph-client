@@ -124,7 +124,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   // Тупиковый/рециклинговый продукт: продолжение замыкает петлю И повторный
   // поиск исчерпан — звать «искать свежие» бессмысленно, честно говорим о тупике.
   const isTerminalRecycle =
-    stepNeedsFreshSources?.reason === "cycle" && stepSourcesExhausted;
+    (stepNeedsFreshSources?.reason === "cycle" ||
+      stepNeedsFreshSources?.reason === "exists") &&
+    stepSourcesExhausted;
   const isBorrowedSources = !!stepSourcesOrigin;
   // Взятое из базы сервера для этого продукта — его собственное, даже если
   // остальной список взят у предка.
@@ -484,7 +486,22 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       {/* Маркер с build родителя: этому продукту нужны свежие источники */}
       {stepNeedsFreshSources && (
         <div className={styles.warningText}>
-          {stepNeedsFreshSources.reason === "cycle" ? (
+          {stepNeedsFreshSources.reason === "exists" ? (
+            <>
+              Шаг от «{productName}» по текущим источникам уже есть на графе
+              {stepNeedsFreshSources.transformation
+                ? ` — «${stepNeedsFreshSources.transformation}»`
+                : ""}
+              {stepNeedsFreshSources.loopOn &&
+              stepNeedsFreshSources.loopOn.length > 0
+                ? ` с «${stepNeedsFreshSources.loopOn.join("», «")}»`
+                : ""}
+              ; новых связей не добавлено.{" "}
+              {isTerminalRecycle
+                ? "Стройте цепочку в другом направлении или поищите другие источники."
+                : "Найдите свежие источники, чтобы продолжить в новом направлении."}
+            </>
+          ) : stepNeedsFreshSources.reason === "cycle" ? (
             isTerminalRecycle ? (
               <>
                 По текущим источникам новый передел для «{productName}» не

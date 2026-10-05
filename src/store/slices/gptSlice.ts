@@ -17,6 +17,11 @@ import {
   applyHandlesByGeometry,
 } from "../../utils/normalize-edges";
 import { normalizeNodes } from "../../utils/normalize-nodes";
+import { collapseDuplicateTransformations } from "../../utils/collapseDuplicateTransformations";
+import {
+  withoutProspectiveInNodes,
+  withoutProspectiveInPool,
+} from "../../utils/prospectiveSources";
 import {
   buildChainLevel1,
   continueGraph,
@@ -57,6 +62,27 @@ import {
 } from "../../utils/presentationColors";
 import { reconstructSourcesPool } from "../../utils/reconstructSourcesPool";
 import { sourcesKey } from "./sourcesSlice";
+
+/**
+ * Название технологии из карточки преобразования — или null, если модель его
+ * не дала: пусто, «нет данных», абзац вместо названия.
+ */
+function technologyNameFromCard(card: unknown): string | null {
+  const raw = (card as Record<string, unknown> | null)?.technology_name;
+  if (typeof raw !== "string") return null;
+  // Точку снимаем и до, и после кавычек: модель пишет и «Название».,
+  // и «Название.»
+  const name = raw
+    .split("\n")[0]
+    .trim()
+    .replace(/\.$/, "")
+    .replace(/^[«"“]+|[»"”]+$/g, "")
+    .replace(/\.$/, "")
+    .trim();
+  if (!name || name.length > 160) return null;
+  if (/^(нет данных|не указано|неизвестно|н\/д|—|-|\.\.\.|…)$/i.test(name)) return null;
+  return name;
+}
 
 const initialState: InitialGraphStateI = {
   data: {
@@ -253,8 +279,20 @@ const gptSlice = createSlice({
       );
       if (exists) return;
 
+      // Ручная связь продукта с преобразованием: продукт выше — сырьё, ниже —
+      // выход (см. edgeFlow.ts). Так её поймёт и раскладка.
+      const src = state.data.nodes.find((n) => n.id === source);
+      const tgt = state.data.nodes.find((n) => n.id === target);
+      const tr = src?.type === "transformation" ? src : tgt?.type === "transformation" ? tgt : null;
+      const pr = src?.type === "product" ? src : tgt?.type === "product" ? tgt : null;
+      const flow =
+        tr && pr ? ((pr.position?.y ?? 0) <= (tr.position?.y ?? 0) ? "in" : "out") : null;
+
       state.data.edges = normalizeEdges(
-        addEdge({ ...action.payload, type: "straight" }, state.data.edges),
+        addEdge(
+          { ...action.payload, type: "straight", ...(flow ? { data: { tFlow: flow } } : {}) },
+          state.data.edges,
+        ),
       );
     },
     /**
@@ -315,6 +353,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "in" },
           },
           {
             id: `${trId}::out`,
@@ -323,6 +362,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "out" },
           },
         ]),
       );
@@ -461,7 +501,11 @@ const gptSlice = createSlice({
         sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
-      const normNodes = normalizeNodes(action.payload.nodes);
+      // Источники из разделов о перспективных технологиях — не источник
+      // (prospectiveSources.ts); в графах, сохранённых раньше, они ещё лежат.
+      const normNodes = withoutProspectiveInNodes(
+        normalizeNodes(action.payload.nodes),
+      );
       const normEdges = normalizeEdges(action.payload.edges);
       state.data = {
         nodes: normNodes,
@@ -476,7 +520,7 @@ const gptSlice = createSlice({
               seqCounter: action.payload.sourcesSeqCounter,
             }
           : reconstructSourcesPool(normNodes);
-      state.sourcesPool = restored.pool;
+      state.sourcesPool = withoutProspectiveInPool(restored.pool);
       state.sourcesSeqCounter = restored.seqCounter;
 
       state.leafNodes = action.payload.leafNodes;
@@ -511,7 +555,9 @@ const gptSlice = createSlice({
         sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
-      const normNodes = normalizeNodes(action.payload.nodes);
+      const normNodes = withoutProspectiveInNodes(
+        normalizeNodes(action.payload.nodes),
+      );
       const normEdges = normalizeEdges(action.payload.edges);
       state.data = {
         nodes: normNodes,
@@ -526,7 +572,7 @@ const gptSlice = createSlice({
               seqCounter: action.payload.sourcesSeqCounter,
             }
           : reconstructSourcesPool(normNodes);
-      state.sourcesPool = restored.pool;
+      state.sourcesPool = withoutProspectiveInPool(restored.pool);
       state.sourcesSeqCounter = restored.seqCounter;
       state.presentationColors = action.payload.presentationColors;
       // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
@@ -691,22 +737,31 @@ const gptSlice = createSlice({
         anchorAggregatedText: anchorAggregatedText ?? null,
       });
 
-      // Тупик: шаг свёлся бы только к петле(ям) на предка → граф НЕ трогаем,
-      // помечаем продукт «нужны свежие источники» (тот же канал, что и
-      // серверный insufficientProducts) и закрываем превью.
+      // Тупик: шаг свёлся бы только к петле(ям) на предка или целиком уже
+      // стоит на графе → граф НЕ трогаем, помечаем продукт «нужны свежие
+      // источники» (тот же канал, что и серверный insufficientProducts) и
+      // закрываем превью.
       if (stepRecord.isDeadEnd) {
         const deadEndLabel =
           anchor.data?.label ||
           (anchor as unknown as { label?: string }).label ||
           "";
         if (deadEndLabel) {
+          const onGraph = stepRecord.alreadyOnGraph;
           state.needsFreshSources[
             sourcesPoolKey(deadEndLabel, session.direction)
-          ] = {
-            fromProduct: deadEndLabel,
-            reason: "cycle",
-            loopOn: stepRecord.cycleProductNames ?? [],
-          };
+          ] = onGraph
+            ? {
+                fromProduct: deadEndLabel,
+                reason: "exists",
+                loopOn: onGraph.products,
+                transformation: onGraph.transformation,
+              }
+            : {
+                fromProduct: deadEndLabel,
+                reason: "cycle",
+                loopOn: stepRecord.cycleProductNames ?? [],
+              };
         }
         session.pendingStep = null;
         session.status = "idle";
@@ -1274,6 +1329,10 @@ const gptSlice = createSlice({
           targetHandle: direction === "down" ? "top" : "bottom-target",
           type: "straight",
           className: "edge--alt",
+          // Альтернатива шага «вниз» перерабатывает продукт, шага «вверх» —
+          // производит его (см. edgeFlow.ts). Без пометки раскладка уводила
+          // альтернативы шага «вверх» вниз.
+          data: { tFlow: direction === "down" ? "in" : "out" },
         });
       });
     },
@@ -1338,6 +1397,7 @@ const gptSlice = createSlice({
           sourceHandle: "bottom",
           targetHandle: "top",
           type: "straight",
+          data: { tFlow: "in" },
         },
         {
           id: outEdgeId,
@@ -1346,6 +1406,7 @@ const gptSlice = createSlice({
           sourceHandle: "bottom",
           targetHandle: "top",
           type: "straight",
+          data: { tFlow: "out" },
         },
       ];
 
@@ -1453,6 +1514,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "in" },
           });
         }
         for (const out of outputs) {
@@ -1463,6 +1525,7 @@ const gptSlice = createSlice({
             sourceHandle: "bottom",
             targetHandle: "top",
             type: "straight",
+            data: { tFlow: "out" },
           });
         }
       });
@@ -1498,11 +1561,16 @@ const gptSlice = createSlice({
           return;
         }
 
-        const normNodes = normalizeNodes(data.nodes);
-        const normEdges = normalizeEdges(data.edges) || [];
+        // Одинаковые преобразования, которые модель расписала отдельными
+        // узлами, — один узел (collapseDuplicateTransformations).
+        const same = collapseDuplicateTransformations(
+          normalizeNodes(data.nodes),
+          normalizeEdges(data.edges) || [],
+        );
+        const normNodes = same.nodes;
         state.data = {
           nodes: normNodes,
-          edges: applyHandlesByGeometry(normNodes, normEdges),
+          edges: applyHandlesByGeometry(normNodes, same.edges),
         };
 
         if (!state.rootId && action.payload.data.nodes.length > 0) {
@@ -1776,6 +1844,15 @@ const gptSlice = createSlice({
           node.data.productCardKind = data.card_kind;
           node.data.productCardStatus = "succeeded";
           node.data.productCardError = null;
+          // Преобразование получает название технологии из карточки (решение
+          // заказчика): при построении шага модель называет его коротко
+          // («Переработка полиамида-6 в нити и пленки»), а карточка — тем
+          // именем, под которым технологию знают. У продукта название не
+          // трогаем: по нему продукт опознаётся и ищется в реестре.
+          if (node.type === "transformation") {
+            const name = technologyNameFromCard(data.productCard);
+            if (name) node.data.label = name;
+          }
         }
       })
       .addCase(fetchProductCard.rejected, (state, action) => {

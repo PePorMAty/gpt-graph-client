@@ -5,6 +5,18 @@ import type { CustomNode } from "../types";
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 80;
 
+/**
+ * Размер узла для раскладки — настоящий, если узел уже измерен на полотне.
+ * Под одну мерку 220×80 узкий продукт занимал лишнее место, а широкое
+ * преобразование с длинным названием наезжало на соседа.
+ */
+function sizeOf(n: CustomNode): { width: number; height: number } {
+  return {
+    width: n.measured?.width ?? NODE_WIDTH,
+    height: n.measured?.height ?? NODE_HEIGHT,
+  };
+}
+
 const elk = new ELK();
 
 export type MergedGraphLayoutResult = {
@@ -117,8 +129,7 @@ export async function layoutMergedGraphElk(
         (inDeg.get(n.id) ?? 0) === 0 && (outDeg.get(n.id) ?? 0) === 0;
       elkChildren.push({
         id: n.id,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        ...sizeOf(n),
         layoutOptions: isolated
           ? { "elk.layered.layering.layerConstraint": "FIRST" }
           : undefined,
@@ -137,8 +148,7 @@ export async function layoutMergedGraphElk(
       }
       elkChildren.push({
         id: n.id,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        ...sizeOf(n),
         layoutOptions,
       });
     }

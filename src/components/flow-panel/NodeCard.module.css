@@ -920,7 +920,7 @@
   color: var(--c-text-faint);
 }
 
-/* Роль продукта в разделе и «перспективная технология» — после страниц. */
+/* Роль продукта в разделе — после страниц. */
 .baseTag {
   display: inline-block;
   margin-left: var(--s-2);
@@ -940,11 +940,6 @@
 .baseTag_raw {
   color: var(--c-brand-strong);
   background: var(--c-brand-soft);
-}
-
-.baseTag_prospective {
-  color: var(--c-warning);
-  background: var(--c-warning-soft);
 }
 
 .sourceLinks {

@@ -36,6 +36,7 @@ import {
   mergeProductNodes,
   addSourcesToPool,
   mergeBaseSources,
+  clearSourcesPool,
   clearGraphError,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
@@ -72,6 +73,8 @@ import {
   type FocusTransitionHandle,
 } from "./utils/focusTransition";
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
+import { collapseDuplicateTransformations } from "./utils/collapseDuplicateTransformations";
+import { pushHistory } from "./store/slices/historySlice";
 import { inferLayoutDirection } from "./utils/inferLayoutDirection";
 import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
 // Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
@@ -125,6 +128,8 @@ import {
   removeBookmark,
 } from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
+import { EdgeContextMenu } from "./components/node-context-menu/EdgeContextMenu";
+import { EDGE_TYPES } from "./components/edges";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
 import { DuplicateProductModal } from "./components/duplicate-product-modal";
 import { OPEN_NODE_CARD_EVENT } from "./hooks/useGoToNode";
@@ -280,9 +285,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     if (!data.nodes.length) return;
     setIsApplyingLayout(true);
     try {
+      // Одинаковые преобразования — один узел (collapseDuplicateTransformations).
+      // Шаги новые дублей не плодят, а графы, построенные раньше, приводятся
+      // к этому здесь.
+      const same = collapseDuplicateTransformations(data.nodes, data.edges);
       const { layoutForMergeTab } = await import("./hooks/useMergeGraph");
-      const laid = await layoutForMergeTab(data.nodes, data.edges);
+      const laid = await layoutForMergeTab(same.nodes, same.edges);
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
+      if (same.collapsed.length) {
+        const names = [...new Set(same.collapsed)];
+        const details =
+          names.length > 3
+            ? `«${names.slice(0, 3).join("», «")}» и ещё ${names.length - 3}`
+            : `«${names.join("», «")}»`;
+        dispatch(
+          pushHistory({
+            kind: "merge",
+            title: `Схлопнуты одинаковые преобразования: ${same.collapsed.length}`,
+            details,
+          }),
+        );
+        showToast(
+          "info",
+          `Одинаковые преобразования схлопнуты: ${same.collapsed.length}`,
+          details,
+        );
+      }
       requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
     } catch (e) {
       console.error("[relayout] не удалось пересчитать раскладку:", e);
@@ -578,7 +606,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         nodes: centered,
         // Хэндлы из store соответствуют геометрии полного графа —
         // переназначаем по позициям фокус-раскладки.
-        edges: applyHandlesByGeometry(centered, sub.edges),
+        // Только по геометрии: окрестность раскладывается своим деревом, и
+        // хэндлы по смыслу связей рисовали бы там обходы.
+        edges: applyHandlesByGeometry(centered, sub.edges, { semantic: false }),
       };
 
       focusAnimRef.current?.cancel();
@@ -751,6 +781,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
     nodeId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  /** Меню по правому клику на связи — удаление связи. */
+  const [edgeMenu, setEdgeMenu] = useState<{
+    edgeId: string;
     x: number;
     y: number;
   } | null>(null);
@@ -1181,10 +1217,31 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         ];
         dispatch(onNodesChange(changes));
       }
+      setEdgeMenu(null);
+      setPaneMenu(null);
       setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
     },
     [data.nodes, dispatch],
   );
+
+  // Правый клик по связи — меню с удалением. Только там, где связи настоящие:
+  // в режиме «Только продукты» они синтетические (проекция через
+  // преобразования), в сторе их нет, и удалять там нечего.
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      setContextMenu(null);
+      setPaneMenu(null);
+      setEdgeMenu({ edgeId: edge.id, x: event.clientX, y: event.clientY });
+    },
+    [],
+  );
+
+  const handleEdgeMenuDelete = useCallback(() => {
+    if (!edgeMenu) return;
+    dispatch(removeEdge(edgeMenu.edgeId));
+    setEdgeMenu(null);
+  }, [edgeMenu, dispatch]);
 
   // Карточка узла и панель раздела (источники, закладки, история) занимают
   // одно место слева, и панель над холстом сдвигается на их ширину. Каркас
@@ -1213,12 +1270,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setInitialLabel("");
     setInitialDescription("");
     setContextMenu(null);
+    setEdgeMenu(null);
   }, [loadSeq]);
 
   // Клик по пустому пространству — закрыть контекстные меню
   const onPaneClick = useCallback(() => {
     setContextMenu(null);
     setPaneMenu(null);
+    setEdgeMenu(null);
   }, []);
 
   // Правый клик по пустому месту — меню добавления узла. В режиме рамки
@@ -1228,6 +1287,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (readOnly || focusOn || canvasModeRef.current === "marquee") return;
       event.preventDefault();
       setContextMenu(null);
+      setEdgeMenu(null);
       setPaneMenu({ x: event.clientX, y: event.clientY });
     },
     [readOnly, focusOn],
@@ -2343,8 +2403,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (!selectedNodeId) return;
       dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
       dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      // «Начать заново» — значит и найденные источники шага забыть. Раньше они
+      // оставались, мастер стоял на том же экране с тем же списком, и кнопка
+      // выглядела неработающей. Найденное моделью сохранено в базе сервера:
+      // вернуть его можно кнопкой «К источникам из базы».
+      const productName = String(selectedNode?.data?.label ?? "").trim();
+      if (productName) dispatch(clearSourcesPool({ productName, direction }));
     },
-    [dispatch, selectedNodeId],
+    [dispatch, selectedNodeId, selectedNode],
   );
 
   // ─── Create / remove step alternative nodes when aggregate text changes ───
@@ -3010,6 +3076,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={canEditNodes ? onNodeContextMenu : undefined}
+        onEdgeContextMenu={structureLocked ? undefined : onEdgeContextMenu}
         onPaneClick={onPaneClick}
         onPaneContextMenu={canEditNodes ? onPaneContextMenu : undefined}
         nodesConnectable={canEditNodes}
@@ -3032,6 +3099,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
         nodeTypes={nodeTypes}
+        edgeTypes={EDGE_TYPES}
         edgesFocusable={false}
         nodesFocusable={false}
         minZoom={0.1}
@@ -3074,6 +3142,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onClose={() => setPaneMenu(null)}
         />
       )}
+      {edgeMenu &&
+        (() => {
+          const edge = data.edges.find((e) => e.id === edgeMenu.edgeId);
+          if (!edge) return null;
+          const labelOf = (id: string) =>
+            String(data.nodes.find((n) => n.id === id)?.data?.label ?? "") || "узел";
+          return (
+            <EdgeContextMenu
+              x={edgeMenu.x}
+              y={edgeMenu.y}
+              sourceLabel={labelOf(edge.source)}
+              targetLabel={labelOf(edge.target)}
+              onDelete={handleEdgeMenuDelete}
+              onClose={() => setEdgeMenu(null)}
+            />
+          );
+        })()}
       {contextMenu && (
         <NodeContextMenu
           x={contextMenu.x}

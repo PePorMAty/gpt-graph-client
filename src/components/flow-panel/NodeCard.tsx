@@ -561,7 +561,13 @@ export const NodeCard: FC<NodeCardProps> = ({
           )}
 
           {/* ── Промышленные данные (ГИСП) ── */}
-          {activeTab === "industry" && <IndustryPanel productName={value} />}
+          {activeTab === "industry" && (
+            <IndustryPanel
+              productName={value}
+              nodeId={nodeId}
+              readOnly={readOnly}
+            />
+          )}
 
           {/* ── Технологические маршруты (обобщение шага) ── */}
           {activeTab === "routes" && (

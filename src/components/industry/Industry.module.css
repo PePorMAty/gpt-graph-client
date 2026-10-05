@@ -650,6 +650,159 @@ a.codeValue:hover {
   color: var(--c-text-muted);
 }
 
+/* ─── Правка кодов (CodeLine) ─── */
+
+.codeEmpty {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
+/* Код задан вручную — видно сразу, чтобы не путать с кодом реестра. */
+.codeManual {
+  flex: 0 0 auto;
+  padding: 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--c-brand-strong);
+  background: var(--c-brand-soft);
+  border-radius: var(--r-sm);
+}
+
+/* «У остальных записей ещё кодов: n» раскрывает список: это кнопка, но
+   читается как приписка. */
+.codeMore {
+  flex: 0 0 auto;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-brand-strong);
+  background: none;
+  border: none;
+  border-bottom: 1px dashed currentColor;
+  cursor: pointer;
+}
+
+.codeActions {
+  display: inline-flex;
+  gap: var(--s-3);
+  margin-left: auto;
+}
+
+.codeActions .linkBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.codeEditor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.codeInput {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+
+.codeInput:focus {
+  outline: 2px solid var(--c-brand-soft);
+  border-color: var(--c-brand-strong);
+}
+
+.codeSave {
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: #fff;
+  background: var(--c-brand-strong);
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.codeSave:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.codeWarn {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-warning);
+}
+
+.codeVariants {
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.codeVariantsHint {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.codeVariantList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.codeVariant {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-2);
+  font-size: var(--fs-sm);
+}
+
+.codeCount {
+  flex: 0 0 auto;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+.codeCurrent {
+  flex: 0 0 auto;
+  color: var(--c-success);
+  white-space: nowrap;
+}
+
+/* Свои коды продукта, которого нет в реестре. */
+.ownCodes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-3);
+  text-align: left;
+}
+
+.ownCodesTitle {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-text-soft);
+}
+
 /* Оговорка про состав препарата. Своим классом, а не .note: та без полей, и
    прижатая к строке с кодом читалась бы как её продолжение. */
 .formulationNote {

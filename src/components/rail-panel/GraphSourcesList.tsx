@@ -23,8 +23,6 @@ import { usePanelDetails } from "./usePanelDetails";
 import details from "./PanelDetails.module.css";
 import styles from "./LocalDocuments.module.css";
 
-type Kind = "all" | "product" | "transformation";
-
 /** Объект графа и его источники. */
 interface Group {
   key: string;
@@ -105,7 +103,6 @@ export const GraphSourcesList: FC<Props> = ({
   const [detailsOpen, toggleDetails] = usePanelDetails();
   const showDetails = !collapsible || detailsOpen;
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<Kind>("all");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
 
   // Объекты графа по алфавиту, у каждого — его источники.
@@ -143,7 +140,6 @@ export const GraphSourcesList: FC<Props> = ({
       r.tag.toLowerCase().includes(q);
     const out: Group[] = [];
     for (const g of groups) {
-      if (kind !== "all" && g.kind !== kind) continue;
       if (!q || g.label.toLowerCase().includes(q)) {
         out.push(g);
         continue;
@@ -152,7 +148,7 @@ export const GraphSourcesList: FC<Props> = ({
       if (narrowed.up.length + narrowed.down.length + narrowed.plain.length) out.push(narrowed);
     }
     return out;
-  }, [groups, kind, query]);
+  }, [groups, query]);
 
   const paged = usePaged(shown);
   // Нашёлся один — раскрыт сразу; щелчок переключает наперекор правилу.
@@ -169,9 +165,12 @@ export const GraphSourcesList: FC<Props> = ({
       return next;
     });
 
-  const filtered = Boolean(query.trim()) || kind !== "all";
+  // Отбора по виду объекта нет: источники ищутся у продуктов, а у
+  // преобразования они бывают, только если его нашла «Получить
+  // преобразование», — отбор почти всегда делил список на всё и ничего.
+  const filtered = Boolean(query.trim());
   const listRef = useRef<HTMLUListElement>(null);
-  const filterSig = `${kind}\u0001${query.trim()}`;
+  const filterSig = query.trim();
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
     setOpen(new Set());
@@ -207,28 +206,6 @@ export const GraphSourcesList: FC<Props> = ({
     </div>
   );
 
-  const kinds = (
-    <div className={`${industry.segmented} ${industry.viewSwitch}`}>
-      {(
-        [
-          ["all", `Все (${groups.length})`],
-          ["product", `Продукты (${counts.product})`],
-          ["transformation", `Преобразования (${counts.transformation})`],
-        ] as Array<[Kind, string]>
-      ).map(([value, label]) => (
-        <button
-          key={value}
-          type="button"
-          className={`${industry.segment} ${kind === value ? industry.segmentActive : ""}`}
-          onClick={() => setKind(value)}
-          aria-pressed={kind === value}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-
   const search = (
     <label className={industry.search}>
       <SearchIcon size={14} />
@@ -247,26 +224,14 @@ export const GraphSourcesList: FC<Props> = ({
         <>
           <div className={details.searchRow}>
             {search}
-            <DetailsToggle
-              open={detailsOpen}
-              onToggle={toggleDetails}
-              active={kind !== "all"}
-            />
+            <DetailsToggle open={detailsOpen} onToggle={toggleDetails} />
           </div>
-          {detailsOpen && (
-            <div className={details.details}>
-              {chips}
-              {kinds}
-            </div>
-          )}
+          {detailsOpen && <div className={details.details}>{chips}</div>}
         </>
       ) : (
         <>
           {chips}
-          <div className={industry.filters}>
-            {search}
-            {kinds}
-          </div>
+          <div className={industry.filters}>{search}</div>
         </>
       )}
 
@@ -283,12 +248,9 @@ export const GraphSourcesList: FC<Props> = ({
               <button
                 type="button"
                 className={industry.linkBtn}
-                onClick={() => {
-                  setQuery("");
-                  setKind("all");
-                }}
+                onClick={() => setQuery("")}
               >
-                Сбросить отборы
+                Сбросить поиск
               </button>
             )}
             <button type="button" className={industry.linkBtn} onClick={() => setAll(!allOpen)}>
@@ -385,12 +347,9 @@ export const GraphSourcesList: FC<Props> = ({
             <button
               type="button"
               className={industry.linkBtn}
-              onClick={() => {
-                setQuery("");
-                setKind("all");
-              }}
+              onClick={() => setQuery("")}
             >
-              Сбросить отборы
+              Сбросить поиск
             </button>
           </li>
         )}
