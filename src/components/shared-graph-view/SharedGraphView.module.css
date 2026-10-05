@@ -1,9 +1,21 @@
+/* Полотно над строкой состояния — как в каркасе рабочего места: холст
+   занимает всё, что строка оставила (высота 100% у Flow — от этой обёртки).
+   100dvh, а не 100vh: на телефоне 100vh выше видимой части экрана, и
+   строка уходила бы под панель браузера. */
 .fullscreen {
   position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: #fff;
+}
+
+.canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .message {
