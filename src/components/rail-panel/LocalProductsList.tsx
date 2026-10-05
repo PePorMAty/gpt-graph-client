@@ -75,15 +75,6 @@ const SectionItem: FC<{ s: LocalProductSection }> = ({ s }) => (
     <div className={styles.psMeta}>
       <FilePdfIcon size={12} className={styles.psMetaIcon} />
       {s.docTitle} · {s.pages}
-      {s.prospective && (
-        <span
-          className={styles.psPending}
-          title="Процесс ещё не освоен промышленностью: в построении шага пойдёт альтернативой"
-        >
-          {" "}
-          · перспективная технология
-        </span>
-      )}
       {!s.byModel && (
         <span className={styles.psPending}> · по заголовку — модель ещё не разобрала</span>
       )}

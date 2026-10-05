@@ -19,6 +19,10 @@ import {
 import { normalizeNodes } from "../../utils/normalize-nodes";
 import { collapseDuplicateTransformations } from "../../utils/collapseDuplicateTransformations";
 import {
+  withoutProspectiveInNodes,
+  withoutProspectiveInPool,
+} from "../../utils/prospectiveSources";
+import {
   buildChainLevel1,
   continueGraph,
   expandChainOneLevel,
@@ -497,7 +501,11 @@ const gptSlice = createSlice({
         sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
-      const normNodes = normalizeNodes(action.payload.nodes);
+      // Источники из разделов о перспективных технологиях — не источник
+      // (prospectiveSources.ts); в графах, сохранённых раньше, они ещё лежат.
+      const normNodes = withoutProspectiveInNodes(
+        normalizeNodes(action.payload.nodes),
+      );
       const normEdges = normalizeEdges(action.payload.edges);
       state.data = {
         nodes: normNodes,
@@ -512,7 +520,7 @@ const gptSlice = createSlice({
               seqCounter: action.payload.sourcesSeqCounter,
             }
           : reconstructSourcesPool(normNodes);
-      state.sourcesPool = restored.pool;
+      state.sourcesPool = withoutProspectiveInPool(restored.pool);
       state.sourcesSeqCounter = restored.seqCounter;
 
       state.leafNodes = action.payload.leafNodes;
@@ -547,7 +555,9 @@ const gptSlice = createSlice({
         sourcesSeqCounter?: { up: number; down: number };
       }>,
     ) => {
-      const normNodes = normalizeNodes(action.payload.nodes);
+      const normNodes = withoutProspectiveInNodes(
+        normalizeNodes(action.payload.nodes),
+      );
       const normEdges = normalizeEdges(action.payload.edges);
       state.data = {
         nodes: normNodes,
@@ -562,7 +572,7 @@ const gptSlice = createSlice({
               seqCounter: action.payload.sourcesSeqCounter,
             }
           : reconstructSourcesPool(normNodes);
-      state.sourcesPool = restored.pool;
+      state.sourcesPool = withoutProspectiveInPool(restored.pool);
       state.sourcesSeqCounter = restored.seqCounter;
       state.presentationColors = action.payload.presentationColors;
       // Источник = "loaded": UploadGraphTab уже выполнил applyAutoLayout("TB"),
