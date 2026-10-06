@@ -21,19 +21,13 @@ import type { CustomNode } from "../../types";
 import { AiModelSelect } from "../ai-model-select";
 import styles from "./MaterialBalance.module.css";
 
-const label = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
-
-const DIRECTION_WORD: Record<BalanceDirection, string> = { down: "вниз", up: "вверх" };
-
 interface Props {
   transformation: CustomNode;
   input: CustomNode;
   output: CustomNode;
   direction: BalanceDirection;
-  /** Расчёт этого направления, если он уже есть, — любой пары. */
+  /** Расчёт этой пары в этом направлении, если он уже есть. */
   existing?: MaterialBalanceCalc;
-  /** Подпись узла по id — для пары прежнего расчёта. */
-  nameOf: (id: string | undefined) => string;
   onCancel?: () => void;
 }
 
@@ -41,8 +35,8 @@ interface Props {
  * Запрос расчёта выбранной пары в направлении вкладки: свои данные, промпт
  * и модель, подсказки базы и «Рассчитать». Количество — в схеме над формой.
  *
- * На направление у преобразования хранится один расчёт: если он уже есть,
- * новый его заменит — форма об этом говорит.
+ * У пары в направлении хранится один расчёт: если он уже есть, новый его
+ * заменит — форма об этом говорит. Расчёты других пар не трогаются.
  */
 export const RequestForm: FC<Props> = ({
   transformation,
@@ -50,7 +44,6 @@ export const RequestForm: FC<Props> = ({
   output,
   direction,
   existing,
-  nameOf,
   onCancel,
 }) => {
   const dispatch = useAppDispatch();
@@ -60,13 +53,12 @@ export const RequestForm: FC<Props> = ({
   const [showKnown, setShowKnown] = useState(() => draft.knownData.trim() !== "");
   const [showPrompt, setShowPrompt] = useState(false);
 
-  const job = jobs[jobKey(transformation.id, direction)];
+  const job = jobs[jobKey(transformation.id, input.id, output.id, direction)];
   const running = job?.status === "running" || job?.status === "starting";
   const lookup = lookups[lookupKey(transformation.id, input.id, output.id, direction)];
-  // Та же пара уже посчитана — «заново» идёт к модели мимо базы: иначе
-  // сервер вернул бы тот же готовый ответ.
-  const samePair =
-    existing?.nodeIds.P1 === input.id && existing?.nodeIds.P2 === output.id;
+  // Пара уже посчитана — «заново» идёт к модели мимо базы: иначе сервер
+  // вернул бы тот же готовый ответ.
+  const again = Boolean(existing);
 
   useEffect(() => {
     dispatch(
@@ -179,7 +171,7 @@ export const RequestForm: FC<Props> = ({
         </div>
       )}
 
-      {!samePair && lookup?.status === "done" && lookup.exact && (
+      {!again && lookup?.status === "done" && lookup.exact && (
         <p className={styles.note}>
           В базе есть готовый расчёт от {formatWhen(lookup.exact.createdAt)} —
           «Рассчитать» возьмёт его сразу, без модели.
@@ -201,11 +193,11 @@ export const RequestForm: FC<Props> = ({
         </div>
       ))}
 
-      {existing && (
+      {again && (
         <p className={styles.note}>
-          {samePair
-            ? "Новый расчёт заменит текущий: модель заново ищет источники, и числа могут отличаться. Количество и единицу можно менять и без нового расчёта."
-            : `У «${label(transformation)}» уже есть расчёт «${DIRECTION_WORD[direction]}» — для пары «${nameOf(existing.nodeIds.P1)} → ${nameOf(existing.nodeIds.P2)}». Новый заменит его: на каждое направление хранится один расчёт.`}
+          Новый расчёт заменит текущий расчёт этой пары: модель заново ищет
+          источники, и числа могут отличаться. Количество и единицу можно
+          менять и без нового расчёта.
         </p>
       )}
 
@@ -214,9 +206,9 @@ export const RequestForm: FC<Props> = ({
           type="button"
           className={styles.primary}
           disabled={running || promptEmpty}
-          onClick={() => dispatch(runMaterialBalance({ force: samePair }))}
+          onClick={() => dispatch(runMaterialBalance({ force: again }))}
         >
-          {samePair ? "Рассчитать заново" : "Рассчитать"}
+          {again ? "Рассчитать заново" : "Рассчитать"}
         </button>
         {onCancel && (
           <button type="button" className={styles.secondary} onClick={onCancel}>

@@ -169,14 +169,16 @@ export function collapseDuplicateTransformations(
     extra.set(into, acc);
   }
   // Расчёты материального баланса — не «добрать, если пусто», а сложить: у
-  // каждого дубля свои. T1 в них теперь — оставленный узел. На направление
-  // у преобразования хранится один расчёт — остаётся свежий.
+  // каждого дубля свои. T1 в них теперь — оставленный узел. На пару «сырьё →
+  // продукт» в направлении у преобразования хранится один расчёт — остаётся
+  // свежий.
   type Calc = {
     record?: { id?: number; direction?: string };
     addedAt?: string;
     nodeIds?: Record<string, string>;
   };
-  const directionOf = (c: Calc) => (c.record?.direction === "up" ? "up" : "down");
+  const keyOf = (c: Calc) =>
+    `${c.nodeIds?.P1 ?? ""}|${c.nodeIds?.P2 ?? ""}|${c.record?.direction === "up" ? "up" : "down"}`;
   for (const id of dropped) {
     const own = byId.get(id)?.data?.materialBalances;
     if (!Array.isArray(own) || !own.length) continue;
@@ -193,9 +195,9 @@ export function collapseDuplicateTransformations(
     acc.materialBalances = [...base, ...moved]
       .sort((a, b) => String(b.addedAt ?? "").localeCompare(String(a.addedAt ?? "")))
       .filter((c) => {
-        const d = directionOf(c);
-        if (seen.has(d)) return false;
-        seen.add(d);
+        const k = keyOf(c);
+        if (seen.has(k)) return false;
+        seen.add(k);
         return true;
       });
     extra.set(into, acc);

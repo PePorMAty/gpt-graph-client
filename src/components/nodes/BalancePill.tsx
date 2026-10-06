@@ -65,15 +65,24 @@ export const BalancePill: React.FC<{
   </div>
 );
 
-/** У преобразования есть расчёты баланса: весы и направления — «↓», «↑», «↓↑». */
+/** Сколько расчётов в направлении по подписи «↓2↑»: «↓2» — 2, «↓» — 1. */
+const countOf = (arrows: string, arrow: string) => {
+  const m = arrows.match(new RegExp(`${arrow}(\\d*)`));
+  return m ? Number(m[1] || 1) : 0;
+};
+
+/**
+ * У преобразования есть расчёты баланса: весы и направления со счётом пар —
+ * «↓», «↓↑», «↓2↑».
+ */
 export const BalanceMark: React.FC<{ arrows: string }> = ({ arrows }) => (
   <div
     title={`Рассчитан материальный баланс: ${[
-      arrows.includes("↓") ? "вниз (из сырья)" : "",
-      arrows.includes("↑") ? "вверх (на продукт)" : "",
+      countOf(arrows, "↓") ? `вниз (из сырья) — пар: ${countOf(arrows, "↓")}` : "",
+      countOf(arrows, "↑") ? `вверх (на продукт) — пар: ${countOf(arrows, "↑")}` : "",
     ]
       .filter(Boolean)
-      .join(" и ")}`}
+      .join("; ")}`}
     data-balance-mark={arrows}
     style={{
       position: "absolute",

@@ -5,8 +5,8 @@
 // расчёты и подсказки базы.
 //
 // Сами расчёты сюда не кладутся: они живут в данных узла преобразования
-// (materialBalances) и сохраняются с графом — не больше одного на
-// направление. Здесь — состояние сеанса.
+// (materialBalances) и сохраняются с графом — по одному на пару «сырьё →
+// продукт» и направление. Здесь — состояние сеанса.
 
 import {
   createAsyncThunk,
@@ -35,9 +35,9 @@ import {
 } from "../../components/toast/toastStore";
 import {
   balanceEnds,
+  calcKey,
   calcsOf,
   defaultSelection,
-  directionOf,
   nodeIdsFor,
   pairFor,
   STATUS_TEXT,
@@ -80,15 +80,15 @@ interface MaterialBalanceState {
   /** Расчёт, открытый во вкладке последним: его числа — на узлах без выбора. */
   active: { nodeId: string; recordId: number } | null;
   /**
-   * У выбранного направления уже есть расчёт, а человек нажал «Новый
-   * расчёт» — во вкладке форма запроса вместо готовых данных.
+   * У выбранной пары в этом направлении уже есть расчёт, а человек нажал
+   * «Новый расчёт» — во вкладке форма запроса вместо готовых данных.
    */
   formOpen: boolean;
   draft: BalanceDraft;
   /** Правленый промпт; null — как на сервере по умолчанию. */
   prompt: { system: string | null; template: string | null };
   defaults: { system: string; template: string } | null;
-  /** Идущие и упавшие расчёты — по преобразованию и направлению (jobKey). */
+  /** Идущие и упавшие расчёты — по преобразованию, паре и направлению (jobKey). */
   jobs: Record<string, BalanceJobState>;
   /** Подсказки базы — по lookupKey. */
   lookups: Record<string, BalanceLookupState>;
@@ -107,15 +107,18 @@ const initialState: MaterialBalanceState = {
   lookups: {},
 };
 
-export const jobKey = (transformationId: string, direction: BalanceDirection) =>
-  `${transformationId}|${direction}`;
-
+/**
+ * Ключ расчёта пары в направлении: под ним — идущая задача и подсказки базы.
+ * Разные пары одного преобразования считаются одновременно.
+ */
 export const lookupKey = (
   transformationId: string,
   inputId: string,
   outputId: string,
   direction: BalanceDirection,
 ) => `${transformationId}|${inputId}|${outputId}|${direction}`;
+
+export const jobKey = lookupKey;
 
 const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
 
@@ -312,8 +315,8 @@ export const pickBalanceTransformation =
   };
 
 /**
- * Вкладка направления у выбранного преобразования: пара — из расчёта этого
- * направления, а если его нет — та же, что была выбрана.
+ * Вкладка направления у выбранного преобразования: пара остаётся та же — у
+ * неё в другом направлении свой расчёт или форма запроса.
  */
 export const chooseBalanceDirection =
   (direction: BalanceDirection) =>
@@ -330,8 +333,9 @@ export const chooseBalanceDirection =
   };
 
 /**
- * Положить расчёт в узел преобразования. У направления один расчёт: новый
- * заменяет прежний того же направления (и старые лишние из прежних версий).
+ * Положить расчёт в узел преобразования. У пары в направлении один расчёт:
+ * новый заменяет прежний той же пары и направления (и старые лишние из
+ * прежних версий); расчёты других пар остаются.
  */
 function attachCalc(
   dispatch: AppDispatch,
@@ -362,8 +366,8 @@ function attachCalc(
     addedAt: new Date().toISOString(),
     view: args.view,
   };
-  const direction = directionOf(calc);
-  const rest = calcsOf(node).filter((c) => directionOf(c) !== direction);
+  const key = calcKey(calc);
+  const rest = calcsOf(node).filter((c) => calcKey(c) !== key);
   dispatch(
     updateNodeData({ nodeId: node.id, data: { materialBalances: [calc, ...rest] } }),
   );
@@ -395,9 +399,9 @@ export const runMaterialBalance =
     const input = byId(sel.inputId);
     const output = byId(sel.outputId);
     if (!t || !input || !output) return;
-    const key = jobKey(t.id, direction);
-    // Расчёт этого направления уже идёт или запускается — второй щелчок не
-    // запускает второй.
+    const key = jobKey(t.id, input.id, output.id, direction);
+    // Расчёт этой пары в этом направлении уже идёт или запускается — второй
+    // щелчок не запускает второй.
     const current = state.materialBalance.jobs[key]?.status;
     if (current === "running" || current === "starting") return;
 
@@ -522,8 +526,8 @@ export const runMaterialBalance =
 
 /**
  * Взять готовый расчёт из базы — из подсказки «есть расчёт по технологии …».
- * Он того же направления (подсказки базы — по направлению) и заменяет
- * расчёт этого направления.
+ * Он той же пары и направления (подсказки базы — по ним) и заменяет расчёт
+ * пары в этом направлении.
  */
 export const takeBalanceFromBase =
   (recordId: number) =>
