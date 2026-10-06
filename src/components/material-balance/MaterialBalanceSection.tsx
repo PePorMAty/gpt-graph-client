@@ -225,7 +225,16 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
             <CalcDetails
               nodeId={t.id}
               calc={existing}
-              onNewRequest={() => dispatch(setBalanceFormOpen(true))}
+              onNewRequest={() => {
+                // Новый расчёт пары — на то же количество, что у прежнего.
+                dispatch(
+                  setBalanceDraft({
+                    amount: String(existing.view.amount),
+                    unit: existing.view.unit,
+                  }),
+                );
+                dispatch(setBalanceFormOpen(true));
+              }}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
             />
           ) : input && output && !running ? (

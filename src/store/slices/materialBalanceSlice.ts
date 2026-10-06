@@ -87,6 +87,12 @@ interface MaterialBalanceState {
    */
   formOpen: boolean;
   draft: BalanceDraft;
+  /**
+   * Чьё количество в черновике: преобразование и сырьё пары (draftOwnerOf).
+   * Другое преобразование или другое сырьё — количество снова 1 т: прежнее
+   * вводили для другого сырья, и оно незаметно уходило в новый расчёт.
+   */
+  draftOwner: string | null;
   /** Правленый промпт; null — как на сервере по умолчанию. */
   prompt: { system: string | null; template: string | null };
   defaults: { system: string; template: string } | null;
@@ -102,6 +108,7 @@ const initialState: MaterialBalanceState = {
   active: null,
   formOpen: false,
   draft: { amount: "1", unit: "т", knownData: "" },
+  draftOwner: null,
   prompt: { system: null, template: null },
   defaults: null,
   jobs: {},
@@ -116,6 +123,22 @@ export const lookupKey = (transformationId: string, inputId: string, outputId: s
   `${transformationId}|${inputId}|${outputId}`;
 
 export const jobKey = lookupKey;
+
+const draftOwnerOf = (sel: BalanceSelection | null) =>
+  sel ? `${sel.transformationId}|${sel.inputId ?? ""}` : null;
+
+/**
+ * Выбрали пару с другим сырьём — количество снова 1 т. Снятый выбор
+ * черновик не трогает: вернувшись к той же паре, человек видит то, что
+ * вводил.
+ */
+function takeDraft(state: MaterialBalanceState) {
+  const owner = draftOwnerOf(state.selection);
+  if (!owner || owner === state.draftOwner) return;
+  state.draftOwner = owner;
+  state.draft.amount = initialState.draft.amount;
+  state.draft.unit = initialState.draft.unit;
+}
 
 const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
 
@@ -172,6 +195,7 @@ const slice = createSlice({
     ) {
       state.selection = action.payload;
       state.formOpen = false;
+      takeDraft(state);
     },
     setBalanceFormOpen(state, action: PayloadAction<boolean>) {
       state.formOpen = action.payload;
@@ -184,6 +208,7 @@ const slice = createSlice({
       state.formOpen = false;
       if (action.payload.inputId) state.selection.inputId = action.payload.inputId;
       if (action.payload.outputId) state.selection.outputId = action.payload.outputId;
+      takeDraft(state);
     },
     setBalanceActive(
       state,

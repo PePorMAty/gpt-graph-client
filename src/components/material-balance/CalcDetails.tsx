@@ -205,6 +205,10 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
       </section>
 
       <section className={styles.section}>
+        <p className={styles.muted}>
+          Ниже — разделы ответа модели как есть: числа в них на 1 т сырья. На
+          ваше количество пересчитаны «Ключевые потоки» и подписи на узлах.
+        </p>
         <details className={styles.more}>
           <summary>Расчёт по переходам</summary>
           <Markdown text={record.sections.transitions} />
