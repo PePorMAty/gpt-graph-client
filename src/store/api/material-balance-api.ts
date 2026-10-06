@@ -149,7 +149,8 @@ export type StartBalanceResult =
 
 export interface BalanceJob {
   id: string;
-  status: "running" | "done" | "failed";
+  /** cancelled — расчёт отменили: запрос к модели оборван, в базе ничего нет. */
+  status: "running" | "done" | "failed" | "cancelled";
   startedAt: string;
   elapsedMs: number;
   result?: BalanceRecord;
@@ -215,6 +216,15 @@ export async function fetchBalanceJob(jobId: string): Promise<BalanceJob> {
     return data.job as BalanceJob;
   } catch (e) {
     throw serverError(e, "Не удалось узнать ход расчёта");
+  }
+}
+
+/** Отменить расчёт: сервер обрывает запрос к модели, ответ в базу не пишет. */
+export async function cancelBalanceJob(jobId: string): Promise<void> {
+  try {
+    await axios.post(`${API()}/jobs/${encodeURIComponent(jobId)}/cancel`);
+  } catch (e) {
+    throw serverError(e, "Не удалось отменить расчёт");
   }
 }
 

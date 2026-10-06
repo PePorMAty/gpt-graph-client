@@ -7,7 +7,9 @@ import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
   flowRef,
   formatMass,
+  formatPercent,
   formatWhen,
+  massFraction,
   refRole,
   scaleForView,
   shownMass,
@@ -63,7 +65,7 @@ interface Props {
 
 /**
  * Один расчёт целиком: ключевые потоки, коэффициенты, примечания, расчёт по
- * переходам, общий баланс, источники. Количество базиса — в схеме над ним.
+ * переходам, общий баланс, источники. Количество сырья — в схеме над ним.
  *
  * Тексты модели — читаемыми (readableRecord): без LaTeX и служебных имён
  * промпта. Обозначения P1, P2 из ответа расшифрованы над ним.
@@ -125,10 +127,7 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
               <tr key={r.ref}>
                 <td>
                   {nameOf(r.ref)}
-                  <span className={styles.flowRole}>
-                    {refRole(record, r.ref)}
-                    {r.ref === "P1" ? " · базис" : ""}
-                  </span>
+                  <span className={styles.flowRole}>{refRole(record, r.ref)}</span>
                 </td>
                 <td>{formatMass(shownMass(readable, r.ref), calc.view.unit)}</td>
               </tr>
@@ -162,20 +161,26 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>Коэффициенты</h4>
           <ul className={styles.coef}>
-            {record.coefficients.map((c, i) => (
-              <li key={i}>
-                {c.indicator}:{" "}
-                <b>
-                  {c.valueText}
-                  {c.unit && !/%/.test(c.valueText)
-                    ? c.unit === "%"
-                      ? "%"
-                      : ` ${c.unit}`
-                    : ""}
-                </b>
-                {c.source ? <span className={styles.sourceMeta}> · {c.source}</span> : null}
-              </li>
-            ))}
+            {record.coefficients.map((c, i) => {
+              // «кг/кг», «т/т» — доля массы: процентами понятнее.
+              const share = massFraction(c);
+              return (
+                <li key={i}>
+                  {c.indicator}
+                  {c.fromRef && c.toRef ? ` (${nameOf(c.fromRef)} → ${nameOf(c.toRef)})` : ""}:{" "}
+                  <b>
+                    {c.valueText}
+                    {c.unit && !/%/.test(c.valueText)
+                      ? c.unit === "%"
+                        ? "%"
+                        : ` ${c.unit}`
+                      : ""}
+                  </b>
+                  {share ? ` — ${formatPercent(share)}` : ""}
+                  {c.source ? <span className={styles.sourceMeta}> · {c.source}</span> : null}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

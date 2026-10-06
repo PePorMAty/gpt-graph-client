@@ -231,6 +231,9 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
   const isUnfilled = data.isUserAdded === true && !description;
 
   const box = nodeBoxStyle(data.focusCompact === true);
+  // Режим баланса: на узле только баланс — прочие значки не рисуем.
+  const quiet = data.balanceQuiet === true;
+  const showBadges = !quiet && (upCount > 0 || downCount > 0 || gispCount > 0 || baseCount > 0);
 
   return (
     <div
@@ -263,7 +266,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
 
-      {(upCount > 0 || downCount > 0 || gispCount > 0 || baseCount > 0) && (
+      {showBadges && (
         <div
           style={{
             position: "absolute",
@@ -314,13 +317,13 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
         </div>
       )}
 
-      {data.bookmarked === true && <BookmarkBadge />}
+      {data.bookmarked === true && !quiet && <BookmarkBadge />}
 
-      {typeof data.balanceMass === "string" && data.balanceMass && (
-        <BalancePill
-          text={data.balanceMass}
-          tone={data.balanceTone ?? "mass"}
-        />
+      {data.balanceTop && (
+        <BalancePill text={data.balanceTop.text} tone={data.balanceTop.tone} position="top" />
+      )}
+      {data.balanceBottom && (
+        <BalancePill text={data.balanceBottom.text} tone={data.balanceBottom.tone} position="bottom" />
       )}
 
       <div style={{ fontSize: box.fontSize, lineHeight: box.lineHeight }}>

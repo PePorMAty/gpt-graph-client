@@ -139,8 +139,8 @@ export const RequestForm: FC<Props> = ({
             </button>
           )}
           <label className={styles.fieldLabel} htmlFor="mb-template">
-            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами, базисом и
-            контекстом
+            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами,
+            количеством сырья и контекстом
           </label>
           <textarea
             id="mb-template"

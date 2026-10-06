@@ -15,6 +15,7 @@ import {
 } from "@reduxjs/toolkit";
 
 import {
+  cancelBalanceJob,
   fetchBalanceJob,
   fetchBalancePrompt,
   fetchBalanceRecord,
@@ -56,6 +57,11 @@ export interface BalanceDraft {
 
 export interface BalanceJobState {
   status: "starting" | "running" | "failed";
+  /**
+   * Номер запуска на клиенте. Отмена убирает задачу, и опрос, увидев, что
+   * его запуска больше нет, молча заканчивается.
+   */
+  runId: string;
   jobId: string | null;
   startedAt: string;
   inputId: string;
@@ -197,7 +203,13 @@ const slice = createSlice({
     },
     jobStarted(
       state,
-      action: PayloadAction<{ key: string; inputId: string; outputId: string; startedAt: string }>,
+      action: PayloadAction<{
+        key: string;
+        runId: string;
+        inputId: string;
+        outputId: string;
+        startedAt: string;
+      }>,
     ) {
       const { key, ...rest } = action.payload;
       state.jobs[key] = { status: "starting", jobId: null, ...rest };
@@ -269,6 +281,8 @@ const MAX_POLL_MISSES = 3;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+let runSeq = 0;
+
 /** Количество из поля: «1,5» и «1.5» — одно и то же; пусто и ноль — 1. */
 export function draftAmount(text: string): number {
   const v = Number(String(text).replace(/\s/g, "").replace(",", "."));
@@ -339,6 +353,9 @@ function attachCalc(
  * кончится. Граф за это время могли сменить: тогда в новый граф ничего не
  * кладём — ответ уже в базе сервера, и на том же преобразовании
  * «Рассчитать» возьмёт его сразу.
+ *
+ * «Отменить расчёт» (cancelMaterialBalance) убирает задачу: опрос это видит
+ * и заканчивается, ничего не положив в граф.
  */
 export const runMaterialBalance =
   (opts: { force?: boolean } = {}) =>
@@ -366,14 +383,18 @@ export const runMaterialBalance =
     const canvas = getNotificationCanvas();
     const nodeTarget = { nodeId: t.id, label: tLabel };
 
+    const runId = `${Date.now()}-${++runSeq}`;
     dispatch(
       jobStarted({
         key,
+        runId,
         inputId: input.id,
         outputId: output.id,
         startedAt: new Date().toISOString(),
       }),
     );
+    /** Запуск не отменили. */
+    const alive = () => getState().materialBalance.jobs[key]?.runId === runId;
 
     const fail = (message: string) => {
       dispatch(jobEnded({ key, error: message }));
@@ -437,7 +458,14 @@ export const runMaterialBalance =
         ...(opts.force ? { force: true } : {}),
       });
     } catch (e) {
-      fail(e instanceof Error ? e.message : String(e));
+      if (alive()) fail(e instanceof Error ? e.message : String(e));
+      return;
+    }
+
+    if (!alive()) {
+      // Отменили, пока сервер принимал запрос: номера задачи тогда ещё не
+      // было, и снять её на сервере может только этот запуск.
+      if (!started.fromCache) void cancelBalanceJob(started.jobId).catch(() => {});
       return;
     }
 
@@ -451,11 +479,13 @@ export const runMaterialBalance =
     let misses = 0;
     for (;;) {
       await sleep(POLL_MS);
+      if (!alive()) return;
       let job;
       try {
         job = await fetchBalanceJob(started.jobId);
         misses = 0;
       } catch (e) {
+        if (!alive()) return;
         const message = e instanceof Error ? e.message : String(e);
         // Сервер перезапускался — задачи больше нет, ждать нечего.
         if (/не найден/i.test(message) || ++misses >= MAX_POLL_MISSES) {
@@ -464,7 +494,14 @@ export const runMaterialBalance =
         }
         continue;
       }
+      if (!alive()) return;
       if (job.status === "running") continue;
+      // Такой же расчёт отменили из другой вкладки или другим человеком:
+      // задача на сервере общая.
+      if (job.status === "cancelled") {
+        fail("Расчёт отменили. Запустите его заново, если он нужен.");
+        return;
+      }
       if (job.status === "failed" || !job.result) {
         fail(job.error || "Расчёт завершился без ответа");
         return;
@@ -499,6 +536,28 @@ export const takeBalanceFromBase =
         "Не удалось взять расчёт из базы",
         e instanceof Error ? e.message : String(e),
       );
+    }
+  };
+
+/**
+ * «Отменить расчёт» пары (jobKey): опрос заканчивается, сервер обрывает
+ * запрос к модели и ответ в базу не пишет. Во вкладке — снова прежний
+ * расчёт пары, если он был, иначе форма запроса.
+ */
+export const cancelMaterialBalance =
+  (key: string) =>
+  async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
+    const job = getState().materialBalance.jobs[key];
+    if (!job) return;
+    dispatch(slice.actions.dismissBalanceJob(key));
+    dispatch(slice.actions.setBalanceFormOpen(false));
+    // Номера задачи ещё нет — сервер не ответил на запуск. Снимет её сам
+    // запуск, когда ответ придёт (runMaterialBalance).
+    if (!job.jobId) return;
+    try {
+      await cancelBalanceJob(job.jobId);
+    } catch {
+      // Задача уже закончилась или сервер перезапускался — обрывать нечего.
     }
   };
 

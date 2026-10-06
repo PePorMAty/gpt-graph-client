@@ -361,6 +361,14 @@ label.fieldLabel {
   color: var(--c-brand-strong);
 }
 
+.runningBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
 .spinner {
   flex: 0 0 auto;
   width: 14px;

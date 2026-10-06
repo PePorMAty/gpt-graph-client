@@ -42,12 +42,16 @@ export const TransformationNode: React.FC<TransformationNodeProps> = ({
         position={Position.Top}
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
-      {data.bookmarked === true && <BookmarkBadge />}
+      {data.bookmarked === true && data.balanceQuiet !== true && <BookmarkBadge />}
       {typeof data.balanceMark === "number" && data.balanceMark > 0 && (
         <BalanceMark count={data.balanceMark} />
       )}
       {typeof data.balanceCoefficient === "string" && data.balanceCoefficient && (
-        <BalancePill text={data.balanceCoefficient} tone="coefficient" />
+        <BalancePill
+          text={data.balanceCoefficient}
+          tone="coefficient"
+          title={data.balanceCoefficientTitle}
+        />
       )}
       <div style={{ fontSize: box.fontSize, lineHeight: box.lineHeight }}>
         {data.label}

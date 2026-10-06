@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
+  cancelMaterialBalance,
   dismissBalanceJob,
   draftAmount,
   jobKey,
@@ -66,13 +67,16 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
   const outputId = selection?.outputId ?? "";
   const input = ends.ins.find((n) => n.id === inputId);
   const output = ends.outs.find((n) => n.id === outputId);
-  const job = jobs[jobKey(t.id, inputId, outputId)];
+  const key = jobKey(t.id, inputId, outputId);
+  const job = jobs[key];
   const running = busy(job?.status);
   const existing = calcFor(t, inputId, outputId);
   // Пара расчёта на графе уже не «сырьё → продукт» этого преобразования:
   // продукт удалён или связь теперь нарисована иначе.
   const stale = Boolean(existing) && (!input || !output);
-  const showDetails = Boolean(existing) && (!formOpen || stale);
+  // Пока пара считается, во вкладке — только ход расчёта и «Отменить»:
+  // отмена возвращает к прежнему расчёту пары, если он был.
+  const showDetails = Boolean(existing) && (stale || (!formOpen && !running));
   const shownId = showDetails ? existing?.record.id : undefined;
   const calcs = calcsOf(t);
 
@@ -187,11 +191,20 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
           {running && job && (
             <div className={styles.running} role="status">
               <span className={styles.spinner} aria-hidden />
-              <span>
-                Считаем… {elapsed(now - new Date(job.startedAt).getTime())}. Модель
-                ищет источники — обычно это несколько минут. Можно закрыть панель
-                и работать дальше: по готовности придёт уведомление.
-              </span>
+              <div className={styles.runningBody}>
+                <span>
+                  Считаем… {elapsed(now - new Date(job.startedAt).getTime())}. Модель
+                  ищет источники — обычно это несколько минут. Можно закрыть панель
+                  и работать дальше: по готовности придёт уведомление.
+                </span>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => dispatch(cancelMaterialBalance(key))}
+                >
+                  Отменить расчёт
+                </button>
+              </div>
             </div>
           )}
           {job?.status === "failed" && (
@@ -200,7 +213,7 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
               <button
                 type="button"
                 className={styles.iconBtn}
-                onClick={() => dispatch(dismissBalanceJob(jobKey(t.id, inputId, outputId)))}
+                onClick={() => dispatch(dismissBalanceJob(key))}
                 aria-label="Скрыть ошибку"
               >
                 <CloseIcon size={14} />
@@ -215,7 +228,7 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
               onNewRequest={() => dispatch(setBalanceFormOpen(true))}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
             />
-          ) : input && output ? (
+          ) : input && output && !running ? (
             <RequestForm
               transformation={t}
               input={input}

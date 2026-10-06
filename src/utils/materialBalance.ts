@@ -13,12 +13,12 @@ import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import type {
   BalanceAmount,
+  BalanceCoefficient,
   BalanceRecord,
   BalanceStatus,
 } from "../store/api/material-balance-api";
 import { inferTFlow, productTransformationEnds, tFlowOf, type TFlow } from "./edgeFlow";
 import { normalizeProductName } from "./normalizeProductName";
-import { readableRecord } from "./readableModelText";
 
 export type BalanceUnit = "кг" | "т" | "тыс. т";
 
@@ -62,7 +62,7 @@ export const STATUS_TEXT: Record<BalanceStatus, string> = {
   partial: "Частично рассчитан",
   insufficient: "Недостаточно данных",
   invalid_selection: "Некорректный выбор",
-  invalid_basis: "Не задан корректный базис",
+  invalid_basis: "Не задано количество сырья",
   unknown: "Статус не распознан",
 };
 
@@ -298,37 +298,55 @@ const AMOUNT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 6 });
 /** Количество человека: «1 т», «2,5 тыс. т». */
 export const formatView = (view: BalanceView) => `${AMOUNT.format(view.amount)} ${view.unit}`;
 
-/** Короткое имя показателя для узла: «выход», «расход», «конверсия». */
-function shortIndicator(indicator: string): string {
-  const s = indicator.toLowerCase();
-  if (s.includes("выход")) return "выход";
-  if (s.includes("расход")) return "расход";
-  if (s.includes("конверс")) return "конверсия";
-  if (s.includes("селектив")) return "селективность";
-  if (s.includes("извлечен")) return "извлечение";
-  if (s.includes("потер")) return "потери";
-  return s.split(/\s+/)[0] ?? s;
+/**
+ * Коэффициент «на единицу массы» долей: «0,92 кг/кг», «0,92 т/т» — 0,92;
+ * «920 кг/т» — 0,92. Другие единицы (%, м³/т, моль) — null.
+ */
+export function massFraction(
+  c: Pick<BalanceCoefficient, "value" | "unit">,
+): BalanceAmount | null {
+  if (!c.value) return null;
+  const unit = c.unit.replace(/\s+/g, "").toLowerCase();
+  const k = /^(кг\/кг|т\/т|г\/г|kg\/kg|t\/t|g\/g)$/.test(unit)
+    ? 1
+    : /^(кг\/т|kg\/t)$/.test(unit)
+      ? 0.001
+      : null;
+  if (k === null) return null;
+  return { min: c.value.min * k, max: c.value.max * k, approx: c.value.approx };
+}
+
+/** «92 %», «≈92–95 %» — доля процентами. */
+export function formatPercent(share: BalanceAmount): string {
+  const lo = NUMBER.format(share.min * 100);
+  const hi = NUMBER.format(share.max * 100);
+  return `${share.approx ? "≈" : ""}${lo === hi ? lo : `${lo}–${hi}`} %`;
 }
 
 /**
- * Подпись на узле преобразования: главный коэффициент стадии — выход, иначе
- * расход, иначе первый найденный. Без значения подписи нет.
+ * Выход продукта пары из сырья долей: масса продукта (P2) на массу сырья
+ * (P1) по расчёту, иначе строка «Коэффициентов переходов» P1 → P2 в
+ * «кг/кг», «т/т» или процентах. Нет ни того, ни другого — null.
+ *
+ * Именно выход пары, а не «первый коэффициент с выходом»: строк у модели
+ * несколько, и первой бывает выход отходов («выход 0,05–0,08 кг/кг» на
+ * узле, где продукта получается 0,92–0,95 т из тонны).
  */
-export function coefficientLabel(record: BalanceRecord): string | null {
-  const rows = record.coefficients.filter((c) => c.value);
-  const pick =
-    rows.find((c) => /выход/i.test(c.indicator)) ??
-    rows.find((c) => /расход/i.test(c.indicator)) ??
-    rows[0];
-  if (!pick) return null;
-  // На узле место только на число: «% от массы сырья», «% (м/м)» — это «%»,
-  // а длинные единицы — во вкладке.
-  let unit = pick.unit.trim();
-  if (/%/.test(pick.valueText)) unit = "";
-  else if (unit.startsWith("%")) unit = "%";
-  else if (unit.length > 10) unit = "";
-  const suffix = !unit ? "" : unit === "%" ? "%" : ` ${unit}`;
-  return `${shortIndicator(pick.indicator)} ${pick.valueText}${suffix}`;
+export function pairYield(record: BalanceRecord): BalanceAmount | null {
+  const p1 = massPerTonne(record, "P1");
+  const p2 = massPerTonne(record, "P2");
+  if (p1 && p2 && p1.min > 0) {
+    return { min: p2.min / p1.max, max: p2.max / p1.min, approx: p1.approx || p2.approx };
+  }
+  for (const c of record.coefficients) {
+    if (c.fromRef !== "P1" || c.toRef !== "P2" || !c.value) continue;
+    const share = massFraction(c);
+    if (share) return share;
+    if (/^%/.test(c.unit.trim()) && !/об/i.test(c.unit)) {
+      return { min: c.value.min / 100, max: c.value.max / 100, approx: c.value.approx };
+    }
+  }
+  return null;
 }
 
 export interface BalanceSelection {
@@ -370,20 +388,48 @@ export function pairFor(
   };
 }
 
-/** Тон подписи на узле: базис — тёмная, масса — синяя, роль без массы — светлая. */
+/**
+ * Тон подписи на узле: заданное количество сырья — тёмная, посчитанная
+ * масса — синяя, роль без массы — светлая.
+ */
 export type BalancePillTone = "basis" | "mass" | "role";
+
+export interface BalancePillData {
+  text: string;
+  tone: BalancePillTone;
+}
+
+/**
+ * Подсветка связи «сырьё — преобразование — продукт»: active — пара, чьи
+ * числа на узлах (выбранная или открытая); pending — выбранная пара, ещё не
+ * посчитанная; calc — прочие посчитанные пары; plain — просто не
+ * приглушать (остальные входы и выходы выбранного преобразования).
+ */
+export type BalanceEdgeTone = "active" | "pending" | "calc" | "plain";
+
+const EDGE_RANK: Record<BalanceEdgeTone, number> = { active: 3, pending: 2, calc: 1, plain: 0 };
+
+/** Ключ связи по её концам: направление связи неважно. */
+export const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 /** Что режим баланса рисует на полотне. */
 export interface BalanceLayer {
   /** Узлы, которые остаются яркими; остальные приглушаются. Пусто — никого. */
   lit: Set<string>;
-  /** Подписи на продуктах: «сырьё · 1 т», «продукт · ≈0,82 т». */
-  mass: Map<string, { text: string; tone: BalancePillTone }>;
-  /** Подпись коэффициента на преобразовании расчёта. */
-  coefficient: { nodeId: string; text: string } | null;
+  /**
+   * Подписи на продуктах. Сверху — «продукт · ≈0,82 т»: в верх узла входит
+   * связь от преобразования, которое его дало. Снизу — «сырьё · 1 т»: от
+   * низа связь уходит к следующему преобразованию. Продукт одного расчёта,
+   * ставший сырьём следующего, несёт обе.
+   */
+  pills: Map<string, { top?: BalancePillData; bottom?: BalancePillData }>;
+  /** Выход пары на преобразованиях с расчётами: «выход ≈92 %». */
+  coefficients: Map<string, { text: string; title: string }>;
   /** Сколько пар посчитано у преобразования — значок ⚖. */
   marks: Map<string, number>;
-  /** Расчёт, чьи числа на узлах. */
+  /** Подсветка связей по edgeKey концов; нет в списке — приглушить. */
+  edges: Map<string, BalanceEdgeTone>;
+  /** Расчёт, чьи числа на узлах полностью, с прочими входами и выходами. */
   shown: { nodeId: string; calc: MaterialBalanceCalc } | null;
 }
 
@@ -420,12 +466,21 @@ export function shownCalcFor(args: {
 /**
  * Режим «Материальный баланс» на полотне.
  *
- * Чьи числа показывать — см. shownCalcFor. Один продукт бывает выходом
- * одного расчёта и входом другого с разными числами, поэтому на узлах —
- * всегда один расчёт. На каждой подписи — роль: сырьё или продукт. У
- * выбранного преобразования роль подписана на всех его входах и выходах —
- * так видно, что с чем можно считать. Пока выбранная пара не посчитана, у её
- * сырья — количество из формы, у продукта — «?».
+ * На узлах — все посчитанные пары графа: у сырья пары снизу «сырьё · 1 т»,
+ * у продукта сверху «продукт · ≈0,82 т», их связи с преобразованием
+ * подсвечены. Так сразу видно, какие пары посчитаны, а какие нет; продукт,
+ * ставший сырьём следующего расчёта, несёт обе подписи. Числа у каждой пары
+ * свои: её количество сырья, её масса продукта.
+ *
+ * Расчёт в фокусе (shownCalcFor: выбранная пара, иначе открытый во вкладке,
+ * иначе последний) показан целиком — с прочими входами и выходами, — и его
+ * связи выделены сильнее. У выбранного преобразования роль подписана на
+ * всех его входах и выходах — так видно, что с чем можно считать. Пока
+ * выбранная пара не посчитана, у её сырья — количество из формы, у
+ * продукта — «?», связи — пунктиром.
+ *
+ * Одно место на узле — одна подпись: в фокусе важнее прочих, посчитанное —
+ * важнее роли, из прочих — свежий расчёт.
  */
 export function balanceLayer(args: {
   nodes: CustomNode[];
@@ -436,6 +491,8 @@ export function balanceLayer(args: {
   draft: BalanceView;
 }): BalanceLayer {
   const byId = new Map(args.nodes.map((n) => [n.id, n]));
+  const isProduct = (id: string | null | undefined): id is string =>
+    !!id && byId.get(id)?.type === "product";
   const sel =
     args.selection && byId.get(args.selection.transformationId)?.type === "transformation"
       ? args.selection
@@ -443,47 +500,111 @@ export function balanceLayer(args: {
   const shown = shownCalcFor(args);
 
   const lit = new Set<string>();
-  const mass = new Map<string, { text: string; tone: BalancePillTone }>();
-  let coefficient: BalanceLayer["coefficient"] = null;
+  const pills: BalanceLayer["pills"] = new Map();
+  const coefficients: BalanceLayer["coefficients"] = new Map();
+  const edges: BalanceLayer["edges"] = new Map();
 
+  const put = (id: string, role: "сырьё" | "продукт", pill: BalancePillData) => {
+    const slot = role === "продукт" ? "top" : "bottom";
+    const cur = pills.get(id) ?? {};
+    if (cur[slot]) return;
+    pills.set(id, { ...cur, [slot]: pill });
+  };
+  const link = (a: string, b: string, tone: BalanceEdgeTone) => {
+    const key = edgeKey(a, b);
+    const cur = edges.get(key);
+    if (!cur || EDGE_RANK[tone] > EDGE_RANK[cur]) edges.set(key, tone);
+  };
+  const nameOf = (id: string | undefined, record: BalanceRecord, ref: string) =>
+    String(byId.get(id ?? "")?.data?.label ?? "").trim() ||
+    record.refs.find((r) => r.ref === ref)?.name ||
+    ref;
+  const coefficient = (nodeId: string, calc: MaterialBalanceCalc) => {
+    if (coefficients.has(nodeId)) return;
+    const share = pairYield(calc.record);
+    if (!share) return;
+    const p1 = nameOf(calc.nodeIds.P1, calc.record, "P1");
+    const p2 = nameOf(calc.nodeIds.P2, calc.record, "P2");
+    coefficients.set(nodeId, {
+      text: `выход ${formatPercent(share)}`,
+      title: `Массовый выход «${p2}» из «${p1}»: столько процентов массы сырья становится продуктом (${formatMass(
+        { min: share.min * 1000, max: share.max * 1000, approx: share.approx },
+        "т",
+      )} из 1 т)`,
+    });
+  };
+
+  // Расчёт в фокусе — целиком.
+  if (shown) {
+    const { calc, nodeId } = shown;
+    lit.add(nodeId);
+    for (const [ref, id] of Object.entries(calc.nodeIds)) {
+      if (!ref.startsWith("P") || !isProduct(id)) continue;
+      lit.add(id);
+      const role = ref === "P1" ? "сырьё" : ref === "P2" ? "продукт" : refRole(calc.record, ref);
+      link(id, nodeId, ref === "P1" || ref === "P2" ? "active" : "plain");
+      const m = shownMass(calc, ref);
+      // Прочие входы и выходы, по которым модель цифр не дала, — только
+      // роль; «нет данных» — у самой пары, там это важно.
+      if (!m && ref !== "P1" && ref !== "P2") {
+        put(id, role, { text: role, tone: "role" });
+        continue;
+      }
+      // Количество сырья — как его задали, без округления до трёх знаков.
+      put(id, role, {
+        text: `${role} · ${ref === "P1" ? formatView(calc.view) : formatMass(m, calc.view.unit)}`,
+        tone: ref === "P1" ? "basis" : "mass",
+      });
+    }
+    coefficient(nodeId, calc);
+  } else if (sel) {
+    // Выбранная пара ещё не посчитана.
+    lit.add(sel.transformationId);
+    if (isProduct(sel.inputId)) {
+      put(sel.inputId, "сырьё", { text: `сырьё · ${formatView(args.draft)}`, tone: "basis" });
+      link(sel.inputId, sel.transformationId, "pending");
+    }
+    if (isProduct(sel.outputId)) {
+      put(sel.outputId, "продукт", { text: "продукт · ?", tone: "mass" });
+      link(sel.transformationId, sel.outputId, "pending");
+    }
+  }
+
+  // Прочие посчитанные пары, свежие первыми: сырьё и продукт.
+  for (const { nodeId, calc } of allCalcs(args.nodes)) {
+    if (shown?.nodeId === nodeId && shown.calc.record.id === calc.record.id) continue;
+    const { P1, P2 } = calc.nodeIds;
+    lit.add(nodeId);
+    if (isProduct(P1)) {
+      lit.add(P1);
+      put(P1, "сырьё", { text: `сырьё · ${formatView(calc.view)}`, tone: "basis" });
+      link(P1, nodeId, "calc");
+    }
+    if (isProduct(P2)) {
+      lit.add(P2);
+      put(P2, "продукт", {
+        text: `продукт · ${formatMass(shownMass(calc, "P2"), calc.view.unit)}`,
+        tone: "mass",
+      });
+      link(nodeId, P2, "calc");
+    }
+    coefficient(nodeId, calc);
+  }
+
+  // Роли на входах и выходах выбранного преобразования.
   if (sel) {
     lit.add(sel.transformationId);
     const { ins, outs } = balanceEnds(sel.transformationId, args.nodes, args.edges);
     for (const n of ins) {
       lit.add(n.id);
-      mass.set(n.id, { text: "сырьё", tone: "role" });
+      put(n.id, "сырьё", { text: "сырьё", tone: "role" });
+      link(n.id, sel.transformationId, "plain");
     }
     for (const n of outs) {
       lit.add(n.id);
-      mass.set(n.id, { text: "продукт", tone: "role" });
+      put(n.id, "продукт", { text: "продукт", tone: "role" });
+      link(sel.transformationId, n.id, "plain");
     }
-    if (!shown) {
-      if (sel.inputId) {
-        mass.set(sel.inputId, { text: `сырьё · ${formatView(args.draft)}`, tone: "basis" });
-      }
-      if (sel.outputId) mass.set(sel.outputId, { text: "продукт · ?", tone: "mass" });
-    }
-  }
-  if (shown) {
-    const { calc, nodeId } = shown;
-    lit.add(nodeId);
-    for (const [ref, id] of Object.entries(calc.nodeIds)) {
-      if (!ref.startsWith("P") || byId.get(id)?.type !== "product") continue;
-      lit.add(id);
-      const m = shownMass(calc, ref);
-      // Прочие входы и выходы, по которым модель цифр не дала, — только
-      // роль; «нет данных» — у самой пары, там это важно.
-      if (!m && ref !== "P1" && ref !== "P2") {
-        mass.set(id, { text: refRole(calc.record, ref), tone: "role" });
-        continue;
-      }
-      mass.set(id, {
-        text: `${refRole(calc.record, ref)} · ${formatMass(m, calc.view.unit)}`,
-        tone: ref === "P1" ? "basis" : "mass",
-      });
-    }
-    const text = coefficientLabel(readableRecord(calc.record));
-    if (text) coefficient = { nodeId, text };
   }
 
   const marks = new Map<string, number>();
@@ -491,7 +612,7 @@ export function balanceLayer(args: {
     const k = n.type === "transformation" ? calcsOf(n).length : 0;
     if (k) marks.set(n.id, k);
   }
-  return { lit, mass, coefficient, marks, shown };
+  return { lit, pills, coefficients, marks, edges, shown };
 }
 
 /** Название без пояснений в скобках: «Нафта (нефтяная фракция…)» → «нафта». */

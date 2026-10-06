@@ -2,7 +2,9 @@ import type { FC } from "react";
 
 import {
   formatMass,
+  formatPercent,
   formatView,
+  pairYield,
   shownMass,
   type BalanceView,
   type MaterialBalanceCalc,
@@ -45,6 +47,8 @@ export const PairScheme: FC<Props> = ({
   onPair,
   disabled,
 }) => {
+  // Выход — доля массы сырья, ставшая продуктом: от количества не зависит.
+  const share = calc ? pairYield(calc.record) : null;
   const row = (kind: "input" | "output") => {
     const isInput = kind === "input";
     const list = isInput ? ins : outs;
@@ -80,6 +84,7 @@ export const PairScheme: FC<Props> = ({
           ) : calc ? (
             <span className={styles.schemeResult}>
               получится <b>{formatMass(shownMass(calc, "P2"), calc.view.unit)}</b>
+              {share && <> · выход {formatPercent(share)}</>}
             </span>
           ) : (
             <span className={styles.muted}>сколько получится — посчитает модель</span>

@@ -163,6 +163,7 @@ import {
 } from "./store/slices/materialBalanceSlice";
 import {
   balanceLayer as computeBalanceLayer,
+  edgeKey as balanceEdgeKey,
   calcsOf,
 } from "./utils/materialBalance";
 
@@ -772,6 +773,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     };
   }, []);
 
+  // Режим «Материальный баланс» (чип над полотном) — подробнее ниже, у слоя
+  // баланса.
+  const balanceMode = useAppSelector((s) => s.materialBalance.mode);
+
   // Подсветка цепочки по hover — только для графов, загруженных через
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
   // выделяются он сам, все предки и потомки + рёбра между ними; остальное
@@ -784,13 +789,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   }, [data.nodes]);
   const chainSet = useMemo<Set<string> | null>(() => {
     // В фокус-режиме окрестность и так обрезана — hover-затемнение не нужно.
-    if (source !== "loaded" || !hoveredChainId || focusOn) return null;
+    // В режиме баланса подсвечено своё — выбранное преобразование и
+    // посчитанные пары, — и наведение гасило бы его.
+    if (source !== "loaded" || !hoveredChainId || focusOn || balanceMode) return null;
     return findChainNodeIds(
       data.edges,
       hoveredChainId,
       (id) => nodeTypeById.get(id),
     );
-  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn]);
+  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn, balanceMode]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
@@ -941,9 +948,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // ─── Материальный баланс ───
   // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
-  // расчёта, на узлах — массы одного расчёта, остальное приглушено (см.
-  // utils/materialBalance.ts, balanceLayer).
-  const balanceMode = useAppSelector((s) => s.materialBalance.mode);
+  // расчёта, на узлах — все посчитанные пары (продукт сверху, сырьё снизу),
+  // их связи подсвечены, остальное приглушено (см. utils/materialBalance.ts,
+  // balanceLayer).
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
   const balanceDraftAmount = useAppSelector((s) => s.materialBalance.draft.amount);
@@ -1025,8 +1032,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Крупная подпись — только у фокус-проекции: в полном графе и в
         // «только продукты» узлы остаются прежними.
         const compact = !!focusView;
-        // Значок закладки — у продукта и у преобразования одинаково.
-        const bookmarked = bookmarkedIds.has(n.id);
+        // Значок закладки — у продукта и у преобразования одинаково. В
+        // режиме баланса значков нет: на узлах только баланс.
+        const bookmarked = !balance && bookmarkedIds.has(n.id);
 
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
@@ -1044,6 +1052,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           // Сколько разделов документов в базе сервера про продукт. Нет
           // таких — значка нет.
           const base = localSourceCounts[industryKey(lbl)];
+          const pills = balance?.pills.get(n.id);
           return {
             ...n,
             className: cls,
@@ -1062,12 +1071,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                   }
                 : {}),
               showIndustryData: industryData,
-              ...(balance?.mass.has(n.id)
-                ? {
-                    balanceMass: balance.mass.get(n.id)!.text,
-                    balanceTone: balance.mass.get(n.id)!.tone,
-                  }
-                : {}),
+              ...(balance ? { balanceQuiet: true } : {}),
+              ...(pills?.top ? { balanceTop: pills.top } : {}),
+              ...(pills?.bottom ? { balanceBottom: pills.bottom } : {}),
               ...(gisp
                 ? {
                     gispProducers: gisp.producerCount,
@@ -1078,10 +1084,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           };
         }
 
-        const coefficient =
-          balance?.coefficient?.nodeId === n.id ? balance.coefficient.text : null;
+        const coefficient = balance?.coefficients.get(n.id);
         const balanceMark = balance?.marks.get(n.id) ?? 0;
-        return compact || bookmarked || coefficient || balanceMark
+        return compact || bookmarked || balance
           ? {
               ...n,
               className: cls,
@@ -1089,7 +1094,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 ...n.data,
                 ...(compact ? { focusCompact: true } : {}),
                 ...(bookmarked ? { bookmarked: true } : {}),
-                ...(coefficient ? { balanceCoefficient: coefficient } : {}),
+                ...(balance ? { balanceQuiet: true } : {}),
+                ...(coefficient
+                  ? {
+                      balanceCoefficient: coefficient.text,
+                      balanceCoefficientTitle: coefficient.title,
+                    }
+                  : {}),
                 ...(balanceMark ? { balanceMark } : {}),
               },
             }
@@ -1120,18 +1131,22 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     const baseEdges = showAlternatives
       ? base
       : base.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
-    // Режим баланса приглушает связи вне выбранного и открытого расчёта.
+    // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
+    // приглушены (balanceLayer, edges).
     const lit = balance && balance.lit.size > 0 ? balance.lit : null;
     if (!chainSet && !lit) return baseEdges;
     return baseEdges.map((e) => {
       const existing = e.className ?? "";
+      const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
       const extra = [
         chainSet && !(chainSet.has(e.source) && chainSet.has(e.target))
           ? "edge--dimmed"
           : "",
-        lit && !(lit.has(e.source) && lit.has(e.target))
-          ? "edge--balance-muted"
-          : "",
+        !lit || tone === "plain"
+          ? ""
+          : tone
+            ? `edge--balance-${tone}`
+            : "edge--balance-muted",
       ].filter(Boolean);
       if (!extra.length) return e;
       return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
