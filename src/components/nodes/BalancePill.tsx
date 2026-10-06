@@ -1,7 +1,7 @@
 import React from "react";
 
 /**
- * Значки материального баланса на узле (режим «Материальный баланс»).
+ * Подписи материального баланса на узле (режим «Материальный баланс»).
  *
  * Прочие значки узла (источники, ГИСП, база, закладка) в режиме не
  * рисуются. На продукте подписи стоят там, где к нему подходят связи: сверху
@@ -68,47 +68,5 @@ export const BalancePill: React.FC<{
     }}
   >
     {text}
-  </div>
-);
-
-/** У преобразования есть расчёты баланса: весы и их число, если больше одного. */
-export const BalanceMark: React.FC<{ count: number }> = ({ count }) => (
-  <div
-    title={`Рассчитан материальный баланс${count > 1 ? `: пар «сырьё → продукт» — ${count}` : ""}`}
-    data-balance-mark={count}
-    style={{
-      position: "absolute",
-      top: -10,
-      right: -10,
-      display: "flex",
-      alignItems: "center",
-      gap: 3,
-      padding: "2px 6px",
-      borderRadius: 999,
-      background: "#334155",
-      color: "#fff",
-      fontSize: 11,
-      fontWeight: 700,
-      lineHeight: 1,
-      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-      pointerEvents: "none",
-      zIndex: 11,
-    }}
-  >
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 4v16M8 20h8M5 7h14" />
-      <path d="M5 7 2.5 13a2.5 2.5 0 0 0 5 0L5 7ZM19 7l-2.5 6a2.5 2.5 0 0 0 5 0L19 7Z" />
-    </svg>
-    {count > 1 ? count : null}
   </div>
 );

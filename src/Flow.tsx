@@ -1085,7 +1085,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }
 
         const coefficient = balance?.coefficients.get(n.id);
-        const balanceMark = balance?.marks.get(n.id) ?? 0;
         return compact || bookmarked || balance
           ? {
               ...n,
@@ -1101,7 +1100,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                       balanceCoefficientTitle: coefficient.title,
                     }
                   : {}),
-                ...(balanceMark ? { balanceMark } : {}),
               },
             }
           : { ...n, className: cls };

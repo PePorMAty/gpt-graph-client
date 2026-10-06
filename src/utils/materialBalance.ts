@@ -425,8 +425,6 @@ export interface BalanceLayer {
   pills: Map<string, { top?: BalancePillData; bottom?: BalancePillData }>;
   /** Выход пары на преобразованиях с расчётами: «выход ≈92 %». */
   coefficients: Map<string, { text: string; title: string }>;
-  /** Сколько пар посчитано у преобразования — значок ⚖. */
-  marks: Map<string, number>;
   /** Подсветка связей по edgeKey концов; нет в списке — приглушить. */
   edges: Map<string, BalanceEdgeTone>;
   /** Расчёт, чьи числа на узлах полностью, с прочими входами и выходами. */
@@ -607,12 +605,7 @@ export function balanceLayer(args: {
     }
   }
 
-  const marks = new Map<string, number>();
-  for (const n of args.nodes) {
-    const k = n.type === "transformation" ? calcsOf(n).length : 0;
-    if (k) marks.set(n.id, k);
-  }
-  return { lit, pills, coefficients, marks, edges, shown };
+  return { lit, pills, coefficients, edges, shown };
 }
 
 /** Название без пояснений в скобках: «Нафта (нефтяная фракция…)» → «нафта». */
