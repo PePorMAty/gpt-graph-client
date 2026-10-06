@@ -1,87 +1,68 @@
-/* Материальный баланс: плашка над полотном и вкладка левой панели. */
+/* Материальный баланс: вкладка левой панели — выбранное преобразование
+   (форма запроса или данные расчёта) и список расчётов графа. */
 
-/* ─── Плашка над полотном ─── */
-
-/* Полоса во всю ширину холста, но события ловит только сама плашка: под
-   пустыми краями полотно должно оставаться кликабельным. Открытая слева
-   панель или карточка сдвигает плашку вправо, как и панель над холстом
-   (--panel-offset кладёт каркас), — иначе плашка уходила бы под неё. */
-.barWrap {
-  position: absolute;
-  top: calc(var(--h-toolbar) + var(--s-1));
-  left: 0;
-  right: 0;
+/* Вкладка прокручивается целиком: форма с двумя промптами и данные расчёта
+   длиннее панели. */
+.panel {
   display: flex;
-  justify-content: center;
-  padding: 0 70px 0 calc(70px + var(--panel-offset, 0px));
-  transition: padding-left var(--t-base) var(--ease);
-  pointer-events: none;
-  z-index: var(--z-canvas-ui);
-}
-
-.bar {
-  pointer-events: auto;
-  width: min(820px, 100%);
-  max-height: calc(100% - var(--h-toolbar) - 140px);
+  flex-direction: column;
+  gap: var(--s-3);
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
-  padding: var(--s-3) var(--s-4);
-  background: var(--c-surface);
-  border: 1px solid var(--c-brand-border);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-md);
+  padding-right: var(--s-1);
   font-size: var(--fs-md);
   color: var(--c-text-soft);
 }
 
-.barPill {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  height: var(--h-chip);
-  padding: 0 var(--s-4);
-  background: var(--c-surface);
-  border: 1px solid var(--c-brand-border);
-  border-radius: var(--r-pill);
-  box-shadow: var(--sh-sm);
-  font-size: var(--fs-md);
-  color: var(--c-brand-strong);
-  cursor: pointer;
+.back {
+  align-self: flex-start;
 }
 
-.barHead {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-
-.barHeadActions {
-  display: inline-flex;
-  gap: 2px;
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.barIcon {
-  flex: 0 0 auto;
-  color: var(--c-brand);
-}
-
-.barHint {
-  color: var(--c-text-soft);
-}
-
-.barTitle {
+.detailsTitle {
+  margin: 0;
+  font-size: var(--fs-lg);
   font-weight: var(--fw-semibold);
   color: var(--c-text);
 }
 
-.pair {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
+.hintBox {
+  display: flex;
+  align-items: flex-start;
   gap: var(--s-2);
-  min-width: 0;
+  padding: var(--s-3);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--r-md);
+  line-height: 1.45;
+}
+
+.hintBox > span {
+  flex: 1 1 auto;
+}
+
+.barIcon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--c-brand);
+}
+
+.empty {
+  padding: var(--s-4);
+  background: var(--c-surface-soft);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-md);
+  color: var(--c-text-muted);
+  line-height: 1.5;
+}
+
+/* ─── Пара и форма запроса ─── */
+
+.pairRows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
 }
 
 .pairName {
@@ -89,20 +70,16 @@
   color: var(--c-text);
 }
 
-.arrow {
-  color: var(--c-text-faint);
-}
-
-.barRow {
+.form {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--s-2);
-  margin-top: var(--s-2);
 }
 
-.spacer {
-  flex: 1 1 auto;
+.form > .basisRow,
+.form > .block {
+  align-self: stretch;
 }
 
 .fieldLabel {
@@ -117,7 +94,7 @@ label.fieldLabel {
 }
 
 .amount {
-  width: 84px;
+  width: 96px;
   height: 32px;
   padding: 0 var(--s-2);
   border: 1px solid var(--c-border-strong);
@@ -132,13 +109,33 @@ label.fieldLabel {
 
 .select {
   height: 32px;
-  max-width: 230px;
+  max-width: 100%;
+  min-width: 0;
   padding: 0 var(--s-2);
   border: 1px solid var(--c-border-strong);
   border-radius: var(--r-sm);
   background: var(--c-surface);
   font: inherit;
   color: var(--c-text);
+}
+
+.basisRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--r-md);
+}
+
+.basisNote {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--c-text-muted);
 }
 
 .toggle {
@@ -163,7 +160,6 @@ label.fieldLabel {
 }
 
 .block {
-  margin-top: var(--s-2);
   padding: var(--s-3);
   background: var(--c-surface-soft);
   border: 1px solid var(--c-border-soft);
@@ -183,24 +179,35 @@ label.fieldLabel {
 }
 
 .promptArea {
-  min-height: 160px;
+  min-height: 220px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
+}
+
+.hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
 }
 
 .note {
   margin: var(--s-1) 0 0;
   font-size: var(--fs-sm);
+  line-height: 1.45;
   color: var(--c-text-muted);
 }
 
 .muted {
+  margin: 0;
   font-size: var(--fs-sm);
   color: var(--c-text-muted);
 }
 
 .warn {
-  margin: var(--s-2) 0 0;
+  margin: 0;
   padding: var(--s-2) var(--s-3);
   background: var(--c-warning-soft);
   border: 1px solid var(--c-warning-border);
@@ -218,7 +225,6 @@ label.fieldLabel {
   display: flex;
   align-items: flex-start;
   gap: var(--s-2);
-  margin-top: var(--s-2);
   padding: var(--s-2) var(--s-3);
   background: var(--c-danger-soft);
   border: 1px solid var(--c-danger-border);
@@ -232,11 +238,15 @@ label.fieldLabel {
 }
 
 .running {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   gap: var(--s-2);
-  flex: 1 1 320px;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--r-sm);
   font-size: var(--fs-sm);
+  line-height: 1.45;
   color: var(--c-brand-strong);
 }
 
@@ -244,6 +254,7 @@ label.fieldLabel {
   flex: 0 0 auto;
   width: 14px;
   height: 14px;
+  margin-top: 2px;
   border: 2px solid var(--c-brand-border);
   border-top-color: var(--c-brand);
   border-radius: 50%;
@@ -256,7 +267,12 @@ label.fieldLabel {
   }
 }
 
+/* ─── Кнопки ─── */
+
 .linkBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   padding: 0;
   border: none;
   background: none;
@@ -343,26 +359,41 @@ label.fieldLabel {
   color: var(--c-danger);
 }
 
-/* ─── Вкладка левой панели ─── */
-
-.panel {
+.actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  font-size: var(--fs-md);
-  color: var(--c-text-soft);
+  flex-wrap: wrap;
+  gap: var(--s-2);
 }
 
-.empty {
-  padding: var(--s-4);
-  background: var(--c-surface-soft);
-  border: 1px dashed var(--c-border-strong);
-  border-radius: var(--r-md);
-  color: var(--c-text-muted);
-  line-height: 1.5;
+/* Расчёты одной пары: какой из них на узлах и в данных. */
+.calcSwitch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
 }
+
+.chipBtn {
+  height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  font-size: 12px;
+  color: var(--c-text-soft);
+  cursor: pointer;
+}
+
+.chipBtnOn {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+/* ─── Список расчётов ─── */
 
 .group {
+  flex: 0 0 auto;
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
   overflow: hidden;
@@ -410,12 +441,9 @@ label.fieldLabel {
   background: var(--c-brand-softer);
 }
 
-.itemActive {
-  background: var(--c-brand-soft);
-}
-
 .itemTitle {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
   color: var(--c-text);
@@ -450,9 +478,7 @@ label.fieldLabel {
   color: var(--c-danger);
 }
 
-.back {
-  align-self: flex-start;
-}
+/* ─── Данные расчёта ─── */
 
 .detailsHead {
   display: flex;
@@ -460,25 +486,19 @@ label.fieldLabel {
   gap: var(--s-1);
 }
 
-.detailsTitle {
-  margin: 0;
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-  color: var(--c-text);
-}
-
-.basisRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-3);
-  background: var(--c-brand-softer);
-  border: 1px solid var(--c-brand-border);
-  border-radius: var(--r-md);
+.reason {
+  margin: var(--s-1) 0 0;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-warning-soft);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-text-soft);
 }
 
 .section {
+  flex: 0 0 auto;
   border-top: 1px solid var(--c-border-soft);
   padding-top: var(--s-3);
 }
@@ -548,10 +568,4 @@ details.more > summary {
 
 details.more[open] > summary {
   margin-bottom: var(--s-2);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
 }

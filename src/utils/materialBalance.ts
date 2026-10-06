@@ -166,8 +166,7 @@ export function massPerTonne(
   const row = record.products.find((p) => p.ref === ref);
   if (row?.massKg) return row.massKg;
   if (ref === "P1") return { min: 1000, max: 1000, approx: false };
-  const name = record.refs.find((r) => r.ref === ref)?.name;
-  const flow = name ? record.flows.find((f) => sameName(f.name, name)) : null;
+  const flow = record.flows.find((f) => flowRef(record, f.name) === ref);
   return flow?.massKg ?? null;
 }
 
@@ -233,13 +232,14 @@ export function coefficientLabel(record: BalanceRecord): string | null {
     rows.find((c) => /расход/i.test(c.indicator)) ??
     rows[0];
   if (!pick) return null;
-  const unit =
-    !pick.unit || /%/.test(pick.valueText)
-      ? ""
-      : pick.unit === "%"
-        ? "%"
-        : ` ${pick.unit}`;
-  return `${shortIndicator(pick.indicator)} ${pick.valueText}${unit}`;
+  // На узле место только на число: «% от массы сырья», «% (м/м)» — это «%»,
+  // а длинные единицы — во вкладке.
+  let unit = pick.unit.trim();
+  if (/%/.test(pick.valueText)) unit = "";
+  else if (unit.startsWith("%")) unit = "%";
+  else if (unit.length > 10) unit = "";
+  const suffix = !unit ? "" : unit === "%" ? "%" : ` ${unit}`;
+  return `${shortIndicator(pick.indicator)} ${pick.valueText}${suffix}`;
 }
 
 /** Подпись базиса: «1 т Изобутилена» — без склонения, «1 т · Изобутилен». */
@@ -288,10 +288,9 @@ export interface BalanceLayer {
 /**
  * Режим «Материальный баланс» на полотне.
  *
- * Чьи числа показывать: выбрано преобразование — его расчёт той же пары
- * (нет такого — только подсветка выбора); иначе открытый во вкладке; иначе
- * последний расчёт графа. Один продукт бывает выходом одного расчёта и
- * входом другого с разными числами, поэтому на узлах — всегда один расчёт.
+ * Чьи числа показывать — см. shownCalcFor. Один продукт бывает выходом
+ * одного расчёта и входом другого с разными числами, поэтому на узлах —
+ * всегда один расчёт.
  */
 export function balanceLayer(args: {
   nodes: CustomNode[];
@@ -304,22 +303,7 @@ export function balanceLayer(args: {
     args.selection && byId.get(args.selection.transformationId)?.type === "transformation"
       ? args.selection
       : null;
-
-  let shown: BalanceLayer["shown"] = null;
-  if (sel) {
-    const calc = calcsOf(byId.get(sel.transformationId)).find(
-      (c) => c.nodeIds.P1 === sel.basisId && c.nodeIds.P2 === sel.targetId,
-    );
-    shown = calc ? { nodeId: sel.transformationId, calc } : null;
-  } else {
-    if (args.active) {
-      const calc = calcsOf(byId.get(args.active.nodeId)).find(
-        (c) => c.record.id === args.active!.recordId,
-      );
-      shown = calc ? { nodeId: args.active.nodeId, calc } : null;
-    }
-    shown ??= allCalcs(args.nodes)[0] ?? null;
-  }
+  const shown = shownCalcFor(args);
 
   const lit = new Set<string>();
   const mass = new Map<string, { text: string; basis: boolean }>();
@@ -367,9 +351,91 @@ export function scaleForView(
   };
 }
 
-/** Внешний поток баланса — это продукт расчёта (P…) или что-то сверх них. */
+/** Название без пояснений в скобках: «Нафта (нефтяная фракция…)» → «нафта». */
+const coreName = (s: unknown) =>
+  normalizeProductName(String(s ?? "").replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim());
+
+/**
+ * Внешний поток баланса — это продукт расчёта (P…) или что-то сверх них.
+ *
+ * Модели пишут потоки по-своему: «Нафта (P1)» с обозначением, «Нафта» без
+ * длинного пояснения из графа, «метанол» строчными. Без этого исходный
+ * продукт попадал в потоки второй строкой — «дополнительным входом».
+ */
 export function flowRef(record: BalanceRecord, flowName: string): string | null {
-  return record.refs.find((r) => r.ref.startsWith("P") && sameName(r.name, flowName))?.ref ?? null;
+  const explicit = String(flowName).match(/(?<![\p{L}\d])[PpРр]\s*-?\s*(\d{1,3})(?![\d\p{L}])/u);
+  if (explicit && record.refs.some((r) => r.ref === `P${explicit[1]}`)) {
+    return `P${explicit[1]}`;
+  }
+  const want = coreName(flowName);
+  return (
+    record.refs.find(
+      (r) =>
+        r.ref.startsWith("P") &&
+        (sameName(r.name, flowName) || (want !== "" && coreName(r.name) === want)),
+    )?.ref ?? null
+  );
+}
+
+/**
+ * Смена единицы переводит количество, а не меняет его смысл: 1 т → 1000 кг.
+ * Числа на узлах остаются теми же массами, только в другой единице.
+ */
+export function convertUnit(view: BalanceView, unit: BalanceUnit): BalanceView {
+  const amount = Number(((view.amount * UNIT_KG[view.unit]) / UNIT_KG[unit]).toPrecision(12));
+  return { ...view, unit, amount };
+}
+
+/**
+ * Расчёт, чьи числа на узлах и во вкладке.
+ *
+ * Выбрано преобразование — его расчёт той же пары: открытый во вкладке, если
+ * он из этих, иначе свежий (нет такого — только подсветка выбора). Ничего не
+ * выбрано — открытый во вкладке, иначе последний расчёт графа.
+ */
+export function shownCalcFor(args: {
+  nodes: CustomNode[];
+  selection: { transformationId: string; basisId: string | null; targetId: string | null } | null;
+  active: { nodeId: string; recordId: number } | null;
+}): { nodeId: string; calc: MaterialBalanceCalc } | null {
+  const byId = new Map(args.nodes.map((n) => [n.id, n]));
+  const sel =
+    args.selection && byId.get(args.selection.transformationId)?.type === "transformation"
+      ? args.selection
+      : null;
+  if (sel) {
+    const pair = calcsOf(byId.get(sel.transformationId)).filter(
+      (c) => c.nodeIds.P1 === sel.basisId && c.nodeIds.P2 === sel.targetId,
+    );
+    const chosen =
+      args.active?.nodeId === sel.transformationId
+        ? pair.find((c) => c.record.id === args.active!.recordId)
+        : undefined;
+    const calc = chosen ?? pair[0];
+    return calc ? { nodeId: sel.transformationId, calc } : null;
+  }
+  if (args.active) {
+    const calc = calcsOf(byId.get(args.active.nodeId)).find(
+      (c) => c.record.id === args.active!.recordId,
+    );
+    if (calc) return { nodeId: args.active.nodeId, calc };
+  }
+  return allCalcs(args.nodes)[0] ?? null;
+}
+
+/**
+ * Почему расчёт не полный — словами модели: её вывод о балансе, иначе
+ * первое примечание. У полного расчёта — ничего.
+ */
+export function statusReason(record: BalanceRecord): string | null {
+  if (record.status === "calculated") return null;
+  const conclusion = record.totals?.conclusion?.trim();
+  if (conclusion) return conclusion;
+  const note = (record.sections?.notes ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*[-*•]\s*/, "").trim())
+    .find(Boolean);
+  return note || null;
 }
 
 /** «05.10, 14:32» — когда посчитан расчёт. */

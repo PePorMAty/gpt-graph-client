@@ -76,6 +76,11 @@ interface MaterialBalanceState {
   selection: BalanceSelection | null;
   /** Расчёт, открытый во вкладке: его числа — на узлах. */
   active: { nodeId: string; recordId: number } | null;
+  /**
+   * У выбранного преобразования уже есть расчёт, а человек нажал «Новый
+   * расчёт» — во вкладке форма запроса вместо готовых данных.
+   */
+  formOpen: boolean;
   draft: BalanceDraft;
   /** Правленый промпт; null — как на сервере по умолчанию. */
   prompt: { system: string | null; template: string | null };
@@ -90,6 +95,7 @@ const initialState: MaterialBalanceState = {
   mode: false,
   selection: null,
   active: null,
+  formOpen: false,
   draft: { amount: "1", unit: "т", ref: "P1", knownData: "" },
   prompt: { system: null, template: null },
   defaults: null,
@@ -152,12 +158,17 @@ const slice = createSlice({
       action: PayloadAction<BalanceSelection | null>,
     ) {
       state.selection = action.payload;
+      state.formOpen = false;
+    },
+    setBalanceFormOpen(state, action: PayloadAction<boolean>) {
+      state.formOpen = action.payload;
     },
     setBalancePair(
       state,
       action: PayloadAction<{ basisId?: string; targetId?: string }>,
     ) {
       if (!state.selection) return;
+      state.formOpen = false;
       if (action.payload.basisId) state.selection.basisId = action.payload.basisId;
       if (action.payload.targetId) state.selection.targetId = action.payload.targetId;
     },
@@ -252,6 +263,7 @@ const slice = createSlice({
 export const {
   setBalanceMode,
   selectBalanceTransformation,
+  setBalanceFormOpen,
   setBalancePair,
   setBalanceActive,
   setBalanceDraft,
@@ -310,6 +322,8 @@ function attachCalc(
     updateNodeData({ nodeId: node.id, data: { materialBalances: [calc, ...rest] } }),
   );
   dispatch(setBalanceActive({ nodeId: node.id, recordId: args.record.id }));
+  // Расчёт готов — во вкладке его данные, а не форма запроса.
+  dispatch(slice.actions.setBalanceFormOpen(false));
   return true;
 }
 
@@ -396,7 +410,7 @@ export const runMaterialBalance =
         );
         return;
       }
-      // Готовое из базы приходит сразу — человек и так смотрит на плашку.
+      // Готовое из базы приходит сразу — человек и так смотрит на вкладку.
       if (!fromCache) {
         showToast(
           record.status === "calculated" || record.status === "partial" ? "success" : "info",

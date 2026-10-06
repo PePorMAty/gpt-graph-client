@@ -154,7 +154,6 @@ import { fetchTransformationsForNeighbors } from "./store/api/transformation-bet
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
-import { MaterialBalanceBar } from "./components/material-balance/MaterialBalanceBar";
 import {
   selectBalanceTransformation,
   setBalanceActive,
@@ -962,27 +961,27 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         : null,
     [balanceMode, balanceSelection, balanceActive, data.nodes, data.edges],
   );
-  // Высота панели над холстом: при узком экране или открытой слева панели
-  // чипы переносятся на вторую строку, и плашка баланса встаёт под ними.
-  const [toolbarHeight, setToolbarHeight] = useState(0);
-  useEffect(() => {
-    const el = toolbarWrapRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const update = () => setToolbarHeight(el.offsetHeight);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
+  // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
+  // открывают её, выключенный чип закрывает. Карточка узла занимает то же
+  // место слева — открывая вкладку, её закрываем.
+  const openBalancePanel = useCallback(() => {
+    saveChangesRef.current();
+    setIsPanelOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("rail-open", { detail: { section: "balance" } }),
+    );
   }, []);
-  const openBalancePanel = useCallback(
-    (target?: { nodeId: string; recordId: number }) => {
-      if (target) dispatch(setBalanceActive(target));
+  const toggleBalanceMode = useCallback(() => {
+    const next = !balanceModeRef.current;
+    dispatch(setBalanceMode(next));
+    if (readOnly) return;
+    if (next) openBalancePanel();
+    else {
       window.dispatchEvent(
-        new CustomEvent("rail-open", { detail: { section: "balance" } }),
+        new CustomEvent("rail-close", { detail: { section: "balance" } }),
       );
-    },
-    [dispatch],
-  );
+    }
+  }, [dispatch, readOnly, openBalancePanel]);
 
   const flowNodes = useMemo(
     () =>
@@ -1265,6 +1264,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             ...defaultPair(node.id, nodesRef.current, edgesRef.current),
           }),
         );
+        openBalancePanel();
         return;
       }
       // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
@@ -1284,7 +1284,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setCardShown((n) => n + 1);
       setContextMenu(null);
     },
-    [focusOnNode, selectedNodeId, readOnly, dispatch],
+    [focusOnNode, selectedNodeId, readOnly, dispatch, openBalancePanel],
   );
 
   // Hover-подсветка цепочки (только для загруженных графов;
@@ -3156,14 +3156,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           alternatives={showAlternatives}
           onToggleAlternatives={() => setShowAlternatives((v) => !v)}
           balance={balanceMode}
-          onToggleBalance={() => dispatch(setBalanceMode(!balanceMode))}
+          onToggleBalance={toggleBalanceMode}
           readOnly={sharedView}
         />
       </div>
-
-      {balanceMode && !readOnly && (
-        <MaterialBalanceBar onOpenPanel={openBalancePanel} top={toolbarHeight} />
-      )}
 
       <CanvasTools
         mode={canvasMode}
@@ -3302,6 +3298,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 }),
               );
               setContextMenu(null);
+              openBalancePanel();
             };
           })()}
           onClose={() => setContextMenu(null)}

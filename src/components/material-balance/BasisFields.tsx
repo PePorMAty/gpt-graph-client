@@ -1,6 +1,11 @@
 import { useEffect, useState, type FC } from "react";
 
-import { BALANCE_UNITS, type BalanceUnit, type BalanceView } from "../../utils/materialBalance";
+import {
+  BALANCE_UNITS,
+  convertUnit,
+  type BalanceUnit,
+  type BalanceView,
+} from "../../utils/materialBalance";
 import styles from "./MaterialBalance.module.css";
 
 /** Количество из поля: «1,5» и «1.5» — одно и то же; не число — null. */
@@ -18,7 +23,8 @@ interface Props {
 
 /**
  * Базис: количество, единица и чей продукт. Числа на узлах и во вкладке
- * пересчитываются сразу — модель для этого не нужна.
+ * пересчитываются сразу — модель для этого не нужна. Единица переводит
+ * количество (1 т → 1000 кг), а не меняет его смысл.
  *
  * Количество держим строкой: иначе «1,» на полпути к «1,5» превращалось бы
  * в «1», и дробное число было бы не вписать.
@@ -52,7 +58,8 @@ export const BasisFields: FC<Props> = ({ view, names, onChange }) => {
         className={styles.select}
         value={view.unit}
         aria-label="Единица"
-        onChange={(e) => onChange({ ...view, unit: e.target.value as BalanceUnit })}
+        // Смена единицы переводит количество: 1 т → 1000 кг, массы те же.
+        onChange={(e) => onChange(convertUnit(view, e.target.value as BalanceUnit))}
       >
         {BALANCE_UNITS.map((u) => (
           <option key={u} value={u}>
