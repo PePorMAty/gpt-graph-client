@@ -279,6 +279,19 @@
   transition: stroke-opacity 120ms ease;
 }
 
+/* Режим «Материальный баланс»: узлы вне выбранного преобразования и
+   открытого расчёта — серые и бледные, но подписи читаются: по ним видно,
+   где ты на графе (затемнение по hover сильнее — там оно на миг). */
+:global(.react-flow__node.node--balance-muted) {
+  opacity: 0.42;
+  filter: grayscale(0.9);
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+:global(.react-flow__edge.edge--balance-muted path) {
+  stroke-opacity: 0.22;
+  transition: stroke-opacity 120ms ease;
+}
+
 /* ===== Кастомные тултипы кнопок панели Controls =====
    Нативный HTML-атрибут title ненадёжен: на macOS он часто не показывается
    (известный баг Chromium, капризное поведение Safari). Рисуем свою подсказку

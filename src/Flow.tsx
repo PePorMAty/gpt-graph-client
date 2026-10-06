@@ -154,6 +154,17 @@ import { fetchTransformationsForNeighbors } from "./store/api/transformation-bet
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
+import { MaterialBalanceBar } from "./components/material-balance/MaterialBalanceBar";
+import {
+  selectBalanceTransformation,
+  setBalanceActive,
+  setBalanceMode,
+} from "./store/slices/materialBalanceSlice";
+import {
+  balanceLayer as computeBalanceLayer,
+  calcsOf,
+  defaultPair,
+} from "./utils/materialBalance";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -928,6 +939,51 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [productsOnly, data.nodes, data.edges],
   );
 
+  // ─── Материальный баланс ───
+  // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
+  // расчёта, на узлах — массы одного расчёта, остальное приглушено (см.
+  // utils/materialBalance.ts, balanceLayer).
+  const balanceMode = useAppSelector((s) => s.materialBalance.mode);
+  const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
+  const balanceActive = useAppSelector((s) => s.materialBalance.active);
+  const balanceModeRef = useRef(balanceMode);
+  balanceModeRef.current = balanceMode;
+  const edgesRef = useRef(data.edges);
+  edgesRef.current = data.edges;
+  const balance = useMemo(
+    () =>
+      balanceMode
+        ? computeBalanceLayer({
+            nodes: data.nodes,
+            edges: data.edges,
+            selection: balanceSelection,
+            active: balanceActive,
+          })
+        : null,
+    [balanceMode, balanceSelection, balanceActive, data.nodes, data.edges],
+  );
+  // Высота панели над холстом: при узком экране или открытой слева панели
+  // чипы переносятся на вторую строку, и плашка баланса встаёт под ними.
+  const [toolbarHeight, setToolbarHeight] = useState(0);
+  useEffect(() => {
+    const el = toolbarWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const update = () => setToolbarHeight(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const openBalancePanel = useCallback(
+    (target?: { nodeId: string; recordId: number }) => {
+      if (target) dispatch(setBalanceActive(target));
+      window.dispatchEvent(
+        new CustomEvent("rail-open", { detail: { section: "balance" } }),
+      );
+    },
+    [dispatch],
+  );
+
   const flowNodes = useMemo(
     () =>
       // Приоритет проекций: фокус-режим > «только продукты» > полный граф.
@@ -940,11 +996,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
         const isFocusCenter = n.id === focusState?.focusId;
 
+        // Режим баланса: вне выбранного преобразования и открытого расчёта
+        // узлы приглушены.
+        const balanceMuted =
+          !!balance && balance.lit.size > 0 && !balance.lit.has(n.id);
+
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
           isDimmed ? "node--dimmed" : "",
           isFocusCenter ? "node--focus" : "",
+          balanceMuted ? "node--balance-muted" : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -989,6 +1051,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                   }
                 : {}),
               showIndustryData: industryData,
+              ...(balance?.mass.has(n.id)
+                ? {
+                    balanceMass: balance.mass.get(n.id)!.text,
+                    balanceBasis: balance.mass.get(n.id)!.basis,
+                  }
+                : {}),
               ...(gisp
                 ? {
                     gispProducers: gisp.producerCount,
@@ -999,7 +1067,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           };
         }
 
-        return compact || bookmarked
+        const coefficient =
+          balance?.coefficient?.nodeId === n.id ? balance.coefficient.text : null;
+        const balanceMark = balance?.marks.get(n.id) ?? 0;
+        return compact || bookmarked || coefficient || balanceMark
           ? {
               ...n,
               className: cls,
@@ -1007,6 +1078,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 ...n.data,
                 ...(compact ? { focusCompact: true } : {}),
                 ...(bookmarked ? { bookmarked: true } : {}),
+                ...(coefficient ? { balanceCoefficient: coefficient } : {}),
+                ...(balanceMark ? { balanceMark } : {}),
               },
             }
           : { ...n, className: cls };
@@ -1024,6 +1097,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       industryResults,
       localSourceCounts,
       bookmarkedIds,
+      balance,
     ],
   );
 
@@ -1035,15 +1109,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     const baseEdges = showAlternatives
       ? base
       : base.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
-    if (!chainSet) return baseEdges;
+    // Режим баланса приглушает связи вне выбранного и открытого расчёта.
+    const lit = balance && balance.lit.size > 0 ? balance.lit : null;
+    if (!chainSet && !lit) return baseEdges;
     return baseEdges.map((e) => {
-      const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
-      if (bothIn) return e;
       const existing = e.className ?? "";
-      const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
-      return { ...e, className: cls };
+      const extra = [
+        chainSet && !(chainSet.has(e.source) && chainSet.has(e.target))
+          ? "edge--dimmed"
+          : "",
+        lit && !(lit.has(e.source) && lit.has(e.target))
+          ? "edge--balance-muted"
+          : "",
+      ].filter(Boolean);
+      if (!extra.length) return e;
+      return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
     });
-  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives]);
+  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance]);
 
   // Просьба извне вписать граф в экран (открытие графа из библиотеки,
   // объединение). Узлы к моменту события ещё не измерены React Flow, а по
@@ -1165,6 +1247,26 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
       lastInteractedNodeIdRef.current = node.id;
+      // Режим «Материальный баланс»: щелчок по преобразованию выбирает его
+      // для расчёта, карточка не открывается. По ссылке выбирать нечего —
+      // щелчок показывает последний расчёт этого преобразования.
+      if (balanceModeRef.current && node.type === "transformation") {
+        setContextMenu(null);
+        if (readOnly) {
+          const latest = calcsOf(node as CustomNode)[0];
+          if (latest) {
+            dispatch(setBalanceActive({ nodeId: node.id, recordId: latest.record.id }));
+          }
+          return;
+        }
+        dispatch(
+          selectBalanceTransformation({
+            transformationId: node.id,
+            ...defaultPair(node.id, nodesRef.current, edgesRef.current),
+          }),
+        );
+        return;
+      }
       // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
       // навигации, узел становится новым центром. Карточка узла — по клику
       // на сам центр или на преобразование.
@@ -1182,7 +1284,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setCardShown((n) => n + 1);
       setContextMenu(null);
     },
-    [focusOnNode, selectedNodeId],
+    [focusOnNode, selectedNodeId, readOnly, dispatch],
   );
 
   // Hover-подсветка цепочки (только для загруженных графов;
@@ -1281,7 +1383,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setContextMenu(null);
     setPaneMenu(null);
     setEdgeMenu(null);
-  }, []);
+    // Щелчок мимо узлов снимает выбор преобразования в режиме баланса.
+    if (balanceModeRef.current) dispatch(selectBalanceTransformation(null));
+  }, [dispatch]);
 
   // Правый клик по пустому месту — меню добавления узла. В режиме рамки
   // правая кнопка не занята меню: там ею удобно доводить выделение.
@@ -3051,9 +3155,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onToggleIndustryData={() => setIndustryData((v) => !v)}
           alternatives={showAlternatives}
           onToggleAlternatives={() => setShowAlternatives((v) => !v)}
+          balance={balanceMode}
+          onToggleBalance={() => dispatch(setBalanceMode(!balanceMode))}
           readOnly={sharedView}
         />
       </div>
+
+      {balanceMode && !readOnly && (
+        <MaterialBalanceBar onOpenPanel={openBalancePanel} top={toolbarHeight} />
+      )}
 
       <CanvasTools
         mode={canvasMode}
@@ -3176,6 +3286,24 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ? undefined
               : handleToggleBookmark
           }
+          onMaterialBalance={(() => {
+            // Баланс считается у преобразования со входом и выходом;
+            // альтернатива висит на одном продукте — ей нечего считать.
+            const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+            if (node?.type !== "transformation" || node.data?.chainVariant === "alt") {
+              return undefined;
+            }
+            return () => {
+              dispatch(setBalanceMode(true));
+              dispatch(
+                selectBalanceTransformation({
+                  transformationId: node.id,
+                  ...defaultPair(node.id, data.nodes, data.edges),
+                }),
+              );
+              setContextMenu(null);
+            };
+          })()}
           onClose={() => setContextMenu(null)}
         />
       )}

@@ -18,6 +18,7 @@ import styles from "./styles/App.module.css";
 const PANEL_SECTIONS: RailSection[] = [
   "create",
   "sources",
+  "balance",
   "bookmarks",
   "history",
 ];
@@ -47,6 +48,17 @@ function Workspace() {
     };
     window.addEventListener("node-card-toggle", onToggle);
     return () => window.removeEventListener("node-card-toggle", onToggle);
+  }, []);
+
+  // Раздел рельса просят открыть из полотна: плашка материального баланса
+  // ведёт во вкладку с расчётом.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const next = (e as CustomEvent<{ section?: RailSection }>).detail?.section;
+      if (next && PANEL_SECTIONS.includes(next)) setSection(next);
+    };
+    window.addEventListener("rail-open", onOpen);
+    return () => window.removeEventListener("rail-open", onOpen);
   }, []);
 
   const panelSection = PANEL_SECTIONS.includes(section) ? section : null;

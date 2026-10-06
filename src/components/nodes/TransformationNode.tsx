@@ -2,6 +2,7 @@ import React from "react";
 import { Handle, Position } from "@xyflow/react";
 import type { TransformationNodeProps } from "../../types";
 import { BookmarkBadge } from "./BookmarkBadge";
+import { BalanceMark, BalancePill } from "./BalancePill";
 import { nodeBoxStyle } from "./nodeBox";
 
 export const TransformationNode: React.FC<TransformationNodeProps> = ({
@@ -42,6 +43,12 @@ export const TransformationNode: React.FC<TransformationNodeProps> = ({
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
       {data.bookmarked === true && <BookmarkBadge />}
+      {typeof data.balanceMark === "number" && data.balanceMark > 0 && (
+        <BalanceMark count={data.balanceMark} />
+      )}
+      {typeof data.balanceCoefficient === "string" && data.balanceCoefficient && (
+        <BalancePill text={data.balanceCoefficient} tone="coefficient" />
+      )}
       <div style={{ fontSize: box.fontSize, lineHeight: box.lineHeight }}>
         {data.label}
       </div>

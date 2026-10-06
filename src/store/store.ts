@@ -6,6 +6,7 @@ import bookmarksSlice from "./slices/bookmarksSlice";
 import historySlice from "./slices/historySlice";
 import industrySlice from "./slices/industrySlice";
 import localSourcesSlice from "./slices/localSourcesSlice";
+import materialBalanceSlice from "./slices/materialBalanceSlice";
 import { notifyMiddleware } from "./middleware/notifyMiddleware";
 import { historyMiddleware } from "./middleware/historyMiddleware";
 import { graphExtrasMiddleware } from "./middleware/graphExtrasMiddleware";
@@ -19,6 +20,7 @@ const store = configureStore({
     history: historySlice,
     industry: industrySlice,
     localSources: localSourcesSlice,
+    materialBalance: materialBalanceSlice,
   },
   middleware: (getDefaultMiddleware) =>
     // graphExtrasMiddleware — после historyMiddleware: он синхронизирует с

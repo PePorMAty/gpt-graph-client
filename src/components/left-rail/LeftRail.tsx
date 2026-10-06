@@ -5,12 +5,19 @@ import {
   ClockIcon,
   DatabaseIcon,
   PlusIcon,
+  ScalesIcon,
   type IconProps,
 } from "../icons";
 import styles from "./LeftRail.module.css";
 
 /** Разделы левого рельса. `graph` — полотно без открытых панелей. */
-export type RailSection = "create" | "graph" | "sources" | "bookmarks" | "history";
+export type RailSection =
+  | "create"
+  | "graph"
+  | "sources"
+  | "balance"
+  | "bookmarks"
+  | "history";
 
 interface RailItem {
   id: RailSection;
@@ -21,6 +28,7 @@ interface RailItem {
 const ITEMS: RailItem[] = [
   { id: "create", Icon: PlusIcon, title: "Создать граф" },
   { id: "sources", Icon: DatabaseIcon, title: "База данных: источники графа и база источников" },
+  { id: "balance", Icon: ScalesIcon, title: "Материальный баланс: расчёты графа" },
   { id: "bookmarks", Icon: BookmarkIcon, title: "Закладки" },
   { id: "history", Icon: ClockIcon, title: "История действий" },
 ];

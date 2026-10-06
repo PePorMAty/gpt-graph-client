@@ -124,6 +124,23 @@ export interface CustomNodeData {
   // --- transformation node (transformation-between endpoint) ---
   transformationSources?: string[];
 
+  /**
+   * Расчёты материального баланса преобразования, свежие первыми (см.
+   * utils/materialBalance.ts, MaterialBalanceCalc). Сохраняются с графом:
+   * вкладка «Материальный баланс» и массы на узлах берут их отсюда.
+   */
+  materialBalances?: unknown[];
+
+  // --- материальный баланс на полотне (производное, НЕ персистится) ---
+  /** Масса продукта в открытом расчёте: «≈820 кг». Ставится в Flow.tsx. */
+  balanceMass?: string;
+  /** Продукт — базис открытого расчёта: подпись другого цвета. */
+  balanceBasis?: boolean;
+  /** Главный коэффициент стадии в открытом расчёте: «выход 82%». */
+  balanceCoefficient?: string;
+  /** У преобразования есть расчёты — значок ⚖ в режиме баланса. */
+  balanceMark?: number;
+
   // --- что за процесс (приходит от построения шага) ---
   /** Отрасль, к которой относится процесс: «Нефтепереработка». */
   industry?: string;

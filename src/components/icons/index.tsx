@@ -197,6 +197,15 @@ export const BranchIcon: Icon = (p) => (
   </svg>
 );
 
+/** Материальный баланс: весы. */
+export const ScalesIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M12 4v16M8 20h8M5 7h14" />
+    <path d="M5 7 2.5 13a2.5 2.5 0 0 0 5 0L5 7ZM19 7l-2.5 6a2.5 2.5 0 0 0 5 0L19 7Z" />
+    <circle cx="12" cy="4" r="1" />
+  </svg>
+);
+
 export const TrashIcon: Icon = (p) => (
   <svg {...base(p)}>
     <path d="M4.5 6.5h15M9.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v1.5" />
