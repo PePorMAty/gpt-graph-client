@@ -155,6 +155,8 @@ import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
 import {
+  draftAmount,
+  pickBalanceTransformation,
   selectBalanceTransformation,
   setBalanceActive,
   setBalanceMode,
@@ -162,7 +164,6 @@ import {
 import {
   balanceLayer as computeBalanceLayer,
   calcsOf,
-  defaultPair,
 } from "./utils/materialBalance";
 
 const nodeTypes: NodeTypes = {
@@ -944,11 +945,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // utils/materialBalance.ts, balanceLayer).
   const balanceMode = useAppSelector((s) => s.materialBalance.mode);
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
+  const balanceDirection = useAppSelector((s) => s.materialBalance.direction);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
+  const balanceDraftAmount = useAppSelector((s) => s.materialBalance.draft.amount);
+  const balanceDraftUnit = useAppSelector((s) => s.materialBalance.draft.unit);
   const balanceModeRef = useRef(balanceMode);
   balanceModeRef.current = balanceMode;
-  const edgesRef = useRef(data.edges);
-  edgesRef.current = data.edges;
+  const balanceActiveRef = useRef(balanceActive);
+  balanceActiveRef.current = balanceActive;
   const balance = useMemo(
     () =>
       balanceMode
@@ -956,10 +960,21 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             nodes: data.nodes,
             edges: data.edges,
             selection: balanceSelection,
+            direction: balanceDirection,
             active: balanceActive,
+            draft: { amount: draftAmount(balanceDraftAmount), unit: balanceDraftUnit },
           })
         : null,
-    [balanceMode, balanceSelection, balanceActive, data.nodes, data.edges],
+    [
+      balanceMode,
+      balanceSelection,
+      balanceDirection,
+      balanceActive,
+      balanceDraftAmount,
+      balanceDraftUnit,
+      data.nodes,
+      data.edges,
+    ],
   );
   // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
   // открывают её, выключенный чип закрывает. Карточка узла занимает то же
@@ -1053,7 +1068,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ...(balance?.mass.has(n.id)
                 ? {
                     balanceMass: balance.mass.get(n.id)!.text,
-                    balanceBasis: balance.mass.get(n.id)!.basis,
+                    balanceTone: balance.mass.get(n.id)!.tone,
                   }
                 : {}),
               ...(gisp
@@ -1068,7 +1083,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         const coefficient =
           balance?.coefficient?.nodeId === n.id ? balance.coefficient.text : null;
-        const balanceMark = balance?.marks.get(n.id) ?? 0;
+        const balanceMark = balance?.marks.get(n.id) ?? "";
         return compact || bookmarked || coefficient || balanceMark
           ? {
               ...n,
@@ -1248,22 +1263,24 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       lastInteractedNodeIdRef.current = node.id;
       // Режим «Материальный баланс»: щелчок по преобразованию выбирает его
       // для расчёта, карточка не открывается. По ссылке выбирать нечего —
-      // щелчок показывает последний расчёт этого преобразования.
+      // щелчок показывает расчёт этого преобразования, повторный — расчёт
+      // другого направления, если он есть.
       if (balanceModeRef.current && node.type === "transformation") {
         setContextMenu(null);
         if (readOnly) {
-          const latest = calcsOf(node as CustomNode)[0];
-          if (latest) {
-            dispatch(setBalanceActive({ nodeId: node.id, recordId: latest.record.id }));
+          const calcs = calcsOf(node as CustomNode);
+          const active = balanceActiveRef.current;
+          const at =
+            active?.nodeId === node.id
+              ? calcs.findIndex((c) => c.record.id === active.recordId)
+              : -1;
+          const next = calcs[(at + 1) % Math.max(calcs.length, 1)];
+          if (next) {
+            dispatch(setBalanceActive({ nodeId: node.id, recordId: next.record.id }));
           }
           return;
         }
-        dispatch(
-          selectBalanceTransformation({
-            transformationId: node.id,
-            ...defaultPair(node.id, nodesRef.current, edgesRef.current),
-          }),
-        );
+        dispatch(pickBalanceTransformation(node.id));
         openBalancePanel();
         return;
       }
@@ -3291,12 +3308,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             }
             return () => {
               dispatch(setBalanceMode(true));
-              dispatch(
-                selectBalanceTransformation({
-                  transformationId: node.id,
-                  ...defaultPair(node.id, data.nodes, data.edges),
-                }),
-              );
+              dispatch(pickBalanceTransformation(node.id));
               setContextMenu(null);
               openBalancePanel();
             };

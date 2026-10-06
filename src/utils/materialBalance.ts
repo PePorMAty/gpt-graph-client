@@ -1,22 +1,27 @@
 // src/utils/materialBalance.ts
 //
 // Материальный баланс на клиенте: где лежат расчёты, как пересчитать их на
-// базис человека и что написать на узлах.
+// количество человека и что написать на узлах.
 //
-// Сервер всегда считает на 1 т исходного продукта (P1). Массы
-// пропорциональны, поэтому любое количество, единица и даже «сколько сырья
-// на 50 т продукта» — пропорция от того же расчёта, без нового запроса.
+// У расчёта есть направление: «вниз» — сколько продукта получится из сырья,
+// «вверх» — сколько сырья нужно на продукт. Сервер считает на 1 т базисного
+// продукта (сырья или продукта). Массы пропорциональны, поэтому любое
+// количество и единица — пропорция от того же расчёта, без нового запроса.
 
 import type { Edge } from "@xyflow/react";
 
 import type { CustomNode } from "../types";
 import type {
   BalanceAmount,
+  BalanceDirection,
   BalanceRecord,
   BalanceStatus,
 } from "../store/api/material-balance-api";
 import { transformationIO } from "./collapseDuplicateTransformations";
 import { normalizeProductName } from "./normalizeProductName";
+import { readableRecord } from "./readableModelText";
+
+export type { BalanceDirection };
 
 export type BalanceUnit = "кг" | "т" | "тыс. т";
 
@@ -28,17 +33,27 @@ const UNIT_KG: Record<BalanceUnit, number> = {
   "тыс. т": 1_000_000,
 };
 
+export const DIRECTIONS: BalanceDirection[] = ["down", "up"];
+
+/** Стрелка направления: ↓ — из сырья в продукт, ↑ — от продукта к сырью. */
+export const DIRECTION_ARROW: Record<BalanceDirection, string> = { down: "↓", up: "↑" };
+
+export const DIRECTION_TEXT: Record<BalanceDirection, string> = {
+  down: "Вниз: из сырья",
+  up: "Вверх: на продукт",
+};
+
 /**
- * Базис показа: столько-то такого-то продукта расчёта. ref — обозначение
- * продукта в расчёте: P1 — исходный, P2 — целевой.
+ * Количество базисного продукта: столько-то кг, т или тыс. т. Чей это
+ * продукт, решает направление расчёта (basisRefOf). Смена единицы меняет
+ * смысл числа — «1 т» становится «1 кг», — а не переводит его.
  */
 export interface BalanceView {
   amount: number;
   unit: BalanceUnit;
-  ref: string;
 }
 
-export const DEFAULT_VIEW: BalanceView = { amount: 1, unit: "т", ref: "P1" };
+export const DEFAULT_VIEW: BalanceView = { amount: 1, unit: "т" };
 
 /**
  * Расчёт в графе. Лежит в данных узла преобразования (materialBalances) и
@@ -74,13 +89,43 @@ export const STATUS_TONE: Record<BalanceStatus, "ok" | "warn" | "bad"> = {
   unknown: "bad",
 };
 
-/** Расчёты узла преобразования, свежие первыми. */
+/** Направление расчёта; у расчётов до направлений его нет — они «вниз». */
+export function directionOf(
+  x: Pick<MaterialBalanceCalc, "record"> | Pick<BalanceRecord, "direction">,
+): BalanceDirection {
+  const d = "record" in x ? x.record.direction : x.direction;
+  return d === "up" ? "up" : "down";
+}
+
+/** Базисный продукт расчёта: P1 — сырьё («вниз»), P2 — продукт («вверх»). */
+export const basisRefOf = (direction: BalanceDirection) => (direction === "up" ? "P2" : "P1");
+
+/**
+ * Расчёты узла преобразования, свежие первыми, — не больше одного на
+ * направление. Прежние версии клиента копили расчёты без счёта: лишние,
+ * старые, не показываем, а первая же запись в узел их отбрасывает.
+ */
 export function calcsOf(node: CustomNode | undefined | null): MaterialBalanceCalc[] {
   const list = node?.data?.materialBalances;
   if (!Array.isArray(list)) return [];
-  return (list as MaterialBalanceCalc[]).filter(
-    (c) => c && c.record && typeof c.record.id === "number",
-  );
+  const seen = new Set<BalanceDirection>();
+  const out: MaterialBalanceCalc[] = [];
+  for (const c of list as MaterialBalanceCalc[]) {
+    if (!c?.record || typeof c.record.id !== "number") continue;
+    const d = directionOf(c);
+    if (seen.has(d)) continue;
+    seen.add(d);
+    out.push(c);
+  }
+  return out;
+}
+
+/** Расчёт преобразования в одном направлении. */
+export function calcFor(
+  node: CustomNode | undefined | null,
+  direction: BalanceDirection,
+): MaterialBalanceCalc | undefined {
+  return calcsOf(node).find((c) => directionOf(c) === direction);
 }
 
 /** Все расчёты графа, свежие первыми. */
@@ -98,6 +143,9 @@ const sameName = (a: unknown, b: unknown) =>
 
 /**
  * Сырьё и продукты преобразования — по смыслу связей, основные первыми.
+ *
+ * Сырьё это или продукт, решает связь (tFlow), а не то, выше или ниже узел
+ * нарисован: раскладка порой ставит сырьё под преобразование.
  *
  * Основной — тот, у кого больше связей: продукт цепочки связан и с
  * соседними шагами, а реагент вроде метанола у «Получения МТБЭ» обычно
@@ -124,27 +172,27 @@ export function balanceEnds(
 }
 
 /**
- * Узлы графа по обозначениям расчёта. P1 и P2 — выбранные человеком, T1 —
- * преобразование, остальные — по названию среди его входов и выходов: так
- * расчёт из базы, сделанный на другом графе, ложится и на этот.
+ * Узлы графа по обозначениям расчёта. P1 (сырьё) и P2 (продукт) — выбранные
+ * человеком, T1 — преобразование, остальные — по названию среди его входов и
+ * выходов: так расчёт из базы, сделанный на другом графе, ложится и на этот.
  */
 export function nodeIdsFor(
   record: Pick<BalanceRecord, "refs">,
   ends: {
     transformationId: string;
-    basisId: string;
-    targetId: string;
+    inputId: string;
+    outputId: string;
     ins: CustomNode[];
     outs: CustomNode[];
   },
 ): Record<string, string> {
   const out: Record<string, string> = {
     T1: ends.transformationId,
-    P1: ends.basisId,
-    P2: ends.targetId,
+    P1: ends.inputId,
+    P2: ends.outputId,
   };
   const pool = [...ends.ins, ...ends.outs].filter(
-    (n) => n.id !== ends.basisId && n.id !== ends.targetId,
+    (n) => n.id !== ends.inputId && n.id !== ends.outputId,
   );
   for (const r of record.refs) {
     if (!r.ref.startsWith("P") || out[r.ref]) continue;
@@ -154,10 +202,16 @@ export function nodeIdsFor(
   return out;
 }
 
+/** Сырьё или продукт: роль обозначения в расчёте. */
+export function refRole(record: Pick<BalanceRecord, "refs">, ref: string): "сырьё" | "продукт" {
+  const role = record.refs.find((r) => r.ref === ref)?.role;
+  return role === "target" || role === "output" ? "продукт" : "сырьё";
+}
+
 /**
- * Масса продукта расчёта на 1 т исходного: из «Результатов по продуктам»,
- * иначе из внешних потоков баланса по названию. Исходный продукт — базис,
- * 1000 кг по определению.
+ * Масса продукта расчёта на 1 т базисного: из «Результатов по продуктам»,
+ * иначе из внешних потоков баланса по названию. Базисный продукт — 1000 кг
+ * по определению.
  */
 export function massPerTonne(
   record: BalanceRecord,
@@ -165,23 +219,23 @@ export function massPerTonne(
 ): BalanceAmount | null {
   const row = record.products.find((p) => p.ref === ref);
   if (row?.massKg) return row.massKg;
-  if (ref === "P1") return { min: 1000, max: 1000, approx: false };
+  if (ref === basisRefOf(directionOf(record))) return { min: 1000, max: 1000, approx: false };
   const flow = record.flows.find((f) => flowRef(record, f.name) === ref);
   return flow?.massKg ?? null;
 }
 
 /**
- * Во сколько раз умножить массы «на 1 т исходного», чтобы базисом стал выбор
- * человека. Масса продукта-базиса неизвестна — пересчитать нельзя.
+ * Во сколько раз умножить массы «на 1 т базисного», чтобы базисом стало
+ * количество человека. Масса базисного неизвестна — пересчитать нельзя.
  */
 function factorFor(record: BalanceRecord, view: BalanceView): BalanceAmount | null {
-  const base = massPerTonne(record, view.ref);
+  const base = massPerTonne(record, basisRefOf(directionOf(record)));
   if (!base || base.min <= 0 || !(view.amount > 0)) return null;
   const kg = view.amount * UNIT_KG[view.unit];
   return { min: kg / base.max, max: kg / base.min, approx: base.approx };
 }
 
-/** Масса продукта расчёта на базис человека, в кг. */
+/** Масса продукта расчёта на количество человека, в кг. */
 export function shownMass(
   calc: Pick<MaterialBalanceCalc, "record" | "view">,
   ref: string,
@@ -189,12 +243,26 @@ export function shownMass(
   const m = massPerTonne(calc.record, ref);
   const f = factorFor(calc.record, calc.view);
   if (!m || !f) return null;
-  // Сам продукт-базис — ровно то, что задано, без «≈».
-  if (ref === calc.view.ref) {
+  // Сам базисный продукт — ровно то, что задано, без «≈».
+  if (ref === basisRefOf(directionOf(calc))) {
     const kg = calc.view.amount * UNIT_KG[calc.view.unit];
     return { min: kg, max: kg, approx: false };
   }
   return { min: m.min * f.min, max: m.max * f.max, approx: m.approx || f.approx };
+}
+
+/** Масса «на 1 т базисного» (поток баланса) на количество человека, в кг. */
+export function scaleForView(
+  calc: Pick<MaterialBalanceCalc, "record" | "view">,
+  amount: BalanceAmount | null,
+): BalanceAmount | null {
+  const f = factorFor(calc.record, calc.view);
+  if (!amount || !f) return null;
+  return {
+    min: amount.min * f.min,
+    max: amount.max * f.max,
+    approx: amount.approx || f.approx,
+  };
 }
 
 const NUMBER = new Intl.NumberFormat("ru-RU", { maximumSignificantDigits: 3 });
@@ -208,6 +276,11 @@ export function formatMass(amount: BalanceAmount | null, unit: BalanceUnit): str
   const value = lo === hi ? lo : `${lo}–${hi}`;
   return `${amount.approx ? "≈" : ""}${value} ${unit}`;
 }
+
+const AMOUNT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 6 });
+
+/** Количество человека: «1 т», «2,5 тыс. т». */
+export const formatView = (view: BalanceView) => `${AMOUNT.format(view.amount)} ${view.unit}`;
 
 /** Короткое имя показателя для узла: «выход», «расход», «конверсия». */
 function shortIndicator(indicator: string): string {
@@ -242,47 +315,104 @@ export function coefficientLabel(record: BalanceRecord): string | null {
   return `${shortIndicator(pick.indicator)} ${pick.valueText}${suffix}`;
 }
 
-/** Подпись базиса: «1 т Изобутилена» — без склонения, «1 т · Изобутилен». */
-export function viewLabel(record: BalanceRecord, view: BalanceView): string {
-  const name = record.refs.find((r) => r.ref === view.ref)?.name ?? view.ref;
-  return `${NUMBER.format(view.amount)} ${view.unit} · ${name}`;
+export interface BalanceSelection {
+  transformationId: string;
+  /** Сырьё пары — P1 расчёта. */
+  inputId: string | null;
+  /** Продукт пары — P2 расчёта. */
+  outputId: string | null;
 }
 
 /**
- * Пара по умолчанию для выбранного преобразования: та же, что в его
- * последнем расчёте, иначе основной вход и основной выход (balanceEnds).
+ * Пара для преобразования в одном направлении: та, что в его расчёте этого
+ * направления, иначе prefer (пара, выбранная до смены вкладки), иначе
+ * основной вход и основной выход (balanceEnds). Узлы, которых у
+ * преобразования уже нет, не берутся.
  */
-export function defaultPair(
+export function pairFor(
   transformationId: string,
   nodes: CustomNode[],
   edges: Edge[],
-): { basisId: string | null; targetId: string | null } {
+  direction: BalanceDirection,
+  prefer?: { inputId: string | null; outputId: string | null },
+): BalanceSelection {
   const node = nodes.find((n) => n.id === transformationId);
   const { ins, outs } = balanceEnds(transformationId, nodes, edges);
-  const latest = calcsOf(node)[0];
-  const basisId =
-    latest && ins.some((n) => n.id === latest.nodeIds.P1)
-      ? latest.nodeIds.P1
-      : (ins[0]?.id ?? null);
-  const targetId =
-    latest && outs.some((n) => n.id === latest.nodeIds.P2)
-      ? latest.nodeIds.P2
-      : (outs[0]?.id ?? null);
-  return { basisId, targetId };
+  const calc = calcFor(node, direction);
+  const pick = (list: CustomNode[], ...ids: Array<string | null | undefined>) =>
+    ids.find((id) => id && list.some((n) => n.id === id)) ?? list[0]?.id ?? null;
+  return {
+    transformationId,
+    inputId: pick(ins, calc?.nodeIds.P1, prefer?.inputId),
+    outputId: pick(outs, calc?.nodeIds.P2, prefer?.outputId),
+  };
 }
+
+/**
+ * Что открыть по щелчку на преобразование: направление вкладки, если в нём
+ * есть расчёт; нет — другое направление с расчётом; нет никаких — вкладка как
+ * была. Пара — из этого расчёта.
+ */
+export function defaultSelection(
+  transformationId: string,
+  nodes: CustomNode[],
+  edges: Edge[],
+  current: BalanceDirection,
+): BalanceSelection & { direction: BalanceDirection } {
+  const node = nodes.find((n) => n.id === transformationId);
+  const other: BalanceDirection = current === "up" ? "down" : "up";
+  const direction = !calcFor(node, current) && calcFor(node, other) ? other : current;
+  return { ...pairFor(transformationId, nodes, edges, direction), direction };
+}
+
+/** Тон подписи на узле: базис — тёмная, масса — синяя, роль без массы — светлая. */
+export type BalancePillTone = "basis" | "mass" | "role";
 
 /** Что режим баланса рисует на полотне. */
 export interface BalanceLayer {
   /** Узлы, которые остаются яркими; остальные приглушаются. Пусто — никого. */
   lit: Set<string>;
-  /** Подписи масс на продуктах; basis — продукт-базис расчёта. */
-  mass: Map<string, { text: string; basis: boolean }>;
+  /** Подписи на продуктах: «сырьё · 1 т», «продукт · ≈0,82 т». */
+  mass: Map<string, { text: string; tone: BalancePillTone }>;
   /** Подпись коэффициента на преобразовании расчёта. */
   coefficient: { nodeId: string; text: string } | null;
-  /** Сколько расчётов у преобразования — значок ⚖. */
-  marks: Map<string, number>;
+  /** Направления расчётов преобразования для значка ⚖: «↓», «↑», «↓↑». */
+  marks: Map<string, string>;
   /** Расчёт, чьи числа на узлах. */
   shown: { nodeId: string; calc: MaterialBalanceCalc } | null;
+}
+
+/**
+ * Расчёт, чьи числа на узлах и во вкладке.
+ *
+ * Выбрано преобразование — его расчёт в направлении вкладки, если он той же
+ * пары (иначе только подсветка выбора). Ничего не выбрано — открытый во
+ * вкладке, иначе последний расчёт графа.
+ */
+export function shownCalcFor(args: {
+  nodes: CustomNode[];
+  selection: BalanceSelection | null;
+  direction: BalanceDirection;
+  active: { nodeId: string; recordId: number } | null;
+}): { nodeId: string; calc: MaterialBalanceCalc } | null {
+  const byId = new Map(args.nodes.map((n) => [n.id, n]));
+  const sel =
+    args.selection && byId.get(args.selection.transformationId)?.type === "transformation"
+      ? args.selection
+      : null;
+  if (sel) {
+    const calc = calcFor(byId.get(sel.transformationId), args.direction);
+    return calc && calc.nodeIds.P1 === sel.inputId && calc.nodeIds.P2 === sel.outputId
+      ? { nodeId: sel.transformationId, calc }
+      : null;
+  }
+  if (args.active) {
+    const calc = calcsOf(byId.get(args.active.nodeId)).find(
+      (c) => c.record.id === args.active!.recordId,
+    );
+    if (calc) return { nodeId: args.active.nodeId, calc };
+  }
+  return allCalcs(args.nodes)[0] ?? null;
 }
 
 /**
@@ -290,13 +420,19 @@ export interface BalanceLayer {
  *
  * Чьи числа показывать — см. shownCalcFor. Один продукт бывает выходом
  * одного расчёта и входом другого с разными числами, поэтому на узлах —
- * всегда один расчёт.
+ * всегда один расчёт. На каждой подписи — роль: сырьё или продукт; так видно,
+ * от чего к чему расчёт, даже если раскладка поставила сырьё ниже
+ * преобразования. Пока выбранная пара не посчитана, на ней — роли и
+ * количество базиса из формы.
  */
 export function balanceLayer(args: {
   nodes: CustomNode[];
   edges: Edge[];
-  selection: { transformationId: string; basisId: string | null; targetId: string | null } | null;
+  selection: BalanceSelection | null;
+  direction: BalanceDirection;
   active: { nodeId: string; recordId: number } | null;
+  /** Количество из формы запроса — для подписи базиса до расчёта. */
+  draft: BalanceView;
 }): BalanceLayer {
   const byId = new Map(args.nodes.map((n) => [n.id, n]));
   const sel =
@@ -306,49 +442,56 @@ export function balanceLayer(args: {
   const shown = shownCalcFor(args);
 
   const lit = new Set<string>();
-  const mass = new Map<string, { text: string; basis: boolean }>();
+  const mass = new Map<string, { text: string; tone: BalancePillTone }>();
   let coefficient: BalanceLayer["coefficient"] = null;
 
   if (sel) {
     lit.add(sel.transformationId);
     const { ins, outs } = balanceEnds(sel.transformationId, args.nodes, args.edges);
     for (const n of [...ins, ...outs]) lit.add(n.id);
+    if (!shown) {
+      const amount = formatView(args.draft);
+      const down = args.direction === "down";
+      if (sel.inputId) {
+        mass.set(sel.inputId, {
+          text: down ? `сырьё · ${amount}` : "сырьё",
+          tone: down ? "basis" : "role",
+        });
+      }
+      if (sel.outputId) {
+        mass.set(sel.outputId, {
+          text: down ? "продукт" : `продукт · ${amount}`,
+          tone: down ? "role" : "basis",
+        });
+      }
+    }
   }
   if (shown) {
     const { calc, nodeId } = shown;
+    const basisRef = basisRefOf(directionOf(calc));
     lit.add(nodeId);
     for (const [ref, id] of Object.entries(calc.nodeIds)) {
       if (!ref.startsWith("P") || byId.get(id)?.type !== "product") continue;
       lit.add(id);
       mass.set(id, {
-        text: formatMass(shownMass(calc, ref), calc.view.unit),
-        basis: ref === calc.view.ref,
+        text: `${refRole(calc.record, ref)} · ${formatMass(shownMass(calc, ref), calc.view.unit)}`,
+        tone: ref === basisRef ? "basis" : "mass",
       });
     }
-    const text = coefficientLabel(calc.record);
+    const text = coefficientLabel(readableRecord(calc.record));
     if (text) coefficient = { nodeId, text };
   }
 
-  const marks = new Map<string, number>();
+  const marks = new Map<string, string>();
   for (const n of args.nodes) {
-    const k = n.type === "transformation" ? calcsOf(n).length : 0;
-    if (k) marks.set(n.id, k);
+    if (n.type !== "transformation") continue;
+    const dirs = new Set(calcsOf(n).map(directionOf));
+    const arrows = DIRECTIONS.filter((d) => dirs.has(d))
+      .map((d) => DIRECTION_ARROW[d])
+      .join("");
+    if (arrows) marks.set(n.id, arrows);
   }
   return { lit, mass, coefficient, marks, shown };
-}
-
-/** Масса «на 1 т исходного» (поток баланса) на базис расчёта, в кг. */
-export function scaleForView(
-  calc: Pick<MaterialBalanceCalc, "record" | "view">,
-  amount: BalanceAmount | null,
-): BalanceAmount | null {
-  const f = factorFor(calc.record, calc.view);
-  if (!amount || !f) return null;
-  return {
-    min: amount.min * f.min,
-    max: amount.max * f.max,
-    approx: amount.approx || f.approx,
-  };
 }
 
 /** Название без пояснений в скобках: «Нафта (нефтяная фракция…)» → «нафта». */
@@ -375,52 +518,6 @@ export function flowRef(record: BalanceRecord, flowName: string): string | null 
         (sameName(r.name, flowName) || (want !== "" && coreName(r.name) === want)),
     )?.ref ?? null
   );
-}
-
-/**
- * Смена единицы переводит количество, а не меняет его смысл: 1 т → 1000 кг.
- * Числа на узлах остаются теми же массами, только в другой единице.
- */
-export function convertUnit(view: BalanceView, unit: BalanceUnit): BalanceView {
-  const amount = Number(((view.amount * UNIT_KG[view.unit]) / UNIT_KG[unit]).toPrecision(12));
-  return { ...view, unit, amount };
-}
-
-/**
- * Расчёт, чьи числа на узлах и во вкладке.
- *
- * Выбрано преобразование — его расчёт той же пары: открытый во вкладке, если
- * он из этих, иначе свежий (нет такого — только подсветка выбора). Ничего не
- * выбрано — открытый во вкладке, иначе последний расчёт графа.
- */
-export function shownCalcFor(args: {
-  nodes: CustomNode[];
-  selection: { transformationId: string; basisId: string | null; targetId: string | null } | null;
-  active: { nodeId: string; recordId: number } | null;
-}): { nodeId: string; calc: MaterialBalanceCalc } | null {
-  const byId = new Map(args.nodes.map((n) => [n.id, n]));
-  const sel =
-    args.selection && byId.get(args.selection.transformationId)?.type === "transformation"
-      ? args.selection
-      : null;
-  if (sel) {
-    const pair = calcsOf(byId.get(sel.transformationId)).filter(
-      (c) => c.nodeIds.P1 === sel.basisId && c.nodeIds.P2 === sel.targetId,
-    );
-    const chosen =
-      args.active?.nodeId === sel.transformationId
-        ? pair.find((c) => c.record.id === args.active!.recordId)
-        : undefined;
-    const calc = chosen ?? pair[0];
-    return calc ? { nodeId: sel.transformationId, calc } : null;
-  }
-  if (args.active) {
-    const calc = calcsOf(byId.get(args.active.nodeId)).find(
-      (c) => c.record.id === args.active!.recordId,
-    );
-    if (calc) return { nodeId: args.active.nodeId, calc };
-  }
-  return allCalcs(args.nodes)[0] ?? null;
 }
 
 /**

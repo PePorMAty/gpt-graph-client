@@ -3,14 +3,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
-  removeMaterialBalance,
-  setMaterialBalanceView,
-} from "../../store/slices/materialBalanceSlice";
-import {
+  basisRefOf,
+  directionOf,
   flowRef,
   formatMass,
   formatWhen,
+  refRole,
   scaleForView,
   shownMass,
   STATUS_TEXT,
@@ -18,8 +18,8 @@ import {
   statusReason,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
+import { mentionsRefs, readableRecord } from "../../utils/readableModelText";
 import type { BalanceStatus } from "../../store/api/material-balance-api";
-import { BasisFields } from "./BasisFields";
 import md from "../markdown-editor/MarkdownEditor.module.css";
 import styles from "./MaterialBalance.module.css";
 
@@ -48,13 +48,6 @@ const Markdown: FC<{ text: string }> = ({ text }) =>
     <p className={styles.muted}>Модель этот раздел не заполнила.</p>
   );
 
-const ROLE_TEXT: Record<string, string> = {
-  basis: "исходный продукт",
-  target: "целевой продукт",
-  input: "вход преобразования",
-  output: "выход преобразования",
-};
-
 function tookText(ms: number | null | undefined): string {
   if (!ms) return "";
   const s = Math.round(ms / 1000);
@@ -66,23 +59,25 @@ interface Props {
   calc: MaterialBalanceCalc;
   /** «Новый расчёт» — форма запроса для этой пары. */
   onNewRequest?: () => void;
-  /** «Показать на графе» — режим баланса и камера к преобразованию. */
+  /** «Показать на графе» — камера к преобразованию. */
   onShowOnGraph?: () => void;
 }
 
 /**
- * Один расчёт целиком: базис, ключевые потоки, коэффициенты, примечания,
- * расчёт по переходам, общий баланс, источники.
+ * Один расчёт целиком: ключевые потоки, коэффициенты, примечания, расчёт по
+ * переходам, общий баланс, источники. Количество базиса — в схеме над ним.
  *
- * Базис пересчитывается сразу — модель посчитала на 1 т исходного, и любое
- * количество, единица и продукт-базис — пропорция от того же ответа. Новый
- * запрос к модели — только «Новый расчёт», и он может ответить иначе.
+ * Тексты модели — читаемыми (readableRecord): без LaTeX и служебных имён
+ * промпта. Обозначения P1, P2 из ответа расшифрованы над ним.
  */
 export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGraph }) => {
   const dispatch = useAppDispatch();
   const nodes = useAppSelector((s) => s.graph.data.nodes);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const { record } = calc;
+  const record = readableRecord(calc.record);
+  const readable = { ...calc, record };
+  const direction = directionOf(calc);
+  const basisRef = basisRefOf(direction);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   /** Подпись узла графа, а если его нет — имя из расчёта. */
@@ -104,7 +99,7 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
     <>
       <div className={styles.detailsHead}>
         <div className={styles.itemTitle}>
-          {nameOf("P1")} → {nameOf("P2")} <Status status={record.status} />
+          Расчёт <Status status={record.status} />
         </div>
         <div className={styles.meta}>
           {formatWhen(record.createdAt)}
@@ -126,18 +121,6 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
         )}
       </div>
 
-      <div className={styles.basisRow}>
-        <BasisFields
-          view={calc.view}
-          names={{ P1: nameOf("P1"), P2: nameOf("P2") }}
-          onChange={(view) => dispatch(setMaterialBalanceView(nodeId, record.id, view))}
-        />
-        <p className={styles.basisNote}>
-          Количество, единица и продукт пересчитываются сразу: модель уже
-          посчитала на 1 т исходного, новый запрос не нужен.
-        </p>
-      </div>
-
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>Ключевые потоки</h4>
         <table className={styles.flows}>
@@ -147,11 +130,11 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
                 <td>
                   {nameOf(r.ref)}
                   <span className={styles.flowRole}>
-                    {ROLE_TEXT[r.role] ?? r.role}
-                    {r.ref === calc.view.ref ? " · базис" : ""}
+                    {refRole(record, r.ref)}
+                    {r.ref === basisRef ? " · базис" : ""}
                   </span>
                 </td>
-                <td>{formatMass(shownMass(calc, r.ref), calc.view.unit)}</td>
+                <td>{formatMass(shownMass(readable, r.ref), calc.view.unit)}</td>
               </tr>
             ))}
             {extraFlows.map((f) => (
@@ -166,14 +149,15 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
                         : "поток баланса"}
                   </span>
                 </td>
-                <td>{formatMass(scaleForView(calc, f.massKg), calc.view.unit)}</td>
+                <td>{formatMass(scaleForView(readable, f.massKg), calc.view.unit)}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {record.totals.residual && (
           <p className={styles.note}>
-            Невязка (на 1 т исходного): {record.totals.residual}.
+            Невязка (на 1 т {direction === "up" ? "продукта" : "сырья"}):{" "}
+            {record.totals.residual}.
           </p>
         )}
       </section>
@@ -205,6 +189,13 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
           <h4 className={styles.sectionTitle}>Свои данные</h4>
           <p className={styles.note}>{record.knownData}</p>
         </section>
+      )}
+
+      {mentionsRefs(record) && (
+        <p className={`${styles.note} ${styles.legend}`}>
+          В ответе модели:{" "}
+          {record.refs.map((r) => `${r.ref} — ${r.ref.startsWith("P") ? nameOf(r.ref) : r.name}`).join("; ")}.
+        </p>
       )}
 
       <section className={styles.section}>

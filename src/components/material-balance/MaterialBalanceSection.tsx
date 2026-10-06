@@ -2,25 +2,42 @@ import { useEffect, useMemo, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
+  chooseBalanceDirection,
   dismissBalanceJob,
+  draftAmount,
+  jobKey,
   selectBalanceTransformation,
   setBalanceActive,
+  setBalanceDraft,
   setBalanceFormOpen,
   setBalanceMode,
   setBalancePair,
+  setMaterialBalanceView,
 } from "../../store/slices/materialBalanceSlice";
 import {
   allCalcs,
   balanceEnds,
-  calcsOf,
+  calcFor,
+  DIRECTION_ARROW,
+  DIRECTION_TEXT,
+  DIRECTIONS,
+  directionOf,
   formatWhen,
-  shownCalcFor,
+  type BalanceView,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import type { CustomNode } from "../../types";
 import { useFocusNode } from "../../hooks/useFocusNode";
-import { ChevronLeftIcon, CloseIcon, ScalesIcon } from "../icons";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  FocusIcon,
+  ScalesIcon,
+} from "../icons";
 import { CalcDetails, Status } from "./CalcDetails";
+import { PairScheme } from "./PairScheme";
 import { RequestForm } from "./RequestForm";
 import styles from "./MaterialBalance.module.css";
 
@@ -32,25 +49,34 @@ const elapsed = (ms: number) => {
 };
 
 const HINT =
-  "Выберите преобразование на полотне — посчитаем его материальный баланс: сколько продукта получается из сырья.";
+  "Выберите преобразование на полотне — посчитаем его материальный баланс: сколько продукта получается из сырья или сколько сырья нужно на продукт.";
 
-/** Выбранное преобразование: пара, ход расчёта, форма запроса или данные. */
+/**
+ * Выбранное преобразование: вкладки направлений, схема пары с количеством,
+ * ход расчёта, форма запроса или данные расчёта.
+ */
 const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
   const dispatch = useAppDispatch();
   const { nodes, edges } = useAppSelector((s) => s.graph.data);
-  const { selection, active, formOpen, jobs } = useAppSelector((s) => s.materialBalance);
+  const { selection, direction, formOpen, jobs, draft } = useAppSelector(
+    (s) => s.materialBalance,
+  );
   const focusNode = useFocusNode();
   const [now, setNow] = useState(() => Date.now());
 
   const ends = useMemo(() => balanceEnds(t.id, nodes, edges), [t.id, nodes, edges]);
-  const basis = ends.ins.find((n) => n.id === selection?.basisId);
-  const target = ends.outs.find((n) => n.id === selection?.targetId);
-  const job = jobs[t.id];
+  const input = ends.ins.find((n) => n.id === selection?.inputId);
+  const output = ends.outs.find((n) => n.id === selection?.outputId);
+  const job = jobs[jobKey(t.id, direction)];
   const running = job?.status === "running" || job?.status === "starting";
-  const shown = shownCalcFor({ nodes, selection, active });
-  const pairCalcs = calcsOf(t).filter(
-    (c) => c.nodeIds.P1 === basis?.id && c.nodeIds.P2 === target?.id,
-  );
+  // Расчёт направления — любой пары; на экране он, если пара та же.
+  const existing = calcFor(t, direction);
+  const shown =
+    existing && existing.nodeIds.P1 === input?.id && existing.nodeIds.P2 === output?.id
+      ? existing
+      : undefined;
+  const showDetails = Boolean(shown) && !formOpen;
+  const shownId = shown?.record.id;
 
   useEffect(() => {
     if (!running) return;
@@ -58,34 +84,41 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
     return () => clearInterval(id);
   }, [running]);
 
+  // Что на экране, то и на узлах после снятия выбора.
+  useEffect(() => {
+    if (shownId !== undefined) dispatch(setBalanceActive({ nodeId: t.id, recordId: shownId }));
+  }, [dispatch, t.id, shownId]);
+
   const back = () => {
     dispatch(selectBalanceTransformation(null));
     dispatch(setBalanceActive(null));
   };
 
-  const pairSelect = (
-    list: CustomNode[],
-    value: string | undefined,
-    onChange: (id: string) => void,
-    aria: string,
-  ) =>
-    list.length > 1 ? (
-      <select
-        className={styles.select}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={aria}
-        disabled={running}
-      >
-        {list.map((n) => (
-          <option key={n.id} value={n.id}>
-            {label(n)}
-          </option>
-        ))}
-      </select>
-    ) : (
-      <span className={styles.pairName}>{label(list[0])}</span>
-    );
+  const nameOf = (id: string | undefined) =>
+    label(nodes.find((n) => n.id === id)) || "продукт не на графе";
+
+  // Количество: у открытого расчёта — его, у формы — черновик.
+  const view: BalanceView =
+    showDetails && shown ? shown.view : { amount: draftAmount(draft.amount), unit: draft.unit };
+  const onView = (v: BalanceView) =>
+    showDetails && shown
+      ? dispatch(setMaterialBalanceView(t.id, shown.record.id, v))
+      : dispatch(setBalanceDraft({ amount: String(v.amount), unit: v.unit }));
+
+  // «Отмена» формы: снова данные расчёта — его пары.
+  const cancel = existing
+    ? () => {
+        const pairOk =
+          ends.ins.some((n) => n.id === existing.nodeIds.P1) &&
+          ends.outs.some((n) => n.id === existing.nodeIds.P2);
+        if (pairOk) {
+          dispatch(
+            setBalancePair({ inputId: existing.nodeIds.P1, outputId: existing.nodeIds.P2 }),
+          );
+        }
+        dispatch(setBalanceFormOpen(false));
+      }
+    : undefined;
 
   return (
     <div className={styles.panel}>
@@ -101,12 +134,53 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
         </p>
       ) : (
         <>
-          <div className={styles.pairRows}>
-            <span className={styles.fieldLabel}>Исходный продукт</span>
-            {pairSelect(ends.ins, basis?.id, (id) => dispatch(setBalancePair({ basisId: id })), "Исходный продукт")}
-            <span className={styles.fieldLabel}>Целевой продукт</span>
-            {pairSelect(ends.outs, target?.id, (id) => dispatch(setBalancePair({ targetId: id })), "Целевой продукт")}
+          <div className={styles.dirTabs} role="tablist" aria-label="Направление расчёта">
+            {DIRECTIONS.map((d) => {
+              const has = Boolean(calcFor(t, d));
+              const busy = ["running", "starting"].includes(jobs[jobKey(t.id, d)]?.status ?? "");
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  role="tab"
+                  aria-selected={d === direction}
+                  className={`${styles.dirTab} ${d === direction ? styles.dirTabOn : ""}`}
+                  onClick={() => dispatch(chooseBalanceDirection(d))}
+                  title={
+                    d === "down"
+                      ? "Сколько продукта получится из заданного количества сырья"
+                      : "Сколько сырья нужно на заданное количество продукта"
+                  }
+                >
+                  <span className={styles.dirArrow} aria-hidden>
+                    {DIRECTION_ARROW[d]}
+                  </span>
+                  {DIRECTION_TEXT[d]}
+                  {busy ? (
+                    <span className={styles.spinner} aria-label="считается" />
+                  ) : has ? (
+                    <span className={styles.dirDone} aria-label="есть расчёт">
+                      ✓
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
+
+          <PairScheme
+            transformation={t}
+            ins={ends.ins}
+            outs={ends.outs}
+            input={input}
+            output={output}
+            direction={direction}
+            view={view}
+            onView={onView}
+            calc={showDetails ? shown : undefined}
+            onPair={(pair) => dispatch(setBalancePair(pair))}
+            disabled={running}
+          />
 
           {running && job && (
             <div className={styles.running} role="status">
@@ -124,7 +198,7 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
               <button
                 type="button"
                 className={styles.iconBtn}
-                onClick={() => dispatch(dismissBalanceJob(t.id))}
+                onClick={() => dispatch(dismissBalanceJob(jobKey(t.id, direction)))}
                 aria-label="Скрыть ошибку"
               >
                 <CloseIcon size={14} />
@@ -132,39 +206,22 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
             </div>
           )}
 
-          {basis && target && shown && !formOpen ? (
-            <>
-              {pairCalcs.length > 1 && (
-                <div className={styles.calcSwitch}>
-                  <span className={styles.fieldLabel}>Расчёты этой пары</span>
-                  {pairCalcs.map((c) => (
-                    <button
-                      key={c.record.id}
-                      type="button"
-                      className={`${styles.chipBtn} ${c.record.id === shown.calc.record.id ? styles.chipBtnOn : ""}`}
-                      onClick={() => dispatch(setBalanceActive({ nodeId: t.id, recordId: c.record.id }))}
-                      aria-pressed={c.record.id === shown.calc.record.id}
-                    >
-                      {formatWhen(c.record.createdAt)}
-                      {c.record.model ? ` · ${c.record.model}` : ""}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <CalcDetails
-                nodeId={t.id}
-                calc={shown.calc}
-                onNewRequest={() => dispatch(setBalanceFormOpen(true))}
-                onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
-              />
-            </>
-          ) : basis && target ? (
+          {showDetails && shown ? (
+            <CalcDetails
+              nodeId={t.id}
+              calc={shown}
+              onNewRequest={() => dispatch(setBalanceFormOpen(true))}
+              onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
+            />
+          ) : input && output ? (
             <RequestForm
-              transformationId={t.id}
-              basis={basis}
-              target={target}
-              hasCalc={Boolean(shown)}
-              onCancel={shown ? () => dispatch(setBalanceFormOpen(false)) : undefined}
+              transformation={t}
+              input={input}
+              output={output}
+              direction={direction}
+              existing={existing}
+              nameOf={nameOf}
+              onCancel={cancel}
             />
           ) : null}
         </>
@@ -173,13 +230,14 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
   );
 };
 
-/** Все расчёты графа по преобразованиям. */
+/** Все расчёты графа: раскрывающиеся группы по преобразованиям. */
 const ListView: FC = () => {
   const dispatch = useAppDispatch();
   const nodes = useAppSelector((s) => s.graph.data.nodes);
   const mode = useAppSelector((s) => s.materialBalance.mode);
   const focusNode = useFocusNode();
   const list = useMemo(() => allCalcs(nodes), [nodes]);
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
 
   const groups = new Map<string, { label: string; items: MaterialBalanceCalc[] }>();
   for (const { nodeId, calc } of list) {
@@ -190,19 +248,32 @@ const ListView: FC = () => {
     g.items.push(calc);
     groups.set(nodeId, g);
   }
+  // Внутри группы — сначала «вниз», потом «вверх».
+  for (const g of groups.values()) {
+    g.items.sort((a, b) => DIRECTIONS.indexOf(directionOf(a)) - DIRECTIONS.indexOf(directionOf(b)));
+  }
   const labelOf = (calc: MaterialBalanceCalc, ref: string) =>
     label(nodes.find((n) => n.id === calc.nodeIds[ref])) ||
     calc.record.refs.find((r) => r.ref === ref)?.name ||
     ref;
 
+  const toggle = (nodeId: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+
   // Расчёт из списка открывается так же, как выбранное на полотне
-  // преобразование: его пара, его данные.
-  const open = (nodeId: string, calc: MaterialBalanceCalc) => {
+  // преобразование: его направление, его пара, его данные.
+  const openCalc = (nodeId: string, calc: MaterialBalanceCalc) => {
     dispatch(
       selectBalanceTransformation({
         transformationId: nodeId,
-        basisId: calc.nodeIds.P1 ?? null,
-        targetId: calc.nodeIds.P2 ?? null,
+        inputId: calc.nodeIds.P1 ?? null,
+        outputId: calc.nodeIds.P2 ?? null,
+        direction: directionOf(calc),
       }),
     );
     dispatch(setBalanceActive({ nodeId, recordId: calc.record.id }));
@@ -238,39 +309,67 @@ const ListView: FC = () => {
       ) : (
         <>
           <p className={styles.muted}>
-            Расчёты графа по преобразованиям. На узлах — числа открытого
-            расчёта, по умолчанию последнего.
+            Расчёты по преобразованиям — у каждого не больше двух: вниз (из
+            сырья) и вверх (на продукт).
           </p>
-          {[...groups].map(([nodeId, g]) => (
-            <div key={nodeId} className={styles.group}>
-              <button
-                type="button"
-                className={styles.groupHead}
-                onClick={() => focusNode(nodeId, { zoom: 1 })}
-                title="Показать преобразование на графе"
-              >
-                <ScalesIcon size={15} /> {g.label}
-              </button>
-              {g.items.map((calc) => (
-                <button
-                  key={calc.record.id}
-                  type="button"
-                  className={styles.item}
-                  onClick={() => open(nodeId, calc)}
-                >
-                  <span className={styles.itemTitle}>
-                    {labelOf(calc, "P1")} → {labelOf(calc, "P2")}
-                    <Status status={calc.record.status} />
-                  </span>
-                  <span className={styles.meta}>
-                    {formatWhen(calc.record.createdAt)}
-                    {calc.record.model ? ` · ${calc.record.model}` : ""}
-                    {calc.fromCache ? " · из базы" : ""}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ))}
+          {[...groups].map(([nodeId, g]) => {
+            const expanded = open.has(nodeId);
+            return (
+              <div key={nodeId} className={styles.group}>
+                <div className={styles.groupHeadRow}>
+                  <button
+                    type="button"
+                    className={styles.groupHead}
+                    onClick={() => toggle(nodeId)}
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+                    <ScalesIcon size={15} />
+                    <span className={styles.groupName}>{g.label}</span>
+                    <span className={styles.groupDirs} aria-label="направления расчётов">
+                      {g.items.map((c) => DIRECTION_ARROW[directionOf(c)]).join(" ")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => focusNode(nodeId, { zoom: 1 })}
+                    title="Показать преобразование на графе"
+                    aria-label={`Показать «${g.label}» на графе`}
+                  >
+                    <FocusIcon size={15} />
+                  </button>
+                </div>
+                {expanded &&
+                  g.items.map((calc) => {
+                    const d = directionOf(calc);
+                    return (
+                      <button
+                        key={calc.record.id}
+                        type="button"
+                        className={styles.item}
+                        onClick={() => openCalc(nodeId, calc)}
+                      >
+                        <span className={styles.itemTitle}>
+                          <span className={styles.itemDir}>
+                            {DIRECTION_ARROW[d]} {d === "up" ? "Вверх" : "Вниз"}
+                          </span>
+                          {d === "up"
+                            ? `${labelOf(calc, "P2")} ← ${labelOf(calc, "P1")}`
+                            : `${labelOf(calc, "P1")} → ${labelOf(calc, "P2")}`}
+                          <Status status={calc.record.status} />
+                        </span>
+                        <span className={styles.meta}>
+                          {formatWhen(calc.record.createdAt)}
+                          {calc.record.model ? ` · ${calc.record.model}` : ""}
+                          {calc.fromCache ? " · из базы" : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            );
+          })}
         </>
       )}
     </div>
@@ -281,9 +380,9 @@ const ListView: FC = () => {
  * Вкладка «Материальный баланс» левой панели.
  *
  * Чип над полотном открывает её и включает режим: выбранное на полотне
- * преобразование — здесь, с формой запроса или готовыми данными; ничего не
- * выбрано — подсказка и все расчёты графа. Та же вкладка открывается и с
- * левого рельса.
+ * преобразование — здесь, с вкладками направлений, формой запроса или
+ * готовыми данными; ничего не выбрано — подсказка и все расчёты графа. Та же
+ * вкладка открывается и с левого рельса.
  */
 export const MaterialBalanceSection: FC = () => {
   const nodes = useAppSelector((s) => s.graph.data.nodes);

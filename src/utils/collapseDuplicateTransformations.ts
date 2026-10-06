@@ -169,9 +169,14 @@ export function collapseDuplicateTransformations(
     extra.set(into, acc);
   }
   // Расчёты материального баланса — не «добрать, если пусто», а сложить: у
-  // каждого дубля свои, и слияние не должно терять ни одного. T1 в них
-  // теперь — оставленный узел.
-  type Calc = { record?: { id?: number }; addedAt?: string; nodeIds?: Record<string, string> };
+  // каждого дубля свои. T1 в них теперь — оставленный узел. На направление
+  // у преобразования хранится один расчёт — остаётся свежий.
+  type Calc = {
+    record?: { id?: number; direction?: string };
+    addedAt?: string;
+    nodeIds?: Record<string, string>;
+  };
+  const directionOf = (c: Calc) => (c.record?.direction === "up" ? "up" : "down");
   for (const id of dropped) {
     const own = byId.get(id)?.data?.materialBalances;
     if (!Array.isArray(own) || !own.length) continue;
@@ -184,9 +189,15 @@ export function collapseDuplicateTransformations(
     const moved = (own as Calc[])
       .filter((c) => !known.has(c.record?.id))
       .map((c) => ({ ...c, nodeIds: { ...c.nodeIds, T1: into } }));
-    acc.materialBalances = [...base, ...moved].sort((a, b) =>
-      String(b.addedAt ?? "").localeCompare(String(a.addedAt ?? "")),
-    );
+    const seen = new Set<string>();
+    acc.materialBalances = [...base, ...moved]
+      .sort((a, b) => String(b.addedAt ?? "").localeCompare(String(a.addedAt ?? "")))
+      .filter((c) => {
+        const d = directionOf(c);
+        if (seen.has(d)) return false;
+        seen.add(d);
+        return true;
+      });
     extra.set(into, acc);
   }
   const keptNodes = nodes

@@ -319,7 +319,7 @@ export const ProductNode: React.FC<ProductNodeProps> = ({ data }) => {
       {typeof data.balanceMass === "string" && data.balanceMass && (
         <BalancePill
           text={data.balanceMass}
-          tone={data.balanceBasis === true ? "basis" : "mass"}
+          tone={data.balanceTone ?? "mass"}
         />
       )}
 

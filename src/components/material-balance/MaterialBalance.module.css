@@ -1,5 +1,6 @@
 /* Материальный баланс: вкладка левой панели — выбранное преобразование
-   (форма запроса или данные расчёта) и список расчётов графа. */
+   (направления, схема пары, форма запроса или данные расчёта) и список
+   расчётов графа. */
 
 /* Вкладка прокручивается целиком: форма с двумя промптами и данные расчёта
    длиннее панели. */
@@ -56,14 +57,155 @@
   line-height: 1.5;
 }
 
-/* ─── Пара и форма запроса ─── */
+/* ─── Направления ─── */
 
-.pairRows {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: var(--s-2) var(--s-3);
+.dirTabs {
+  display: flex;
+  gap: var(--s-1);
+  padding: 3px;
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
 }
+
+.dirTab {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  padding: 0 var(--s-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-soft);
+  cursor: pointer;
+}
+
+.dirTab:hover {
+  background: var(--c-surface-hover);
+}
+
+.dirTabOn,
+.dirTabOn:hover {
+  background: var(--c-surface);
+  color: var(--c-brand-strong);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.dirArrow {
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+}
+
+.dirDone {
+  color: #047857;
+  font-weight: var(--fw-semibold);
+}
+
+.dirTab .spinner {
+  width: 10px;
+  height: 10px;
+  margin-top: 0;
+}
+
+/* ─── Схема пары: сырьё сверху, продукт снизу, как на полотне ─── */
+
+.scheme {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.schemeRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.schemeBasis {
+  background: var(--c-brand-softer);
+  border-color: var(--c-brand-border);
+}
+
+.schemeHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.schemeRole {
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+.schemeTag {
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: #1e3a8a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+}
+
+.schemeAmount {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.schemeResult {
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.schemeResult b {
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.schemeArrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-left: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.schemeArrowIcon {
+  font-size: 18px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  color: var(--c-brand);
+}
+
+.question {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.45;
+  color: var(--c-text);
+}
+
+.basisFields {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* ─── Форма запроса ─── */
 
 .pairName {
   font-weight: var(--fw-medium);
@@ -77,7 +219,6 @@
   gap: var(--s-2);
 }
 
-.form > .basisRow,
 .form > .block {
   align-self: stretch;
 }
@@ -117,25 +258,6 @@ label.fieldLabel {
   background: var(--c-surface);
   font: inherit;
   color: var(--c-text);
-}
-
-.basisRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-3);
-  background: var(--c-brand-softer);
-  border: 1px solid var(--c-brand-border);
-  border-radius: var(--r-md);
-}
-
-.basisNote {
-  flex: 1 1 100%;
-  margin: 0;
-  font-size: var(--fs-sm);
-  line-height: 1.4;
-  color: var(--c-text-muted);
 }
 
 .toggle {
@@ -365,31 +487,6 @@ label.fieldLabel {
   gap: var(--s-2);
 }
 
-/* Расчёты одной пары: какой из них на узлах и в данных. */
-.calcSwitch {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-1) var(--s-2);
-}
-
-.chipBtn {
-  height: 28px;
-  padding: 0 var(--s-3);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-pill);
-  background: var(--c-surface);
-  font-size: 12px;
-  color: var(--c-text-soft);
-  cursor: pointer;
-}
-
-.chipBtnOn {
-  background: var(--c-brand-soft);
-  border-color: var(--c-brand-border);
-  color: var(--c-brand-strong);
-}
-
 /* ─── Список расчётов ─── */
 
 .group {
@@ -399,15 +496,28 @@ label.fieldLabel {
   overflow: hidden;
 }
 
+/* Шапка группы раскрывает её; кнопка справа — показать на графе. */
+.groupHeadRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding-right: var(--s-2);
+  background: var(--c-surface-soft);
+}
+
+.groupHeadRow:not(:last-child) {
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
 .groupHead {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  width: 100%;
   padding: var(--s-2) var(--s-3);
   border: none;
-  border-bottom: 1px solid var(--c-border-soft);
-  background: var(--c-surface-soft);
+  background: none;
   font: inherit;
   font-weight: var(--fw-semibold);
   color: var(--c-text);
@@ -415,8 +525,26 @@ label.fieldLabel {
   cursor: pointer;
 }
 
-.groupHead:hover {
+.groupHeadRow:hover {
   background: var(--c-surface-hover);
+}
+
+.groupName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.groupDirs {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--c-brand);
+  letter-spacing: 0.05em;
+}
+
+.itemDir {
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  color: var(--c-brand);
 }
 
 .item {
@@ -534,6 +662,13 @@ label.fieldLabel {
   display: block;
   font-size: 11px;
   color: var(--c-text-faint);
+}
+
+/* Расшифровка P1, P2… из ответа модели. */
+.legend {
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
 }
 
 .coef {

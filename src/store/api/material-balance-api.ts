@@ -4,10 +4,12 @@
 // сервере (routes/material-balance, MATERIAL-BALANCE.md в репозитории
 // сервера).
 //
-// Модель всегда считает на 1 т исходного продукта, а пересчёт на любое
-// количество и единицу делает клиент (utils/materialBalance.ts): массы
-// пропорциональны. Расчёт идёт минуты, поэтому сервер считает в фоне, а
-// клиент спрашивает ход по номеру задачи.
+// У расчёта есть направление: «вниз» — сколько продукта получится из 1 т
+// сырья, «вверх» — сколько сырья нужно на 1 т продукта. Модель всегда
+// считает на 1 т базисного продукта, а пересчёт на любое количество и
+// единицу делает клиент (utils/materialBalance.ts): массы пропорциональны.
+// Расчёт идёт минуты, поэтому сервер считает в фоне, а клиент спрашивает ход
+// по номеру задачи.
 
 import axios from "axios";
 
@@ -20,6 +22,12 @@ export interface BalanceAmount {
   approx: boolean;
 }
 
+/**
+ * Направление расчёта: «вниз» — базис сырьё (P1), «вверх» — базис продукт
+ * (P2). Это разные вопросы к модели, у каждого свой расчёт.
+ */
+export type BalanceDirection = "down" | "up";
+
 export type BalanceStatus =
   | "calculated"
   | "partial"
@@ -29,8 +37,9 @@ export type BalanceStatus =
   | "unknown";
 
 /**
- * Обозначения узлов в запросе к модели: P1 — исходный продукт, P2 —
- * целевой, P3… — остальные входы и выходы, T1 — преобразование.
+ * Обозначения узлов в запросе к модели: P1 — сырьё, P2 — продукт, P3… —
+ * остальные входы и выходы, T1 — преобразование. Роли P1 и P2 — basis и
+ * target по старой памяти: это сырьё и продукт пары в любом направлении.
  */
 export interface BalanceRef {
   ref: string;
@@ -38,7 +47,7 @@ export interface BalanceRef {
   role: "basis" | "target" | "input" | "output" | "transformation";
 }
 
-/** Строка «Результатов по продуктам»: масса на 1 т исходного продукта. */
+/** Строка «Результатов по продуктам»: масса на 1 т базисного продукта. */
 export interface BalanceProduct {
   ref: string | null;
   name: string;
@@ -60,7 +69,7 @@ export interface BalanceCoefficient {
   source: string;
 }
 
-/** Внешний поток участка: вход или выход, масса на 1 т исходного. */
+/** Внешний поток участка: вход или выход, масса на 1 т базисного продукта. */
 export interface BalanceFlow {
   name: string;
   direction: "in" | "out" | "";
@@ -86,8 +95,12 @@ export interface BalanceSummary {
   createdAt: string;
   model: string | null;
   transformation: string;
+  /** Сырьё пары (P1). */
   basis: string;
+  /** Продукт пары (P2). */
   target: string;
+  /** Нет у расчётов, сделанных до направлений: они все — «вниз». */
+  direction?: BalanceDirection;
   status: BalanceStatus;
   statusLabel: string;
 }
@@ -126,8 +139,11 @@ export interface BalanceNodeRef {
 
 export interface StartBalanceBody {
   transformation: BalanceNodeRef;
+  /** Сырьё пары (P1). */
   basis: BalanceNodeRef;
+  /** Продукт пары (P2). */
   target: BalanceNodeRef;
+  direction: BalanceDirection;
   inputs: BalanceNodeRef[];
   outputs: BalanceNodeRef[];
   knownData?: string;
@@ -177,11 +193,12 @@ export async function fetchBalancePrompt(): Promise<BalancePrompt> {
   }
 }
 
-/** Готовые расчёты пары в базе: точное совпадение и похожие. */
+/** Готовые расчёты пары в базе в одном направлении: точное совпадение и похожие. */
 export async function lookupBalance(body: {
   transformation: string;
   basis: string;
   target: string;
+  direction: BalanceDirection;
 }): Promise<{ exact: BalanceSummary | null; similar: BalanceSummary[] }> {
   try {
     const { data } = await axios.post(`${API()}/lookup`, body);

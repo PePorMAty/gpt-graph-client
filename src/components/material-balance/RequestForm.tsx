@@ -2,7 +2,7 @@ import { useEffect, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
-  draftAmount,
+  jobKey,
   loadBalancePrompt,
   lookupBalanceFor,
   lookupKey,
@@ -11,32 +11,46 @@ import {
   setBalancePrompt,
   takeBalanceFromBase,
 } from "../../store/slices/materialBalanceSlice";
-import { formatWhen, STATUS_TEXT } from "../../utils/materialBalance";
+import {
+  formatWhen,
+  STATUS_TEXT,
+  type BalanceDirection,
+  type MaterialBalanceCalc,
+} from "../../utils/materialBalance";
 import type { CustomNode } from "../../types";
 import { AiModelSelect } from "../ai-model-select";
-import { BasisFields } from "./BasisFields";
 import styles from "./MaterialBalance.module.css";
 
-const label = (n: CustomNode) => String(n.data?.label ?? "").trim();
+const label = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
+
+const DIRECTION_WORD: Record<BalanceDirection, string> = { down: "вниз", up: "вверх" };
 
 interface Props {
-  transformationId: string;
-  basis: CustomNode;
-  target: CustomNode;
-  /** У пары уже есть расчёт: кнопка «Рассчитать заново» и «Отмена». */
-  hasCalc: boolean;
+  transformation: CustomNode;
+  input: CustomNode;
+  output: CustomNode;
+  direction: BalanceDirection;
+  /** Расчёт этого направления, если он уже есть, — любой пары. */
+  existing?: MaterialBalanceCalc;
+  /** Подпись узла по id — для пары прежнего расчёта. */
+  nameOf: (id: string | undefined) => string;
   onCancel?: () => void;
 }
 
 /**
- * Запрос расчёта для выбранной пары: базис показа, свои данные, промпт и
- * модель, подсказки базы и «Рассчитать».
+ * Запрос расчёта выбранной пары в направлении вкладки: свои данные, промпт
+ * и модель, подсказки базы и «Рассчитать». Количество — в схеме над формой.
+ *
+ * На направление у преобразования хранится один расчёт: если он уже есть,
+ * новый его заменит — форма об этом говорит.
  */
 export const RequestForm: FC<Props> = ({
-  transformationId,
-  basis,
-  target,
-  hasCalc,
+  transformation,
+  input,
+  output,
+  direction,
+  existing,
+  nameOf,
   onCancel,
 }) => {
   const dispatch = useAppDispatch();
@@ -46,16 +60,24 @@ export const RequestForm: FC<Props> = ({
   const [showKnown, setShowKnown] = useState(() => draft.knownData.trim() !== "");
   const [showPrompt, setShowPrompt] = useState(false);
 
-  const job = jobs[transformationId];
+  const job = jobs[jobKey(transformation.id, direction)];
   const running = job?.status === "running" || job?.status === "starting";
-  const lookup = lookups[lookupKey(transformationId, basis.id, target.id)];
+  const lookup = lookups[lookupKey(transformation.id, input.id, output.id, direction)];
+  // Та же пара уже посчитана — «заново» идёт к модели мимо базы: иначе
+  // сервер вернул бы тот же готовый ответ.
+  const samePair =
+    existing?.nodeIds.P1 === input.id && existing?.nodeIds.P2 === output.id;
 
-  // Есть ли в базе готовое для этой пары.
   useEffect(() => {
     dispatch(
-      lookupBalanceFor({ transformationId, basisId: basis.id, targetId: target.id }),
+      lookupBalanceFor({
+        transformationId: transformation.id,
+        inputId: input.id,
+        outputId: output.id,
+        direction,
+      }),
     );
-  }, [dispatch, transformationId, basis.id, target.id]);
+  }, [dispatch, transformation.id, input.id, output.id, direction]);
 
   useEffect(() => {
     if (showPrompt && !defaults) dispatch(loadBalancePrompt());
@@ -68,27 +90,6 @@ export const RequestForm: FC<Props> = ({
 
   return (
     <div className={styles.form}>
-      <div className={styles.basisRow}>
-        <BasisFields
-          view={{ amount: draftAmount(draft.amount), unit: draft.unit, ref: draft.ref }}
-          names={{ P1: label(basis), P2: label(target) }}
-          onChange={(view) =>
-            dispatch(
-              setBalanceDraft({
-                amount: String(view.amount),
-                unit: view.unit,
-                ref: view.ref === "P2" ? "P2" : "P1",
-              }),
-            )
-          }
-        />
-        <p className={styles.basisNote}>
-          В чём показать результат. Модель всегда считает на 1 т исходного
-          продукта, поэтому количество, единицу и продукт потом можно менять
-          без нового запроса.
-        </p>
-      </div>
-
       <button
         type="button"
         className={`${styles.toggle} ${showKnown || draft.knownData.trim() ? styles.toggleOn : ""}`}
@@ -150,7 +151,8 @@ export const RequestForm: FC<Props> = ({
             </button>
           )}
           <label className={styles.fieldLabel} htmlFor="mb-template">
-            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами, базисом и контекстом
+            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами, базисом,
+            направлением и контекстом
           </label>
           <textarea
             id="mb-template"
@@ -177,7 +179,7 @@ export const RequestForm: FC<Props> = ({
         </div>
       )}
 
-      {!hasCalc && lookup?.status === "done" && lookup.exact && (
+      {!samePair && lookup?.status === "done" && lookup.exact && (
         <p className={styles.note}>
           В базе есть готовый расчёт от {formatWhen(lookup.exact.createdAt)} —
           «Рассчитать» возьмёт его сразу, без модели.
@@ -199,10 +201,11 @@ export const RequestForm: FC<Props> = ({
         </div>
       ))}
 
-      {hasCalc && (
+      {existing && (
         <p className={styles.note}>
-          Новый ответ модели может отличаться от прежнего: она заново ищет
-          источники. Чтобы сменить единицы или базис, новый расчёт не нужен.
+          {samePair
+            ? "Новый расчёт заменит текущий: модель заново ищет источники, и числа могут отличаться. Количество и единицу можно менять и без нового расчёта."
+            : `У «${label(transformation)}» уже есть расчёт «${DIRECTION_WORD[direction]}» — для пары «${nameOf(existing.nodeIds.P1)} → ${nameOf(existing.nodeIds.P2)}». Новый заменит его: на каждое направление хранится один расчёт.`}
         </p>
       )}
 
@@ -211,9 +214,9 @@ export const RequestForm: FC<Props> = ({
           type="button"
           className={styles.primary}
           disabled={running || promptEmpty}
-          onClick={() => dispatch(runMaterialBalance({ force: hasCalc }))}
+          onClick={() => dispatch(runMaterialBalance({ force: samePair }))}
         >
-          {hasCalc ? "Рассчитать заново" : "Рассчитать"}
+          {samePair ? "Рассчитать заново" : "Рассчитать"}
         </button>
         {onCancel && (
           <button type="button" className={styles.secondary} onClick={onCancel}>

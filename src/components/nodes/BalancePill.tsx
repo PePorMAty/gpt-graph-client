@@ -4,14 +4,32 @@ import React from "react";
  * Значки материального баланса на узле (режим «Материальный баланс»).
  *
  * Стоят в правом нижнем углу: верхние углы заняты источниками, ГИСП и
- * пометкой «не заполнен», левый нижний — закладкой. Масса продукта — синяя,
- * у продукта-базиса темнее: от него посчитаны остальные. Коэффициент стадии
- * на преобразовании — зелёный.
+ * пометкой «не заполнен», левый нижний — закладкой. На продукте — роль в
+ * расчёте и масса: «сырьё · 1 т», «продукт · ≈0,82 т». Базис расчёта —
+ * тёмный, остальные массы — синие, роль без массы (пара ещё не посчитана) —
+ * светлая. Коэффициент стадии на преобразовании — зелёный.
  */
 const TONES = {
-  mass: { background: "#2563eb", title: "Масса в открытом расчёте материального баланса" },
-  basis: { background: "#1e3a8a", title: "Базис открытого расчёта: от этого количества посчитаны остальные" },
-  coefficient: { background: "#059669", title: "Главный коэффициент стадии в открытом расчёте" },
+  mass: {
+    background: "#2563eb",
+    color: "#fff",
+    title: "Роль и масса в открытом расчёте материального баланса",
+  },
+  basis: {
+    background: "#1e3a8a",
+    color: "#fff",
+    title: "Базис расчёта: от этого количества посчитаны остальные",
+  },
+  role: {
+    background: "#dbeafe",
+    color: "#1e3a8a",
+    title: "Роль продукта в выбранной паре: сколько — посчитает модель",
+  },
+  coefficient: {
+    background: "#059669",
+    color: "#fff",
+    title: "Главный коэффициент стадии в открытом расчёте",
+  },
 } as const;
 
 export const BalancePill: React.FC<{
@@ -25,13 +43,14 @@ export const BalancePill: React.FC<{
       position: "absolute",
       bottom: -11,
       right: -10,
-      maxWidth: 170,
+      maxWidth: 190,
       overflow: "hidden",
       textOverflow: "ellipsis",
       padding: "3px 8px",
       borderRadius: 999,
       background: TONES[tone].background,
-      color: "#fff",
+      color: TONES[tone].color,
+      border: tone === "role" ? "1px solid #93c5fd" : undefined,
       fontSize: 11,
       fontWeight: 700,
       lineHeight: 1.1,
@@ -46,11 +65,16 @@ export const BalancePill: React.FC<{
   </div>
 );
 
-/** У преобразования есть расчёты баланса: весы и их число, если больше одного. */
-export const BalanceMark: React.FC<{ count: number }> = ({ count }) => (
+/** У преобразования есть расчёты баланса: весы и направления — «↓», «↑», «↓↑». */
+export const BalanceMark: React.FC<{ arrows: string }> = ({ arrows }) => (
   <div
-    title={`Рассчитан материальный баланс${count > 1 ? `: расчётов — ${count}` : ""}`}
-    data-balance-mark={count}
+    title={`Рассчитан материальный баланс: ${[
+      arrows.includes("↓") ? "вниз (из сырья)" : "",
+      arrows.includes("↑") ? "вверх (на продукт)" : "",
+    ]
+      .filter(Boolean)
+      .join(" и ")}`}
+    data-balance-mark={arrows}
     style={{
       position: "absolute",
       top: -10,
@@ -84,6 +108,6 @@ export const BalanceMark: React.FC<{ count: number }> = ({ count }) => (
       <path d="M12 4v16M8 20h8M5 7h14" />
       <path d="M5 7 2.5 13a2.5 2.5 0 0 0 5 0L5 7ZM19 7l-2.5 6a2.5 2.5 0 0 0 5 0L19 7Z" />
     </svg>
-    {count > 1 ? count : null}
+    {arrows}
   </div>
 );

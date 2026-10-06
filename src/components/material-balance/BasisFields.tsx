@@ -2,7 +2,6 @@ import { useEffect, useState, type FC } from "react";
 
 import {
   BALANCE_UNITS,
-  convertUnit,
   type BalanceUnit,
   type BalanceView,
 } from "../../utils/materialBalance";
@@ -16,31 +15,29 @@ function parseAmount(text: string): number | null {
 
 interface Props {
   view: BalanceView;
-  /** Подписи продуктов-кандидатов в базис: P1 — исходный, P2 — целевой. */
-  names: { P1: string; P2: string };
   onChange: (view: BalanceView) => void;
+  disabled?: boolean;
 }
 
 /**
- * Базис: количество, единица и чей продукт. Числа на узлах и во вкладке
- * пересчитываются сразу — модель для этого не нужна. Единица переводит
- * количество (1 т → 1000 кг), а не меняет его смысл.
+ * Количество базисного продукта: число и единица. Числа на узлах и во
+ * вкладке пересчитываются сразу — модель для этого не нужна. Единица меняет
+ * смысл числа: «1 т» → «1 кг», а не переводит его в «1000 кг».
  *
  * Количество держим строкой: иначе «1,» на полпути к «1,5» превращалось бы
  * в «1», и дробное число было бы не вписать.
  */
-export const BasisFields: FC<Props> = ({ view, names, onChange }) => {
+export const BasisFields: FC<Props> = ({ view, onChange, disabled }) => {
   const [text, setText] = useState(() => String(view.amount).replace(".", ","));
   useEffect(() => {
-    // Базис сменился снаружи (другой расчёт) — показать его число.
+    // Количество сменилось снаружи (другой расчёт) — показать его число.
     if (parseAmount(text) !== view.amount) setText(String(view.amount).replace(".", ","));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.amount]);
 
   const bad = parseAmount(text) === null;
   return (
-    <>
-      <span className={styles.fieldLabel}>Базис</span>
+    <span className={styles.basisFields}>
       <input
         className={`${styles.amount} ${bad ? styles.amountBad : ""}`}
         value={text}
@@ -48,6 +45,7 @@ export const BasisFields: FC<Props> = ({ view, names, onChange }) => {
         aria-label="Количество"
         aria-invalid={bad}
         title={bad ? "Нужно положительное число" : undefined}
+        disabled={disabled}
         onChange={(e) => {
           setText(e.target.value);
           const amount = parseAmount(e.target.value);
@@ -58,8 +56,8 @@ export const BasisFields: FC<Props> = ({ view, names, onChange }) => {
         className={styles.select}
         value={view.unit}
         aria-label="Единица"
-        // Смена единицы переводит количество: 1 т → 1000 кг, массы те же.
-        onChange={(e) => onChange(convertUnit(view, e.target.value as BalanceUnit))}
+        disabled={disabled}
+        onChange={(e) => onChange({ ...view, unit: e.target.value as BalanceUnit })}
       >
         {BALANCE_UNITS.map((u) => (
           <option key={u} value={u}>
@@ -67,16 +65,6 @@ export const BasisFields: FC<Props> = ({ view, names, onChange }) => {
           </option>
         ))}
       </select>
-      <select
-        className={styles.select}
-        value={view.ref}
-        aria-label="Чьё количество"
-        title="Чьё это количество: исходного продукта или целевого — «сколько сырья нужно на столько-то продукта»"
-        onChange={(e) => onChange({ ...view, ref: e.target.value })}
-      >
-        <option value="P1">{names.P1 || "исходного продукта"}</option>
-        <option value="P2">{names.P2 || "целевого продукта"}</option>
-      </select>
-    </>
+    </span>
   );
 };

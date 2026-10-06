@@ -1,10 +1,12 @@
 // src/store/slices/materialBalanceSlice.ts
 //
-// Материальный баланс: режим на полотне, выбранное преобразование, черновик
-// базиса и своих данных, правки промпта, идущие расчёты и подсказки базы.
+// Материальный баланс: режим на полотне, выбранное преобразование и
+// направление, черновик количества и своих данных, правки промпта, идущие
+// расчёты и подсказки базы.
 //
 // Сами расчёты сюда не кладутся: они живут в данных узла преобразования
-// (materialBalances) и сохраняются с графом. Здесь — состояние сеанса.
+// (materialBalances) и сохраняются с графом — не больше одного на
+// направление. Здесь — состояние сеанса.
 
 import {
   createAsyncThunk,
@@ -18,6 +20,7 @@ import {
   fetchBalanceRecord,
   lookupBalance,
   startBalance,
+  type BalanceDirection,
   type BalanceNodeRef,
   type BalanceRecord,
   type BalanceSummary,
@@ -33,25 +36,23 @@ import {
 import {
   balanceEnds,
   calcsOf,
+  defaultSelection,
+  directionOf,
   nodeIdsFor,
+  pairFor,
   STATUS_TEXT,
+  type BalanceSelection,
   type BalanceUnit,
   type BalanceView,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 
-export interface BalanceSelection {
-  transformationId: string;
-  basisId: string | null;
-  targetId: string | null;
-}
+export type { BalanceSelection };
 
 export interface BalanceDraft {
   /** Количество строкой: так поле можно очистить и вписать заново. */
   amount: string;
   unit: BalanceUnit;
-  /** Чьё количество: P1 — исходного продукта, P2 — целевого. */
-  ref: "P1" | "P2";
   knownData: string;
 }
 
@@ -59,8 +60,8 @@ export interface BalanceJobState {
   status: "starting" | "running" | "failed";
   jobId: string | null;
   startedAt: string;
-  basisId: string;
-  targetId: string;
+  inputId: string;
+  outputId: string;
   error?: string;
 }
 
@@ -74,10 +75,12 @@ interface MaterialBalanceState {
   /** Чип «Материальный баланс» включён. */
   mode: boolean;
   selection: BalanceSelection | null;
-  /** Расчёт, открытый во вкладке: его числа — на узлах. */
+  /** Вкладка направления: «вниз» — из сырья, «вверх» — на продукт. */
+  direction: BalanceDirection;
+  /** Расчёт, открытый во вкладке последним: его числа — на узлах без выбора. */
   active: { nodeId: string; recordId: number } | null;
   /**
-   * У выбранного преобразования уже есть расчёт, а человек нажал «Новый
+   * У выбранного направления уже есть расчёт, а человек нажал «Новый
    * расчёт» — во вкладке форма запроса вместо готовых данных.
    */
   formOpen: boolean;
@@ -85,29 +88,34 @@ interface MaterialBalanceState {
   /** Правленый промпт; null — как на сервере по умолчанию. */
   prompt: { system: string | null; template: string | null };
   defaults: { system: string; template: string } | null;
-  /** Идущие и упавшие расчёты — по преобразованию. */
+  /** Идущие и упавшие расчёты — по преобразованию и направлению (jobKey). */
   jobs: Record<string, BalanceJobState>;
-  /** Подсказки базы — по паре «преобразование|исходный|целевой». */
+  /** Подсказки базы — по lookupKey. */
   lookups: Record<string, BalanceLookupState>;
 }
 
 const initialState: MaterialBalanceState = {
   mode: false,
   selection: null,
+  direction: "down",
   active: null,
   formOpen: false,
-  draft: { amount: "1", unit: "т", ref: "P1", knownData: "" },
+  draft: { amount: "1", unit: "т", knownData: "" },
   prompt: { system: null, template: null },
   defaults: null,
   jobs: {},
   lookups: {},
 };
 
+export const jobKey = (transformationId: string, direction: BalanceDirection) =>
+  `${transformationId}|${direction}`;
+
 export const lookupKey = (
   transformationId: string,
-  basisId: string,
-  targetId: string,
-) => `${transformationId}|${basisId}|${targetId}`;
+  inputId: string,
+  outputId: string,
+  direction: BalanceDirection,
+) => `${transformationId}|${inputId}|${outputId}|${direction}`;
 
 const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
 
@@ -119,6 +127,10 @@ const nodeRef = (n: CustomNode): BalanceNodeRef => ({
     : {}),
 });
 
+/** «Изобутилен → МТБЭ, вниз» — для уведомлений. */
+const pairText = (input: string, output: string, direction: BalanceDirection) =>
+  `${input} → ${output}, ${direction === "up" ? "вверх" : "вниз"}`;
+
 /** Промпт по умолчанию — для редактора. */
 export const loadBalancePrompt = createAsyncThunk(
   "materialBalance/loadPrompt",
@@ -128,19 +140,25 @@ export const loadBalancePrompt = createAsyncThunk(
   },
 );
 
-/** Есть ли в базе готовый расчёт этой пары. */
+/** Есть ли в базе готовый расчёт этой пары в этом направлении. */
 export const lookupBalanceFor = createAsyncThunk(
   "materialBalance/lookup",
   async (
-    arg: { transformationId: string; basisId: string; targetId: string },
+    arg: {
+      transformationId: string;
+      inputId: string;
+      outputId: string;
+      direction: BalanceDirection;
+    },
     { getState },
   ) => {
     const { nodes } = (getState() as RootState).graph.data;
     const byId = (id: string) => nodes.find((n) => n.id === id);
     return lookupBalance({
       transformation: labelOf(byId(arg.transformationId)),
-      basis: labelOf(byId(arg.basisId)),
-      target: labelOf(byId(arg.targetId)),
+      basis: labelOf(byId(arg.inputId)),
+      target: labelOf(byId(arg.outputId)),
+      direction: arg.direction,
     });
   },
 );
@@ -153,11 +171,18 @@ const slice = createSlice({
       state.mode = action.payload;
       if (!action.payload) state.selection = null;
     },
+    /** Выбор преобразования; direction — заодно сменить вкладку направления. */
     selectBalanceTransformation(
       state,
-      action: PayloadAction<BalanceSelection | null>,
+      action: PayloadAction<(BalanceSelection & { direction?: BalanceDirection }) | null>,
     ) {
-      state.selection = action.payload;
+      if (!action.payload) {
+        state.selection = null;
+      } else {
+        const { direction, ...selection } = action.payload;
+        state.selection = selection;
+        if (direction) state.direction = direction;
+      }
       state.formOpen = false;
     },
     setBalanceFormOpen(state, action: PayloadAction<boolean>) {
@@ -165,12 +190,12 @@ const slice = createSlice({
     },
     setBalancePair(
       state,
-      action: PayloadAction<{ basisId?: string; targetId?: string }>,
+      action: PayloadAction<{ inputId?: string; outputId?: string }>,
     ) {
       if (!state.selection) return;
       state.formOpen = false;
-      if (action.payload.basisId) state.selection.basisId = action.payload.basisId;
-      if (action.payload.targetId) state.selection.targetId = action.payload.targetId;
+      if (action.payload.inputId) state.selection.inputId = action.payload.inputId;
+      if (action.payload.outputId) state.selection.outputId = action.payload.outputId;
     },
     setBalanceActive(
       state,
@@ -190,72 +215,57 @@ const slice = createSlice({
     },
     jobStarted(
       state,
-      action: PayloadAction<{
-        transformationId: string;
-        basisId: string;
-        targetId: string;
-        startedAt: string;
-      }>,
+      action: PayloadAction<{ key: string; inputId: string; outputId: string; startedAt: string }>,
     ) {
-      const { transformationId, ...rest } = action.payload;
-      state.jobs[transformationId] = { status: "starting", jobId: null, ...rest };
+      const { key, ...rest } = action.payload;
+      state.jobs[key] = { status: "starting", jobId: null, ...rest };
     },
     jobRunning(
       state,
-      action: PayloadAction<{ transformationId: string; jobId: string; startedAt: string }>,
+      action: PayloadAction<{ key: string; jobId: string; startedAt: string }>,
     ) {
-      const job = state.jobs[action.payload.transformationId];
+      const job = state.jobs[action.payload.key];
       if (!job) return;
       job.status = "running";
       job.jobId = action.payload.jobId;
       job.startedAt = action.payload.startedAt || job.startedAt;
     },
     /** Расчёт закончился: удачный — задача уходит, неудачный — остаётся с ошибкой. */
-    jobEnded(
-      state,
-      action: PayloadAction<{ transformationId: string; error?: string }>,
-    ) {
-      const { transformationId, error } = action.payload;
-      const job = state.jobs[transformationId];
+    jobEnded(state, action: PayloadAction<{ key: string; error?: string }>) {
+      const { key, error } = action.payload;
+      const job = state.jobs[key];
       if (!job) return;
       if (error) {
         job.status = "failed";
         job.error = error;
       } else {
-        delete state.jobs[transformationId];
+        delete state.jobs[key];
       }
     },
+    /** Скрыть ошибку расчёта — по jobKey. */
     dismissBalanceJob(state, action: PayloadAction<string>) {
       delete state.jobs[action.payload];
     },
   },
   extraReducers: (builder) => {
+    const keyOf = (a: {
+      transformationId: string;
+      inputId: string;
+      outputId: string;
+      direction: BalanceDirection;
+    }) => lookupKey(a.transformationId, a.inputId, a.outputId, a.direction);
     builder
       .addCase(loadBalancePrompt.fulfilled, (state, action) => {
         state.defaults = action.payload;
       })
       .addCase(lookupBalanceFor.pending, (state, action) => {
-        const a = action.meta.arg;
-        state.lookups[lookupKey(a.transformationId, a.basisId, a.targetId)] = {
-          status: "loading",
-          exact: null,
-          similar: [],
-        };
+        state.lookups[keyOf(action.meta.arg)] = { status: "loading", exact: null, similar: [] };
       })
       .addCase(lookupBalanceFor.fulfilled, (state, action) => {
-        const a = action.meta.arg;
-        state.lookups[lookupKey(a.transformationId, a.basisId, a.targetId)] = {
-          status: "done",
-          ...action.payload,
-        };
+        state.lookups[keyOf(action.meta.arg)] = { status: "done", ...action.payload };
       })
       .addCase(lookupBalanceFor.rejected, (state, action) => {
-        const a = action.meta.arg;
-        state.lookups[lookupKey(a.transformationId, a.basisId, a.targetId)] = {
-          status: "failed",
-          exact: null,
-          similar: [],
-        };
+        state.lookups[keyOf(action.meta.arg)] = { status: "failed", exact: null, similar: [] };
       });
   },
 });
@@ -287,15 +297,50 @@ export function draftAmount(text: string): number {
   return Number.isFinite(v) && v > 0 ? v : 1;
 }
 
-/** Положить расчёт в узел преобразования; повтор той же записи заменяет её. */
+/**
+ * Щелчок по преобразованию в режиме баланса: выбрать его, вкладку
+ * направления и пару — см. defaultSelection.
+ */
+export const pickBalanceTransformation =
+  (transformationId: string) =>
+  (dispatch: AppDispatch, getState: () => RootState): void => {
+    const { nodes, edges } = getState().graph.data;
+    const direction = getState().materialBalance.direction;
+    dispatch(
+      selectBalanceTransformation(defaultSelection(transformationId, nodes, edges, direction)),
+    );
+  };
+
+/**
+ * Вкладка направления у выбранного преобразования: пара — из расчёта этого
+ * направления, а если его нет — та же, что была выбрана.
+ */
+export const chooseBalanceDirection =
+  (direction: BalanceDirection) =>
+  (dispatch: AppDispatch, getState: () => RootState): void => {
+    const sel = getState().materialBalance.selection;
+    if (!sel) return;
+    const { nodes, edges } = getState().graph.data;
+    dispatch(
+      selectBalanceTransformation({
+        ...pairFor(sel.transformationId, nodes, edges, direction, sel),
+        direction,
+      }),
+    );
+  };
+
+/**
+ * Положить расчёт в узел преобразования. У направления один расчёт: новый
+ * заменяет прежний того же направления (и старые лишние из прежних версий).
+ */
 function attachCalc(
   dispatch: AppDispatch,
   getState: () => RootState,
   args: {
     transformationId: string;
     record: BalanceRecord;
-    basisId: string;
-    targetId: string;
+    inputId: string;
+    outputId: string;
     fromCache: boolean;
     view: BalanceView;
   },
@@ -308,8 +353,8 @@ function attachCalc(
     record: args.record,
     nodeIds: nodeIdsFor(args.record, {
       transformationId: node.id,
-      basisId: args.basisId,
-      targetId: args.targetId,
+      inputId: args.inputId,
+      outputId: args.outputId,
       ins,
       outs,
     }),
@@ -317,7 +362,8 @@ function attachCalc(
     addedAt: new Date().toISOString(),
     view: args.view,
   };
-  const rest = calcsOf(node).filter((c) => c.record.id !== args.record.id);
+  const direction = directionOf(calc);
+  const rest = calcsOf(node).filter((c) => directionOf(c) !== direction);
   dispatch(
     updateNodeData({ nodeId: node.id, data: { materialBalances: [calc, ...rest] } }),
   );
@@ -328,7 +374,7 @@ function attachCalc(
 }
 
 /**
- * Рассчитать баланс выбранного преобразования.
+ * Рассчитать баланс выбранной пары в направлении вкладки.
  *
  * Обычный запрос сервер может закрыть готовым расчётом из базы — тогда
  * ответ сразу. Иначе расчёт идёт в фоне, а мы спрашиваем ход, пока он не
@@ -341,49 +387,49 @@ export const runMaterialBalance =
   async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
     const state = getState();
     const sel = state.materialBalance.selection;
-    if (!sel?.basisId || !sel.targetId) return;
+    const direction = state.materialBalance.direction;
+    if (!sel?.inputId || !sel.outputId) return;
     const { nodes, edges } = state.graph.data;
     const byId = (id: string) => nodes.find((n) => n.id === id);
     const t = byId(sel.transformationId);
-    const basis = byId(sel.basisId);
-    const target = byId(sel.targetId);
-    if (!t || !basis || !target) return;
-    // Расчёт этого преобразования уже идёт или запускается — второй щелчок
-    // не запускает второй.
-    const current = state.materialBalance.jobs[t.id]?.status;
+    const input = byId(sel.inputId);
+    const output = byId(sel.outputId);
+    if (!t || !input || !output) return;
+    const key = jobKey(t.id, direction);
+    // Расчёт этого направления уже идёт или запускается — второй щелчок не
+    // запускает второй.
+    const current = state.materialBalance.jobs[key]?.status;
     if (current === "running" || current === "starting") return;
 
     const { ins, outs } = balanceEnds(t.id, nodes, edges);
     const { draft, prompt } = state.materialBalance;
-    const view: BalanceView = {
-      amount: draftAmount(draft.amount),
-      unit: draft.unit,
-      ref: draft.ref,
-    };
+    const view: BalanceView = { amount: draftAmount(draft.amount), unit: draft.unit };
     const tLabel = labelOf(t);
-    const pairText = `${labelOf(basis)} → ${labelOf(target)}`;
+    const pair = pairText(labelOf(input), labelOf(output), direction);
     const canvas = getNotificationCanvas();
     const nodeTarget = { nodeId: t.id, label: tLabel };
 
     dispatch(
       jobStarted({
-        transformationId: t.id,
-        basisId: basis.id,
-        targetId: target.id,
+        key,
+        inputId: input.id,
+        outputId: output.id,
         startedAt: new Date().toISOString(),
       }),
     );
 
     const fail = (message: string) => {
-      dispatch(jobEnded({ transformationId: t.id, error: message }));
+      dispatch(jobEnded({ key, error: message }));
       showToast("error", `Материальный баланс не рассчитан: «${tLabel}»`, message, {
         canvas,
         target: nodeTarget,
       });
     };
 
-    const finish = (record: BalanceRecord, fromCache: boolean) => {
-      dispatch(jobEnded({ transformationId: t.id }));
+    const finish = (raw: BalanceRecord, fromCache: boolean) => {
+      // Сервер до направлений его не присылает — расчёт того, о чём просили.
+      const record = raw.direction ? raw : { ...raw, direction };
+      dispatch(jobEnded({ key }));
       if (getNotificationCanvas() !== canvas) {
         showToast(
           "info",
@@ -396,8 +442,8 @@ export const runMaterialBalance =
       const attached = attachCalc(dispatch, getState, {
         transformationId: t.id,
         record,
-        basisId: basis.id,
-        targetId: target.id,
+        inputId: input.id,
+        outputId: output.id,
         fromCache,
         view,
       });
@@ -415,7 +461,7 @@ export const runMaterialBalance =
         showToast(
           record.status === "calculated" || record.status === "partial" ? "success" : "info",
           `Материальный баланс: «${tLabel}»`,
-          `${pairText} · ${STATUS_TEXT[record.status]}`,
+          `${pair} · ${STATUS_TEXT[record.status]}`,
           { canvas, target: nodeTarget },
         );
       }
@@ -425,8 +471,9 @@ export const runMaterialBalance =
     try {
       started = await startBalance({
         transformation: nodeRef(t),
-        basis: nodeRef(basis),
-        target: nodeRef(target),
+        basis: nodeRef(input),
+        target: nodeRef(output),
+        direction,
         inputs: ins.map(nodeRef),
         outputs: outs.map(nodeRef),
         ...(draft.knownData.trim() ? { knownData: draft.knownData.trim() } : {}),
@@ -445,13 +492,7 @@ export const runMaterialBalance =
       return;
     }
 
-    dispatch(
-      jobRunning({
-        transformationId: t.id,
-        jobId: started.jobId,
-        startedAt: started.startedAt,
-      }),
-    );
+    dispatch(jobRunning({ key, jobId: started.jobId, startedAt: started.startedAt }));
 
     let misses = 0;
     for (;;) {
@@ -479,22 +520,25 @@ export const runMaterialBalance =
     }
   };
 
-/** Взять готовый расчёт из базы — из подсказки «есть расчёт по технологии …». */
+/**
+ * Взять готовый расчёт из базы — из подсказки «есть расчёт по технологии …».
+ * Он того же направления (подсказки базы — по направлению) и заменяет
+ * расчёт этого направления.
+ */
 export const takeBalanceFromBase =
   (recordId: number) =>
   async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
-    const sel = getState().materialBalance.selection;
-    if (!sel?.basisId || !sel.targetId) return;
-    const draft = getState().materialBalance.draft;
+    const { selection: sel, direction, draft } = getState().materialBalance;
+    if (!sel?.inputId || !sel.outputId) return;
     try {
-      const record = await fetchBalanceRecord(recordId);
+      const raw = await fetchBalanceRecord(recordId);
       attachCalc(dispatch, getState, {
         transformationId: sel.transformationId,
-        record,
-        basisId: sel.basisId,
-        targetId: sel.targetId,
+        record: raw.direction ? raw : { ...raw, direction },
+        inputId: sel.inputId,
+        outputId: sel.outputId,
         fromCache: true,
-        view: { amount: draftAmount(draft.amount), unit: draft.unit, ref: draft.ref },
+        view: { amount: draftAmount(draft.amount), unit: draft.unit },
       });
     } catch (e) {
       showToast(
@@ -519,7 +563,7 @@ export const removeMaterialBalance =
     }
   };
 
-/** Сменить базис показа расчёта: количество, единицу или продукт. */
+/** Сменить количество или единицу показа расчёта. */
 export const setMaterialBalanceView =
   (nodeId: string, recordId: number, view: BalanceView) =>
   (dispatch: AppDispatch, getState: () => RootState): void => {
