@@ -14,7 +14,6 @@ import {
 import {
   formatWhen,
   STATUS_TEXT,
-  type BalanceDirection,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import type { CustomNode } from "../../types";
@@ -25,24 +24,22 @@ interface Props {
   transformation: CustomNode;
   input: CustomNode;
   output: CustomNode;
-  direction: BalanceDirection;
-  /** Расчёт этой пары в этом направлении, если он уже есть. */
+  /** Расчёт этой пары, если он уже есть. */
   existing?: MaterialBalanceCalc;
   onCancel?: () => void;
 }
 
 /**
- * Запрос расчёта выбранной пары в направлении вкладки: свои данные, промпт
- * и модель, подсказки базы и «Рассчитать». Количество — в схеме над формой.
+ * Запрос расчёта выбранной пары: свои данные, промпт и модель, подсказки
+ * базы и «Рассчитать». Количество — в схеме над формой.
  *
- * У пары в направлении хранится один расчёт: если он уже есть, новый его
- * заменит — форма об этом говорит. Расчёты других пар не трогаются.
+ * У пары хранится один расчёт: если он уже есть, новый его заменит — форма
+ * об этом говорит. Расчёты других пар не трогаются.
  */
 export const RequestForm: FC<Props> = ({
   transformation,
   input,
   output,
-  direction,
   existing,
   onCancel,
 }) => {
@@ -53,9 +50,9 @@ export const RequestForm: FC<Props> = ({
   const [showKnown, setShowKnown] = useState(() => draft.knownData.trim() !== "");
   const [showPrompt, setShowPrompt] = useState(false);
 
-  const job = jobs[jobKey(transformation.id, input.id, output.id, direction)];
+  const job = jobs[jobKey(transformation.id, input.id, output.id)];
   const running = job?.status === "running" || job?.status === "starting";
-  const lookup = lookups[lookupKey(transformation.id, input.id, output.id, direction)];
+  const lookup = lookups[lookupKey(transformation.id, input.id, output.id)];
   // Пара уже посчитана — «заново» идёт к модели мимо базы: иначе сервер
   // вернул бы тот же готовый ответ.
   const again = Boolean(existing);
@@ -66,10 +63,9 @@ export const RequestForm: FC<Props> = ({
         transformationId: transformation.id,
         inputId: input.id,
         outputId: output.id,
-        direction,
       }),
     );
-  }, [dispatch, transformation.id, input.id, output.id, direction]);
+  }, [dispatch, transformation.id, input.id, output.id]);
 
   useEffect(() => {
     if (showPrompt && !defaults) dispatch(loadBalancePrompt());
@@ -143,8 +139,8 @@ export const RequestForm: FC<Props> = ({
             </button>
           )}
           <label className={styles.fieldLabel} htmlFor="mb-template">
-            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами, базисом,
-            направлением и контекстом
+            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами, базисом и
+            контекстом
           </label>
           <textarea
             id="mb-template"

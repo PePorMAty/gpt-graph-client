@@ -111,68 +111,6 @@
   color: var(--c-brand-strong);
 }
 
-.chipDirs {
-  font-weight: var(--fw-semibold);
-  color: var(--c-brand);
-  white-space: nowrap;
-}
-
-/* ─── Направления ─── */
-
-.dirTabs {
-  display: flex;
-  gap: var(--s-1);
-  padding: 3px;
-  background: var(--c-surface-soft);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-md);
-}
-
-.dirTab {
-  flex: 1 1 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s-1);
-  min-height: 32px;
-  padding: 0 var(--s-2);
-  border: none;
-  border-radius: var(--r-sm);
-  background: none;
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-  color: var(--c-text-soft);
-  cursor: pointer;
-}
-
-.dirTab:hover {
-  background: var(--c-surface-hover);
-}
-
-.dirTabOn,
-.dirTabOn:hover {
-  background: var(--c-surface);
-  color: var(--c-brand-strong);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-}
-
-.dirArrow {
-  font-size: 15px;
-  font-weight: var(--fw-semibold);
-}
-
-.dirDone {
-  color: #047857;
-  font-weight: var(--fw-semibold);
-}
-
-.dirTab .spinner {
-  width: 10px;
-  height: 10px;
-  margin-top: 0;
-}
-
 /* ─── Схема пары: сырьё сверху, продукт снизу, как на полотне ─── */
 
 .scheme {
@@ -208,15 +146,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--c-text-muted);
-}
-
-.schemeTag {
-  padding: 0 6px;
-  border-radius: var(--r-pill);
-  background: #1e3a8a;
-  color: #fff;
-  font-size: 11px;
-  font-weight: var(--fw-semibold);
 }
 
 .schemeAmount {
@@ -594,17 +523,16 @@ label.fieldLabel {
   min-width: 0;
 }
 
-.groupDirs {
+.groupCount {
   flex: 0 0 auto;
-  font-size: var(--fs-sm);
-  color: var(--c-brand);
-  letter-spacing: 0.05em;
-}
-
-.itemDir {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-brand-soft);
   font-size: 12px;
   font-weight: var(--fw-semibold);
-  color: var(--c-brand);
+  color: var(--c-brand-strong);
+  text-align: center;
 }
 
 .item {

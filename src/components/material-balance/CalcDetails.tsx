@@ -5,8 +5,6 @@ import remarkGfm from "remark-gfm";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
-  basisRefOf,
-  directionOf,
   flowRef,
   formatMass,
   formatWhen,
@@ -76,8 +74,6 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
   const [confirmRemove, setConfirmRemove] = useState(false);
   const record = readableRecord(calc.record);
   const readable = { ...calc, record };
-  const direction = directionOf(calc);
-  const basisRef = basisRefOf(direction);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   /** Подпись узла графа, а если его нет — имя из расчёта. */
@@ -131,7 +127,7 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
                   {nameOf(r.ref)}
                   <span className={styles.flowRole}>
                     {refRole(record, r.ref)}
-                    {r.ref === basisRef ? " · базис" : ""}
+                    {r.ref === "P1" ? " · базис" : ""}
                   </span>
                 </td>
                 <td>{formatMass(shownMass(readable, r.ref), calc.view.unit)}</td>
@@ -156,7 +152,7 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
         </table>
         {record.totals.residual && (
           <p className={styles.note}>
-            Невязка (на 1 т {direction === "up" ? "продукта" : "сырья"}):{" "}
+            Невязка (на 1 т сырья):{" "}
             {record.totals.residual}.
           </p>
         )}

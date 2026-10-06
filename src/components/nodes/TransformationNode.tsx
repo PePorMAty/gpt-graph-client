@@ -43,8 +43,8 @@ export const TransformationNode: React.FC<TransformationNodeProps> = ({
         style={{ opacity: 0, width: 8, height: 8, pointerEvents: "none" }}
       />
       {data.bookmarked === true && <BookmarkBadge />}
-      {typeof data.balanceMark === "string" && data.balanceMark && (
-        <BalanceMark arrows={data.balanceMark} />
+      {typeof data.balanceMark === "number" && data.balanceMark > 0 && (
+        <BalanceMark count={data.balanceMark} />
       )}
       {typeof data.balanceCoefficient === "string" && data.balanceCoefficient && (
         <BalancePill text={data.balanceCoefficient} tone="coefficient" />

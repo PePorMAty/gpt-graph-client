@@ -146,7 +146,7 @@ function describe(
       // базы) или убран. Смена базиса показа — не событие.
       if ("materialBalances" in p.data) {
         type Calc = {
-          record?: { id?: number; direction?: string };
+          record?: { id?: number };
           fromCache?: boolean;
           nodeIds?: Record<string, string>;
         };
@@ -157,8 +157,7 @@ function describe(
         const added = after.filter((c) => !idsOf(before).has(c.record?.id));
         const removed = before.filter((c) => !idsOf(after).has(c.record?.id));
         const pair = (c: Calc) =>
-          `${labelOf(prevNodes, c.nodeIds?.P1 ?? "")} → ${labelOf(prevNodes, c.nodeIds?.P2 ?? "")}, ` +
-          (c.record?.direction === "up" ? "вверх" : "вниз");
+          `${labelOf(prevNodes, c.nodeIds?.P1 ?? "")} → ${labelOf(prevNodes, c.nodeIds?.P2 ?? "")}`;
         const changed = added[0] ?? removed[0];
         if (!changed) return null;
         return {

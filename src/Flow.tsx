@@ -945,7 +945,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // utils/materialBalance.ts, balanceLayer).
   const balanceMode = useAppSelector((s) => s.materialBalance.mode);
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
-  const balanceDirection = useAppSelector((s) => s.materialBalance.direction);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
   const balanceDraftAmount = useAppSelector((s) => s.materialBalance.draft.amount);
   const balanceDraftUnit = useAppSelector((s) => s.materialBalance.draft.unit);
@@ -960,7 +959,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             nodes: data.nodes,
             edges: data.edges,
             selection: balanceSelection,
-            direction: balanceDirection,
             active: balanceActive,
             draft: { amount: draftAmount(balanceDraftAmount), unit: balanceDraftUnit },
           })
@@ -968,7 +966,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [
       balanceMode,
       balanceSelection,
-      balanceDirection,
       balanceActive,
       balanceDraftAmount,
       balanceDraftUnit,
@@ -1083,7 +1080,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         const coefficient =
           balance?.coefficient?.nodeId === n.id ? balance.coefficient.text : null;
-        const balanceMark = balance?.marks.get(n.id) ?? "";
+        const balanceMark = balance?.marks.get(n.id) ?? 0;
         return compact || bookmarked || coefficient || balanceMark
           ? {
               ...n,

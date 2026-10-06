@@ -1,12 +1,12 @@
 // src/store/slices/materialBalanceSlice.ts
 //
-// Материальный баланс: режим на полотне, выбранное преобразование и
-// направление, черновик количества и своих данных, правки промпта, идущие
-// расчёты и подсказки базы.
+// Материальный баланс: режим на полотне, выбранное преобразование и пара,
+// черновик количества и своих данных, правки промпта, идущие расчёты и
+// подсказки базы.
 //
 // Сами расчёты сюда не кладутся: они живут в данных узла преобразования
 // (materialBalances) и сохраняются с графом — по одному на пару «сырьё →
-// продукт» и направление. Здесь — состояние сеанса.
+// продукт». Здесь — состояние сеанса.
 
 import {
   createAsyncThunk,
@@ -20,7 +20,6 @@ import {
   fetchBalanceRecord,
   lookupBalance,
   startBalance,
-  type BalanceDirection,
   type BalanceNodeRef,
   type BalanceRecord,
   type BalanceSummary,
@@ -37,7 +36,6 @@ import {
   balanceEnds,
   calcKey,
   calcsOf,
-  defaultSelection,
   nodeIdsFor,
   pairFor,
   STATUS_TEXT,
@@ -75,20 +73,18 @@ interface MaterialBalanceState {
   /** Чип «Материальный баланс» включён. */
   mode: boolean;
   selection: BalanceSelection | null;
-  /** Вкладка направления: «вниз» — из сырья, «вверх» — на продукт. */
-  direction: BalanceDirection;
   /** Расчёт, открытый во вкладке последним: его числа — на узлах без выбора. */
   active: { nodeId: string; recordId: number } | null;
   /**
-   * У выбранной пары в этом направлении уже есть расчёт, а человек нажал
-   * «Новый расчёт» — во вкладке форма запроса вместо готовых данных.
+   * У выбранной пары уже есть расчёт, а человек нажал «Новый расчёт» — во
+   * вкладке форма запроса вместо готовых данных.
    */
   formOpen: boolean;
   draft: BalanceDraft;
   /** Правленый промпт; null — как на сервере по умолчанию. */
   prompt: { system: string | null; template: string | null };
   defaults: { system: string; template: string } | null;
-  /** Идущие и упавшие расчёты — по преобразованию, паре и направлению (jobKey). */
+  /** Идущие и упавшие расчёты — по преобразованию и паре (jobKey). */
   jobs: Record<string, BalanceJobState>;
   /** Подсказки базы — по lookupKey. */
   lookups: Record<string, BalanceLookupState>;
@@ -97,7 +93,6 @@ interface MaterialBalanceState {
 const initialState: MaterialBalanceState = {
   mode: false,
   selection: null,
-  direction: "down",
   active: null,
   formOpen: false,
   draft: { amount: "1", unit: "т", knownData: "" },
@@ -108,15 +103,11 @@ const initialState: MaterialBalanceState = {
 };
 
 /**
- * Ключ расчёта пары в направлении: под ним — идущая задача и подсказки базы.
- * Разные пары одного преобразования считаются одновременно.
+ * Ключ расчёта пары: под ним — идущая задача и подсказки базы. Разные пары
+ * одного преобразования считаются одновременно.
  */
-export const lookupKey = (
-  transformationId: string,
-  inputId: string,
-  outputId: string,
-  direction: BalanceDirection,
-) => `${transformationId}|${inputId}|${outputId}|${direction}`;
+export const lookupKey = (transformationId: string, inputId: string, outputId: string) =>
+  `${transformationId}|${inputId}|${outputId}`;
 
 export const jobKey = lookupKey;
 
@@ -130,9 +121,6 @@ const nodeRef = (n: CustomNode): BalanceNodeRef => ({
     : {}),
 });
 
-/** «Изобутилен → МТБЭ, вниз» — для уведомлений. */
-const pairText = (input: string, output: string, direction: BalanceDirection) =>
-  `${input} → ${output}, ${direction === "up" ? "вверх" : "вниз"}`;
 
 /** Промпт по умолчанию — для редактора. */
 export const loadBalancePrompt = createAsyncThunk(
@@ -143,7 +131,7 @@ export const loadBalancePrompt = createAsyncThunk(
   },
 );
 
-/** Есть ли в базе готовый расчёт этой пары в этом направлении. */
+/** Есть ли в базе готовый расчёт этой пары. */
 export const lookupBalanceFor = createAsyncThunk(
   "materialBalance/lookup",
   async (
@@ -151,7 +139,6 @@ export const lookupBalanceFor = createAsyncThunk(
       transformationId: string;
       inputId: string;
       outputId: string;
-      direction: BalanceDirection;
     },
     { getState },
   ) => {
@@ -161,7 +148,6 @@ export const lookupBalanceFor = createAsyncThunk(
       transformation: labelOf(byId(arg.transformationId)),
       basis: labelOf(byId(arg.inputId)),
       target: labelOf(byId(arg.outputId)),
-      direction: arg.direction,
     });
   },
 );
@@ -174,18 +160,11 @@ const slice = createSlice({
       state.mode = action.payload;
       if (!action.payload) state.selection = null;
     },
-    /** Выбор преобразования; direction — заодно сменить вкладку направления. */
     selectBalanceTransformation(
       state,
-      action: PayloadAction<(BalanceSelection & { direction?: BalanceDirection }) | null>,
+      action: PayloadAction<BalanceSelection | null>,
     ) {
-      if (!action.payload) {
-        state.selection = null;
-      } else {
-        const { direction, ...selection } = action.payload;
-        state.selection = selection;
-        if (direction) state.direction = direction;
-      }
+      state.selection = action.payload;
       state.formOpen = false;
     },
     setBalanceFormOpen(state, action: PayloadAction<boolean>) {
@@ -251,12 +230,8 @@ const slice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    const keyOf = (a: {
-      transformationId: string;
-      inputId: string;
-      outputId: string;
-      direction: BalanceDirection;
-    }) => lookupKey(a.transformationId, a.inputId, a.outputId, a.direction);
+    const keyOf = (a: { transformationId: string; inputId: string; outputId: string }) =>
+      lookupKey(a.transformationId, a.inputId, a.outputId);
     builder
       .addCase(loadBalancePrompt.fulfilled, (state, action) => {
         state.defaults = action.payload;
@@ -301,41 +276,20 @@ export function draftAmount(text: string): number {
 }
 
 /**
- * Щелчок по преобразованию в режиме баланса: выбрать его, вкладку
- * направления и пару — см. defaultSelection.
+ * Щелчок по преобразованию в режиме баланса: выбрать его и пару — свежего
+ * расчёта, а нет расчётов — основную (pairFor).
  */
 export const pickBalanceTransformation =
   (transformationId: string) =>
   (dispatch: AppDispatch, getState: () => RootState): void => {
     const { nodes, edges } = getState().graph.data;
-    const direction = getState().materialBalance.direction;
-    dispatch(
-      selectBalanceTransformation(defaultSelection(transformationId, nodes, edges, direction)),
-    );
+    dispatch(selectBalanceTransformation(pairFor(transformationId, nodes, edges)));
   };
 
 /**
- * Вкладка направления у выбранного преобразования: пара остаётся та же — у
- * неё в другом направлении свой расчёт или форма запроса.
- */
-export const chooseBalanceDirection =
-  (direction: BalanceDirection) =>
-  (dispatch: AppDispatch, getState: () => RootState): void => {
-    const sel = getState().materialBalance.selection;
-    if (!sel) return;
-    const { nodes, edges } = getState().graph.data;
-    dispatch(
-      selectBalanceTransformation({
-        ...pairFor(sel.transformationId, nodes, edges, direction, sel),
-        direction,
-      }),
-    );
-  };
-
-/**
- * Положить расчёт в узел преобразования. У пары в направлении один расчёт:
- * новый заменяет прежний той же пары и направления (и старые лишние из
- * прежних версий); расчёты других пар остаются.
+ * Положить расчёт в узел преобразования. У пары один расчёт: новый заменяет
+ * прежний той же пары (и старые лишние из прежних версий); расчёты других
+ * пар остаются.
  */
 function attachCalc(
   dispatch: AppDispatch,
@@ -378,7 +332,7 @@ function attachCalc(
 }
 
 /**
- * Рассчитать баланс выбранной пары в направлении вкладки.
+ * Рассчитать баланс выбранной пары: сколько продукта получится из сырья.
  *
  * Обычный запрос сервер может закрыть готовым расчётом из базы — тогда
  * ответ сразу. Иначе расчёт идёт в фоне, а мы спрашиваем ход, пока он не
@@ -391,7 +345,6 @@ export const runMaterialBalance =
   async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
     const state = getState();
     const sel = state.materialBalance.selection;
-    const direction = state.materialBalance.direction;
     if (!sel?.inputId || !sel.outputId) return;
     const { nodes, edges } = state.graph.data;
     const byId = (id: string) => nodes.find((n) => n.id === id);
@@ -399,9 +352,9 @@ export const runMaterialBalance =
     const input = byId(sel.inputId);
     const output = byId(sel.outputId);
     if (!t || !input || !output) return;
-    const key = jobKey(t.id, input.id, output.id, direction);
-    // Расчёт этой пары в этом направлении уже идёт или запускается — второй
-    // щелчок не запускает второй.
+    const key = jobKey(t.id, input.id, output.id);
+    // Расчёт этой пары уже идёт или запускается — второй щелчок не запускает
+    // второй.
     const current = state.materialBalance.jobs[key]?.status;
     if (current === "running" || current === "starting") return;
 
@@ -409,7 +362,7 @@ export const runMaterialBalance =
     const { draft, prompt } = state.materialBalance;
     const view: BalanceView = { amount: draftAmount(draft.amount), unit: draft.unit };
     const tLabel = labelOf(t);
-    const pair = pairText(labelOf(input), labelOf(output), direction);
+    const pair = `${labelOf(input)} → ${labelOf(output)}`;
     const canvas = getNotificationCanvas();
     const nodeTarget = { nodeId: t.id, label: tLabel };
 
@@ -430,9 +383,7 @@ export const runMaterialBalance =
       });
     };
 
-    const finish = (raw: BalanceRecord, fromCache: boolean) => {
-      // Сервер до направлений его не присылает — расчёт того, о чём просили.
-      const record = raw.direction ? raw : { ...raw, direction };
+    const finish = (record: BalanceRecord, fromCache: boolean) => {
       dispatch(jobEnded({ key }));
       if (getNotificationCanvas() !== canvas) {
         showToast(
@@ -477,7 +428,6 @@ export const runMaterialBalance =
         transformation: nodeRef(t),
         basis: nodeRef(input),
         target: nodeRef(output),
-        direction,
         inputs: ins.map(nodeRef),
         outputs: outs.map(nodeRef),
         ...(draft.knownData.trim() ? { knownData: draft.knownData.trim() } : {}),
@@ -526,19 +476,18 @@ export const runMaterialBalance =
 
 /**
  * Взять готовый расчёт из базы — из подсказки «есть расчёт по технологии …».
- * Он той же пары и направления (подсказки базы — по ним) и заменяет расчёт
- * пары в этом направлении.
+ * Он той же пары (подсказки базы — по ней) и заменяет её расчёт.
  */
 export const takeBalanceFromBase =
   (recordId: number) =>
   async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
-    const { selection: sel, direction, draft } = getState().materialBalance;
+    const { selection: sel, draft } = getState().materialBalance;
     if (!sel?.inputId || !sel.outputId) return;
     try {
-      const raw = await fetchBalanceRecord(recordId);
+      const record = await fetchBalanceRecord(recordId);
       attachCalc(dispatch, getState, {
         transformationId: sel.transformationId,
-        record: raw.direction ? raw : { ...raw, direction },
+        record,
         inputId: sel.inputId,
         outputId: sel.outputId,
         fromCache: true,

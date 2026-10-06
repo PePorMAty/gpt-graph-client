@@ -65,25 +65,11 @@ export const BalancePill: React.FC<{
   </div>
 );
 
-/** Сколько расчётов в направлении по подписи «↓2↑»: «↓2» — 2, «↓» — 1. */
-const countOf = (arrows: string, arrow: string) => {
-  const m = arrows.match(new RegExp(`${arrow}(\\d*)`));
-  return m ? Number(m[1] || 1) : 0;
-};
-
-/**
- * У преобразования есть расчёты баланса: весы и направления со счётом пар —
- * «↓», «↓↑», «↓2↑».
- */
-export const BalanceMark: React.FC<{ arrows: string }> = ({ arrows }) => (
+/** У преобразования есть расчёты баланса: весы и их число, если больше одного. */
+export const BalanceMark: React.FC<{ count: number }> = ({ count }) => (
   <div
-    title={`Рассчитан материальный баланс: ${[
-      countOf(arrows, "↓") ? `вниз (из сырья) — пар: ${countOf(arrows, "↓")}` : "",
-      countOf(arrows, "↑") ? `вверх (на продукт) — пар: ${countOf(arrows, "↑")}` : "",
-    ]
-      .filter(Boolean)
-      .join("; ")}`}
-    data-balance-mark={arrows}
+    title={`Рассчитан материальный баланс${count > 1 ? `: пар «сырьё → продукт» — ${count}` : ""}`}
+    data-balance-mark={count}
     style={{
       position: "absolute",
       top: -10,
@@ -117,6 +103,6 @@ export const BalanceMark: React.FC<{ arrows: string }> = ({ arrows }) => (
       <path d="M12 4v16M8 20h8M5 7h14" />
       <path d="M5 7 2.5 13a2.5 2.5 0 0 0 5 0L5 7ZM19 7l-2.5 6a2.5 2.5 0 0 0 5 0L19 7Z" />
     </svg>
-    {arrows}
+    {count > 1 ? count : null}
   </div>
 );

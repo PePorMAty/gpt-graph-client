@@ -1,11 +1,9 @@
 import type { FC } from "react";
 
 import {
-  DIRECTION_ARROW,
   formatMass,
   formatView,
   shownMass,
-  type BalanceDirection,
   type BalanceView,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
@@ -21,11 +19,10 @@ interface Props {
   outs: CustomNode[];
   input: CustomNode | undefined;
   output: CustomNode | undefined;
-  direction: BalanceDirection;
-  /** Количество базисного продукта: расчёта, если он открыт, иначе формы. */
+  /** Количество сырья: расчёта, если он открыт, иначе формы. */
   view: BalanceView;
   onView: (view: BalanceView) => void;
-  /** Открытый расчёт — тогда у второго продукта его масса. */
+  /** Открытый расчёт — тогда у продукта его масса. */
   calc?: MaterialBalanceCalc;
   onPair: (pair: { inputId?: string; outputId?: string }) => void;
   disabled?: boolean;
@@ -33,9 +30,8 @@ interface Props {
 
 /**
  * Пара расчёта как на полотне: сырьё сверху, продукт снизу, между ними
- * преобразование и стрелка направления. Количество — у базисного продукта
- * («вниз» — у сырья, «вверх» — у продукта), у второго — что посчитала
- * модель. Под схемой — вопрос к модели обычными словами.
+ * преобразование. У сырья — количество, у продукта — сколько его получится
+ * по расчёту модели. Под схемой — вопрос к модели обычными словами.
  */
 export const PairScheme: FC<Props> = ({
   transformation,
@@ -43,27 +39,21 @@ export const PairScheme: FC<Props> = ({
   outs,
   input,
   output,
-  direction,
   view,
   onView,
   calc,
   onPair,
   disabled,
 }) => {
-  const down = direction === "down";
-
   const row = (kind: "input" | "output") => {
     const isInput = kind === "input";
     const list = isInput ? ins : outs;
     const node = isInput ? input : output;
-    const basis = isInput === down;
-    const ref = isInput ? "P1" : "P2";
     const aria = isInput ? "Сырьё" : "Продукт";
     return (
-      <div className={`${styles.schemeRow} ${basis ? styles.schemeBasis : ""}`}>
+      <div className={`${styles.schemeRow} ${isInput ? styles.schemeBasis : ""}`}>
         <div className={styles.schemeHead}>
           <span className={styles.schemeRole}>{aria}</span>
-          {basis && <span className={styles.schemeTag}>базис</span>}
         </div>
         {list.length > 1 ? (
           <select
@@ -85,39 +75,33 @@ export const PairScheme: FC<Props> = ({
           <span className={styles.pairName}>{label(list[0])}</span>
         )}
         <div className={styles.schemeAmount}>
-          {basis ? (
+          {isInput ? (
             <BasisFields view={view} onChange={onView} disabled={disabled} />
           ) : calc ? (
             <span className={styles.schemeResult}>
-              {down ? "получится " : "нужно "}
-              <b>{formatMass(shownMass(calc, ref), calc.view.unit)}</b>
+              получится <b>{formatMass(shownMass(calc, "P2"), calc.view.unit)}</b>
             </span>
           ) : (
-            <span className={styles.muted}>
-              {down ? "сколько получится" : "сколько нужно"} — посчитает модель
-            </span>
+            <span className={styles.muted}>сколько получится — посчитает модель</span>
           )}
         </div>
       </div>
     );
   };
 
-  const amount = formatView(view);
-  const question = down
-    ? `Сколько «${label(output)}» получится из ${amount} «${label(input)}»?`
-    : `Сколько «${label(input)}» нужно на ${amount} «${label(output)}»?`;
-
   return (
     <div className={styles.scheme}>
       {row("input")}
       <div className={styles.schemeArrow}>
         <span className={styles.schemeArrowIcon} aria-hidden>
-          {DIRECTION_ARROW[direction]}
+          ↓
         </span>
         «{label(transformation)}»
       </div>
       {row("output")}
-      <p className={styles.question}>{question}</p>
+      <p className={styles.question}>
+        Сколько «{label(output)}» получится из {formatView(view)} «{label(input)}»?
+      </p>
     </div>
   );
 };
