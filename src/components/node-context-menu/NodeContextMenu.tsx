@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type FC } from "react";
 
 import { useDismiss } from "../../hooks/useDismiss";
-import { BookmarkIcon, TrashIcon } from "../icons";
+import { BookmarkIcon, ScalesIcon, TrashIcon } from "../icons";
 import styles from "./NodeContextMenu.module.css";
 
 interface NodeContextMenuProps {
@@ -13,6 +13,8 @@ interface NodeContextMenuProps {
   /** Узел уже в закладках — пункт меняется на «убрать». */
   isBookmarked?: boolean;
   onToggleBookmark?: () => void;
+  /** Рассчитать материальный баланс — пункт есть только у преобразований. */
+  onMaterialBalance?: () => void;
   onClose: () => void;
 }
 
@@ -23,6 +25,7 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
   selectedCount,
   isBookmarked = false,
   onToggleBookmark,
+  onMaterialBalance,
   onClose,
 }) => {
   const isMultiSelection = !!selectedCount && selectedCount > 1;
@@ -69,6 +72,13 @@ export const NodeContextMenu: FC<NodeContextMenuProps> = ({
         <button type="button" className={styles.item} onClick={onToggleBookmark}>
           <BookmarkIcon size={16} className={styles.itemIcon} />
           {isBookmarked ? "Убрать из закладок" : "Добавить в закладки"}
+        </button>
+      )}
+
+      {!isMultiSelection && onMaterialBalance && (
+        <button type="button" className={styles.item} onClick={onMaterialBalance}>
+          <ScalesIcon size={16} className={styles.itemIcon} />
+          Материальный баланс
         </button>
       )}
 

@@ -279,6 +279,35 @@
   transition: stroke-opacity 120ms ease;
 }
 
+/* Режим «Материальный баланс»: узлы вне посчитанных пар и выбранного
+   преобразования — серые и бледные, но подписи читаются: по ним видно,
+   где ты на графе (затемнение по hover сильнее — там оно на миг). */
+:global(.react-flow__node.node--balance-muted) {
+  opacity: 0.42;
+  filter: grayscale(0.9);
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+:global(.react-flow__edge.edge--balance-muted path) {
+  stroke-opacity: 0.22;
+  transition: stroke-opacity 120ms ease;
+}
+/* Связи «сырьё — преобразование — продукт» посчитанных пар — синие; пары в
+   фокусе (выбранной или открытой) — тёмные и толще; выбранной, но ещё не
+   посчитанной — пунктиром. Так сразу видно, где расчёт есть, а где нет. */
+:global(.react-flow__edge.edge--balance-calc path.react-flow__edge-path) {
+  stroke: #3b82f6 !important;
+  stroke-width: 2.5px !important;
+}
+:global(.react-flow__edge.edge--balance-active path.react-flow__edge-path) {
+  stroke: #1e3a8a !important;
+  stroke-width: 3.5px !important;
+}
+:global(.react-flow__edge.edge--balance-pending path.react-flow__edge-path) {
+  stroke: #1e3a8a !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: 7 5;
+}
+
 /* ===== Кастомные тултипы кнопок панели Controls =====
    Нативный HTML-атрибут title ненадёжен: на macOS он часто не показывается
    (известный баг Chromium, капризное поведение Safari). Рисуем свою подсказку

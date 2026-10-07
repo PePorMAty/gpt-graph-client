@@ -1,0 +1,702 @@
+/* Материальный баланс: вкладка левой панели — выбранное преобразование
+   (направления, схема пары, форма запроса или данные расчёта) и список
+   расчётов графа. */
+
+/* Вкладка прокручивается целиком: форма с двумя промптами и данные расчёта
+   длиннее панели. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--s-1);
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.back {
+  align-self: flex-start;
+}
+
+.detailsTitle {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.hintBox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--r-md);
+  line-height: 1.45;
+}
+
+.hintBox > span {
+  flex: 1 1 auto;
+}
+
+.barIcon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--c-brand);
+}
+
+.empty {
+  padding: var(--s-4);
+  background: var(--c-surface-soft);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-md);
+  color: var(--c-text-muted);
+  line-height: 1.5;
+}
+
+/* ─── Сырьё и продукты преобразования, посчитанные пары ─── */
+
+.roles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-text-muted);
+}
+
+.roles b {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-soft);
+}
+
+.pairs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
+
+.pairs > .fieldLabel {
+  flex: 1 1 100%;
+}
+
+.chipBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 28px;
+  max-width: 100%;
+  padding: 2px var(--s-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  font: inherit;
+  font-size: 12px;
+  color: var(--c-text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chipBtn:hover {
+  border-color: var(--c-brand-border);
+}
+
+.chipBtnOn {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+/* ─── Схема пары: сырьё сверху, продукт снизу, как на полотне ─── */
+
+.scheme {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.schemeRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.schemeBasis {
+  background: var(--c-brand-softer);
+  border-color: var(--c-brand-border);
+}
+
+.schemeHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.schemeRole {
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+.schemeAmount {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.schemeResult {
+  font-size: var(--fs-md);
+  color: var(--c-text-soft);
+}
+
+.schemeResult b {
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.schemeArrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-left: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.schemeArrowIcon {
+  font-size: 18px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  color: var(--c-brand);
+}
+
+.question {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.45;
+  color: var(--c-text);
+}
+
+.basisFields {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* ─── Форма запроса ─── */
+
+.pairName {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+
+.form > .block {
+  align-self: stretch;
+}
+
+.fieldLabel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+}
+
+label.fieldLabel {
+  display: block;
+  margin: var(--s-3) 0 var(--s-1);
+}
+
+.amount {
+  width: 96px;
+  height: 32px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.amountBad {
+  border-color: var(--c-danger);
+}
+
+.select {
+  height: 32px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  font: inherit;
+  color: var(--c-text);
+}
+
+.toggle {
+  height: 30px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  font-size: var(--fs-sm);
+  color: var(--c-text-soft);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-color: var(--c-border-strong);
+}
+
+.toggleOn {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+.block {
+  padding: var(--s-3);
+  background: var(--c-surface-soft);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-sm);
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--s-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.promptArea {
+  min-height: 220px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.note {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-text-muted);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.warn {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-warning-soft);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text-soft);
+}
+
+.error {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}
+
+.errorBox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-danger-soft);
+  border: 1px solid var(--c-danger-border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}
+
+.errorBox > span {
+  flex: 1 1 auto;
+}
+
+.running {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-brand-softer);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-brand-strong);
+}
+
+.runningBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 2px solid var(--c-brand-border);
+  border-top-color: var(--c-brand);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── Кнопки ─── */
+
+.linkBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkBtn:hover {
+  color: var(--c-brand-strong);
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.iconBtn:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.primary {
+  height: 34px;
+  padding: 0 var(--s-4);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--c-brand);
+  color: var(--c-text-on-brand);
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--c-brand-strong);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondary {
+  height: 32px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-text-soft);
+  cursor: pointer;
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-strong);
+}
+
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dangerBtn {
+  composes: secondary;
+  color: var(--c-danger);
+}
+
+.dangerBtn:hover:not(:disabled) {
+  border-color: var(--c-danger-border);
+  color: var(--c-danger);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ─── Список расчётов ─── */
+
+.group {
+  flex: 0 0 auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+/* Шапка группы раскрывает её; кнопка справа — показать на графе. */
+.groupHeadRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding-right: var(--s-2);
+  background: var(--c-surface-soft);
+}
+
+.groupHeadRow:not(:last-child) {
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.groupHead {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupHeadRow:hover {
+  background: var(--c-surface-hover);
+}
+
+.groupName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.groupCount {
+  flex: 0 0 auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-brand-soft);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  color: var(--c-brand-strong);
+  text-align: center;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  border-top: 1px solid var(--c-border-soft);
+  background: var(--c-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:first-of-type {
+  border-top: none;
+}
+
+.item:hover {
+  background: var(--c-brand-softer);
+}
+
+.itemTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--c-text);
+}
+
+.meta {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.status_ok {
+  background: var(--c-success-soft);
+  color: #047857;
+}
+
+.status_warn {
+  background: var(--c-warning-soft);
+  color: #b45309;
+}
+
+.status_bad {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+/* ─── Данные расчёта ─── */
+
+.detailsHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.reason {
+  margin: var(--s-1) 0 0;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-warning-soft);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-text-soft);
+}
+
+.section {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--c-border-soft);
+  padding-top: var(--s-3);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.flows {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.flows td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--c-border-soft);
+  vertical-align: top;
+}
+
+.flows td:last-child {
+  text-align: right;
+  white-space: nowrap;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.flowRole {
+  display: block;
+  font-size: 11px;
+  color: var(--c-text-faint);
+}
+
+/* Расшифровка P1, P2… из ответа модели. */
+.legend {
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
+}
+
+.coef {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-sm);
+}
+
+.coef li {
+  margin: 2px 0;
+}
+
+.sourceItem {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+}
+
+.sourceItem a {
+  color: var(--c-brand);
+  word-break: break-word;
+}
+
+.sourceMeta {
+  color: var(--c-text-muted);
+}
+
+details.more > summary {
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  color: var(--c-brand);
+}
+
+details.more[open] > summary {
+  margin-bottom: var(--s-2);
+}

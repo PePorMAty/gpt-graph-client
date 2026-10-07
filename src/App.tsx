@@ -18,6 +18,7 @@ import styles from "./styles/App.module.css";
 const PANEL_SECTIONS: RailSection[] = [
   "create",
   "sources",
+  "balance",
   "bookmarks",
   "history",
 ];
@@ -47,6 +48,28 @@ function Workspace() {
     };
     window.addEventListener("node-card-toggle", onToggle);
     return () => window.removeEventListener("node-card-toggle", onToggle);
+  }, []);
+
+  // Раздел рельса просят открыть или закрыть из полотна: чип «Материальный
+  // баланс» и выбор преобразования открывают его вкладку, выключенный чип
+  // закрывает — если открыта именно она.
+  useEffect(() => {
+    const sectionOf = (e: Event) =>
+      (e as CustomEvent<{ section?: RailSection }>).detail?.section;
+    const onOpen = (e: Event) => {
+      const next = sectionOf(e);
+      if (next && PANEL_SECTIONS.includes(next)) setSection(next);
+    };
+    const onClose = (e: Event) => {
+      const which = sectionOf(e);
+      setSection((prev) => (prev === which ? "graph" : prev));
+    };
+    window.addEventListener("rail-open", onOpen);
+    window.addEventListener("rail-close", onClose);
+    return () => {
+      window.removeEventListener("rail-open", onOpen);
+      window.removeEventListener("rail-close", onClose);
+    };
   }, []);
 
   const panelSection = PANEL_SECTIONS.includes(section) ? section : null;

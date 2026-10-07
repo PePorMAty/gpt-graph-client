@@ -168,6 +168,40 @@ export function collapseDuplicateTransformations(
     }
     extra.set(into, acc);
   }
+  // Расчёты материального баланса — не «добрать, если пусто», а сложить: у
+  // каждого дубля свои. T1 в них теперь — оставленный узел. На пару «сырьё →
+  // продукт» у преобразования хранится один расчёт — остаётся свежий;
+  // расчёты «вверх» недолгой версии с направлениями отбрасываются.
+  type Calc = {
+    record?: { id?: number; direction?: string };
+    addedAt?: string;
+    nodeIds?: Record<string, string>;
+  };
+  const keyOf = (c: Calc) => `${c.nodeIds?.P1 ?? ""}|${c.nodeIds?.P2 ?? ""}`;
+  for (const id of dropped) {
+    const own = byId.get(id)?.data?.materialBalances;
+    if (!Array.isArray(own) || !own.length) continue;
+    const into = idRemap[id];
+    const acc = extra.get(into) ?? {};
+    const base = (acc.materialBalances ??
+      byId.get(into)?.data?.materialBalances ??
+      []) as Calc[];
+    const known = new Set(base.map((c) => c.record?.id));
+    const moved = (own as Calc[])
+      .filter((c) => !known.has(c.record?.id))
+      .map((c) => ({ ...c, nodeIds: { ...c.nodeIds, T1: into } }));
+    const seen = new Set<string>();
+    acc.materialBalances = [...base, ...moved]
+      .sort((a, b) => String(b.addedAt ?? "").localeCompare(String(a.addedAt ?? "")))
+      .filter((c) => {
+        if (c.record?.direction === "up") return false;
+        const k = keyOf(c);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    extra.set(into, acc);
+  }
   const keptNodes = nodes
     .filter((n) => !dropped.has(n.id))
     .map((n) => {

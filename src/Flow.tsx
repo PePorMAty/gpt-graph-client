@@ -154,6 +154,18 @@ import { fetchTransformationsForNeighbors } from "./store/api/transformation-bet
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
+import {
+  draftAmount,
+  pickBalanceTransformation,
+  selectBalanceTransformation,
+  setBalanceActive,
+  setBalanceMode,
+} from "./store/slices/materialBalanceSlice";
+import {
+  balanceLayer as computeBalanceLayer,
+  edgeKey as balanceEdgeKey,
+  calcsOf,
+} from "./utils/materialBalance";
 
 const nodeTypes: NodeTypes = {
   product: ProductNode,
@@ -761,6 +773,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     };
   }, []);
 
+  // Режим «Материальный баланс» (чип над полотном) — подробнее ниже, у слоя
+  // баланса.
+  const balanceMode = useAppSelector((s) => s.materialBalance.mode);
+
   // Подсветка цепочки по hover — только для графов, загруженных через
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
   // выделяются он сам, все предки и потомки + рёбра между ними; остальное
@@ -773,13 +789,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   }, [data.nodes]);
   const chainSet = useMemo<Set<string> | null>(() => {
     // В фокус-режиме окрестность и так обрезана — hover-затемнение не нужно.
-    if (source !== "loaded" || !hoveredChainId || focusOn) return null;
+    // В режиме баланса подсвечено своё — выбранное преобразование и
+    // посчитанные пары, — и наведение гасило бы его.
+    if (source !== "loaded" || !hoveredChainId || focusOn || balanceMode) return null;
     return findChainNodeIds(
       data.edges,
       hoveredChainId,
       (id) => nodeTypeById.get(id),
     );
-  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn]);
+  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn, balanceMode]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
@@ -928,6 +946,62 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [productsOnly, data.nodes, data.edges],
   );
 
+  // ─── Материальный баланс ───
+  // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
+  // расчёта, на узлах — все посчитанные пары (продукт сверху, сырьё снизу),
+  // их связи подсвечены, остальное приглушено (см. utils/materialBalance.ts,
+  // balanceLayer).
+  const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
+  const balanceActive = useAppSelector((s) => s.materialBalance.active);
+  const balanceDraftAmount = useAppSelector((s) => s.materialBalance.draft.amount);
+  const balanceDraftUnit = useAppSelector((s) => s.materialBalance.draft.unit);
+  const balanceModeRef = useRef(balanceMode);
+  balanceModeRef.current = balanceMode;
+  const balanceActiveRef = useRef(balanceActive);
+  balanceActiveRef.current = balanceActive;
+  const balance = useMemo(
+    () =>
+      balanceMode
+        ? computeBalanceLayer({
+            nodes: data.nodes,
+            edges: data.edges,
+            selection: balanceSelection,
+            active: balanceActive,
+            draft: { amount: draftAmount(balanceDraftAmount), unit: balanceDraftUnit },
+          })
+        : null,
+    [
+      balanceMode,
+      balanceSelection,
+      balanceActive,
+      balanceDraftAmount,
+      balanceDraftUnit,
+      data.nodes,
+      data.edges,
+    ],
+  );
+  // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
+  // открывают её, выключенный чип закрывает. Карточка узла занимает то же
+  // место слева — открывая вкладку, её закрываем.
+  const openBalancePanel = useCallback(() => {
+    saveChangesRef.current();
+    setIsPanelOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("rail-open", { detail: { section: "balance" } }),
+    );
+  }, []);
+  const toggleBalanceMode = useCallback(() => {
+    const next = !balanceModeRef.current;
+    dispatch(setBalanceMode(next));
+    if (readOnly) return;
+    if (next) openBalancePanel();
+    else {
+      window.dispatchEvent(
+        new CustomEvent("rail-close", { detail: { section: "balance" } }),
+      );
+    }
+  }, [dispatch, readOnly, openBalancePanel]);
+
   const flowNodes = useMemo(
     () =>
       // Приоритет проекций: фокус-режим > «только продукты» > полный граф.
@@ -940,11 +1014,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         const isDimmed = chainSet ? !chainSet.has(n.id) : false;
         const isFocusCenter = n.id === focusState?.focusId;
 
+        // Режим баланса: вне выбранного преобразования и открытого расчёта
+        // узлы приглушены.
+        const balanceMuted =
+          !!balance && balance.lit.size > 0 && !balance.lit.has(n.id);
+
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
           isDimmed ? "node--dimmed" : "",
           isFocusCenter ? "node--focus" : "",
+          balanceMuted ? "node--balance-muted" : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -952,8 +1032,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Крупная подпись — только у фокус-проекции: в полном графе и в
         // «только продукты» узлы остаются прежними.
         const compact = !!focusView;
-        // Значок закладки — у продукта и у преобразования одинаково.
-        const bookmarked = bookmarkedIds.has(n.id);
+        // Значок закладки — у продукта и у преобразования одинаково. В
+        // режиме баланса значков нет: на узлах только баланс.
+        const bookmarked = !balance && bookmarkedIds.has(n.id);
 
         // Бейджи «↑ 📖 N / ↓ 📖 N» рисуем для любого product-узла, у которого
         // есть записи в sourcesPool: пошаговый поиск, восстановленный сейв или
@@ -971,6 +1052,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           // Сколько разделов документов в базе сервера про продукт. Нет
           // таких — значка нет.
           const base = localSourceCounts[industryKey(lbl)];
+          const pills = balance?.pills.get(n.id);
           return {
             ...n,
             className: cls,
@@ -989,6 +1071,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                   }
                 : {}),
               showIndustryData: industryData,
+              ...(balance ? { balanceQuiet: true } : {}),
+              ...(pills?.top ? { balanceTop: pills.top } : {}),
+              ...(pills?.bottom ? { balanceBottom: pills.bottom } : {}),
               ...(gisp
                 ? {
                     gispProducers: gisp.producerCount,
@@ -999,7 +1084,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           };
         }
 
-        return compact || bookmarked
+        const coefficient = balance?.coefficients.get(n.id);
+        return compact || bookmarked || balance
           ? {
               ...n,
               className: cls,
@@ -1007,6 +1093,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 ...n.data,
                 ...(compact ? { focusCompact: true } : {}),
                 ...(bookmarked ? { bookmarked: true } : {}),
+                ...(balance ? { balanceQuiet: true } : {}),
+                ...(coefficient
+                  ? {
+                      balanceCoefficient: coefficient.text,
+                      balanceCoefficientTitle: coefficient.title,
+                    }
+                  : {}),
               },
             }
           : { ...n, className: cls };
@@ -1024,6 +1117,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       industryResults,
       localSourceCounts,
       bookmarkedIds,
+      balance,
     ],
   );
 
@@ -1035,15 +1129,27 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     const baseEdges = showAlternatives
       ? base
       : base.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
-    if (!chainSet) return baseEdges;
+    // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
+    // приглушены (balanceLayer, edges).
+    const lit = balance && balance.lit.size > 0 ? balance.lit : null;
+    if (!chainSet && !lit) return baseEdges;
     return baseEdges.map((e) => {
-      const bothIn = chainSet.has(e.source) && chainSet.has(e.target);
-      if (bothIn) return e;
       const existing = e.className ?? "";
-      const cls = [existing, "edge--dimmed"].filter(Boolean).join(" ");
-      return { ...e, className: cls };
+      const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
+      const extra = [
+        chainSet && !(chainSet.has(e.source) && chainSet.has(e.target))
+          ? "edge--dimmed"
+          : "",
+        !lit || tone === "plain"
+          ? ""
+          : tone
+            ? `edge--balance-${tone}`
+            : "edge--balance-muted",
+      ].filter(Boolean);
+      if (!extra.length) return e;
+      return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
     });
-  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives]);
+  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance]);
 
   // Просьба извне вписать граф в экран (открытие графа из библиотеки,
   // объединение). Узлы к моменту события ещё не измерены React Flow, а по
@@ -1165,6 +1271,29 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
       lastInteractedNodeIdRef.current = node.id;
+      // Режим «Материальный баланс»: щелчок по преобразованию выбирает его
+      // для расчёта, карточка не открывается. По ссылке выбирать нечего —
+      // щелчок показывает расчёт этого преобразования, повторный — расчёт
+      // другого направления, если он есть.
+      if (balanceModeRef.current && node.type === "transformation") {
+        setContextMenu(null);
+        if (readOnly) {
+          const calcs = calcsOf(node as CustomNode);
+          const active = balanceActiveRef.current;
+          const at =
+            active?.nodeId === node.id
+              ? calcs.findIndex((c) => c.record.id === active.recordId)
+              : -1;
+          const next = calcs[(at + 1) % Math.max(calcs.length, 1)];
+          if (next) {
+            dispatch(setBalanceActive({ nodeId: node.id, recordId: next.record.id }));
+          }
+          return;
+        }
+        dispatch(pickBalanceTransformation(node.id));
+        openBalancePanel();
+        return;
+      }
       // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
       // навигации, узел становится новым центром. Карточка узла — по клику
       // на сам центр или на преобразование.
@@ -1182,7 +1311,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setCardShown((n) => n + 1);
       setContextMenu(null);
     },
-    [focusOnNode, selectedNodeId],
+    [focusOnNode, selectedNodeId, readOnly, dispatch, openBalancePanel],
   );
 
   // Hover-подсветка цепочки (только для загруженных графов;
@@ -1281,7 +1410,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setContextMenu(null);
     setPaneMenu(null);
     setEdgeMenu(null);
-  }, []);
+    // Щелчок мимо узлов снимает выбор преобразования в режиме баланса.
+    if (balanceModeRef.current) dispatch(selectBalanceTransformation(null));
+  }, [dispatch]);
 
   // Правый клик по пустому месту — меню добавления узла. В режиме рамки
   // правая кнопка не занята меню: там ею удобно доводить выделение.
@@ -3051,6 +3182,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onToggleIndustryData={() => setIndustryData((v) => !v)}
           alternatives={showAlternatives}
           onToggleAlternatives={() => setShowAlternatives((v) => !v)}
+          balance={balanceMode}
+          onToggleBalance={toggleBalanceMode}
           readOnly={sharedView}
         />
       </div>
@@ -3176,6 +3309,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               ? undefined
               : handleToggleBookmark
           }
+          onMaterialBalance={(() => {
+            // Баланс считается у преобразования со входом и выходом;
+            // альтернатива висит на одном продукте — ей нечего считать.
+            const node = data.nodes.find((n) => n.id === contextMenu.nodeId);
+            if (node?.type !== "transformation" || node.data?.chainVariant === "alt") {
+              return undefined;
+            }
+            return () => {
+              dispatch(setBalanceMode(true));
+              dispatch(pickBalanceTransformation(node.id));
+              setContextMenu(null);
+              openBalancePanel();
+            };
+          })()}
           onClose={() => setContextMenu(null)}
         />
       )}

@@ -6,12 +6,14 @@ import { DatabaseSection } from "./DatabaseSection";
 import { BookmarksSection } from "./BookmarksSection";
 import { CreateSection } from "./CreateSection";
 import { HistorySection } from "./HistorySection";
+import { MaterialBalanceSection } from "../material-balance/MaterialBalanceSection";
 import {
   BookmarkIcon,
   ClockIcon,
   CloseIcon,
   DatabaseIcon,
   PlusIcon,
+  ScalesIcon,
   type IconProps,
 } from "../icons";
 import styles from "./RailPanel.module.css";
@@ -29,6 +31,7 @@ interface SectionMeta {
 const SECTIONS: Partial<Record<RailSection, SectionMeta>> = {
   create: { title: "Создание графа", Icon: PlusIcon },
   sources: { title: "База данных", Icon: DatabaseIcon },
+  balance: { title: "Материальный баланс", Icon: ScalesIcon },
   bookmarks: { title: "Закладки графа", Icon: BookmarkIcon },
   history: { title: "История действий", Icon: ClockIcon },
 };
@@ -81,6 +84,8 @@ export const RailPanel = ({ section, onClose }: RailPanelProps) => {
           <CreateSection onDone={onClose} />
         ) : section === "sources" ? (
           <DatabaseSection />
+        ) : section === "balance" ? (
+          <MaterialBalanceSection />
         ) : section === "bookmarks" ? (
           <BookmarksSection />
         ) : (
