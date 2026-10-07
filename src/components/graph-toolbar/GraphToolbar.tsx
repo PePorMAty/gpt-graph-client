@@ -8,6 +8,7 @@ import {
   FilterIcon,
   FocusIcon,
   IndustryDataIcon,
+  ScalesIcon,
 } from "../icons";
 import { GraphNameMenu } from "./GraphNameMenu";
 import styles from "./GraphToolbar.module.css";
@@ -40,10 +41,14 @@ export interface GraphToolbarProps {
   alternatives: boolean;
   onToggleAlternatives: () => void;
 
+  /** Режим «Материальный баланс»: массы расчётов на узлах. */
+  balance: boolean;
+  onToggleBalance: () => void;
+
   /**
    * Просмотр по ссылке: только переключатели «Только продукты»,
-   * «Промышленные данные» и «Альтернативы». Меню графа (в нём правка
-   * легенды) и фокус-режим остаются рабочему месту.
+   * «Материальный баланс», «Промышленные данные» и «Альтернативы». Меню
+   * графа (в нём правка легенды) и фокус-режим остаются рабочему месту.
    */
   readOnly?: boolean;
 }
@@ -68,6 +73,8 @@ export const GraphToolbar = ({
   onToggleIndustryData,
   alternatives,
   onToggleAlternatives,
+  balance,
+  onToggleBalance,
   readOnly = false,
 }: GraphToolbarProps) => {
   const [focusMenuOpen, setFocusMenuOpen] = useState(false);
@@ -93,6 +100,24 @@ export const GraphToolbar = ({
           Только продукты
         </button>
       )}
+
+      {/* Материальный баланс: в режиме щелчок по преобразованию выбирает его
+          для расчёта, а на узлах — массы открытого расчёта. По ссылке
+          режим только показывает готовые расчёты. */}
+      <button
+        type="button"
+        className={`${styles.chip} ${balance ? styles.chipActive : ""}`}
+        onClick={onToggleBalance}
+        aria-pressed={balance}
+        title={
+          readOnly
+            ? "Показать на узлах массы рассчитанного материального баланса"
+            : "Рассчитать материальный баланс преобразования и показать массы на узлах"
+        }
+      >
+        <ScalesIcon size={16} className={styles.chipIcon} />
+        Материальный баланс
+      </button>
 
       {/* Фокус-режим: сама кнопка включает режим, стрелка открывает
           настройки охвата — раньше они жили в плашке поверх полотна. */}

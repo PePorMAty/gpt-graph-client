@@ -142,6 +142,35 @@ function describe(
           };
         }
       }
+      // Расчёты материального баланса: пришёл новый (посчитан или взят из
+      // базы) или убран. Смена базиса показа — не событие.
+      if ("materialBalances" in p.data) {
+        type Calc = {
+          record?: { id?: number };
+          fromCache?: boolean;
+          nodeIds?: Record<string, string>;
+        };
+        const list = (v: unknown) => (Array.isArray(v) ? (v as Calc[]) : []);
+        const before = list(was?.data?.materialBalances);
+        const after = list(p.data.materialBalances);
+        const idsOf = (l: Calc[]) => new Set(l.map((c) => c.record?.id));
+        const added = after.filter((c) => !idsOf(before).has(c.record?.id));
+        const removed = before.filter((c) => !idsOf(after).has(c.record?.id));
+        const pair = (c: Calc) =>
+          `${labelOf(prevNodes, c.nodeIds?.P1 ?? "")} → ${labelOf(prevNodes, c.nodeIds?.P2 ?? "")}`;
+        const changed = added[0] ?? removed[0];
+        if (!changed) return null;
+        return {
+          kind: "edit",
+          title: added.length
+            ? changed.fromCache
+              ? "Материальный баланс взят из базы"
+              : "Рассчитан материальный баланс"
+            : "Расчёт материального баланса убран",
+          details: `«${labelOf(prevNodes, p.nodeId)}»: ${pair(changed)}`,
+          nodeIds: [p.nodeId],
+        };
+      }
       // Пишем только смысловые правки: подпись и описание. Прочие поля
       // (источники, техописание, флаги) приходят пачками и залили бы историю.
       if (typeof p.data.label === "string" && p.data.label !== was?.data?.label) {

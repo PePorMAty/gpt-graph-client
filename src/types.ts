@@ -124,6 +124,31 @@ export interface CustomNodeData {
   // --- transformation node (transformation-between endpoint) ---
   transformationSources?: string[];
 
+  /**
+   * Расчёты материального баланса преобразования, свежие первыми (см.
+   * utils/materialBalance.ts, MaterialBalanceCalc). Сохраняются с графом:
+   * вкладка «Материальный баланс» и массы на узлах берут их отсюда.
+   */
+  materialBalances?: unknown[];
+
+  // --- материальный баланс на полотне (производное, НЕ персистится) ---
+  /**
+   * Подписи продукта в режиме баланса, ставятся в Flow.tsx. Сверху — продукт
+   * расчёта («продукт · ≈820 кг»), снизу — сырьё («сырьё · 1 т»). Тон:
+   * заданное количество — тёмная, посчитанная масса — синяя, роль без
+   * массы — светлая.
+   */
+  balanceTop?: { text: string; tone: "basis" | "mass" | "role" };
+  balanceBottom?: { text: string; tone: "basis" | "mass" | "role" };
+  /** Выход пары на преобразовании: «выход ≈92 %», и пояснение к нему. */
+  balanceCoefficient?: string;
+  balanceCoefficientTitle?: string;
+  /**
+   * Режим баланса включён: значки закладок, источников, ГИСП и базы
+   * источников не рисуются — на узлах только баланс.
+   */
+  balanceQuiet?: boolean;
+
   // --- что за процесс (приходит от построения шага) ---
   /** Отрасль, к которой относится процесс: «Нефтепереработка». */
   industry?: string;
