@@ -23,6 +23,7 @@ import {
   SearchIcon,
 } from "../icons";
 import { parseDomainsInput } from "../../utils/parseDomains";
+import { stepFarSideEmpty } from "../../utils/parseAlternatives";
 import {
   AI_MODELS,
   AI_PROVIDERS,
@@ -138,6 +139,12 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
+  // Обобщение не нашло, из чего получают продукт (вверх) или что получают из
+  // него (вниз): строить не из чего — см. stepFarSideEmpty.
+  const aggregateFoundNothing = useMemo(
+    () => stepFarSideEmpty(stepAggregatedText ?? "", direction),
+    [stepAggregatedText, direction],
+  );
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview =
@@ -963,6 +970,14 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
 
+          {aggregateFoundNothing && (
+            <div className={styles.warningText}>
+              {direction === "up"
+                ? `Обобщение не нашло в источниках, из чего получают «${productName}»: «Из чего производят» пусто. По такому тексту шаг не строим — сырьё пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново — или впишите сырьё в текст выше.`
+                : `Обобщение не нашло в источниках, что получают из «${productName}»: «Что производят» пусто. По такому тексту шаг не строим — продукты пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново — или впишите продукты в текст выше.`}
+            </div>
+          )}
+
           {stepBuildError && (
             <div className={wiz.error}>
               Ошибка: {readableReason(stepBuildError)}
@@ -989,7 +1004,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               type="button"
               onClick={() => handleBuild()}
               disabled={
-                buildLoading || isBuildPromptEmpty || stepBuiltFromAggregate
+                buildLoading ||
+                isBuildPromptEmpty ||
+                stepBuiltFromAggregate ||
+                aggregateFoundNothing
               }
               className={`${wiz.primary} ${buildLoading ? wiz.primaryBusy : ""}`}
             >

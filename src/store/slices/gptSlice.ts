@@ -40,7 +40,8 @@ import {
   fetchChainStep,
   fetchStepSources,
 } from "../api/step-chain-api";
-import { stepToFlow } from "../../utils/stepToFlow";
+import { nudgeStepPlaceholders, stepToFlow } from "../../utils/stepToFlow";
+import { pushAsideX } from "../../utils/resolveChainOverlap";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 import { sourceUrlKey } from "../../utils/sourceUrl";
 import { isOwnBaseSource, localFirst } from "../../utils/sourceOrigin";
@@ -777,6 +778,17 @@ const gptSlice = createSlice({
       const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
       state.data.edges.push(...edges.filter((e) => !existingEdgeIds.has(e.id)));
 
+      // Заготовки альтернатив якоря стоят там, куда лёг шаг: отодвигаем их в
+      // стороны, чтобы шаг встал под якорем, а не уезжал от них вбок.
+      for (const { id, position } of nudgeStepPlaceholders(
+        nodes,
+        state.data.nodes,
+        session.currentProductNodeId,
+      )) {
+        const holder = state.data.nodes.find((n) => n.id === id);
+        if (holder) holder.position = position;
+      }
+
       // Наследование легенды: новые продукты шага получают презентации
       // родителя-якоря и красятся в цвет его дерева (у общего родителя набор
       // презентаций > 1 → потомки тоже общие/серые). Существующий узел, в
@@ -1311,7 +1323,15 @@ const gptSlice = createSlice({
         const defaultX = rx + side * spacingX;
         const defaultY = ry + sign * (stepY + stepY2);
         const saved = existingPositions.get(altNodeId);
-        const position = saved ?? { x: defaultX, y: defaultY };
+        // Новая альтернатива не ложится на узел, который там уже стоит:
+        // отходит в свою сторону до свободного места.
+        const position =
+          saved ??
+          pushAsideX(
+            { x: defaultX, y: defaultY },
+            state.data.nodes,
+            side < 0 ? -1 : 1,
+          );
 
         state.data.nodes.push({
           id: altNodeId,

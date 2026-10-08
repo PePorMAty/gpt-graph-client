@@ -4,7 +4,7 @@ import type { CustomNode } from "../types";
 import type { StepChainApiStep, StepRecord } from "../store/types";
 import { normalizeProductName } from "./normalizeProductName";
 import { findExistingProductNode } from "./productIdentity";
-import { computeShiftX } from "./resolveChainOverlap";
+import { computeShiftX, overlapsAny, pushAsideX } from "./resolveChainOverlap";
 import { wouldCreateCycle } from "./graphReachability";
 import { applyHandlesByGeometry } from "./normalize-edges";
 import type { TFlow } from "./edgeFlow";
@@ -266,13 +266,43 @@ export function stepToFlow(
   const sideProductNodeIds: string[] = [];
   const addedEdgeIds: string[] = [];
 
-  // --- 4) узел-трансформация (новый или переиспользуемый, см. 2б) ---
+  // --- 4) раскладка ---
+  // Альтернативы этого же продукта — заготовки, стоят там, куда ляжет шаг.
+  // Место им не уступаем: их отодвигает в стороны acceptPendingStep
+  // (nudgeStepPlaceholders).
+  const obstacles = existingNodes.filter(
+    (n) => !isStepPlaceholder(n, anchorNodeId),
+  );
+  const far = renderProducts.filter((r) => r.flow === foundFlow);
+  const near = renderProducts.filter((r) => r.flow !== foundFlow);
+  const trY = reusedTrNode ? reusedTrNode.position.y : anchorY + sign * stepY1;
+  const nearY = trY - sign * stepY1;
+
+  // Новые продукты стороны якоря — второе сырьё шага «вниз», попутный продукт
+  // шага «вверх» — встают в ряд якоря вплотную к нему, а новое преобразование
+  // — посередине между ними и якорем. Иначе якорь оставался в одном углу, а
+  // второе сырьё уезжало в другой, к сдвинутому преобразованию.
+  const nearPos = new Map<string, { x: number; y: number }>();
+  const placedNear: CustomNode[] = [];
+  for (const r of near) {
+    if (r.existingNodeId) continue;
+    const start = { x: anchorX + spacingX * (placedNear.length + 1), y: nearY };
+    const probe = { id: "", type: "product", position: start, data: {} } as CustomNode;
+    const shift = computeShiftX([probe], [...obstacles, ...placedNear], spacingX);
+    const pos = { x: start.x + shift, y: nearY };
+    nearPos.set(normalizeProductName(r.product.name), pos);
+    placedNear.push({ ...probe, position: pos });
+  }
+
+  // --- 4а) узел-трансформация (новый или переиспользуемый, см. 2б) ---
   const trId = step.transformation.id || String(stepNumber);
   const trFlowId = reusedTrNode
     ? reusedTrNode.id
     : `step::${sessionKey}::tr::${stepNumber}::${trId}`;
-  const trX = reusedTrNode ? reusedTrNode.position.x : anchorX;
-  const trY = reusedTrNode ? reusedTrNode.position.y : anchorY + sign * stepY1;
+  const trX = reusedTrNode
+    ? reusedTrNode.position.x
+    : (anchorX + placedNear.reduce((sum, n) => sum + n.position.x, 0)) /
+      (placedNear.length + 1);
 
   if (!reusedTrNode) {
     nodes.push({
@@ -321,13 +351,10 @@ export function stepToFlow(
 
   // --- 6) узлы-продукты ---
   // Дальняя сторона — рядом под (над) преобразованием, как всегда. Сторона
-  // якоря — в ряд якоря; места им ищутся после развода коллизий (шаг 7).
+  // якоря — в ряд якоря, места им найдены выше (шаг 4).
   // Новые продукты дальней стороны — первыми в списке: следующий шаг по
   // умолчанию идёт от первого из них.
-  const far = renderProducts.filter((r) => r.flow === foundFlow);
-  const near = renderProducts.filter((r) => r.flow !== foundFlow);
   const productsY = trY + sign * stepY2;
-  const nearY = trY - sign * stepY1;
   const rowWidth = far.length > 1 ? (far.length - 1) * spacingX : 0;
   const startX = trX - rowWidth / 2;
   const nearNodes: CustomNode[] = [];
@@ -372,7 +399,9 @@ export function stepToFlow(
       const node: CustomNode = {
         id: pFlowId,
         type: "product",
-        position: { x, y: isFar ? productsY : nearY },
+        position: isFar
+          ? { x, y: productsY }
+          : (nearPos.get(normalizeProductName(product.name)) ?? { x, y: nearY }),
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
         data: {
@@ -413,26 +442,15 @@ export function stepToFlow(
   });
 
   // --- 7) развод коллизий ---
-  const existingForCollision = existingNodes.filter(
-    (n) => !nodes.some((newN) => newN.id === n.id),
-  );
-  const dx = computeShiftX(nodes, existingForCollision);
+  // Преобразование и дальний ряд сдвигаются вместе, если место занято
+  // настоящими узлами (заготовки альтернатив не в счёт — см. шаг 4).
+  const dx = computeShiftX(nodes, [...obstacles, ...nearNodes]);
   if (dx !== 0) {
     for (const n of nodes) {
       n.position = { x: n.position.x + dx, y: n.position.y };
     }
   }
-  // Сторона якоря: ближайшее свободное место в ряду якоря, начиная справа от
-  // преобразования.
-  const trFinalX =
-    nodes.find((n) => n.id === trFlowId)?.position.x ?? trX;
-  for (const n of nearNodes) {
-    n.position = { x: trFinalX + spacingX, y: nearY };
-    const taken = [...existingForCollision, ...nodes];
-    const shift = computeShiftX([n], taken, spacingX);
-    n.position = { x: n.position.x + shift, y: nearY };
-    nodes.push(n);
-  }
+  nodes.push(...nearNodes);
 
   // Хэндлы по смыслу и по итоговым позициям (после развода коллизий).
   const placed = [
@@ -456,4 +474,60 @@ export function stepToFlow(
   };
 
   return { nodes, edges, stepRecord };
+}
+
+/**
+ * Заготовка альтернативы продукта: alt-узел из обобщения, ещё не построенный
+ * шаг. Стоит, где легло бы продолжение, поэтому шагу места не загораживает.
+ */
+export function isStepPlaceholder(n: CustomNode, productNodeId: string): boolean {
+  return (
+    n.type === "transformation" &&
+    n.data?.chainVariant === "alt" &&
+    n.data?.chainRootNodeId === productNodeId
+  );
+}
+
+/**
+ * Куда отодвинуть заготовки альтернатив продукта, на которые лёг новый шаг:
+ * стоявшие левее середины шага — дальше влево, правее — дальше вправо, до
+ * первого свободного места. Возвращает только сдвинутые.
+ */
+export function nudgeStepPlaceholders(
+  newNodes: CustomNode[],
+  allNodes: CustomNode[],
+  productNodeId: string,
+  spacingX = 260,
+): Array<{ id: string; position: { x: number; y: number } }> {
+  if (!newNodes.length) return [];
+  const newIds = new Set(newNodes.map((n) => n.id));
+  const placeholders = allNodes.filter(
+    (n) => !newIds.has(n.id) && isStepPlaceholder(n, productNodeId),
+  );
+  if (!placeholders.length) return [];
+  const centerX =
+    newNodes.reduce((sum, n) => sum + n.position.x, 0) / newNodes.length;
+  const holderIds = new Set(placeholders.map((n) => n.id));
+  const solid = [
+    ...allNodes.filter((n) => !holderIds.has(n.id) && !newIds.has(n.id)),
+    ...newNodes,
+  ];
+  const moved: Array<{ id: string; position: { x: number; y: number } }> = [];
+  // Ближние к шагу — первыми: дальние потом обходят уже отодвинутых.
+  const byDistance = [...placeholders].sort(
+    (a, b) => Math.abs(a.position.x - centerX) - Math.abs(b.position.x - centerX),
+  );
+  for (const p of byDistance) {
+    // Не задевает новый шаг — остаётся где стоит (даже если стояла тесно
+    // и раньше: это не наша забота).
+    if (!overlapsAny(p.position, newNodes)) {
+      solid.push(p);
+      continue;
+    }
+    const dir = p.position.x < centerX ? -1 : 1;
+    const position = pushAsideX(p.position, solid, dir, spacingX);
+    moved.push({ id: p.id, position });
+    solid.push({ ...p, position });
+  }
+  return moved;
 }

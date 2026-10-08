@@ -2532,11 +2532,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Достаточный ребёнок: источники унаследованы от родителя → обобщаем их и
   // СРАЗУ строим шаг (без ручного поиска/обобщения). Решение «достаточно»
   // принято на build родителя; запрос на обобщение идёт только сейчас.
+  // Тексты обобщений, по которым альтернативы уже разложены (см. эффект ниже).
+  const altTextSeen = useRef(new Map<string, string>());
+
   const handleClearStepState = useCallback(
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
       dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
       dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      altTextSeen.current.delete(sourcesKey(selectedNodeId, direction));
       // «Начать заново» — значит и найденные источники шага забыть. Раньше они
       // оставались, мастер стоял на том же экране с тем же списком, и кнопка
       // выглядела неработающей. Найденное моделью сохранено в базе сервера:
@@ -2548,33 +2552,43 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   );
 
   // ─── Create / remove step alternative nodes when aggregate text changes ───
+  // Только когда текст обобщения новый (пришёл ответ или его поправили), а не
+  // при каждом выборе узла. Раньше выбор продукта раскладывал альтернативы
+  // обоих направлений заново: при построении «вверх» под продуктом вставали
+  // альтернативы его давнего обобщения «вниз», и удалённые с полотна
+  // альтернативы возвращались.
   useEffect(() => {
     if (!selectedNodeId) return;
     for (const direction of ["up", "down"] as const) {
       const sKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sKey];
       const text = sliceState?.stepAggregatedText;
-      if (text) {
-        // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
-        // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
-        const alts = dedupeAlternatives(parseAlternatives(text));
-        if (alts.length > 1) {
-          dispatch(
-            createStepAlternativeNodes({
-              nodeId: selectedNodeId,
-              direction,
-              alternatives: alts.slice(1),
-            }),
-          );
-        } else {
-          dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
-        }
+      if (!text) {
+        // Нет обобщения (например, свежий поиск источников после цикла) —
+        // alt-ноды НЕ трогаем: при цикле основной вариант не строится, и
+        // альтернативы — единственный способ продолжить (задача №4). Удаление
+        // только явное: «Начать заново» (handleClearStepState) или замена новым
+        // обобщением. Следующее обобщение, даже слово в слово такое же,
+        // разложим заново.
+        altTextSeen.current.delete(sKey);
+        continue;
       }
-      // Нет обобщения (например, свежий поиск источников после цикла) — alt-ноды
-      // НЕ трогаем: при цикле основной вариант не строится, и альтернативы —
-      // единственный способ продолжить (задача №4). Удаление только явное:
-      // «Сбросить и начать шаг заново» (handleClearStepState) или замена новым
-      // обобщением (ветки выше).
+      if (altTextSeen.current.get(sKey) === text) continue;
+      altTextSeen.current.set(sKey, text);
+      // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
+      // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
+      const alts = dedupeAlternatives(parseAlternatives(text));
+      if (alts.length > 1) {
+        dispatch(
+          createStepAlternativeNodes({
+            nodeId: selectedNodeId,
+            direction,
+            alternatives: alts.slice(1),
+          }),
+        );
+      } else {
+        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      }
     }
   }, [
     selectedNodeId,

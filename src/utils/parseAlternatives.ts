@@ -175,3 +175,30 @@ export function dedupeAlternatives(
   }
   return result;
 }
+
+const EMPTY_LIST_WORDS =
+  /^(?:—|–|-|нет|нет данных|не найден[оаы]?|не указан[оаы]?|отсутству\w*)\.?$/i;
+
+/**
+ * Обобщение не нашло продуктов шага: у шага «вниз» пусто «Что производят», у
+ * шага «вверх» — «Из чего производят». Промпты обобщения так и пишут («[]»),
+ * когда в источниках нет нужной связи. Строить по такому тексту нельзя:
+ * построение требует непустых списков, и модель придумала бы продукты сама.
+ * Смотрим основной вариант. Поля нет вовсе — формат другой, решать не нам.
+ */
+export function stepFarSideEmpty(
+  text: string,
+  direction: "up" | "down",
+): boolean {
+  if (!text) return false;
+  const main = parseAlternatives(text)[0]?.fullDescription ?? text;
+  const label = direction === "up" ? "Из чего производят" : "Что производят";
+  const m = new RegExp(`\\*\\*${label}:\\*\\*([^\\n]*)`).exec(main);
+  if (!m) return false;
+  const inner = m[1]
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]\.?$/, "")
+    .trim();
+  return inner === "" || EMPTY_LIST_WORDS.test(inner);
+}

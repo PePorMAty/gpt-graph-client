@@ -65,3 +65,30 @@ export function computeShiftX(
   );
   return maxX + NODE_W + PAD * 2 - minNewX;
 }
+
+/** Пересекается ли узел в точке pos с каким-нибудь из nodes (с тем же зазором). */
+export function overlapsAny(
+  pos: { x: number; y: number },
+  nodes: CustomNode[],
+): boolean {
+  const r = nodeToRect(pos);
+  return nodes.some((n) => rectsOverlap(r, nodeToRect(n.position)));
+}
+
+/**
+ * Отодвинуть узел по горизонтали в одну сторону (dir: −1 влево, +1 вправо)
+ * до первого свободного места. Нужен, когда сторона важна: альтернатива,
+ * стоявшая слева от шага, уходит дальше влево, а не перескакивает через него.
+ */
+export function pushAsideX(
+  pos: { x: number; y: number },
+  obstacles: CustomNode[],
+  dir: 1 | -1,
+  spacingX: number = 260,
+): { x: number; y: number } {
+  let x = pos.x;
+  for (let i = 0; i < 40 && overlapsAny({ x, y: pos.y }, obstacles); i++) {
+    x += dir * spacingX;
+  }
+  return { x, y: pos.y };
+}
