@@ -1,0 +1,144 @@
+/* Руководство пользователя: шапка, оглавление слева, текст справа. На узком
+   экране оглавление уходит над текстом. */
+
+.page {
+  min-height: 100vh;
+  background: var(--c-app);
+  color: var(--c-text);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.back {
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-pill);
+  background: var(--c-brand);
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+}
+
+.back:hover {
+  background: var(--c-brand-strong);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 820px);
+  gap: var(--s-6);
+  justify-content: center;
+  padding: var(--s-5);
+}
+
+.toc {
+  position: sticky;
+  top: 76px;
+  align-self: start;
+  font-size: var(--fs-sm);
+}
+
+.tocHead {
+  margin-bottom: var(--s-2);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+.toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc li {
+  margin: 0 0 var(--s-1);
+}
+
+.toc a {
+  color: var(--c-text-soft);
+  text-decoration: none;
+}
+
+.toc a:hover {
+  color: var(--c-brand);
+  text-decoration: underline;
+}
+
+.article {
+  padding: var(--s-5) var(--s-6);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Таблицы руководства — с рамками и отступами. */
+.article table {
+  width: 100%;
+  margin: var(--s-3) 0;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.article th,
+.article td {
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+  vertical-align: top;
+  text-align: left;
+}
+
+.article th {
+  background: var(--c-surface-soft);
+  font-weight: var(--fw-semibold);
+}
+
+/* Первый столбец — короткие названия: не переносить их по буквам. */
+.article td:first-child,
+.article th:first-child {
+  min-width: 9em;
+}
+
+.article h2 {
+  margin-top: var(--s-6);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--c-border-soft);
+  scroll-margin-top: 80px;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--s-3);
+  }
+
+  .toc {
+    position: static;
+  }
+
+  .article {
+    padding: var(--s-4);
+  }
+}

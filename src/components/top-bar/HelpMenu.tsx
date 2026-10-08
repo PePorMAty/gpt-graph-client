@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { useDismiss } from "../../hooks/useDismiss";
-import { HelpIcon } from "../icons";
+import { BookIcon, HelpIcon } from "../icons";
 import styles from "./HelpMenu.module.css";
 
 /** Обозначения узлов на полотне — те же цвета, что и на графе. */
@@ -20,7 +20,13 @@ const SHORTCUTS = [
   { keys: "Esc", text: "Закрыть панель или меню" },
 ];
 
-/** Краткая справка по интерфейсу: обозначения и горячие клавиши. */
+/** Руководство пользователя — страница /guide приложения. */
+const GUIDE_HREF = `${import.meta.env.BASE_URL}guide`;
+
+/**
+ * Краткая справка по интерфейсу: обозначения, горячие клавиши и ссылка на
+ * руководство пользователя (в новой вкладке — граф на полотне остаётся).
+ */
 export const HelpMenu = () => {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -65,6 +71,18 @@ export const HelpMenu = () => {
               </li>
             ))}
           </ul>
+
+          <a
+            className={styles.guide}
+            href={GUIDE_HREF}
+            target="_blank"
+            rel="noopener"
+            onClick={close}
+          >
+            <BookIcon size={16} />
+            Руководство пользователя
+            <span className={styles.guideNote}>в новой вкладке</span>
+          </a>
         </div>
       )}
     </div>

@@ -75,15 +75,35 @@ export interface BalanceFlow {
   basis: string;
 }
 
+/**
+ * Проверка источника сервером: local — раздел документа из базы источников
+ * (ИТС и другие загруженные PDF), saved — сервер загрузил и сохранил копию,
+ * числа источника в ней нашлись, failed — не загрузился или чисел нет.
+ */
+export interface BalanceSourceCheck {
+  status: "local" | "saved" | "failed";
+  reason?: string;
+  note?: string;
+  documentId?: string;
+  /** Номер копии на сервере — для ссылок на текст и оригинал. */
+  webDocumentId?: number;
+  kind?: "pdf" | "html";
+}
+
 export interface BalanceSource {
   id: string;
+  /** Веб-адрес или адрес документа базы («local-sources/documents/…»). */
   url: string;
   title: string;
   org: string;
   type: string;
   usedFor: string;
+  accessHint?: string;
   /** Блок источника из ответа целиком (Markdown). */
   block: string;
+  server?: BalanceSourceCheck;
+  /** Документ базы источников: раздел и страница. */
+  local?: { docId: number; sectionId: number; page: number | null };
 }
 
 /** Поле стадии «Расчёта по преобразованиям»: «Коэффициенты», «Расчёт»… */
@@ -156,6 +176,11 @@ export interface BalanceRecord extends BalanceSummary {
     conclusion: string | null;
   };
   sources: BalanceSource[];
+  /**
+   * Итоги серверной проверки источников: rounds — сколько раз спрашивали
+   * модель (2 — заменяла незагрузившиеся), local — разделов базы источников.
+   */
+  sourceChecks?: { rounds: number; saved: number; failed: number; local: number };
   sections: { transitions: string; balance: string; notes: string };
   /** Ответ модели целиком (Markdown). */
   answer: string;
@@ -199,6 +224,8 @@ export interface BalanceJob {
   status: "running" | "done" | "failed" | "cancelled";
   startedAt: string;
   elapsedMs: number;
+  /** Что сейчас идёт: «Сервер загружает и проверяет источники: 2 из 5». */
+  stage?: string;
   result?: BalanceRecord;
   error?: string;
 }
@@ -279,6 +306,11 @@ export async function cancelBalanceJob(jobId: string): Promise<void> {
   } catch (e) {
     throw serverError(e, "Не удалось отменить расчёт");
   }
+}
+
+/** Копия веб-источника на сервере: текст или оригинал. */
+export function balanceSourceCopyHref(id: number, what: "text" | "file"): string {
+  return `${API()}/sources/${id}/${what}`;
 }
 
 export async function fetchBalanceRecord(id: number): Promise<BalanceRecord> {

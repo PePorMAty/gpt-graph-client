@@ -6,6 +6,7 @@ import {
   ConnectionLineType,
   type Node,
   type OnConnect,
+  type OnConnectEnd,
   type OnReconnect,
   type Edge,
   type NodeChange,
@@ -128,6 +129,7 @@ import {
   removeBookmark,
 } from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
+import { ConnectDropMenu } from "./components/node-context-menu/ConnectDropMenu";
 import { EdgeContextMenu } from "./components/node-context-menu/EdgeContextMenu";
 import { EDGE_TYPES } from "./components/edges";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
@@ -346,6 +348,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const canvasModeRef = useRef(canvasMode);
   canvasModeRef.current = canvasMode;
   // Меню по правому клику на пустом месте (добавление узла).
+  // Связь отпустили на пустом месте: окно «Связать с…» в точке отпускания.
+  const [connectMenu, setConnectMenu] = useState<{
+    x: number;
+    y: number;
+    fromId: string;
+    direction: "down" | "up";
+  } | null>(null);
   const [paneMenu, setPaneMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -2067,6 +2076,73 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [dispatch, productsOnly, data.edges],
   );
 
+  // Связь отпустили не на точке узла. На теле другого узла — связать с ним
+  // (попасть в точку на краю узла непросто). На пустом месте — окно
+  // «Связать с…»: найти узел по названию, хоть на другом конце полотна,
+  // или создать новый там, где отпустили. От нижней точки связь идёт к
+  // тому, что из узла получают, от верхней — к тому, из чего его получают.
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, state) => {
+      if (state.isValid || state.toNode || !state.fromNode || !state.fromHandle) return;
+      const direction = state.fromHandle.type === "source" ? "down" : "up";
+      const fromId = state.fromNode.id;
+      const point = "changedTouches" in event ? event.changedTouches[0] : event;
+      const el = document.elementFromPoint(point.clientX, point.clientY);
+      const onNode = el?.closest(".react-flow__node")?.getAttribute("data-id");
+      if (onNode) {
+        if (onNode === fromId) return;
+        handleConnect(
+          direction === "down"
+            ? { source: fromId, target: onNode, sourceHandle: "bottom", targetHandle: "top" }
+            : { source: onNode, target: fromId, sourceHandle: "bottom", targetHandle: "top" },
+        );
+        return;
+      }
+      if (!el?.closest(".react-flow__pane")) return;
+      setContextMenu(null);
+      setPaneMenu(null);
+      setConnectMenu({ x: point.clientX, y: point.clientY, fromId, direction });
+    },
+    [handleConnect],
+  );
+
+  /** Связать узел окна «Связать с…» с выбранным или новым. */
+  const connectFromMenu = useCallback(
+    (otherId: string, created: boolean) => {
+      const menu = connectMenu;
+      if (!menu) return;
+      setConnectMenu(null);
+      handleConnect(
+        menu.direction === "down"
+          ? { source: menu.fromId, target: otherId, sourceHandle: "bottom", targetHandle: "top" }
+          : { source: otherId, target: menu.fromId, sourceHandle: "bottom", targetHandle: "top" },
+      );
+      if (created) return;
+      const label = (id: string) =>
+        String(data.nodes.find((n) => n.id === id)?.data?.label ?? "").trim() || "узел";
+      const [a, b] =
+        menu.direction === "down" ? [menu.fromId, otherId] : [otherId, menu.fromId];
+      showToast("success", `Связь «${label(a)}» → «${label(b)}» добавлена`, undefined, {
+        target: { nodeId: otherId, label: label(otherId) },
+      });
+    },
+    [connectMenu, handleConnect, data.nodes],
+  );
+
+  const createFromMenu = useCallback(
+    (type: "product" | "transformation", label: string) => {
+      if (!connectMenu) return;
+      const id = crypto.randomUUID();
+      const at = screenToFlowPosition({ x: connectMenu.x, y: connectMenu.y });
+      // Узел встаёт серединой в точку, где отпустили связь.
+      dispatch(
+        addNode({ type, id, ...(label ? { label } : {}), position: { x: at.x - 100, y: at.y - 25 } }),
+      );
+      connectFromMenu(id, true);
+    },
+    [connectMenu, dispatch, screenToFlowPosition, connectFromMenu],
+  );
+
   const onReconnectStart = useCallback(() => {
     edgeReconnectSuccessful.current = false;
   }, []);
@@ -3229,6 +3305,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={canEditNodes ? handleConnect : undefined}
+        onConnectEnd={canEditNodes && !focusOn ? onConnectEnd : undefined}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
@@ -3290,6 +3367,36 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         openedName={openedGraphId ? openedGraphName : null}
         onUpdate={openedGraphId ? handleUpdateOpenedGraph : undefined}
       />
+      {connectMenu &&
+        (() => {
+          const from = flowNodes.find((n) => n.id === connectMenu.fromId);
+          if (!from) return null;
+          const shownEdges = productsOnly ? flowEdges : data.edges;
+          const linked = new Set(
+            shownEdges.flatMap((e) =>
+              e.source === from.id ? [e.target] : e.target === from.id ? [e.source] : [],
+            ),
+          );
+          const candidates = flowNodes.filter(
+            (n) =>
+              (n.type === "product" || n.type === "transformation") &&
+              n.data?.chainVariant !== "alt",
+          );
+          return (
+            <ConnectDropMenu
+              x={connectMenu.x}
+              y={connectMenu.y}
+              from={from as CustomNode}
+              direction={connectMenu.direction}
+              nodes={candidates as CustomNode[]}
+              linked={linked}
+              productsOnly={productsOnly}
+              onPick={(id) => connectFromMenu(id, false)}
+              onCreate={createFromMenu}
+              onClose={() => setConnectMenu(null)}
+            />
+          );
+        })()}
       {paneMenu && (
         <PaneContextMenu
           x={paneMenu.x}

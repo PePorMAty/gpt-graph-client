@@ -22,6 +22,7 @@ import type {
   BalanceCoefficient,
   BalanceRecord,
   BalanceRef,
+  BalanceSource,
   BalanceStatus,
 } from "../store/api/material-balance-api";
 import { inferTFlow, productTransformationEnds, tFlowOf, type TFlow } from "./edgeFlow";
@@ -231,6 +232,47 @@ export function balanceEnds(
       .filter((n): n is CustomNode => !!n && n.type === "product")
       .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0));
   return { ins: order(ins), outs: order(outs) };
+}
+
+/**
+ * Вспомогательное вещество процесса: растворитель, экстрагент, катализатор,
+ * вода, пар, воздух. От его количества модели не найти выходы продуктов.
+ */
+const AUXILIARY =
+  /(^|\s)(вод[аы]|пар|воздух|кислород|катализатор\S*|растворител\S*|экстрагент\S*|абсорбент\S*|адсорбент\S*|ингибитор\S*|инициатор\S*)(\s|$)/i;
+
+/**
+ * Вещество названо в технологии агентом: «ректификация с ацетонитрилом»,
+ * «алкилирование в присутствии хлорида алюминия», «экстракция
+ * N-метилпирролидоном» здесь не ловим — только «с …» и «в присутствии …».
+ */
+function namedAsAgent(transformation: string, name: string): boolean {
+  const word = normalizeProductName(name)
+    .split(/[\s-]+/)
+    .find((w) => w.length >= 4);
+  if (!word) return false;
+  // Основа слова — без окончания; скобки в названиях («серы(IV)») экранируем.
+  const stem = word
+    .slice(0, Math.max(4, word.length - 2))
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)(?:с|со|в присутствии)\\s+(?:\\S+\\s+)?${stem}`, "i").test(
+    normalizeProductName(transformation),
+  );
+}
+
+/**
+ * Опорное сырьё по умолчанию: первое (основное), если оно не
+ * вспомогательное; иначе первое невспомогательное. Опорным модели надо
+ * основное сырьё процесса: от количества растворителя («ректификация с
+ * ацетонитрилом») она выход продукта не найдёт.
+ */
+export function defaultBasisId(transformation: CustomNode | undefined, ins: CustomNode[]): string | null {
+  const tLabel = String(transformation?.data?.label ?? "");
+  const aux = (n: CustomNode) => {
+    const label = String(n.data?.label ?? "");
+    return AUXILIARY.test(normalizeProductName(label)) || namedAsAgent(tLabel, label);
+  };
+  return (ins.find((n) => !aux(n)) ?? ins[0])?.id ?? null;
 }
 
 const isInputRole = (r: BalanceRef) => r.role === "basis" || r.role === "input";
@@ -661,6 +703,8 @@ export function shownCalcFor(args: {
 /** Черновик формы: количество по id узла сырья, выбранные продукты. */
 export interface BalanceDraftView {
   amounts: Record<string, BalanceInputAmount>;
+  /** Опорное сырьё формы (id узла). */
+  basisId?: string | null;
   /** id выбранных продуктов; null — все. */
   targets: string[] | null;
 }
@@ -829,6 +873,23 @@ export function statusReason(record: BalanceRecord): string | null {
     .find(Boolean);
   return note || null;
 }
+
+const SOURCE_ORDER = { local: 0, saved: 1, failed: 2 } as const;
+
+/**
+ * Источники по важности: документы базы источников (ИТС), подтверждённые
+ * сервером, не подтверждённые. Без проверки (расчёты прежних версий) — как
+ * подтверждённые; внутри группы — как у модели.
+ */
+export const sortSources = (list: BalanceSource[]) =>
+  list
+    .map((s, i) => ({ s, i }))
+    .sort(
+      (a, b) =>
+        (a.s.server ? SOURCE_ORDER[a.s.server.status] : 1) -
+          (b.s.server ? SOURCE_ORDER[b.s.server.status] : 1) || a.i - b.i,
+    )
+    .map((x) => x.s);
 
 /** «05.10, 14:32» — когда посчитан расчёт. */
 export function formatWhen(iso: string): string {

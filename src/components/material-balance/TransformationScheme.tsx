@@ -53,6 +53,9 @@ interface FormProps {
   /** Количество по id узла сырья. */
   amounts: Record<string, BalanceInputAmount>;
   onAmount: (inputId: string, value: BalanceInputAmount) => void;
+  /** Опорное сырьё: от его количества считает модель. */
+  basisId: string | null;
+  onBasis: (inputId: string) => void;
   /** Выбранные продукты; null — все. */
   targets: string[] | null;
   onTargets: (ids: string[] | null) => void;
@@ -60,9 +63,9 @@ interface FormProps {
 }
 
 /**
- * Схема нового расчёта: количество каждого сырья (пусто — сколько нужно) и
- * продукты, для которых считать. Модель считает от первого сырья с
- * количеством — опорного; остальное пересчитывается без неё.
+ * Схема нового расчёта: количество каждого сырья (пусто — сколько нужно),
+ * опорное сырьё и продукты, для которых считать. Модель считает от
+ * количества опорного; остальное пересчитывается без неё.
  */
 export const FormScheme: FC<FormProps> = ({
   transformation,
@@ -70,11 +73,18 @@ export const FormScheme: FC<FormProps> = ({
   outs,
   amounts,
   onAmount,
+  basisId,
+  onBasis,
   targets,
   onTargets,
   disabled,
 }) => {
-  const basis = ins.find((n) => isSet(amounts[n.id]));
+  const picked = ins.find((n) => n.id === basisId);
+  const basis = picked
+    ? isSet(amounts[picked.id])
+      ? picked
+      : undefined
+    : ins.find((n) => isSet(amounts[n.id]));
   const chosen = outs.filter((n) => !targets || targets.includes(n.id));
   const toggle = (id: string, on: boolean) => {
     const next = on
@@ -101,12 +111,29 @@ export const FormScheme: FC<FormProps> = ({
               label={label(n)}
               disabled={disabled}
             />
+            {ins.length > 1 && (
+              <label
+                className={styles.basisPick}
+                title="От количества опорного сырья считает модель"
+              >
+                <input
+                  type="radio"
+                  name={`mb-basis-${transformation.id}`}
+                  checked={n.id === (picked ?? basis)?.id}
+                  disabled={disabled}
+                  onChange={() => onBasis(n.id)}
+                />
+                опорное
+              </label>
+            )}
             <span className={styles.flowNote}>
               {n === basis
                 ? "от этого количества считает модель"
-                : isSet(value)
-                  ? "задано — сравним с расходом по расчёту"
-                  : "сколько нужно — посчитает модель"}
+                : n === picked
+                  ? "опорное, но количество не задано — задайте его"
+                  : isSet(value)
+                    ? "задано — сравним с расходом по расчёту"
+                    : "сколько нужно — посчитает модель"}
             </span>
           </div>
         );
@@ -129,11 +156,22 @@ export const FormScheme: FC<FormProps> = ({
         );
       })}
       footer={
-        <p className={styles.question}>
-          {basis && chosen.length
-            ? `Сколько ${chosen.map((n) => `«${label(n)}»`).join(", ")} получится из ${formatView(amounts[basis.id])} «${label(basis)}»${others.length ? ` и ${others.map((n) => `«${label(n)}»`).join(", ")}` : ""}?`
-            : "Задайте количество хотя бы одного сырья — от него посчитаем остальное."}
-        </p>
+        <>
+          {ins.length > 1 && (
+            <p className={styles.note}>
+              Опорным выбирайте основное сырьё процесса, а не растворитель,
+              экстрагент, катализатор или вспомогательный реагент: от их
+              количества модель не найдёт выход продуктов.
+            </p>
+          )}
+          <p className={styles.question}>
+            {basis && chosen.length
+              ? `Сколько ${chosen.map((n) => `«${label(n)}»`).join(", ")} получится из ${formatView(amounts[basis.id])} «${label(basis)}»${others.length ? ` и ${others.map((n) => `«${label(n)}»`).join(", ")}` : ""}?`
+              : picked
+                ? `Задайте количество опорного сырья «${label(picked)}» — от него посчитаем остальное.`
+                : "Задайте количество хотя бы одного сырья — от него посчитаем остальное."}
+          </p>
+        </>
       }
     />
   );
@@ -196,6 +234,14 @@ export const CalcScheme: FC<CalcProps> = ({
         <div key={f.ref} className={styles.flowRow}>
           <span className={styles.flowName}>
             {name(f)}
+            {f.role === "basis" && result.inputs.length > 1 && (
+              <span
+                className={styles.basisTag}
+                title="Модель считала от количества этого сырья"
+              >
+                опорное
+              </span>
+            )}
             {gone(f) && (
               <span className={styles.flowGone}> · нет на графе</span>
             )}

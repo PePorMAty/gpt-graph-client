@@ -788,3 +788,56 @@ details.more > summary {
 details.more[open] > summary {
   margin-bottom: var(--s-2);
 }
+
+/* Как сервер проверил источник. */
+.sourceCheck {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sourceCheck a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.sourceCheckLocal {
+  color: var(--c-brand-strong);
+}
+
+.sourceCheckSaved {
+  color: #047857;
+}
+
+.sourceCheckFailed {
+  color: var(--c-danger);
+}
+
+/* Этап расчёта на сервере: «Сервер загружает и проверяет источники: 2 из 5». */
+.stage {
+  font-weight: var(--fw-semibold);
+}
+
+/* Опорное сырьё: от его количества считает модель. */
+.basisPick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.basisPick input {
+  margin: 0;
+}
+
+.basisTag {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-brand-soft);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  color: var(--c-brand-strong);
+}

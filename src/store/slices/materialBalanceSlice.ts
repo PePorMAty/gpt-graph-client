@@ -39,6 +39,7 @@ import {
   balanceEnds,
   calcKey,
   calcsOf,
+  defaultBasisId,
   inputRefs,
   nodeIdsFor,
   selectionFor,
@@ -62,6 +63,11 @@ export interface DraftAmount {
 export interface BalanceDraft {
   /** По id узла сырья; нет или пусто — «сколько нужно». */
   amounts: Record<string, DraftAmount>;
+  /**
+   * Опорное сырьё: от его количества считает модель (id узла). Выбирается
+   * явно; по умолчанию — основное невспомогательное (defaultBasisId).
+   */
+  basisId: string | null;
   /** id выбранных продуктов; null — все продукты преобразования. */
   targets: string[] | null;
   knownData: string;
@@ -79,6 +85,8 @@ export interface BalanceJobState {
   transformationId: string;
   /** Продукты расчёта (id узлов). */
   targetIds: string[];
+  /** Что сейчас идёт на сервере — этап расчёта. */
+  stage?: string;
   error?: string;
 }
 
@@ -116,7 +124,7 @@ const initialState: MaterialBalanceState = {
   mode: false,
   selection: null,
   active: null,
-  draft: { amounts: {}, targets: null, knownData: "" },
+  draft: { amounts: {}, basisId: null, targets: null, knownData: "" },
   draftOwner: null,
   prompt: { system: null, template: null },
   defaults: null,
@@ -202,14 +210,23 @@ const slice = createSlice({
      */
     selectBalanceTransformation(
       state,
-      action: PayloadAction<{ selection: BalanceSelection | null; inputIds?: string[] }>,
+      action: PayloadAction<{ selection: BalanceSelection | null; basisId?: string | null }>,
     ) {
-      const { selection, inputIds } = action.payload;
+      const { selection, basisId } = action.payload;
       state.selection = selection;
       if (!selection || selection.transformationId === state.draftOwner) return;
       state.draftOwner = selection.transformationId;
-      state.draft.amounts = inputIds?.length ? { [inputIds[0]]: { ...DEFAULT_AMOUNT } } : {};
+      state.draft.amounts = basisId ? { [basisId]: { ...DEFAULT_AMOUNT } } : {};
+      state.draft.basisId = basisId ?? null;
       state.draft.targets = null;
+    },
+    /** Сделать сырьё опорным; пустое количество у него — 1 т. */
+    setDraftBasis(state, action: PayloadAction<string>) {
+      const id = action.payload;
+      state.draft.basisId = id;
+      if (draftAmount(state.draft.amounts[id]?.amount) === null) {
+        state.draft.amounts[id] = { amount: "1", unit: state.draft.amounts[id]?.unit ?? "т" };
+      }
     },
     /** Открыть расчёт (номер записи) или форму нового (null). */
     openBalanceCalc(state, action: PayloadAction<number | null>) {
@@ -271,6 +288,10 @@ const slice = createSlice({
       job.jobId = action.payload.jobId;
       job.startedAt = action.payload.startedAt || job.startedAt;
     },
+    jobStage(state, action: PayloadAction<{ key: string; stage?: string }>) {
+      const job = state.jobs[action.payload.key];
+      if (job) job.stage = action.payload.stage;
+    },
     /** Расчёт закончился: удачный — задача уходит, неудачный — остаётся с ошибкой. */
     jobEnded(state, action: PayloadAction<{ key: string; error?: string }>) {
       const { key, error } = action.payload;
@@ -314,12 +335,13 @@ export const {
   setBalanceActive,
   setDraftAmount,
   setDraftAmounts,
+  setDraftBasis,
   setDraftTargets,
   setBalanceKnownData,
   setBalancePrompt,
   dismissBalanceJob,
 } = slice.actions;
-const { jobStarted, jobRunning, jobEnded } = slice.actions;
+const { jobStarted, jobRunning, jobStage, jobEnded } = slice.actions;
 
 export default slice.reducer;
 
@@ -349,7 +371,7 @@ export const pickBalanceTransformation =
     if (prefer?.productId && selection.recordId !== null) selection.productId = prefer.productId;
     const { ins } = balanceEnds(transformationId, nodes, edges);
     dispatch(
-      slice.actions.selectBalanceTransformation({ selection, inputIds: ins.map((n) => n.id) }),
+      slice.actions.selectBalanceTransformation({ selection, basisId: defaultBasisId(node, ins) }),
     );
   };
 
@@ -447,9 +469,12 @@ export function balanceRequestOf(
   const { nodes, edges, draft } = args;
   const { ins, outs } = balanceEnds(transformationId, nodes, edges);
   const targets = outs.filter((n) => !draft.targets || draft.targets.includes(n.id));
-  // Опорное — первое сырьё (основное первым) с заданным количеством.
-  const basis = ins.find((n) => draftAmount(draft.amounts[n.id]?.amount) !== null);
-  return { ins, outs, targets, basis };
+  // Опорное — выбранное, если у него есть количество. Выбранного нет на
+  // графе — первое сырьё с количеством.
+  const set = (n: CustomNode) => draftAmount(draft.amounts[n.id]?.amount) !== null;
+  const chosen = ins.find((n) => n.id === draft.basisId);
+  const basis = chosen ? (set(chosen) ? chosen : undefined) : ins.find(set);
+  return { ins, outs, targets, basis, chosen };
 }
 
 /**
@@ -608,7 +633,10 @@ export const runMaterialBalance =
         continue;
       }
       if (!alive()) return;
-      if (job.status === "running") continue;
+      if (job.status === "running") {
+        dispatch(jobStage({ key, stage: job.stage }));
+        continue;
+      }
       // Такой же расчёт отменили из другой вкладки или другим человеком:
       // задача на сервере общая.
       if (job.status === "cancelled") {
@@ -712,6 +740,9 @@ export const newCalcFrom =
       draft[id] = { amount: a.amount === null ? "" : String(a.amount).replace(".", ","), unit: a.unit };
     }
     dispatch(setDraftAmounts(draft));
+    const basis = calc.record.refs.find((r) => r.role === "basis");
+    const basisId = basis ? calc.nodeIds[basis.ref] : undefined;
+    if (basisId) dispatch(setDraftBasis(basisId));
     const targets = Object.entries(calc.nodeIds)
       .filter(([ref]) => calc.record.refs.some((r) => r.ref === ref && r.role === "target"))
       .map(([, id]) => id);

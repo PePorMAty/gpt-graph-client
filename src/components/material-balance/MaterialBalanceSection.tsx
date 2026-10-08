@@ -13,6 +13,7 @@ import {
   setBalanceActive,
   setBalanceMode,
   setDraftAmount,
+  setDraftBasis,
   setDraftTargets,
   setMaterialBalanceAmounts,
 } from "../../store/slices/materialBalanceSlice";
@@ -164,8 +165,10 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
             <div className={styles.runningBody}>
               <span>
                 Считаем «→ {what}»… {elapsed(now - new Date(job.startedAt).getTime())}.
-                Модель ищет источники — обычно это несколько минут. Можно закрыть
-                панель и работать дальше: по готовности придёт уведомление.
+                {job.stage ? <b className={styles.stage}> {job.stage}.</b> : null} Обычно
+                это несколько минут: модель ищет источники, сервер их загружает и
+                проверяет. Можно закрыть панель и работать дальше: по готовности
+                придёт уведомление.
               </span>
               <button
                 type="button"
@@ -253,6 +256,8 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
                 }),
               )
             }
+            basisId={draft.basisId}
+            onBasis={(id) => dispatch(setDraftBasis(id))}
             targets={draft.targets}
             onTargets={(ids) => dispatch(setDraftTargets(ids))}
           />

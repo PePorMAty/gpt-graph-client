@@ -9,6 +9,7 @@ import {
   mentionsProduct,
   productExcerpts,
   shareOfAllInputs,
+  sortSources,
   stepField,
   type BalanceInputAmount,
   type MaterialBalanceCalc,
@@ -65,10 +66,12 @@ export const ProductDetails: FC<Props> = ({
   const excerpts = productExcerpts(record, target.ref, names);
   const conditions = stepField(record, "Источник и условия");
   const mention = (s: string) => mentionsProduct(s, target.ref, names);
-  const ownSources = record.sources.filter((s) =>
-    mention(`${s.usedFor}\n${s.title}`),
+  // Документы базы источников — для всего преобразования, их показываем
+  // всегда; веб-источники — те, что модель отметила для продукта.
+  const ownSources = record.sources.filter(
+    (s) => s.server?.status === "local" || mention(`${s.usedFor}\n${s.title}`),
   );
-  const sources = ownSources.length ? ownSources : record.sources;
+  const sources = sortSources(ownSources.length ? ownSources : record.sources);
   const notes = (record.sections.notes ?? "")
     .split(/\r?\n/)
     .map((l) => l.replace(/^\s*[-*•]\s*/, "").trim())

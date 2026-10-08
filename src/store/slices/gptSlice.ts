@@ -461,9 +461,11 @@ const gptSlice = createSlice({
         type: "product" | "transformation";
         label?: string;
         position: { x: number; y: number }; // ← добавили позицию (обязательна)
+        /** Свой id — чтобы сразу связать новый узел (окно «Связать с…»). */
+        id?: string;
       }>,
     ) => {
-      const id = crypto.randomUUID();
+      const id = action.payload.id || crypto.randomUUID();
       const { type, position, label } = action.payload;
 
       const newNode: CustomNode = {

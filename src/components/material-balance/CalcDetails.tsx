@@ -14,13 +14,19 @@ import {
   isPairCalc,
   massFraction,
   scaleByFactor,
+  sortSources,
   STATUS_TEXT,
   STATUS_TONE,
   statusReason,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import { mentionsRefs, readableRecord } from "../../utils/readableModelText";
-import type { BalanceSource, BalanceStatus } from "../../store/api/material-balance-api";
+import {
+  balanceSourceCopyHref,
+  type BalanceSource,
+  type BalanceStatus,
+} from "../../store/api/material-balance-api";
+import { sourceHref } from "../../store/api/local-sources-api";
 import md from "../markdown-editor/MarkdownEditor.module.css";
 import styles from "./MaterialBalance.module.css";
 
@@ -53,12 +59,49 @@ export const Markdown: FC<{ text: string; inline?: boolean }> = ({ text, inline 
     <p className={styles.muted}>Модель этот раздел не заполнила.</p>
   );
 
-/** Источник: ссылка, тип и организация, для чего использован, что взято. */
+/** Как сервер проверил источник — меткой. */
+const SourceCheck: FC<{ source: BalanceSource }> = ({ source: src }) => {
+  const c = src.server;
+  if (!c) return null;
+  if (c.status === "local") {
+    return (
+      <div className={`${styles.sourceCheck} ${styles.sourceCheckLocal}`}>
+        Документ базы источников — использован в первую очередь
+      </div>
+    );
+  }
+  if (c.status === "failed") {
+    return (
+      <div className={`${styles.sourceCheck} ${styles.sourceCheckFailed}`}>
+        Сервер не смог подтвердить: {c.reason}
+      </div>
+    );
+  }
+  return (
+    <div className={`${styles.sourceCheck} ${styles.sourceCheckSaved}`}>
+      Загружен и сохранён сервером{c.note ? ` (${c.note})` : ""}
+      {c.webDocumentId ? (
+        <>
+          {" · "}
+          <a href={balanceSourceCopyHref(c.webDocumentId, "text")} target="_blank" rel="noreferrer noopener">
+            текст копии
+          </a>
+          {" · "}
+          <a href={balanceSourceCopyHref(c.webDocumentId, "file")} target="_blank" rel="noreferrer noopener">
+            {c.kind === "pdf" ? "PDF" : "оригинал"}
+          </a>
+        </>
+      ) : null}
+    </div>
+  );
+};
+
+/** Источник: ссылка, тип и организация, для чего использован, проверка, что взято. */
 export const SourceItem: FC<{ source: BalanceSource }> = ({ source: src }) => (
   <div className={styles.sourceItem}>
     [{src.id}]{" "}
     {src.url ? (
-      <a href={src.url} target="_blank" rel="noreferrer noopener">
+      <a href={sourceHref(src.url)} target="_blank" rel="noreferrer noopener">
         {src.title || src.url}
       </a>
     ) : (
@@ -69,6 +112,7 @@ export const SourceItem: FC<{ source: BalanceSource }> = ({ source: src }) => (
         .filter(Boolean)
         .join(" · ")}
     </div>
+    <SourceCheck source={src} />
     {src.block && (
       <details className={styles.more}>
         <summary>Что взято из источника</summary>
@@ -77,6 +121,17 @@ export const SourceItem: FC<{ source: BalanceSource }> = ({ source: src }) => (
     )}
   </div>
 );
+
+/** «Источники: 1 раздел из базы, 2 загружены сервером, 1 не подтверждён». */
+function checksText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>): string {
+  const parts = [
+    c.local ? `${c.local} из базы источников` : null,
+    c.saved ? `${c.saved} загружены и сохранены сервером` : null,
+    c.failed ? `${c.failed} сервер подтвердить не смог` : null,
+  ].filter(Boolean);
+  const retry = c.rounds > 1 ? " Часть источников не загрузилась — модель заменила их вторым запросом." : "";
+  return parts.length ? `Источники: ${parts.join(", ")}.${retry}` : retry.trim();
+}
 
 function tookText(ms: number | null | undefined): string {
   if (!ms) return "";
@@ -147,6 +202,9 @@ export const CalcDetails: FC<Props> = ({
           <p className={styles.reason}>
             <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
           </p>
+        )}
+        {record.sourceChecks && (
+          <p className={styles.note}>{checksText(record.sourceChecks)}</p>
         )}
         {isPairCalc(record) && (
           <p className={styles.note}>
@@ -246,7 +304,7 @@ export const CalcDetails: FC<Props> = ({
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>Источники ({record.sources.length})</h4>
         {record.sources.length ? (
-          record.sources.map((src) => <SourceItem key={src.id} source={src} />)
+          sortSources(record.sources).map((src) => <SourceItem key={src.id} source={src} />)
         ) : (
           <p className={styles.muted}>Модель не указала рабочих источников.</p>
         )}
