@@ -2,26 +2,34 @@ import { useEffect, useMemo, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import {
+  balanceRequestOf,
   cancelMaterialBalance,
   dismissBalanceJob,
-  draftAmount,
-  jobKey,
-  selectBalanceTransformation,
+  draftAmounts,
+  newCalcFrom,
+  openBalanceCalc,
+  openBalanceProduct,
+  pickBalanceTransformation,
   setBalanceActive,
-  setBalanceDraft,
-  setBalanceFormOpen,
   setBalanceMode,
-  setBalancePair,
-  setMaterialBalanceView,
+  setDraftAmount,
+  setDraftTargets,
+  setMaterialBalanceAmounts,
 } from "../../store/slices/materialBalanceSlice";
 import {
   allCalcs,
+  amountsOf,
   balanceEnds,
-  calcFor,
+  calcKey,
+  calcProductsLabel,
   calcsOf,
+  computeBalance,
+  formatMass,
   formatWhen,
-  pairFor,
-  type BalanceView,
+  inputRefs,
+  targetRefs,
+  targetsKey,
+  type BalanceInputAmount,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import type { CustomNode } from "../../types";
@@ -35,7 +43,8 @@ import {
   ScalesIcon,
 } from "../icons";
 import { CalcDetails, Status } from "./CalcDetails";
-import { PairScheme } from "./PairScheme";
+import { ProductDetails } from "./ProductDetails";
+import { CalcScheme, FormScheme } from "./TransformationScheme";
 import { RequestForm } from "./RequestForm";
 import styles from "./MaterialBalance.module.css";
 
@@ -49,36 +58,36 @@ const elapsed = (ms: number) => {
 const busy = (status: string | undefined) => status === "running" || status === "starting";
 
 const HINT =
-  "Выберите преобразование на полотне — посчитаем его материальный баланс: сколько продукта получается из сырья.";
+  "Выберите преобразование на полотне — посчитаем его материальный баланс: сколько каждого продукта получится из сырья.";
+
+/** Подпись узла по id — по текущему графу. */
+function useLabelOf() {
+  const nodes = useAppSelector((s) => s.graph.data.nodes);
+  return useMemo(() => {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    return (id: string | undefined) => label(byId.get(id ?? ""));
+  }, [nodes]);
+}
 
 /**
- * Выбранное преобразование: его сырьё и продукты, посчитанные пары, схема
- * пары с количеством, ход расчёта, форма запроса или данные расчёта.
+ * Выбранное преобразование: его расчёты, ход идущих, схема с количеством
+ * сырья и продуктами, форма нового расчёта, общий расчёт или расчёт
+ * продукта.
  */
 const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
   const dispatch = useAppDispatch();
   const { nodes, edges } = useAppSelector((s) => s.graph.data);
-  const { selection, formOpen, jobs, draft } = useAppSelector((s) => s.materialBalance);
+  const { selection, jobs, draft } = useAppSelector((s) => s.materialBalance);
   const focusNode = useFocusNode();
+  const labelOf = useLabelOf();
   const [now, setNow] = useState(() => Date.now());
 
   const ends = useMemo(() => balanceEnds(t.id, nodes, edges), [t.id, nodes, edges]);
-  const inputId = selection?.inputId ?? "";
-  const outputId = selection?.outputId ?? "";
-  const input = ends.ins.find((n) => n.id === inputId);
-  const output = ends.outs.find((n) => n.id === outputId);
-  const key = jobKey(t.id, inputId, outputId);
-  const job = jobs[key];
-  const running = busy(job?.status);
-  const existing = calcFor(t, inputId, outputId);
-  // Пара расчёта на графе уже не «сырьё → продукт» этого преобразования:
-  // продукт удалён или связь теперь нарисована иначе.
-  const stale = Boolean(existing) && (!input || !output);
-  // Пока пара считается, во вкладке — только ход расчёта и «Отменить»:
-  // отмена возвращает к прежнему расчёту пары, если он был.
-  const showDetails = Boolean(existing) && (stale || (!formOpen && !running));
-  const shownId = showDetails ? existing?.record.id : undefined;
   const calcs = calcsOf(t);
+  const calc = calcs.find((c) => c.record.id === selection?.recordId);
+  const tJobs = Object.entries(jobs).filter(([, j]) => j.transformationId === t.id);
+  const running = tJobs.some(([, j]) => busy(j.status));
+  const productId = calc ? selection?.productId ?? null : null;
 
   useEffect(() => {
     if (!running) return;
@@ -88,26 +97,29 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
 
   // Что на экране, то и на узлах после снятия выбора.
   useEffect(() => {
-    if (shownId !== undefined) dispatch(setBalanceActive({ nodeId: t.id, recordId: shownId }));
-  }, [dispatch, t.id, shownId]);
+    if (calc) dispatch(setBalanceActive({ nodeId: t.id, recordId: calc.record.id }));
+  }, [dispatch, t.id, calc]);
 
   const back = () => {
-    dispatch(selectBalanceTransformation(null));
+    dispatch(pickBalanceTransformation(null));
     dispatch(setBalanceActive(null));
   };
 
-  const nameOf = (id: string | undefined) =>
-    label(nodes.find((n) => n.id === id)) || "продукт не на графе";
+  const title = (c: MaterialBalanceCalc) => calcProductsLabel(c, labelOf);
 
-  // Количество: у открытого расчёта — его, у формы — черновик.
-  const view: BalanceView =
-    showDetails && existing
-      ? existing.view
-      : { amount: draftAmount(draft.amount), unit: draft.unit };
-  const onView = (v: BalanceView) =>
-    showDetails && existing
-      ? dispatch(setMaterialBalanceView(t.id, existing.record.id, v))
-      : dispatch(setBalanceDraft({ amount: String(v.amount), unit: v.unit }));
+  // Форма нового расчёта.
+  const req = balanceRequestOf({ nodes, edges, draft }, t.id);
+  const formAmounts = draftAmounts(draft);
+  const formKey = targetsKey(req.targets.map((n) => n.id));
+  const sameTargets = calcs.find((c) => calcKey(c) === formKey);
+
+  // Сырьё на графе, которого нет в открытом расчёте: связь нарисовали позже.
+  const missingInputs = calc
+    ? ends.ins.filter((n) => !inputRefs(calc.record).some((r) => calc.nodeIds[r.ref] === n.id))
+    : [];
+
+  const onCalcAmount = (c: MaterialBalanceCalc) => (ref: string, value: BalanceInputAmount) =>
+    dispatch(setMaterialBalanceAmounts(t.id, c.record.id, { ...amountsOf(c), [ref]: value }));
 
   return (
     <div className={styles.panel}>
@@ -115,137 +127,143 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
         <ChevronLeftIcon size={12} /> Все расчёты
       </button>
       <h3 className={styles.detailsTitle}>«{label(t)}»</h3>
-      <div className={styles.roles}>
-        <span>
-          <b>Сырьё:</b> {ends.ins.map((n) => label(n)).join(", ") || "нет"}
-        </span>
-        <span>
-          <b>Продукты:</b> {ends.outs.map((n) => label(n)).join(", ") || "нет"}
-        </span>
-      </div>
 
       {calcs.length > 0 && (
         <div className={styles.pairs}>
-          <span className={styles.fieldLabel}>Посчитанные пары</span>
+          <span className={styles.fieldLabel}>Расчёты преобразования</span>
           {calcs.map((c) => {
-            const on = c.nodeIds.P1 === inputId && c.nodeIds.P2 === outputId;
+            const on = c === calc;
             return (
               <button
                 key={c.record.id}
                 type="button"
                 className={`${styles.chipBtn} ${on ? styles.chipBtnOn : ""}`}
                 aria-pressed={on}
-                onClick={() =>
-                  dispatch(
-                    selectBalanceTransformation({
-                      transformationId: t.id,
-                      inputId: c.nodeIds.P1 ?? null,
-                      outputId: c.nodeIds.P2 ?? null,
-                    }),
-                  )
-                }
+                onClick={() => dispatch(openBalanceCalc(c.record.id))}
               >
-                {nameOf(c.nodeIds.P1)} → {nameOf(c.nodeIds.P2)}
+                → {title(c)}
               </button>
             );
           })}
+          <button
+            type="button"
+            className={`${styles.chipBtn} ${!calc ? styles.chipBtnOn : ""}`}
+            aria-pressed={!calc}
+            onClick={() => dispatch(openBalanceCalc(null))}
+          >
+            + Новый расчёт
+          </button>
         </div>
       )}
 
-      {!ends.ins.length || !ends.outs.length ? (
+      {tJobs.map(([key, job]) => {
+        const what = job.targetIds.map((id) => labelOf(id)).filter(Boolean).join(", ");
+        return busy(job.status) ? (
+          <div key={key} className={styles.running} role="status">
+            <span className={styles.spinner} aria-hidden />
+            <div className={styles.runningBody}>
+              <span>
+                Считаем «→ {what}»… {elapsed(now - new Date(job.startedAt).getTime())}.
+                Модель ищет источники — обычно это несколько минут. Можно закрыть
+                панель и работать дальше: по готовности придёт уведомление.
+              </span>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => dispatch(cancelMaterialBalance(key))}
+              >
+                Отменить расчёт
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div key={key} className={styles.errorBox}>
+            <span>
+              «→ {what}» не рассчитан: {job.error}
+            </span>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={() => dispatch(dismissBalanceJob(key))}
+              aria-label="Скрыть ошибку"
+            >
+              <CloseIcon size={14} />
+            </button>
+          </div>
+        );
+      })}
+
+      {calc ? (
+        productId ? (
+          <ProductDetails
+            transformation={t}
+            calc={calc}
+            productId={productId}
+            labelOf={labelOf}
+            onAmount={onCalcAmount(calc)}
+            onBack={() => dispatch(openBalanceProduct(null))}
+            calcTitle={title(calc)}
+          />
+        ) : (
+          <>
+            {missingInputs.length > 0 && (
+              <p className={styles.warn}>
+                У преобразования на графе есть сырьё, которого нет в этом расчёте:{" "}
+                {missingInputs.map((n) => `«${label(n)}»`).join(", ")}. Чтобы оно вошло в
+                баланс, посчитайте заново.
+              </p>
+            )}
+            <CalcScheme
+              transformation={t}
+              result={computeBalance(calc)}
+              labelOf={labelOf}
+              onAmount={onCalcAmount(calc)}
+              onProduct={(id) => dispatch(openBalanceProduct(id))}
+            />
+            <p className={styles.muted}>
+              Количество любого сырья можно менять — массы пересчитаются сразу, без
+              модели. Щелчок по продукту — его подробный расчёт.
+            </p>
+            <CalcDetails
+              nodeId={t.id}
+              calc={calc}
+              labelOf={labelOf}
+              onNewRequest={() => dispatch(newCalcFrom(calc, amountsOf(calc)))}
+              onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
+            />
+          </>
+        )
+      ) : !ends.ins.length || !ends.outs.length ? (
         <p className={styles.warn}>
           У преобразования нет продукта {!ends.ins.length ? "на входе" : "на выходе"} —
           баланс считать не из чего. Свяжите его с продуктом и выберите снова.
         </p>
-      ) : stale && existing ? (
-        <>
-          <div className={styles.warn}>
-            Пара этого расчёта — «{nameOf(existing.nodeIds.P1)} → {nameOf(existing.nodeIds.P2)}» —
-            на графе уже не «сырьё → продукт» «{label(t)}»: продукт удалён или
-            связь нарисована иначе. Данные расчёта — ниже.{" "}
-            <button
-              type="button"
-              className={styles.linkBtn}
-              onClick={() => dispatch(selectBalanceTransformation(pairFor(t.id, nodes, edges)))}
-            >
-              Выбрать пару заново
-            </button>
-          </div>
-          <CalcDetails nodeId={t.id} calc={existing} />
-        </>
       ) : (
         <>
-          <PairScheme
+          <FormScheme
             transformation={t}
             ins={ends.ins}
             outs={ends.outs}
-            input={input}
-            output={output}
-            view={view}
-            onView={onView}
-            calc={showDetails ? existing : undefined}
-            onPair={(pair) => dispatch(setBalancePair(pair))}
-            disabled={running}
+            amounts={formAmounts}
+            onAmount={(inputId, v) =>
+              dispatch(
+                setDraftAmount({
+                  inputId,
+                  amount: { amount: v.amount === null ? "" : String(v.amount).replace(".", ","), unit: v.unit },
+                }),
+              )
+            }
+            targets={draft.targets}
+            onTargets={(ids) => dispatch(setDraftTargets(ids))}
           />
-
-          {running && job && (
-            <div className={styles.running} role="status">
-              <span className={styles.spinner} aria-hidden />
-              <div className={styles.runningBody}>
-                <span>
-                  Считаем… {elapsed(now - new Date(job.startedAt).getTime())}. Модель
-                  ищет источники — обычно это несколько минут. Можно закрыть панель
-                  и работать дальше: по готовности придёт уведомление.
-                </span>
-                <button
-                  type="button"
-                  className={styles.secondary}
-                  onClick={() => dispatch(cancelMaterialBalance(key))}
-                >
-                  Отменить расчёт
-                </button>
-              </div>
-            </div>
-          )}
-          {job?.status === "failed" && (
-            <div className={styles.errorBox}>
-              <span>Не рассчитан: {job.error}</span>
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={() => dispatch(dismissBalanceJob(key))}
-                aria-label="Скрыть ошибку"
-              >
-                <CloseIcon size={14} />
-              </button>
-            </div>
-          )}
-
-          {showDetails && existing ? (
-            <CalcDetails
-              nodeId={t.id}
-              calc={existing}
-              onNewRequest={() => {
-                // Новый расчёт пары — на то же количество, что у прежнего.
-                dispatch(
-                  setBalanceDraft({
-                    amount: String(existing.view.amount),
-                    unit: existing.view.unit,
-                  }),
-                );
-                dispatch(setBalanceFormOpen(true));
-              }}
-              onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
-            />
-          ) : input && output && !running ? (
-            <RequestForm
-              transformation={t}
-              input={input}
-              output={output}
-              existing={existing}
-              onCancel={existing ? () => dispatch(setBalanceFormOpen(false)) : undefined}
-            />
-          ) : null}
+          <RequestForm
+            transformation={t}
+            ins={ends.ins}
+            targets={req.targets}
+            hasBasis={Boolean(req.basis)}
+            existing={sameTargets}
+            onCancel={calcs.length ? () => dispatch(openBalanceCalc(calcs[0].record.id)) : undefined}
+          />
         </>
       )}
     </div>
@@ -258,26 +276,18 @@ const ListView: FC = () => {
   const nodes = useAppSelector((s) => s.graph.data.nodes);
   const mode = useAppSelector((s) => s.materialBalance.mode);
   const focusNode = useFocusNode();
+  const labelOf = useLabelOf();
   const list = useMemo(() => allCalcs(nodes), [nodes]);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
-
-  const labelOf = (calc: MaterialBalanceCalc, ref: string) =>
-    label(nodes.find((n) => n.id === calc.nodeIds[ref])) ||
-    calc.record.refs.find((r) => r.ref === ref)?.name ||
-    ref;
-  const pairName = (c: MaterialBalanceCalc) => `${labelOf(c, "P1")} → ${labelOf(c, "P2")}`;
 
   const groups = new Map<string, { label: string; items: MaterialBalanceCalc[] }>();
   for (const { nodeId, calc } of list) {
     const g = groups.get(nodeId) ?? {
-      label: label(nodes.find((n) => n.id === nodeId)) || calc.record.transformation,
+      label: labelOf(nodeId) || calc.record.transformation,
       items: [],
     };
     g.items.push(calc);
     groups.set(nodeId, g);
-  }
-  for (const g of groups.values()) {
-    g.items.sort((a, b) => pairName(a).localeCompare(pairName(b), "ru"));
   }
 
   const toggle = (nodeId: string) =>
@@ -289,15 +299,9 @@ const ListView: FC = () => {
     });
 
   // Расчёт из списка открывается так же, как выбранное на полотне
-  // преобразование: его пара, его данные.
-  const openCalc = (nodeId: string, calc: MaterialBalanceCalc) => {
-    dispatch(
-      selectBalanceTransformation({
-        transformationId: nodeId,
-        inputId: calc.nodeIds.P1 ?? null,
-        outputId: calc.nodeIds.P2 ?? null,
-      }),
-    );
+  // преобразование; продукт — сразу своим расчётом.
+  const openCalc = (nodeId: string, calc: MaterialBalanceCalc, productId?: string) => {
+    dispatch(pickBalanceTransformation(nodeId, { recordId: calc.record.id, productId }));
     dispatch(setBalanceActive({ nodeId, recordId: calc.record.id }));
   };
 
@@ -331,7 +335,8 @@ const ListView: FC = () => {
       ) : (
         <>
           <p className={styles.muted}>
-            Расчёты по преобразованиям — по одному на пару «сырьё → продукт».
+            Расчёты по преобразованиям: «преобразование → продукты, для которых
+            посчитано». Щелчок по продукту — его подробный расчёт.
           </p>
           {[...groups].map(([nodeId, g]) => {
             const expanded = open.has(nodeId);
@@ -362,24 +367,47 @@ const ListView: FC = () => {
                   </button>
                 </div>
                 {expanded &&
-                  g.items.map((calc) => (
-                    <button
-                      key={calc.record.id}
-                      type="button"
-                      className={styles.item}
-                      onClick={() => openCalc(nodeId, calc)}
-                    >
-                      <span className={styles.itemTitle}>
-                        {pairName(calc)}
-                        <Status status={calc.record.status} />
-                      </span>
-                      <span className={styles.meta}>
-                        {formatWhen(calc.record.createdAt)}
-                        {calc.record.model ? ` · ${calc.record.model}` : ""}
-                        {calc.fromCache ? " · из базы" : ""}
-                      </span>
-                    </button>
-                  ))}
+                  g.items.map((calc) => {
+                    const res = computeBalance(calc);
+                    return (
+                      <div key={calc.record.id} className={styles.item}>
+                        <button
+                          type="button"
+                          className={styles.itemOpen}
+                          onClick={() => openCalc(nodeId, calc)}
+                        >
+                          <span className={styles.itemTitle}>
+                            {g.label} → {calcProductsLabel(calc, labelOf)}
+                            <Status status={calc.record.status} />
+                          </span>
+                          <span className={styles.meta}>
+                            {formatWhen(calc.record.createdAt)}
+                            {calc.record.model ? ` · ${calc.record.model}` : ""}
+                            {calc.fromCache ? " · из базы" : ""}
+                          </span>
+                        </button>
+                        <div className={styles.itemProducts}>
+                          {targetRefs(calc.record).map((r) => {
+                            const f = res.targets.find((x) => x.ref === r.ref);
+                            const id = calc.nodeIds[r.ref];
+                            const name = labelOf(id) || r.name;
+                            return (
+                              <button
+                                key={r.ref}
+                                type="button"
+                                className={styles.chipBtn}
+                                disabled={!labelOf(id)}
+                                onClick={() => openCalc(nodeId, calc, id)}
+                                title={labelOf(id) ? "Подробный расчёт этого продукта" : "Этого продукта на графе уже нет"}
+                              >
+                                {name} · {formatMass(f?.mass ?? null, f?.unit ?? res.unit)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             );
           })}
@@ -393,7 +421,7 @@ const ListView: FC = () => {
  * Вкладка «Материальный баланс» левой панели.
  *
  * Чип над полотном открывает её и включает режим: выбранное на полотне
- * преобразование — здесь, с формой запроса или готовыми данными; ничего не
+ * преобразование — здесь, с формой запроса или готовым расчётом; ничего не
  * выбрано — подсказка и все расчёты графа. Та же вкладка открывается и с
  * левого рельса.
  */

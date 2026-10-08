@@ -155,9 +155,9 @@ import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
 import {
-  draftAmount,
+  draftAmounts,
+  focusBalanceProduct,
   pickBalanceTransformation,
-  selectBalanceTransformation,
   setBalanceActive,
   setBalanceMode,
 } from "./store/slices/materialBalanceSlice";
@@ -948,13 +948,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // ─── Материальный баланс ───
   // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
-  // расчёта, на узлах — все посчитанные пары (продукт сверху, сырьё снизу),
-  // их связи подсвечены, остальное приглушено (см. utils/materialBalance.ts,
+  // расчёта, по продукту открытого расчёта — расчёт этого продукта. На
+  // узлах — все посчитанные расчёты (продукт сверху, сырьё снизу), их связи
+  // подсвечены, остальное приглушено (см. utils/materialBalance.ts,
   // balanceLayer).
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
-  const balanceDraftAmount = useAppSelector((s) => s.materialBalance.draft.amount);
-  const balanceDraftUnit = useAppSelector((s) => s.materialBalance.draft.unit);
+  const balanceDraft = useAppSelector((s) => s.materialBalance.draft);
   const balanceModeRef = useRef(balanceMode);
   balanceModeRef.current = balanceMode;
   const balanceActiveRef = useRef(balanceActive);
@@ -967,18 +967,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             edges: data.edges,
             selection: balanceSelection,
             active: balanceActive,
-            draft: { amount: draftAmount(balanceDraftAmount), unit: balanceDraftUnit },
+            draft: { amounts: draftAmounts(balanceDraft), targets: balanceDraft.targets },
           })
         : null,
-    [
-      balanceMode,
-      balanceSelection,
-      balanceActive,
-      balanceDraftAmount,
-      balanceDraftUnit,
-      data.nodes,
-      data.edges,
-    ],
+    [balanceMode, balanceSelection, balanceActive, balanceDraft, data.nodes, data.edges],
   );
   // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
   // открывают её, выключенный чип закрывает. Карточка узла занимает то же
@@ -1294,6 +1286,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         openBalancePanel();
         return;
       }
+      // Продукт открытого расчёта — его подробный расчёт во вкладке. Прочие
+      // продукты открывают карточку, как обычно.
+      if (
+        balanceModeRef.current &&
+        !readOnly &&
+        node.type === "product" &&
+        dispatch(focusBalanceProduct(node.id))
+      ) {
+        setContextMenu(null);
+        openBalancePanel();
+        return;
+      }
       // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
       // навигации, узел становится новым центром. Карточка узла — по клику
       // на сам центр или на преобразование.
@@ -1411,7 +1415,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setPaneMenu(null);
     setEdgeMenu(null);
     // Щелчок мимо узлов снимает выбор преобразования в режиме баланса.
-    if (balanceModeRef.current) dispatch(selectBalanceTransformation(null));
+    if (balanceModeRef.current) dispatch(pickBalanceTransformation(null));
   }, [dispatch]);
 
   // Правый клик по пустому месту — меню добавления узла. В режиме рамки

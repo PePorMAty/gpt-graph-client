@@ -1,25 +1,26 @@
-import { useMemo, useState, type FC } from "react";
+import { useState, type FC } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { useAppDispatch } from "../../store/hooks";
 import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
+  computeBalance,
   flowRef,
+  formatBasisAmount,
   formatMass,
   formatPercent,
   formatWhen,
+  isPairCalc,
   massFraction,
-  refRole,
-  scaleForView,
-  shownMass,
+  scaleByFactor,
   STATUS_TEXT,
   STATUS_TONE,
   statusReason,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import { mentionsRefs, readableRecord } from "../../utils/readableModelText";
-import type { BalanceStatus } from "../../store/api/material-balance-api";
+import type { BalanceSource, BalanceStatus } from "../../store/api/material-balance-api";
 import md from "../markdown-editor/MarkdownEditor.module.css";
 import styles from "./MaterialBalance.module.css";
 
@@ -29,24 +30,53 @@ export const Status: FC<{ status: BalanceStatus }> = ({ status }) => (
   </span>
 );
 
-/** Ответ модели кусками Markdown; ссылки — в новой вкладке. */
-const Markdown: FC<{ text: string }> = ({ text }) =>
+/**
+ * Ответ модели кусками Markdown; ссылки — в новой вкладке. inline — строкой,
+ * без абзаца: для пунктов списка.
+ */
+export const Markdown: FC<{ text: string; inline?: boolean }> = ({ text, inline }) =>
   text.trim() ? (
-    <div className={md.markdownBody}>
+    <div className={`${md.markdownBody} ${inline ? styles.inlineMd : ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ node: _node, ...props }) => (
             <a {...props} target="_blank" rel="noreferrer noopener" />
           ),
+          ...(inline ? { p: ({ children }) => <span>{children}</span> } : {}),
         }}
       >
         {text}
       </ReactMarkdown>
     </div>
-  ) : (
+  ) : inline ? null : (
     <p className={styles.muted}>Модель этот раздел не заполнила.</p>
   );
+
+/** Источник: ссылка, тип и организация, для чего использован, что взято. */
+export const SourceItem: FC<{ source: BalanceSource }> = ({ source: src }) => (
+  <div className={styles.sourceItem}>
+    [{src.id}]{" "}
+    {src.url ? (
+      <a href={src.url} target="_blank" rel="noreferrer noopener">
+        {src.title || src.url}
+      </a>
+    ) : (
+      src.title
+    )}
+    <div className={styles.sourceMeta}>
+      {[src.type, src.org, src.usedFor && `использован для: ${src.usedFor}`]
+        .filter(Boolean)
+        .join(" · ")}
+    </div>
+    {src.block && (
+      <details className={styles.more}>
+        <summary>Что взято из источника</summary>
+        <Markdown text={src.block} />
+      </details>
+    )}
+  </div>
+);
 
 function tookText(ms: number | null | undefined): string {
   if (!ms) return "";
@@ -57,41 +87,42 @@ function tookText(ms: number | null | undefined): string {
 interface Props {
   nodeId: string;
   calc: MaterialBalanceCalc;
-  /** «Новый расчёт» — форма запроса для этой пары. */
+  /** Подпись узла по id; нет узла — пусто. */
+  labelOf: (id: string | undefined) => string;
+  /** «Новый расчёт» — форма с количествами и продуктами этого расчёта. */
   onNewRequest?: () => void;
   /** «Показать на графе» — камера к преобразованию. */
   onShowOnGraph?: () => void;
+  readOnly?: boolean;
 }
 
 /**
- * Один расчёт целиком: ключевые потоки, коэффициенты, примечания, расчёт по
- * переходам, общий баланс, источники. Количество сырья — в схеме над ним.
+ * Расчёт преобразования целиком: сведения о расчёте, потоки сверх сырья и
+ * продуктов графа, примечания, ответ модели по разделам, источники.
+ * Сырьё и продукты с массами — в схеме над ним, расчёт одного продукта — по
+ * щелчку на нём.
  *
  * Тексты модели — читаемыми (readableRecord): без LaTeX и служебных имён
  * промпта. Обозначения P1, P2 из ответа расшифрованы над ним.
  */
-export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGraph }) => {
+export const CalcDetails: FC<Props> = ({
+  nodeId,
+  calc,
+  labelOf,
+  onNewRequest,
+  onShowOnGraph,
+  readOnly,
+}) => {
   const dispatch = useAppDispatch();
-  const nodes = useAppSelector((s) => s.graph.data.nodes);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const record = readableRecord(calc.record);
-  const readable = { ...calc, record };
-
-  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  /** Подпись узла графа, а если его нет — имя из расчёта. */
-  const nameOf = (ref: string) => {
-    const node = byId.get(calc.nodeIds[ref]);
-    return (
-      String(node?.data?.label ?? "").trim() ||
-      record.refs.find((r) => r.ref === ref)?.name ||
-      ref
-    );
-  };
-  const productRefs = record.refs.filter((r) => r.ref.startsWith("P"));
+  const result = computeBalance({ ...calc, record });
+  const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
   const extraFlows = record.flows.filter((f) => !flowRef(record, f.name));
   const reason = statusReason(record);
-  const canRequest =
-    byId.has(nodeId) && byId.has(calc.nodeIds.P1 ?? "") && byId.has(calc.nodeIds.P2 ?? "");
+  const transitions = record.steps?.length
+    ? record.steps.map((s) => `## ${s.title}\n\n${s.body}`).join("\n\n")
+    : record.sections.transitions;
 
   return (
     <>
@@ -117,45 +148,38 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
             <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
           </p>
         )}
-      </div>
-
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Ключевые потоки</h4>
-        <table className={styles.flows}>
-          <tbody>
-            {productRefs.map((r) => (
-              <tr key={r.ref}>
-                <td>
-                  {nameOf(r.ref)}
-                  <span className={styles.flowRole}>{refRole(record, r.ref)}</span>
-                </td>
-                <td>{formatMass(shownMass(readable, r.ref), calc.view.unit)}</td>
-              </tr>
-            ))}
-            {extraFlows.map((f) => (
-              <tr key={`flow-${f.name}`}>
-                <td>
-                  {f.name}
-                  <span className={styles.flowRole}>
-                    {f.direction === "in"
-                      ? "дополнительный вход"
-                      : f.direction === "out"
-                        ? "дополнительный выход"
-                        : "поток баланса"}
-                  </span>
-                </td>
-                <td>{formatMass(scaleForView(readable, f.massKg), calc.view.unit)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {record.totals.residual && (
+        {isPairCalc(record) && (
           <p className={styles.note}>
-            Невязка (на 1 т сырья):{" "}
-            {record.totals.residual}.
+            Расчёт прежней версии — одного продукта из одного сырья на 1 т. Новый расчёт
+            посчитает преобразование целиком: всё сырьё и все продукты сразу.
           </p>
         )}
-      </section>
+      </div>
+
+      {extraFlows.length > 0 && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Другие потоки баланса</h4>
+          <p className={styles.muted}>
+            Реагенты, побочные продукты и отходы, которых нет на графе, — на ваше количество
+            сырья.
+          </p>
+          <table className={styles.flows}>
+            <tbody>
+              {extraFlows.map((f) => (
+                <tr key={`flow-${f.name}`}>
+                  <td>
+                    {f.name}
+                    <span className={styles.flowRole}>
+                      {f.direction === "in" ? "вход" : f.direction === "out" ? "выход" : "поток"}
+                    </span>
+                  </td>
+                  <td>{formatMass(scaleByFactor(f.massKg, result.factor), result.unit)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {record.coefficients.length > 0 && (
         <section className={styles.section}>
@@ -192,13 +216,6 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
         </section>
       )}
 
-      {mentionsRefs(record) && (
-        <p className={`${styles.note} ${styles.legend}`}>
-          В ответе модели:{" "}
-          {record.refs.map((r) => `${r.ref} — ${r.ref.startsWith("P") ? nameOf(r.ref) : r.name}`).join("; ")}.
-        </p>
-      )}
-
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>Примечания</h4>
         <Markdown text={record.sections.notes} />
@@ -206,12 +223,19 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
 
       <section className={styles.section}>
         <p className={styles.muted}>
-          Ниже — разделы ответа модели как есть: числа в них на 1 т сырья. На
-          ваше количество пересчитаны «Ключевые потоки» и подписи на узлах.
+          Ниже — разделы ответа модели как есть: числа в них на {formatBasisAmount(record)}{" "}
+          «{nameOf("P1")}», с которыми она считала. На ваше количество пересчитаны схема и
+          подписи на узлах.
         </p>
+        {mentionsRefs(record) && (
+          <p className={`${styles.note} ${styles.legend}`}>
+            В ответе модели:{" "}
+            {record.refs.map((r) => `${r.ref} — ${r.ref.startsWith("P") ? nameOf(r.ref) : r.name}`).join("; ")}.
+          </p>
+        )}
         <details className={styles.more}>
-          <summary>Расчёт по переходам</summary>
-          <Markdown text={record.sections.transitions} />
+          <summary>Расчёт по преобразованию</summary>
+          <Markdown text={transitions} />
         </details>
         <details className={styles.more}>
           <summary>Общий баланс участка</summary>
@@ -222,87 +246,62 @@ export const CalcDetails: FC<Props> = ({ nodeId, calc, onNewRequest, onShowOnGra
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>Источники ({record.sources.length})</h4>
         {record.sources.length ? (
-          record.sources.map((src) => (
-            <div key={src.id} className={styles.sourceItem}>
-              [{src.id}]{" "}
-              {src.url ? (
-                <a href={src.url} target="_blank" rel="noreferrer noopener">
-                  {src.title || src.url}
-                </a>
-              ) : (
-                src.title
-              )}
-              <div className={styles.sourceMeta}>
-                {[src.type, src.org, src.usedFor && `использован для: ${src.usedFor}`]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </div>
-              {src.block && (
-                <details className={styles.more}>
-                  <summary>Что взято из источника</summary>
-                  <Markdown text={src.block} />
-                </details>
-              )}
-            </div>
-          ))
+          record.sources.map((src) => <SourceItem key={src.id} source={src} />)
         ) : (
           <p className={styles.muted}>Модель не указала рабочих источников.</p>
         )}
       </section>
 
-      <div className={`${styles.actions} ${styles.section}`}>
-        {onShowOnGraph && (
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={onShowOnGraph}
-            disabled={!byId.has(nodeId)}
-          >
-            Показать на графе
-          </button>
-        )}
-        {onNewRequest && (
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={onNewRequest}
-            disabled={!canRequest}
-            title={
-              canRequest
-                ? "Спросить модель заново — с другими данными, промптом или моделью"
-                : "Продуктов расчёта на графе уже нет"
-            }
-          >
-            Новый расчёт
-          </button>
-        )}
-        {confirmRemove ? (
-          <>
-            <button
-              type="button"
-              className={styles.dangerBtn}
-              onClick={() => dispatch(removeMaterialBalance(nodeId, record.id))}
-            >
-              Да, убрать
-            </button>
+      {!readOnly && (
+        <div className={`${styles.actions} ${styles.section}`}>
+          {onShowOnGraph && (
             <button
               type="button"
               className={styles.secondary}
-              onClick={() => setConfirmRemove(false)}
+              onClick={onShowOnGraph}
+              disabled={!labelOf(nodeId)}
             >
-              Отмена
+              Показать на графе
             </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className={styles.dangerBtn}
-            onClick={() => setConfirmRemove(true)}
-          >
-            Убрать из графа
-          </button>
-        )}
-      </div>
+          )}
+          {onNewRequest && (
+            <button
+              type="button"
+              className={styles.secondary}
+              onClick={onNewRequest}
+              title="Спросить модель заново — с другими продуктами, данными, промптом или моделью"
+            >
+              Новый расчёт
+            </button>
+          )}
+          {confirmRemove ? (
+            <>
+              <button
+                type="button"
+                className={styles.dangerBtn}
+                onClick={() => dispatch(removeMaterialBalance(nodeId, record.id))}
+              >
+                Да, убрать
+              </button>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => setConfirmRemove(false)}
+              >
+                Отмена
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={styles.dangerBtn}
+              onClick={() => setConfirmRemove(true)}
+            >
+              Убрать из графа
+            </button>
+          )}
+        </div>
+      )}
       {confirmRemove && (
         <p className={styles.note}>
           Расчёт уйдёт из графа; в базе сервера он останется, и на таком же

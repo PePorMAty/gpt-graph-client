@@ -125,9 +125,10 @@ export interface CustomNodeData {
   transformationSources?: string[];
 
   /**
-   * Расчёты материального баланса преобразования, свежие первыми (см.
-   * utils/materialBalance.ts, MaterialBalanceCalc). Сохраняются с графом:
-   * вкладка «Материальный баланс» и массы на узлах берут их отсюда.
+   * Расчёты материального баланса преобразования, свежие первыми, — по
+   * одному на набор продуктов (см. utils/materialBalance.ts,
+   * MaterialBalanceCalc). Сохраняются с графом: вкладка «Материальный
+   * баланс» и массы на узлах берут их отсюда.
    */
   materialBalances?: unknown[];
 

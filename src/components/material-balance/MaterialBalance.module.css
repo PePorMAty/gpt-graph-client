@@ -1,6 +1,6 @@
 /* Материальный баланс: вкладка левой панели — выбранное преобразование
-   (направления, схема пары, форма запроса или данные расчёта) и список
-   расчётов графа. */
+   (его расчёты, схема «сырьё → продукты», форма запроса, расчёт целиком или
+   одного продукта) и список расчётов графа. */
 
 /* Вкладка прокручивается целиком: форма с двумя промптами и данные расчёта
    длиннее панели. */
@@ -57,21 +57,7 @@
   line-height: 1.5;
 }
 
-/* ─── Сырьё и продукты преобразования, посчитанные пары ─── */
-
-.roles {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-  color: var(--c-text-muted);
-}
-
-.roles b {
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-soft);
-}
+/* ─── Расчёты преобразования ─── */
 
 .pairs {
   display: flex;
@@ -111,7 +97,7 @@
   color: var(--c-brand-strong);
 }
 
-/* ─── Схема пары: сырьё сверху, продукт снизу, как на полотне ─── */
+/* ─── Схема: сырьё сверху, продукты снизу, как на полотне ─── */
 
 .scheme {
   display: flex;
@@ -119,7 +105,7 @@
   gap: var(--s-1);
 }
 
-.schemeRow {
+.schemeBlock {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
@@ -134,34 +120,12 @@
   border-color: var(--c-brand-border);
 }
 
-.schemeHead {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-
 .schemeRole {
   font-size: 11px;
   font-weight: var(--fw-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--c-text-muted);
-}
-
-.schemeAmount {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
-}
-
-.schemeResult {
-  font-size: var(--fs-md);
-  color: var(--c-text-soft);
-}
-
-.schemeResult b {
-  color: var(--c-text);
-  font-variant-numeric: tabular-nums;
 }
 
 .schemeArrow {
@@ -180,6 +144,92 @@
   color: var(--c-brand);
 }
 
+/* Строка сырья или продукта: название, количество или масса, пояснение
+   строкой ниже. */
+.flowRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-2);
+  padding: var(--s-1) 0;
+  border: none;
+  border-top: 1px solid var(--c-border-soft);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.schemeRole + .flowRow {
+  border-top: none;
+}
+
+.flowName {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.flowMass {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-soft);
+}
+
+.flowMass b {
+  color: var(--c-text);
+}
+
+.flowNote {
+  flex: 1 1 100%;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--c-text-muted);
+}
+
+.flowWarn {
+  color: #b45309;
+}
+
+.flowGone {
+  font-weight: normal;
+  font-size: 12px;
+  color: var(--c-danger);
+}
+
+.flowCheck {
+  cursor: pointer;
+}
+
+.flowCheck input {
+  margin: 0;
+}
+
+/* Продукт ведёт в свой расчёт. */
+.flowLink {
+  cursor: pointer;
+  border-radius: var(--r-xs);
+}
+
+.flowLink:hover {
+  background: var(--c-brand-softer);
+}
+
+.flowLink:hover .flowName {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+.flowOff .flowName {
+  font-weight: normal;
+  color: var(--c-text-muted);
+}
+
+.flowOff .flowNote {
+  flex: 0 0 auto;
+}
+
 .question {
   margin: var(--s-1) 0 0;
   font-size: var(--fs-sm);
@@ -195,11 +245,6 @@
 }
 
 /* ─── Форма запроса ─── */
-
-.pairName {
-  font-weight: var(--fw-medium);
-  color: var(--c-text);
-}
 
 .form {
   display: flex;
@@ -224,7 +269,7 @@ label.fieldLabel {
 }
 
 .amount {
-  width: 96px;
+  width: 116px;
   height: 32px;
   padding: 0 var(--s-2);
   border: 1px solid var(--c-border-strong);
@@ -543,26 +588,46 @@ label.fieldLabel {
   text-align: center;
 }
 
+/* Расчёт в списке: «преобразование → продукты» открывает расчёт целиком,
+   продукт под ним — свой расчёт. */
 .item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 100%;
+  gap: var(--s-1);
   padding: var(--s-2) var(--s-3);
-  border: none;
   border-top: 1px solid var(--c-border-soft);
   background: var(--c-surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
 
 .item:first-of-type {
   border-top: none;
 }
 
-.item:hover {
-  background: var(--c-brand-softer);
+.itemOpen {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.itemOpen:hover .itemTitle {
+  color: var(--c-brand-strong);
+}
+
+.itemProducts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.chipBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .itemTitle {
@@ -608,6 +673,29 @@ label.fieldLabel {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
+}
+
+/* «Пропилен + Аммиак → Акрилонитрил» — расчёт одного продукта. */
+.productTitle {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
+  color: var(--c-text);
+}
+
+.excerpt {
+  margin-top: var(--s-2);
+}
+
+.excerpt > .fieldLabel {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Markdown внутри пункта списка — строкой. */
+.inlineMd {
+  display: inline;
 }
 
 .reason {

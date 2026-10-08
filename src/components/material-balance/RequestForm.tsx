@@ -7,7 +7,7 @@ import {
   lookupBalanceFor,
   lookupKey,
   runMaterialBalance,
-  setBalanceDraft,
+  setBalanceKnownData,
   setBalancePrompt,
   takeBalanceFromBase,
 } from "../../store/slices/materialBalanceSlice";
@@ -22,24 +22,28 @@ import styles from "./MaterialBalance.module.css";
 
 interface Props {
   transformation: CustomNode;
-  input: CustomNode;
-  output: CustomNode;
-  /** Расчёт этой пары, если он уже есть. */
+  ins: CustomNode[];
+  /** Выбранные продукты. */
+  targets: CustomNode[];
+  /** Задано количество хотя бы одного сырья — есть от чего считать. */
+  hasBasis: boolean;
+  /** Расчёт этих продуктов, если он уже есть. */
   existing?: MaterialBalanceCalc;
   onCancel?: () => void;
 }
 
 /**
- * Запрос расчёта выбранной пары: свои данные, промпт и модель, подсказки
- * базы и «Рассчитать». Количество — в схеме над формой.
+ * Запрос расчёта: свои данные, промпт и модель, подсказки базы и
+ * «Рассчитать». Количество сырья и продукты — в схеме над формой.
  *
- * У пары хранится один расчёт: если он уже есть, новый его заменит — форма
- * об этом говорит. Расчёты других пар не трогаются.
+ * У набора продуктов хранится один расчёт: если он уже есть, новый его
+ * заменит — форма об этом говорит. Расчёты других наборов не трогаются.
  */
 export const RequestForm: FC<Props> = ({
   transformation,
-  input,
-  output,
+  ins,
+  targets,
+  hasBasis,
   existing,
   onCancel,
 }) => {
@@ -50,22 +54,21 @@ export const RequestForm: FC<Props> = ({
   const [showKnown, setShowKnown] = useState(() => draft.knownData.trim() !== "");
   const [showPrompt, setShowPrompt] = useState(false);
 
-  const job = jobs[jobKey(transformation.id, input.id, output.id)];
+  const inputIds = ins.map((n) => n.id);
+  const targetIds = targets.map((n) => n.id);
+  const idsKey = `${inputIds.join("|")}→${targetIds.join("|")}`;
+  const job = jobs[jobKey(transformation.id, targetIds)];
   const running = job?.status === "running" || job?.status === "starting";
-  const lookup = lookups[lookupKey(transformation.id, input.id, output.id)];
-  // Пара уже посчитана — «заново» идёт к модели мимо базы: иначе сервер
-  // вернул бы тот же готовый ответ.
+  const lookup = lookups[lookupKey(transformation.id, inputIds, targetIds)];
+  // Эти продукты уже посчитаны — «заново» идёт к модели мимо базы: иначе
+  // сервер вернул бы тот же готовый ответ.
   const again = Boolean(existing);
 
   useEffect(() => {
-    dispatch(
-      lookupBalanceFor({
-        transformationId: transformation.id,
-        inputId: input.id,
-        outputId: output.id,
-      }),
-    );
-  }, [dispatch, transformation.id, input.id, output.id]);
+    if (!inputIds.length || !targetIds.length) return;
+    dispatch(lookupBalanceFor({ transformationId: transformation.id, inputIds, targetIds }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, transformation.id, idsKey]);
 
   useEffect(() => {
     if (showPrompt && !defaults) dispatch(loadBalancePrompt());
@@ -94,15 +97,15 @@ export const RequestForm: FC<Props> = ({
             value={draft.knownData}
             aria-label="Свои данные"
             placeholder="Например: выход риформата 86% по данным завода; нафта фракции 85–180 °C; давление 1,5 МПа"
-            onChange={(e) => dispatch(setBalanceDraft({ knownData: e.target.value }))}
+            onChange={(e) => dispatch(setBalanceKnownData(e.target.value))}
           />
           <p className={styles.note}>
             Что вы знаете сами: выход или конверсию, состав сырья, расход
-            реагента, условия процесса, данные своего завода. Текст уходит
-            модели разделом «Известные данные»: она считает с ним наравне с
-            найденными источниками и в расчёте пишет, где его применила. С
-            ними расчёт всегда идёт к модели заново — готовое из базы не
-            берётся.
+            реагента, соотношение сырья, условия процесса, данные своего
+            завода. Текст уходит модели разделом «Известные данные»: она
+            считает с ним наравне с найденными источниками и в расчёте пишет,
+            где его применила. С ними расчёт всегда идёт к модели заново —
+            готовое из базы не берётся.
           </p>
         </div>
       )}
@@ -139,8 +142,8 @@ export const RequestForm: FC<Props> = ({
             </button>
           )}
           <label className={styles.fieldLabel} htmlFor="mb-template">
-            Шаблон запроса — {"<<<…>>>"} сервер заполнит продуктами,
-            количеством сырья и контекстом
+            Шаблон запроса — {"<<<…>>>"} сервер заполнит сырьём и продуктами,
+            количеством опорного сырья и контекстом
           </label>
           <textarea
             id="mb-template"
@@ -176,7 +179,8 @@ export const RequestForm: FC<Props> = ({
       {(lookup?.similar ?? []).slice(0, 3).map((s) => (
         <div key={s.id} className={styles.hint}>
           <span>
-            В базе — расчёт этой пары по технологии «{s.transformation}»,{" "}
+            В базе — расчёт «{s.title ?? `${s.transformation} → ${s.target}`}»
+            {s.kind === "transformation" ? "" : " (прежний, одной пары)"},{" "}
             {STATUS_TEXT[s.status].toLowerCase()}, {formatWhen(s.createdAt)}.
           </span>
           <button
@@ -191,9 +195,9 @@ export const RequestForm: FC<Props> = ({
 
       {again && (
         <p className={styles.note}>
-          Новый расчёт заменит текущий расчёт этой пары: модель заново ищет
-          источники, и числа могут отличаться. Количество и единицу можно
-          менять и без нового расчёта.
+          Эти продукты уже посчитаны — новый расчёт заменит прежний: модель
+          заново ищет источники, и числа могут отличаться. Количество сырья
+          можно менять и без нового расчёта — в открытом расчёте.
         </p>
       )}
 
@@ -201,7 +205,8 @@ export const RequestForm: FC<Props> = ({
         <button
           type="button"
           className={styles.primary}
-          disabled={running || promptEmpty}
+          disabled={running || promptEmpty || !hasBasis || !targets.length}
+          title={hasBasis ? undefined : "Задайте количество хотя бы одного сырья"}
           onClick={() => dispatch(runMaterialBalance({ force: again }))}
         >
           {again ? "Рассчитать заново" : "Рассчитать"}

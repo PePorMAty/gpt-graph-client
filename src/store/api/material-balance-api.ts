@@ -4,11 +4,12 @@
 // сервере (routes/material-balance, MATERIAL-BALANCE.md в репозитории
 // сервера).
 //
-// Вопрос к модели — сколько продукта получится из сырья. Модель всегда
-// считает на 1 т сырья, а пересчёт на любое количество и единицу делает
-// клиент (utils/materialBalance.ts): массы пропорциональны. Расчёт идёт
-// минуты, поэтому сервер считает в фоне, а клиент спрашивает ход по номеру
-// задачи.
+// Расчёт — преобразование целиком: всё его сырьё и выбранные продукты, на
+// количество одного (опорного) сырья. Каждый продукт модель считает
+// отдельно, запрос и запись в базе — одни. Другое количество любого сырья
+// клиент пересчитывает сам (utils/materialBalance.ts): массы
+// пропорциональны. Расчёт идёт минуты, поэтому сервер считает в фоне, а
+// клиент спрашивает ход по номеру задачи.
 
 import axios from "axios";
 
@@ -30,16 +31,20 @@ export type BalanceStatus =
   | "unknown";
 
 /**
- * Обозначения узлов в запросе к модели: P1 — сырьё, P2 — продукт, P3… —
- * остальные входы и выходы, T1 — преобразование.
+ * Обозначения узлов в запросе к модели: P1 — опорное сырьё (basis), P2 —
+ * первый продукт расчёта (target), дальше прочее сырьё (input), прочие
+ * продукты расчёта (target) и невыбранные выходы (output); T1 —
+ * преобразование. У прежних расчётов пары продукт один — P2.
  */
 export interface BalanceRef {
   ref: string;
   name: string;
   role: "basis" | "target" | "input" | "output" | "transformation";
+  /** Узел графа, на котором считали (у расчётов новых версий). */
+  id?: string;
 }
 
-/** Строка «Результатов по продуктам»: масса на 1 т сырья. */
+/** Строка «Результатов по продуктам»: масса на количество, с которым считали. */
 export interface BalanceProduct {
   ref: string | null;
   name: string;
@@ -61,7 +66,7 @@ export interface BalanceCoefficient {
   source: string;
 }
 
-/** Внешний поток участка: вход или выход, масса на 1 т сырья. */
+/** Внешний поток участка: вход или выход, масса на количество, с которым считали. */
 export interface BalanceFlow {
   name: string;
   direction: "in" | "out" | "";
@@ -81,15 +86,47 @@ export interface BalanceSource {
   block: string;
 }
 
+/** Поле стадии «Расчёта по преобразованиям»: «Коэффициенты», «Расчёт»… */
+export interface BalanceStepField {
+  label: string;
+  text: string;
+}
+
+/** Раздел «## 1. А + Б → В + Г» — одно преобразование. */
+export interface BalanceStep {
+  title: string;
+  fields: BalanceStepField[];
+  body: string;
+}
+
+/** Количество опорного сырья, с которым считала модель. */
+export interface BalanceBasisAmount {
+  amount: number;
+  unit: string;
+  kg: number;
+}
+
 /** Краткая запись базы — для подсказок «есть в базе». */
 export interface BalanceSummary {
   id: number;
   createdAt: string;
   model: string | null;
+  /**
+   * transformation — преобразование целиком; pair (и нет поля) — прежний
+   * расчёт пары «сырьё → продукт» на 1 т сырья.
+   */
+  kind?: "transformation" | "pair";
+  /** «Преобразование → Продукт 1, Продукт 2» — для каких продуктов посчитано. */
+  title?: string;
   transformation: string;
-  /** Сырьё пары (P1). */
+  /** Сырьё расчёта, опорное первым. */
+  inputs?: string[];
+  /** Продукты расчёта. */
+  targets?: string[];
+  basisAmount?: BalanceBasisAmount | null;
+  /** Опорное сырьё (P1). */
   basis: string;
-  /** Продукт пары (P2). */
+  /** Первый продукт (P2). */
   target: string;
   status: BalanceStatus;
   statusLabel: string;
@@ -106,7 +143,10 @@ export interface BalanceRecord extends BalanceSummary {
   basisText: string | null;
   nature: string | null;
   products: BalanceProduct[];
+  /** Таблица прежнего промпта; у новых расчётов пусто. */
   coefficients: BalanceCoefficient[];
+  /** Расчёт по преобразованиям по полям (у прежних расчётов может не быть). */
+  steps?: BalanceStep[];
   flows: BalanceFlow[];
   totals: {
     input: string | null;
@@ -129,12 +169,14 @@ export interface BalanceNodeRef {
 
 export interface StartBalanceBody {
   transformation: BalanceNodeRef;
-  /** Сырьё пары (P1). */
-  basis: BalanceNodeRef;
-  /** Продукт пары (P2). */
-  target: BalanceNodeRef;
+  /** Всё сырьё преобразования. */
   inputs: BalanceNodeRef[];
+  /** Все его продукты. */
   outputs: BalanceNodeRef[];
+  /** Продукты, для которых считать (id узлов). */
+  targets: string[];
+  /** Опорное сырьё и его количество. */
+  basis: { id: string; amount: number; unit: string };
   knownData?: string;
   system?: string;
   template?: string;
@@ -144,7 +186,11 @@ export interface StartBalanceBody {
 }
 
 export type StartBalanceResult =
-  | { fromCache: true; result: BalanceRecord }
+  /**
+   * Готовый расчёт из базы. nodeIds — узлы этого запроса по его
+   * обозначениям: расчёт мог быть сделан на другом графе.
+   */
+  | { fromCache: true; result: BalanceRecord; nodeIds?: Record<string, string> }
   | { fromCache?: false; jobId: string; startedAt: string };
 
 export interface BalanceJob {
@@ -161,7 +207,7 @@ export interface BalancePrompt {
   system: string;
   template: string;
   placeholders: string[];
-  basisKg: number;
+  units?: string[];
 }
 
 /** Текст ошибки сервера, если он есть, — он объясняет, что не так. */
@@ -183,11 +229,14 @@ export async function fetchBalancePrompt(): Promise<BalancePrompt> {
   }
 }
 
-/** Готовые расчёты пары в базе: точное совпадение и похожие. */
+/**
+ * Готовые расчёты в базе: точное совпадение (та же технология, то же сырьё,
+ * те же продукты) и похожие.
+ */
 export async function lookupBalance(body: {
   transformation: string;
-  basis: string;
-  target: string;
+  inputs: string[];
+  targets: string[];
 }): Promise<{ exact: BalanceSummary | null; similar: BalanceSummary[] }> {
   try {
     const { data } = await axios.post(`${API()}/lookup`, body);
@@ -203,7 +252,11 @@ export async function startBalance(
   try {
     const { data } = await axios.post(API(), body);
     return data.fromCache
-      ? { fromCache: true, result: data.result as BalanceRecord }
+      ? {
+          fromCache: true,
+          result: data.result as BalanceRecord,
+          ...(data.nodeIds ? { nodeIds: data.nodeIds as Record<string, string> } : {}),
+        }
       : { jobId: data.jobId as string, startedAt: data.startedAt as string };
   } catch (e) {
     throw serverError(e, "Не удалось запустить расчёт");

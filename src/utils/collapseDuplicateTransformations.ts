@@ -25,6 +25,7 @@ import type { CustomNode } from "../types";
 import { alternativeKey } from "./parseAlternatives";
 import { normalizeProductName } from "./normalizeProductName";
 import { inferTFlow, productTransformationEnds, tFlowOf } from "./edgeFlow";
+import { calcKey, type MaterialBalanceCalc } from "./materialBalance";
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
@@ -169,15 +170,12 @@ export function collapseDuplicateTransformations(
     extra.set(into, acc);
   }
   // Расчёты материального баланса — не «добрать, если пусто», а сложить: у
-  // каждого дубля свои. T1 в них теперь — оставленный узел. На пару «сырьё →
-  // продукт» у преобразования хранится один расчёт — остаётся свежий;
-  // расчёты «вверх» недолгой версии с направлениями отбрасываются.
-  type Calc = {
-    record?: { id?: number; direction?: string };
-    addedAt?: string;
-    nodeIds?: Record<string, string>;
-  };
-  const keyOf = (c: Calc) => `${c.nodeIds?.P1 ?? ""}|${c.nodeIds?.P2 ?? ""}`;
+  // каждого дубля свои. T1 в них теперь — оставленный узел. На набор
+  // продуктов (у прежних расчётов — на пару «сырьё → продукт») у
+  // преобразования хранится один расчёт — остаётся свежий; расчёты «вверх»
+  // недолгой версии с направлениями отбрасываются.
+  type Calc = MaterialBalanceCalc & { record: { direction?: string } };
+  const keyOf = (c: Calc) => calcKey(c);
   for (const id of dropped) {
     const own = byId.get(id)?.data?.materialBalances;
     if (!Array.isArray(own) || !own.length) continue;
