@@ -267,6 +267,43 @@ export const fetchStepSourcesV2 = createAsyncThunk<
   }
 });
 
+/**
+ * GET /graphs/gpt/step/aggregate/prompt — промпт обобщения по умолчанию для
+ * направления: системная часть и шаблон с плейсхолдерами <<<…>>>. Нужен окну
+ * «Редактировать промпт обобщения». Промпт за сеанс не меняется — запрос один
+ * на направление; неудачный повторится при следующем открытии.
+ */
+const aggregatePromptCache = new Map<
+  BuildDirection,
+  Promise<{ system: string; template: string }>
+>();
+
+export function fetchStepAggregatePrompt(
+  direction: BuildDirection,
+): Promise<{ system: string; template: string }> {
+  const cached = aggregatePromptCache.get(direction);
+  if (cached) return cached;
+  const request = axios
+    .get(`${import.meta.env.VITE_API_URL}/graphs/gpt/step/aggregate/prompt`, {
+      params: { direction },
+    })
+    .then(({ data }) => {
+      if (
+        typeof data?.system !== "string" ||
+        typeof data?.template !== "string"
+      ) {
+        throw new Error("Сервер не прислал промпт обобщения");
+      }
+      return {
+        system: data.system as string,
+        template: data.template as string,
+      };
+    });
+  aggregatePromptCache.set(direction, request);
+  request.catch(() => aggregatePromptCache.delete(direction));
+  return request;
+}
+
 export type StepAggregateApiResponse = {
   success: boolean;
   status?: "ready" | "needs-sources";

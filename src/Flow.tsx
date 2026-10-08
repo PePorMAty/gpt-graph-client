@@ -2659,14 +2659,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           ? stepSession.steps[stepSession.steps.length - 1]
           : null;
 
+      // Продолжать можно только от продуктов дальней стороны: второе сырьё и
+      // попутный продукт шага (sideProductNodeIds) — не продолжение цепочки.
+      const continueIds = lastStep
+        ? [
+            ...lastStep.newProductNodeIds,
+            ...lastStep.mergedProductNodeIds,
+          ].filter((id) => !lastStep.sideProductNodeIds?.includes(id))
+        : [];
       const branchOptions =
-        lastStep &&
-        [...lastStep.newProductNodeIds, ...lastStep.mergedProductNodeIds]
-          .length > 1
-          ? [
-              ...lastStep.newProductNodeIds,
-              ...lastStep.mergedProductNodeIds,
-            ].map((id) => ({
+        continueIds.length > 1
+          ? continueIds.map((id) => ({
               nodeId: id,
               label:
                 data.nodes.find((n) => n.id === id)?.data?.label || id,

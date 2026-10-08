@@ -457,6 +457,10 @@ export interface StepRecord {
   transformationNodeId: string;
   newProductNodeIds: string[];
   mergedProductNodeIds: string[];
+  // Продукты стороны якоря — новые и существующие: второе сырьё шага «вниз»
+  // (А + В → Б) и попутный продукт шага «вверх». Цепочка от них дальше не
+  // идёт, и источники якоря им не передаются. В старых сессиях поля нет.
+  sideProductNodeIds?: string[];
   addedEdgeIds: string[];
   // Выходы, которые замкнули бы петлю на предка — НЕ нарисованы (см. stepToFlow).
   cycleProductNames?: string[];

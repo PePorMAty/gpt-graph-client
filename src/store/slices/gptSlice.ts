@@ -878,13 +878,18 @@ const gptSlice = createSlice({
 
       session.steps.push(stepRecord);
 
+      // Продукты стороны якоря — второе сырьё шага «вниз» и попутный продукт
+      // шага «вверх»: цепочка от них дальше не идёт, и источники якоря им не
+      // подходят — те описывают передел самого якоря.
+      const sideIds = new Set(stepRecord.sideProductNodeIds ?? []);
+
       // Update current product node for next step
       if (selectedContinueProductNodeId) {
         session.currentProductNodeId = selectedContinueProductNodeId;
       } else {
         session.currentProductNodeId =
-          stepRecord.newProductNodeIds[0] ??
-          stepRecord.mergedProductNodeIds[0] ??
+          stepRecord.newProductNodeIds.find((id) => !sideIds.has(id)) ??
+          stepRecord.mergedProductNodeIds.find((id) => !sideIds.has(id)) ??
           session.currentProductNodeId;
       }
 
@@ -908,7 +913,7 @@ const gptSlice = createSlice({
         const allNewNodeIds = [
           ...stepRecord.newProductNodeIds,
           ...stepRecord.mergedProductNodeIds,
-        ];
+        ].filter((id) => !sideIds.has(id));
         for (const nid of allNewNodeIds) {
           const newNode = state.data.nodes.find((n) => n.id === nid);
           const newLabel =

@@ -4,9 +4,10 @@ import { StepPreviewModal } from "./StepPreviewModal";
 import { MarkdownEditor } from "../markdown-editor";
 import { getDefaultStepSourcesPrompt } from "../../prompts/sourcesPrompt";
 import {
-  getDefaultStepAggregateFullPrompt,
+  joinStepAggregatePrompt,
   splitStepAggregatePrompt,
 } from "../../prompts/aggregatePrompt";
+import { fetchStepAggregatePrompt } from "../../store/api/step-chain-api";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
@@ -206,16 +207,48 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";
 
   // ── Aggregate prompt state ──
+  // Промпт по умолчанию — с сервера, по направлению: сервер им и обобщает.
+  // Загружается, когда окно промпта открыто; без правки обобщение идёт с
+  // промптом сервера, даже если загрузить его не удалось.
   const [aggPromptOpen, setAggPromptOpen] = useState(false);
   const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
+  const [loadedAggPrompt, setLoadedAggPrompt] = useState<{
+    direction: typeof direction;
+    text: string;
+  } | null>(null);
+  const [aggPromptError, setAggPromptError] = useState<string | null>(null);
 
-  const autoAggPrompt = useMemo(
-    () => getDefaultStepAggregateFullPrompt(direction, productName),
-    [direction, productName],
-  );
-  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
+  const autoAggPrompt =
+    loadedAggPrompt?.direction === direction ? loadedAggPrompt.text : null;
+
+  useEffect(() => {
+    if (!aggPromptOpen || autoAggPrompt !== null) return;
+    let alive = true;
+    setAggPromptError(null);
+    fetchStepAggregatePrompt(direction)
+      .then(({ system, template }) => {
+        if (alive) {
+          setLoadedAggPrompt({
+            direction,
+            text: joinStepAggregatePrompt(system, template),
+          });
+        }
+      })
+      .catch((e: unknown) => {
+        if (alive) {
+          setAggPromptError(
+            e instanceof Error ? e.message : "Сервер не ответил",
+          );
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [aggPromptOpen, autoAggPrompt, direction]);
+
+  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt ?? "";
   const isAggPromptDirty = manualAggPrompt !== null;
-  const isAggPromptEmpty = displayedAggPrompt.trim() === "";
+  const isAggPromptEmpty = isAggPromptDirty && displayedAggPrompt.trim() === "";
 
   // ── Build prompt state ──
   const [buildPromptOpen, setBuildPromptOpen] = useState(false);
@@ -722,7 +755,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 onChange={(e) => setManualAggPrompt(e.target.value)}
                 className={styles.promptTextarea}
                 rows={12}
+                disabled={!isAggPromptDirty && autoAggPrompt === null}
+                placeholder={
+                  aggPromptError ? "" : "Загружаю промпт с сервера…"
+                }
               />
+              {!isAggPromptDirty && aggPromptError && (
+                <div className={styles.errorText}>
+                  Не удалось загрузить промпт: {readableReason(aggPromptError)}.
+                  Обобщение всё равно пойдёт с промптом сервера.
+                </div>
+              )}
               {isAggPromptDirty && (
                 <button
                   type="button"

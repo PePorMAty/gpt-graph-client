@@ -263,6 +263,7 @@ export function stepToFlow(
   const edges: Edge[] = [];
   const newProductNodeIds: string[] = [];
   const mergedProductNodeIds: string[] = [];
+  const sideProductNodeIds: string[] = [];
   const addedEdgeIds: string[] = [];
 
   // --- 4) узел-трансформация (новый или переиспользуемый, см. 2б) ---
@@ -358,6 +359,7 @@ export function stepToFlow(
       // 2026-10-05) — раньше он цеплялся к верху, как сырьё.
       if (linked.has(existingNodeId)) return;
       mergedProductNodeIds.push(existingNodeId);
+      if (!isFar) sideProductNodeIds.push(existingNodeId);
       link(existingNodeId);
     } else {
       // Новый продукт — узел + ребро
@@ -405,6 +407,7 @@ export function stepToFlow(
       };
       (isFar ? nodes : nearNodes).push(node);
       newProductNodeIds.push(pFlowId);
+      if (!isFar) sideProductNodeIds.push(pFlowId);
       link(pFlowId);
     }
   });
@@ -445,6 +448,7 @@ export function stepToFlow(
     transformationNodeId: trFlowId,
     newProductNodeIds,
     mergedProductNodeIds,
+    ...(sideProductNodeIds.length ? { sideProductNodeIds } : {}),
     addedEdgeIds,
     cycleProductNames,
     isDeadEnd: false,
