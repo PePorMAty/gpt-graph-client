@@ -115,10 +115,12 @@
   font-weight: var(--fw-semibold);
 }
 
-/* Первый столбец — короткие названия: не переносить их по буквам. */
-.article td:first-child,
-.article th:first-child {
-  min-width: 9em;
+/* Слова в ячейках не рвать по буквам («Матери альный»): общий стиль Markdown
+   разрешает перенос где угодно, а таблице надо мерить столбцы по словам. */
+.article th,
+.article td {
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .article h2 {
