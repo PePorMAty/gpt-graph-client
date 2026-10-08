@@ -178,9 +178,18 @@ export interface BalanceRecord extends BalanceSummary {
   sources: BalanceSource[];
   /**
    * Итоги серверной проверки источников: rounds — сколько раз спрашивали
-   * модель (2 — заменяла незагрузившиеся), local — разделов базы источников.
+   * модель (2 — второй ответ принят), local — разделов базы источников.
+   * retry — был второй запрос: сколько источников не загрузилось, для чего
+   * не было масс (модель искала это в интернете) и принят ли второй ответ
+   * (used: false — он оказался хуже, остался первый).
    */
-  sourceChecks?: { rounds: number; saved: number; failed: number; local: number };
+  sourceChecks?: {
+    rounds: number;
+    saved: number;
+    failed: number;
+    local: number;
+    retry?: { failed: number; missing: string[]; used: boolean };
+  };
   sections: { transitions: string; balance: string; notes: string };
   /** Ответ модели целиком (Markdown). */
   answer: string;

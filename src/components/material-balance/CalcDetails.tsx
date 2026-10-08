@@ -27,6 +27,7 @@ import {
   type BalanceStatus,
 } from "../../store/api/material-balance-api";
 import { sourceHref } from "../../store/api/local-sources-api";
+import { plural } from "../../utils/plural";
 import md from "../markdown-editor/MarkdownEditor.module.css";
 import styles from "./MaterialBalance.module.css";
 
@@ -129,8 +130,32 @@ function checksText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]
     c.saved ? `${c.saved} загружены и сохранены сервером` : null,
     c.failed ? `${c.failed} сервер подтвердить не смог` : null,
   ].filter(Boolean);
-  const retry = c.rounds > 1 ? " Часть источников не загрузилась — модель заменила их вторым запросом." : "";
+  const retry = retryText(c);
   return parts.length ? `Источники: ${parts.join(", ")}.${retry}` : retry.trim();
+}
+
+/** Был ли второй запрос к модели и зачем. */
+function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>): string {
+  const r = c.retry;
+  // Расчёты до этой версии: второй круг был только из-за незагрузившихся.
+  if (!r) return c.rounds > 1 ? " Часть источников не загрузилась — модель заменила их вторым запросом." : "";
+  const why = [
+    r.failed
+      ? `${r.failed} ${plural(r.failed, "источник не загрузился", "источника не загрузились", "источников не загрузились")}`
+      : null,
+    r.missing.length ? `не было данных для ${r.missing.map((n) => `«${n}»`).join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const sought =
+    r.failed && r.missing.length
+      ? "модель искала замену и недостающее в интернете"
+      : r.failed
+        ? "модель искала замену"
+        : "модель искала их в интернете";
+  return r.used
+    ? ` В первом ответе ${why} — ${sought} вторым запросом.`
+    : ` В первом ответе ${why}; второй запрос данных не добавил — показан первый ответ.`;
 }
 
 function tookText(ms: number | null | undefined): string {

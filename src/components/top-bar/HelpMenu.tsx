@@ -81,7 +81,6 @@ export const HelpMenu = () => {
           >
             <BookIcon size={16} />
             Руководство пользователя
-            <span className={styles.guideNote}>в новой вкладке</span>
           </a>
         </div>
       )}

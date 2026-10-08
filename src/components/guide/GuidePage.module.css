@@ -1,10 +1,17 @@
 /* Руководство пользователя: шапка, оглавление слева, текст справа. На узком
    экране оглавление уходит над текстом. */
 
+/* Страница прокручивается сама: у body приложения overflow: hidden. */
 .page {
-  min-height: 100vh;
+  height: 100%;
+  overflow-y: auto;
+  scroll-behavior: smooth;
   background: var(--c-app);
   color: var(--c-text);
+}
+
+.page:focus {
+  outline: none;
 }
 
 .header {
@@ -69,20 +76,27 @@
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.toc li {
-  margin: 0 0 var(--s-1);
+  border-left: 2px solid var(--c-border-soft);
 }
 
 .toc a {
+  display: block;
+  margin-left: -2px;
+  padding: 4px 0 4px var(--s-3);
+  border-left: 2px solid transparent;
   color: var(--c-text-soft);
   text-decoration: none;
 }
 
 .toc a:hover {
   color: var(--c-brand);
-  text-decoration: underline;
+}
+
+/* Текущий раздел: по нему щёлкнули или до него докрутили. */
+.toc a.tocActive {
+  border-left-color: var(--c-brand);
+  color: var(--c-brand-strong);
+  font-weight: var(--fw-semibold);
 }
 
 .article {
@@ -121,6 +135,22 @@
 .article td {
   word-break: normal;
   overflow-wrap: normal;
+}
+
+/* Схема в тексте («Что на экране»). */
+.diagram {
+  display: block;
+  margin: var(--s-3) 0 var(--s-4);
+  padding: var(--s-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+
+.diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .article h2 {
