@@ -180,16 +180,25 @@ export interface BalanceRecord extends BalanceSummary {
    * Итоги серверной проверки источников: rounds — сколько раз спрашивали
    * модель (2 — второй ответ принят), local — разделов базы источников.
    * retry — был второй запрос: сколько источников не загрузилось, для чего
-   * не было масс (модель искала это в интернете) и принят ли второй ответ
-   * (used: false — он оказался хуже, остался первый).
+   * не было масс и принят ли второй ответ (used: false — он оказался хуже,
+   * остался первый). search — недостающее сервер искал в интернете сам:
+   * сколько источников нашёл, сколько подтвердил (числа есть на странице),
+   * ошибка поиска.
    */
   sourceChecks?: {
     rounds: number;
     saved: number;
     failed: number;
     local: number;
-    retry?: { failed: number; missing: string[]; used: boolean };
+    retry?: {
+      failed: number;
+      missing: string[];
+      used: boolean;
+      search?: { sources: number; confirmed: number; error?: string };
+    };
   };
+  /** Провайдер отверг поиск в интернете, и модель считала без него. */
+  searchOff?: boolean;
   sections: { transitions: string; balance: string; notes: string };
   /** Ответ модели целиком (Markdown). */
   answer: string;

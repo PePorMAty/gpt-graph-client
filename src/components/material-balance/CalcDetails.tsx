@@ -134,7 +134,7 @@ function checksText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]
   return parts.length ? `Источники: ${parts.join(", ")}.${retry}` : retry.trim();
 }
 
-/** Был ли второй запрос к модели и зачем. */
+/** Был ли второй запрос к модели и зачем; что нашёл сервер в интернете. */
 function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>): string {
   const r = c.retry;
   // Расчёты до этой версии: второй круг был только из-за незагрузившихся.
@@ -147,15 +147,22 @@ function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>
   ]
     .filter(Boolean)
     .join(", ");
-  const sought =
-    r.failed && r.missing.length
-      ? "модель искала замену и недостающее в интернете"
-      : r.failed
-        ? "модель искала замену"
-        : "модель искала их в интернете";
+  const s = r.search;
+  const searched = !s
+    ? r.missing.length
+      ? " Модель искала их в интернете вторым запросом."
+      : ""
+    : s.error
+      ? ` Поиск в интернете сервером не удался: ${s.error}`
+      : s.confirmed
+        ? ` Сервер нашёл в интернете ${s.sources} ${plural(s.sources, "источник", "источника", "источников")}, подтвердил ${s.confirmed} (числа есть на странице) и отдал модели.`
+        : s.sources
+          ? ` Сервер нашёл в интернете ${s.sources} ${plural(s.sources, "источник", "источника", "источников")}, но чисел из них на страницах нет — модели не отданы.`
+          : " Сервер искал в интернете, но ничего не нашёл.";
+  const replaced = r.failed ? " Незагрузившиеся модель заменяла вторым запросом." : "";
   return r.used
-    ? ` В первом ответе ${why} — ${sought} вторым запросом.`
-    : ` В первом ответе ${why}; второй запрос данных не добавил — показан первый ответ.`;
+    ? ` В первом ответе ${why}.${searched}${replaced} Показан второй ответ модели.`
+    : ` В первом ответе ${why}.${searched} Второй ответ модели оказался не полнее — показан первый.`;
 }
 
 function tookText(ms: number | null | undefined): string {
@@ -226,6 +233,13 @@ export const CalcDetails: FC<Props> = ({
         {reason && (
           <p className={styles.reason}>
             <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
+          </p>
+        )}
+        {record.searchOff && (
+          <p className={styles.reason}>
+            <b>Модель считала без поиска в интернете:</b> провайдер отверг для неё
+            поиск. Данные — только из базы источников и знаний модели; для
+            расчёта с поиском выберите другую модель в «Промпт и модель».
           </p>
         )}
         {record.sourceChecks && (
