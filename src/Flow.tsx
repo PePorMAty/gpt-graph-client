@@ -124,6 +124,7 @@ import {
 import { previewStepOutcome } from "./utils/stepToFlow";
 import { getAncestorProductLabels } from "./utils/graphReachability";
 import { isRecycleEdge } from "./utils/recycleEdge";
+import { alternativeRouteText } from "./utils/transformationRoutesView";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
 import { normalizeSourceUrl, sourceUrlKey } from "./utils/sourceUrl";
@@ -253,6 +254,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // --- keep a live ref so timeouts always see the latest nodes ---
   const nodesRef = useRef(data.nodes);
   nodesRef.current = data.nodes;
+  // Текст, из которого строили альтернативу (по id её узла), — для вкладки
+  // «Технологические маршруты» преобразования, когда шаг примут.
+  const altBuiltText = useRef(new Map<string, string>());
 
   // stable key that changes only when the SET of node IDs changes
   const nodeIdsKey = useMemo(
@@ -2994,6 +2998,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             provider?: string,
             model?: string,
           ) => {
+            // Текст, из которого строим (с правкой в окне, если была), —
+            // он же ляжет во вкладку «Технологические маршруты» преобразования.
+            const altText = customText || altDesc;
+            altBuiltText.current.set(altNodeId, altText);
             // Сессия построения этой альтернативы: шаг — от продукта.
             dispatch(
               initStepChainSession({
@@ -3012,7 +3020,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 statusNodeId: altNodeId,
                 productName: rootProductName,
                 direction,
-                techText: customText || altDesc,
+                techText: altText,
                 existingSources: poolSrcs.length ? poolSrcs : undefined,
                 ...(customSystemPrompt ? { customSystemPrompt } : {}),
                 // Выбор провайдера/модели из панели: раньше override для
@@ -3050,6 +3058,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               fullDescription: altDesc,
               title: String(selectedNode?.data?.label ?? ""),
             });
+            // Описание альтернативы — во вкладку «Технологические маршруты»
+            // нового преобразования, как обобщение у обычного шага.
+            const routeText = alternativeRouteText(
+              String(selectedNode?.data?.label ?? ""),
+              altBuiltText.current.get(altNodeId) ?? altDesc,
+            );
             dispatch(
               acceptPendingStep({
                 sessionKey: sKey,
@@ -3058,6 +3072,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 filteredStep,
                 isAlternativeFirstStep: true,
                 ...(altAcceptKey ? { altAcceptKey } : {}),
+                ...(routeText ? { anchorAggregatedText: routeText } : {}),
               }),
             );
             dispatch(resetStepBuild({ nodeId: altNodeId, direction }));

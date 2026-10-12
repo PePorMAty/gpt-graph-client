@@ -99,3 +99,18 @@ export function toTransformationRoutesView(markdown: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+/**
+ * Обобщённое описание шага, построенного из альтернативы, — для вкладки
+ * «Технологические маршруты» его преобразования. Это раздел альтернативы
+ * («## Альтернатива: …» и её поля) — тот текст, из которого шаг строили, —
+ * оформленный как путь со своим шагом, как основной путь у обычного шага.
+ */
+export function alternativeRouteText(title: string, description: string): string {
+  const body = (description ?? "")
+    .replace(/^#{1,6}\s*Альтернатива:[^\n]*\n?/m, "")
+    .trim();
+  if (!body) return "";
+  const name = title.trim();
+  return `# Альтернативный путь${name ? `: ${name}` : ""}\n\n## Шаг\n\n${body}`;
+}
