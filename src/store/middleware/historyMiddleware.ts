@@ -146,7 +146,11 @@ function describe(
       // базы) или убран. Смена базиса показа — не событие.
       if ("materialBalances" in p.data) {
         type Calc = {
-          record?: { id?: number };
+          record?: {
+            id?: number;
+            kind?: string;
+            refs?: Array<{ ref: string; name: string; role: string }>;
+          };
           fromCache?: boolean;
           nodeIds?: Record<string, string>;
         };
@@ -156,8 +160,14 @@ function describe(
         const idsOf = (l: Calc[]) => new Set(l.map((c) => c.record?.id));
         const added = after.filter((c) => !idsOf(before).has(c.record?.id));
         const removed = before.filter((c) => !idsOf(after).has(c.record?.id));
+        // Расчёт преобразования — «→ продукты»; прежний расчёт пары — пара.
         const pair = (c: Calc) =>
-          `${labelOf(prevNodes, c.nodeIds?.P1 ?? "")} → ${labelOf(prevNodes, c.nodeIds?.P2 ?? "")}`;
+          c.record?.kind === "transformation"
+            ? `→ ${(c.record.refs ?? [])
+                .filter((r) => r.role === "target")
+                .map((r) => labelOf(prevNodes, c.nodeIds?.[r.ref] ?? "") || r.name)
+                .join(", ")}`
+            : `${labelOf(prevNodes, c.nodeIds?.P1 ?? "")} → ${labelOf(prevNodes, c.nodeIds?.P2 ?? "")}`;
         const changed = added[0] ?? removed[0];
         if (!changed) return null;
         return {

@@ -1,8 +1,9 @@
 // src/store/api/graph-extras-api.ts
 //
-// Закладки и история сохранённого графа. На сервере это отдельные ресурсы рядом
-// с файлом графа, а не часть его содержимого: закладку ставят на лету, и она
-// должна пережить перезагрузку вкладки, даже если сам граф ещё не сохраняли.
+// Закладки, история и расчёты материального баланса сохранённого графа. На
+// сервере это отдельные ресурсы рядом с файлом графа, а не часть его
+// содержимого: закладку ставят на лету, расчёт приходит через минуты, и они
+// должны пережить перезагрузку вкладки, даже если сам граф ещё не сохраняли.
 //
 // Всё здесь работает только для графа, у которого есть id на сервере
 // (savedGraphs.openedGraphId). Пока полотно не сохранено, закладки и история
@@ -119,4 +120,34 @@ export function beaconHistory(
   } catch {
     return false;
   }
+}
+
+/* ================== РАСЧЁТЫ МАТЕРИАЛЬНОГО БАЛАНСА ================== */
+
+/**
+ * Расчёты баланса по узлам преобразований: { id узла: список расчётов }.
+ * Узел с пустым списком — расчёты с него убраны после сохранения графа.
+ */
+export async function fetchMaterialBalances(
+  graphId: string,
+): Promise<Record<string, unknown[]>> {
+  const { data } = await axios.get(
+    `${base()}/graph-files/${encodeURIComponent(graphId)}/material-balances`,
+  );
+  const items = data?.data;
+  return items && typeof items === "object" && !Array.isArray(items)
+    ? items
+    : {};
+}
+
+/** Записать список расчётов узла целиком. */
+export async function putMaterialBalances(
+  graphId: string,
+  nodeId: string,
+  calcs: unknown[],
+): Promise<void> {
+  await axios.put(
+    `${base()}/graph-files/${encodeURIComponent(graphId)}/material-balances/${encodeURIComponent(nodeId)}`,
+    { calcs },
+  );
 }

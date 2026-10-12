@@ -216,7 +216,7 @@ export function readableRecord(record: BalanceRecord): BalanceRecord {
       label: r(p.label),
       basis: r(p.basis),
     })),
-    coefficients: record.coefficients.map((c) => ({
+    coefficients: (record.coefficients ?? []).map((c) => ({
       ...c,
       indicator: r(c.indicator),
       valueText: r(c.valueText),
@@ -236,6 +236,15 @@ export function readableRecord(record: BalanceRecord): BalanceRecord {
       residual: readable(record.totals.residual) ?? null,
       conclusion: readable(record.totals.conclusion) ?? null,
     },
+    ...(record.steps
+      ? {
+          steps: record.steps.map((st) => ({
+            title: r(st.title),
+            body: r(st.body),
+            fields: st.fields.map((f) => ({ label: f.label, text: r(f.text) })),
+          })),
+        }
+      : {}),
     sources: record.sources.map((s) => ({
       ...s,
       title: r(s.title),

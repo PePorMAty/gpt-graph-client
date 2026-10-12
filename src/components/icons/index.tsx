@@ -404,3 +404,44 @@ export const ArrowDownIcon: Icon = (p) => (
     <path d="M12 5v14M6 13l6 6 6-6" />
   </svg>
 );
+
+/* ───────────────────── Материальный баланс ───────────────────── */
+
+/** Таблица: шапка и строки. */
+export const TableIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10" />
+  </svg>
+);
+
+/** Σ — коэффициенты расчёта. */
+export const SigmaIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M17 5H7l6 7-6 7h10" />
+  </svg>
+);
+
+/** «i» в круге — пояснение. */
+export const InfoIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 11v5" />
+    <path d="M12 7.8v.4" strokeWidth={2.4} />
+  </svg>
+);
+
+/** Лист с текстом — примечания. */
+export const NoteIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M6.5 3.5h8l3 3v14h-11Z" />
+    <path d="M9 10h6M9 13.5h6M9 17h4" />
+  </svg>
+);
+
+/** Стрелка вправо — «перейти». */
+export const ArrowRightIcon: Icon = (p) => (
+  <svg {...base(p)} strokeWidth={2}>
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </svg>
+);

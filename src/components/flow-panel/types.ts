@@ -9,6 +9,9 @@ import type {
 import type { TechChain } from "../../utils/chainToFlow";
 import type { SourceGroup } from "../../utils/sourceRows";
 import type { LinkedProduct } from "../../utils/getLinkedProducts";
+import type { StepOutcome } from "../../utils/stepToFlow";
+
+export type { StepOutcome };
 
 type Status = "idle" | "loading" | "succeeded" | "failed";
 
@@ -127,6 +130,13 @@ export interface DirectionTabProps {
   } | null;
 
   stepAggregatedText?: string | null;
+  /** Родословная продукта: он сам и его предки по построению — шаг не должен вести назад к ним. */
+  stepLineage?: string[];
+  /**
+   * Чем кончится принятие построенного шага (см. stepToFlow): уже есть на
+   * графе — то же преобразование; продукты, которые замкнули бы петлю.
+   */
+  pendingStepOutcome?: StepOutcome | null;
   stepAggregateStatus?: Status;
   stepAggregateError?: string | null;
   stepNeedsSources?: boolean;

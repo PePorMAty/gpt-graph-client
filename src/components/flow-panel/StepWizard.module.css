@@ -679,6 +679,18 @@
   color: var(--c-text-muted);
 }
 
+/* Шаг назад по цепочке — обратная переработка: ляжет связью рециклинга,
+   пунктиром того же цвета (styles/Flow.module.css, .edge--recycle). */
+.recycleNote {
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid #0d9488;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-soft);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+}
+
 /* Стрелка «назад» — та же, что «вверх», повёрнутая влево. */
 .arrowBack {
   transform: rotate(-90deg);

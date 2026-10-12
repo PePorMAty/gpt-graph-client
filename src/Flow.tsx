@@ -4,8 +4,10 @@ import {
   Background,
   ReactFlow,
   ConnectionLineType,
+  MarkerType,
   type Node,
   type OnConnect,
+  type OnConnectEnd,
   type OnReconnect,
   type Edge,
   type NodeChange,
@@ -120,6 +122,10 @@ import {
   dedupeAlternatives,
   alternativeKey,
 } from "./utils/parseAlternatives";
+import { previewStepOutcome } from "./utils/stepToFlow";
+import { getAncestorProductLabels } from "./utils/graphReachability";
+import { isRecycleEdge, recycleArrowAt } from "./utils/recycleEdge";
+import { alternativeRouteText } from "./utils/transformationRoutesView";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
 import { normalizeSourceUrl, sourceUrlKey } from "./utils/sourceUrl";
@@ -128,6 +134,7 @@ import {
   removeBookmark,
 } from "./store/slices/bookmarksSlice";
 import { PaneContextMenu } from "./components/node-context-menu/PaneContextMenu";
+import { ConnectDropMenu } from "./components/node-context-menu/ConnectDropMenu";
 import { EdgeContextMenu } from "./components/node-context-menu/EdgeContextMenu";
 import { EDGE_TYPES } from "./components/edges";
 import { ConfirmDeleteModal } from "./components/confirm-delete-modal";
@@ -155,9 +162,9 @@ import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
 import {
-  draftAmount,
+  draftAmounts,
+  focusBalanceProduct,
   pickBalanceTransformation,
-  selectBalanceTransformation,
   setBalanceActive,
   setBalanceMode,
 } from "./store/slices/materialBalanceSlice";
@@ -170,6 +177,14 @@ import {
 const nodeTypes: NodeTypes = {
   product: ProductNode,
   transformation: TransformationNode,
+};
+
+/** Стрелка связи рециклинга — цветом пунктира (styles/Flow.module.css). */
+const RECYCLE_ARROW = {
+  type: MarkerType.ArrowClosed,
+  color: "#0d9488",
+  width: 20,
+  height: 20,
 };
 
 interface FlowProps {
@@ -248,6 +263,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // --- keep a live ref so timeouts always see the latest nodes ---
   const nodesRef = useRef(data.nodes);
   nodesRef.current = data.nodes;
+  // Текст, из которого строили альтернативу (по id её узла), — для вкладки
+  // «Технологические маршруты» преобразования, когда шаг примут.
+  const altBuiltText = useRef(new Map<string, string>());
 
   // stable key that changes only when the SET of node IDs changes
   const nodeIdsKey = useMemo(
@@ -346,6 +364,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const canvasModeRef = useRef(canvasMode);
   canvasModeRef.current = canvasMode;
   // Меню по правому клику на пустом месте (добавление узла).
+  // Связь отпустили на пустом месте: окно «Связать с…» в точке отпускания.
+  const [connectMenu, setConnectMenu] = useState<{
+    x: number;
+    y: number;
+    fromId: string;
+    direction: "down" | "up";
+  } | null>(null);
   const [paneMenu, setPaneMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -948,13 +973,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // ─── Материальный баланс ───
   // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
-  // расчёта, на узлах — все посчитанные пары (продукт сверху, сырьё снизу),
-  // их связи подсвечены, остальное приглушено (см. utils/materialBalance.ts,
+  // расчёта, по продукту открытого расчёта — расчёт этого продукта. На
+  // узлах — все посчитанные расчёты (продукт сверху, сырьё снизу), их связи
+  // подсвечены, остальное приглушено (см. utils/materialBalance.ts,
   // balanceLayer).
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
-  const balanceDraftAmount = useAppSelector((s) => s.materialBalance.draft.amount);
-  const balanceDraftUnit = useAppSelector((s) => s.materialBalance.draft.unit);
+  const balanceDraft = useAppSelector((s) => s.materialBalance.draft);
   const balanceModeRef = useRef(balanceMode);
   balanceModeRef.current = balanceMode;
   const balanceActiveRef = useRef(balanceActive);
@@ -967,18 +992,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             edges: data.edges,
             selection: balanceSelection,
             active: balanceActive,
-            draft: { amount: draftAmount(balanceDraftAmount), unit: balanceDraftUnit },
+            draft: { amounts: draftAmounts(balanceDraft), targets: balanceDraft.targets },
           })
         : null,
-    [
-      balanceMode,
-      balanceSelection,
-      balanceActive,
-      balanceDraftAmount,
-      balanceDraftUnit,
-      data.nodes,
-      data.edges,
-    ],
+    [balanceMode, balanceSelection, balanceActive, balanceDraft, data.nodes, data.edges],
   );
   // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
   // открывают её, выключенный чип закрывает. Карточка узла занимает то же
@@ -1132,8 +1149,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
     // приглушены (balanceLayer, edges).
     const lit = balance && balance.lit.size > 0 ? balance.lit : null;
-    if (!chainSet && !lit) return baseEdges;
-    return baseEdges.map((e) => {
+    // Связь рециклинга — пунктиром и со стрелкой туда, куда идёт вещество,
+    // откуда бы она ни пришла (шаг, файл, объединение графов).
+    const recycleStyled = (e: (typeof baseEdges)[number]) => {
+      if (!isRecycleEdge(e)) return e;
+      const cls = (e.className ?? "").includes("edge--recycle")
+        ? e.className
+        : [e.className, "edge--recycle"].filter(Boolean).join(" ");
+      const at = recycleArrowAt(e, (id) => nodeTypeById.get(id));
+      return {
+        ...e,
+        className: cls,
+        ...(at === "end" ? { markerEnd: RECYCLE_ARROW } : { markerStart: RECYCLE_ARROW }),
+      };
+    };
+    if (!chainSet && !lit) return baseEdges.map(recycleStyled);
+    return baseEdges.map((raw) => {
+      const e = recycleStyled(raw);
       const existing = e.className ?? "";
       const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
       const extra = [
@@ -1149,7 +1181,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (!extra.length) return e;
       return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
     });
-  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance]);
+  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance, nodeTypeById]);
 
   // Просьба извне вписать граф в экран (открытие графа из библиотеки,
   // объединение). Узлы к моменту события ещё не измерены React Flow, а по
@@ -1294,6 +1326,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         openBalancePanel();
         return;
       }
+      // Продукт открытого расчёта — его подробный расчёт во вкладке. Прочие
+      // продукты открывают карточку, как обычно.
+      if (
+        balanceModeRef.current &&
+        !readOnly &&
+        node.type === "product" &&
+        dispatch(focusBalanceProduct(node.id))
+      ) {
+        setContextMenu(null);
+        openBalancePanel();
+        return;
+      }
       // Фокус-режим: клик по продукту (кроме текущего центра) — шаг
       // навигации, узел становится новым центром. Карточка узла — по клику
       // на сам центр или на преобразование.
@@ -1411,7 +1455,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     setPaneMenu(null);
     setEdgeMenu(null);
     // Щелчок мимо узлов снимает выбор преобразования в режиме баланса.
-    if (balanceModeRef.current) dispatch(selectBalanceTransformation(null));
+    if (balanceModeRef.current) dispatch(pickBalanceTransformation(null));
   }, [dispatch]);
 
   // Правый клик по пустому месту — меню добавления узла. В режиме рамки
@@ -2063,6 +2107,73 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [dispatch, productsOnly, data.edges],
   );
 
+  // Связь отпустили не на точке узла. На теле другого узла — связать с ним
+  // (попасть в точку на краю узла непросто). На пустом месте — окно
+  // «Связать с…»: найти узел по названию, хоть на другом конце полотна,
+  // или создать новый там, где отпустили. От нижней точки связь идёт к
+  // тому, что из узла получают, от верхней — к тому, из чего его получают.
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, state) => {
+      if (state.isValid || state.toNode || !state.fromNode || !state.fromHandle) return;
+      const direction = state.fromHandle.type === "source" ? "down" : "up";
+      const fromId = state.fromNode.id;
+      const point = "changedTouches" in event ? event.changedTouches[0] : event;
+      const el = document.elementFromPoint(point.clientX, point.clientY);
+      const onNode = el?.closest(".react-flow__node")?.getAttribute("data-id");
+      if (onNode) {
+        if (onNode === fromId) return;
+        handleConnect(
+          direction === "down"
+            ? { source: fromId, target: onNode, sourceHandle: "bottom", targetHandle: "top" }
+            : { source: onNode, target: fromId, sourceHandle: "bottom", targetHandle: "top" },
+        );
+        return;
+      }
+      if (!el?.closest(".react-flow__pane")) return;
+      setContextMenu(null);
+      setPaneMenu(null);
+      setConnectMenu({ x: point.clientX, y: point.clientY, fromId, direction });
+    },
+    [handleConnect],
+  );
+
+  /** Связать узел окна «Связать с…» с выбранным или новым. */
+  const connectFromMenu = useCallback(
+    (otherId: string, created: boolean) => {
+      const menu = connectMenu;
+      if (!menu) return;
+      setConnectMenu(null);
+      handleConnect(
+        menu.direction === "down"
+          ? { source: menu.fromId, target: otherId, sourceHandle: "bottom", targetHandle: "top" }
+          : { source: otherId, target: menu.fromId, sourceHandle: "bottom", targetHandle: "top" },
+      );
+      if (created) return;
+      const label = (id: string) =>
+        String(data.nodes.find((n) => n.id === id)?.data?.label ?? "").trim() || "узел";
+      const [a, b] =
+        menu.direction === "down" ? [menu.fromId, otherId] : [otherId, menu.fromId];
+      showToast("success", `Связь «${label(a)}» → «${label(b)}» добавлена`, undefined, {
+        target: { nodeId: otherId, label: label(otherId) },
+      });
+    },
+    [connectMenu, handleConnect, data.nodes],
+  );
+
+  const createFromMenu = useCallback(
+    (type: "product" | "transformation", label: string) => {
+      if (!connectMenu) return;
+      const id = crypto.randomUUID();
+      const at = screenToFlowPosition({ x: connectMenu.x, y: connectMenu.y });
+      // Узел встаёт серединой в точку, где отпустили связь.
+      dispatch(
+        addNode({ type, id, ...(label ? { label } : {}), position: { x: at.x - 100, y: at.y - 25 } }),
+      );
+      connectFromMenu(id, true);
+    },
+    [connectMenu, dispatch, screenToFlowPosition, connectFromMenu],
+  );
+
   const onReconnectStart = useCallback(() => {
     edgeReconnectSuccessful.current = false;
   }, []);
@@ -2532,11 +2643,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Достаточный ребёнок: источники унаследованы от родителя → обобщаем их и
   // СРАЗУ строим шаг (без ручного поиска/обобщения). Решение «достаточно»
   // принято на build родителя; запрос на обобщение идёт только сейчас.
+  // Тексты обобщений, по которым альтернативы уже разложены (см. эффект ниже).
+  const altTextSeen = useRef(new Map<string, string>());
+
   const handleClearStepState = useCallback(
     (direction: BuildDirection) => () => {
       if (!selectedNodeId) return;
       dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
       dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      altTextSeen.current.delete(sourcesKey(selectedNodeId, direction));
       // «Начать заново» — значит и найденные источники шага забыть. Раньше они
       // оставались, мастер стоял на том же экране с тем же списком, и кнопка
       // выглядела неработающей. Найденное моделью сохранено в базе сервера:
@@ -2548,33 +2663,43 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   );
 
   // ─── Create / remove step alternative nodes when aggregate text changes ───
+  // Только когда текст обобщения новый (пришёл ответ или его поправили), а не
+  // при каждом выборе узла. Раньше выбор продукта раскладывал альтернативы
+  // обоих направлений заново: при построении «вверх» под продуктом вставали
+  // альтернативы его давнего обобщения «вниз», и удалённые с полотна
+  // альтернативы возвращались.
   useEffect(() => {
     if (!selectedNodeId) return;
     for (const direction of ["up", "down"] as const) {
       const sKey = sourcesKey(selectedNodeId, direction);
       const sliceState = sourcesByNodeId[sKey];
       const text = sliceState?.stepAggregatedText;
-      if (text) {
-        // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
-        // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
-        const alts = dedupeAlternatives(parseAlternatives(text));
-        if (alts.length > 1) {
-          dispatch(
-            createStepAlternativeNodes({
-              nodeId: selectedNodeId,
-              direction,
-              alternatives: alts.slice(1),
-            }),
-          );
-        } else {
-          dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
-        }
+      if (!text) {
+        // Нет обобщения (например, свежий поиск источников после цикла) —
+        // alt-ноды НЕ трогаем: при цикле основной вариант не строится, и
+        // альтернативы — единственный способ продолжить (задача №4). Удаление
+        // только явное: «Начать заново» (handleClearStepState) или замена новым
+        // обобщением. Следующее обобщение, даже слово в слово такое же,
+        // разложим заново.
+        altTextSeen.current.delete(sKey);
+        continue;
       }
-      // Нет обобщения (например, свежий поиск источников после цикла) — alt-ноды
-      // НЕ трогаем: при цикле основной вариант не строится, и альтернативы —
-      // единственный способ продолжить (задача №4). Удаление только явное:
-      // «Сбросить и начать шаг заново» (handleClearStepState) или замена новым
-      // обобщением (ветки выше).
+      if (altTextSeen.current.get(sKey) === text) continue;
+      altTextSeen.current.set(sKey, text);
+      // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
+      // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
+      const alts = dedupeAlternatives(parseAlternatives(text));
+      if (alts.length > 1) {
+        dispatch(
+          createStepAlternativeNodes({
+            nodeId: selectedNodeId,
+            direction,
+            alternatives: alts.slice(1),
+          }),
+        );
+      } else {
+        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+      }
     }
   }, [
     selectedNodeId,
@@ -2659,14 +2784,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           ? stepSession.steps[stepSession.steps.length - 1]
           : null;
 
+      // Продолжать можно только от продуктов дальней стороны: второе сырьё и
+      // попутный продукт шага (sideProductNodeIds) — не продолжение цепочки.
+      const continueIds = lastStep
+        ? [
+            ...lastStep.newProductNodeIds,
+            ...lastStep.mergedProductNodeIds,
+          ].filter((id) => !lastStep.sideProductNodeIds?.includes(id))
+        : [];
       const branchOptions =
-        lastStep &&
-        [...lastStep.newProductNodeIds, ...lastStep.mergedProductNodeIds]
-          .length > 1
-          ? [
-              ...lastStep.newProductNodeIds,
-              ...lastStep.mergedProductNodeIds,
-            ].map((id) => ({
+        continueIds.length > 1
+          ? continueIds.map((id) => ({
               nodeId: id,
               label:
                 data.nodes.find((n) => n.id === id)?.data?.label || id,
@@ -2745,6 +2873,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
         pendingStep: stepSession?.pendingStep ?? null,
+        pendingStepOutcome: stepSession?.pendingStep
+          ? previewStepOutcome(stepSession.pendingStep, {
+              anchorNodeId: stepSession.currentProductNodeId,
+              direction,
+              existingNodes: data.nodes,
+              existingEdges: data.edges,
+            })
+          : null,
+        // Продукт и его предки по построению: обобщение, ведущее только к
+        // ним, — шаг назад по цепочке (см. stepLoopsBack).
+        stepLineage: [
+          String(selectedNode.data?.label || "").trim(),
+          ...getAncestorProductLabels(selectedNodeId, data.nodes, data.edges),
+        ].filter(Boolean),
 
         stepChainBranchOptions: branchOptions,
         onSelectBranch: (nodeId: string) =>
@@ -2821,6 +2963,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           const rootStepSKey = stepSessionKey(rootNodeId, direction);
           const rootStepSession = stepChainSessions[rootStepSKey];
           const altDesc = String(selectedNode.data?.description || "");
+          // У каждой альтернативы своё построение — статус и превью шага: их
+          // строят несколько сразу. Источники и обобщение — продукта, общие;
+          // принятый шаг уходит в историю продукта (отмена — там же).
+          const altNodeId = selectedNode.id;
+          const altSliceState =
+            sourcesByNodeId[sourcesKey(altNodeId, direction)];
+          const altStepSKey = `alt::${altNodeId}::${direction}`;
+          const altStepSession = stepChainSessions[altStepSKey];
 
           baseResult.isAlternativeNode = true;
           baseResult.altDescription = altDesc;
@@ -2835,15 +2985,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           baseResult.stepAggregateStatus =
             rootSliceState?.stepAggregateStatus ?? "idle";
           baseResult.stepBuildStatus =
-            rootSliceState?.stepBuildStatus ?? "idle";
+            altSliceState?.stepBuildStatus ?? "idle";
           baseResult.stepBuildError =
-            rootSliceState?.stepBuildError ?? null;
+            altSliceState?.stepBuildError ?? null;
           baseResult.pendingStep =
-            rootStepSession?.pendingStep ?? null;
+            altStepSession?.pendingStep ?? null;
+          baseResult.pendingStepOutcome = altStepSession?.pendingStep
+            ? previewStepOutcome(altStepSession.pendingStep, {
+                anchorNodeId: rootNodeId,
+                direction,
+                existingNodes: data.nodes,
+                existingEdges: data.edges,
+              })
+            : null;
           baseResult.stepChainStepCount =
             rootStepSession?.steps.length ?? 0;
           baseResult.stepChainStatus =
-            rootStepSession?.status ?? "idle";
+            altStepSession?.status ?? "idle";
 
           baseResult.onBuildStep = (
             customText?: string,
@@ -2851,32 +3009,29 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             provider?: string,
             model?: string,
           ) => {
-            const sKey = stepSessionKey(rootNodeId, direction);
-            if (!stepChainSessions[sKey]) {
-              dispatch(
-                initStepChainSession({
-                  sessionKey: sKey,
-                  direction,
-                  rootNodeId,
-                  currentProductNodeId: rootNodeId,
-                }),
-              );
-            }
+            // Текст, из которого строим (с правкой в окне, если была), —
+            // он же ляжет во вкладку «Технологические маршруты» преобразования.
+            const altText = customText || altDesc;
+            altBuiltText.current.set(altNodeId, altText);
+            // Сессия построения этой альтернативы: шаг — от продукта.
             dispatch(
-              setStepChainContinueProduct({
-                sessionKey: sKey,
-                productNodeId: rootNodeId,
+              initStepChainSession({
+                sessionKey: altStepSKey,
+                direction,
+                rootNodeId,
+                currentProductNodeId: rootNodeId,
               }),
             );
             const poolSrcs =
               sourcesPool[poolKey(rootProductName, direction)]?.sources ?? [];
             dispatch(
               buildStep({
-                sessionKey: sKey,
+                sessionKey: altStepSKey,
                 nodeId: rootNodeId,
+                statusNodeId: altNodeId,
                 productName: rootProductName,
                 direction,
-                techText: customText || altDesc,
+                techText: altText,
                 existingSources: poolSrcs.length ? poolSrcs : undefined,
                 ...(customSystemPrompt ? { customSystemPrompt } : {}),
                 // Выбор провайдера/модели из панели: раньше override для
@@ -2893,6 +3048,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             filteredStep?: import("./store/types").StepChainApiStep,
           ) => {
             const sKey = stepSessionKey(rootNodeId, direction);
+            // Шаг принимается в сессию продукта — там история и отмена; у
+            // продукта её может ещё не быть, если строили только альтернативы.
+            if (!stepChainSessions[sKey]) {
+              dispatch(
+                initStepChainSession({
+                  sessionKey: sKey,
+                  direction,
+                  rootNodeId,
+                  currentProductNodeId: rootNodeId,
+                }),
+              );
+            }
             // Ключ содержимого альтернативы. «Принятой» её пометит сам reducer
             // и ТОЛЬКО если шаг реально материализовался — при dead-end цикла
             // alt-нода должна остаться на полотне (задача №4). Ключ по
@@ -2902,22 +3069,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
               fullDescription: altDesc,
               title: String(selectedNode?.data?.label ?? ""),
             });
+            // Описание альтернативы — во вкладку «Технологические маршруты»
+            // нового преобразования, как обобщение у обычного шага.
+            const routeText = alternativeRouteText(
+              String(selectedNode?.data?.label ?? ""),
+              altBuiltText.current.get(altNodeId) ?? altDesc,
+            );
             dispatch(
               acceptPendingStep({
                 sessionKey: sKey,
+                pendingFrom: altStepSKey,
                 selectedContinueProductNodeId,
                 filteredStep,
                 isAlternativeFirstStep: true,
                 ...(altAcceptKey ? { altAcceptKey } : {}),
+                ...(routeText ? { anchorAggregatedText: routeText } : {}),
               }),
             );
-            dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
+            dispatch(resetStepBuild({ nodeId: altNodeId, direction }));
           };
 
           baseResult.onRejectStep = () => {
-            const sKey = stepSessionKey(rootNodeId, direction);
-            dispatch(rejectPendingStep(sKey));
+            dispatch(rejectPendingStep(altStepSKey));
+            dispatch(resetStepBuild({ nodeId: altNodeId, direction }));
           };
+          baseResult.onForceStepPreview = () =>
+            dispatch(forceStepPreview(altStepSKey));
         }
       }
 
@@ -2944,6 +3121,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       handleBuildStep,
       handleClearStepState,
       data.nodes,
+      data.edges,
       dispatch,
     ],
   );
@@ -3208,6 +3386,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={canEditNodes ? handleConnect : undefined}
+        onConnectEnd={canEditNodes && !focusOn ? onConnectEnd : undefined}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
@@ -3269,6 +3448,36 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         openedName={openedGraphId ? openedGraphName : null}
         onUpdate={openedGraphId ? handleUpdateOpenedGraph : undefined}
       />
+      {connectMenu &&
+        (() => {
+          const from = flowNodes.find((n) => n.id === connectMenu.fromId);
+          if (!from) return null;
+          const shownEdges = productsOnly ? flowEdges : data.edges;
+          const linked = new Set(
+            shownEdges.flatMap((e) =>
+              e.source === from.id ? [e.target] : e.target === from.id ? [e.source] : [],
+            ),
+          );
+          const candidates = flowNodes.filter(
+            (n) =>
+              (n.type === "product" || n.type === "transformation") &&
+              n.data?.chainVariant !== "alt",
+          );
+          return (
+            <ConnectDropMenu
+              x={connectMenu.x}
+              y={connectMenu.y}
+              from={from as CustomNode}
+              direction={connectMenu.direction}
+              nodes={candidates as CustomNode[]}
+              linked={linked}
+              productsOnly={productsOnly}
+              onPick={(id) => connectFromMenu(id, false)}
+              onCreate={createFromMenu}
+              onClose={() => setConnectMenu(null)}
+            />
+          );
+        })()}
       {paneMenu && (
         <PaneContextMenu
           x={paneMenu.x}

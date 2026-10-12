@@ -1,7 +1,7 @@
 // src/store/graphExtras.ts
 //
-// Закладки и история сохранённого графа: подтянуть при открытии, выгрузить при
-// первом сохранении, очистить по кнопке.
+// Закладки, история и расчёты баланса сохранённого графа: подтянуть при
+// открытии, выгрузить при первом сохранении, очистить по кнопке.
 //
 // Обычные правки уходят на сервер сами — этим заведует graphExtrasMiddleware.
 // Здесь только три момента, когда синхронизация не выводится из одного
@@ -16,10 +16,12 @@ import {
   clearHistoryOnServer,
   fetchBookmarks,
   fetchHistory,
+  fetchMaterialBalances,
   isSyncableEntry,
   putBookmark,
 } from "./api/graph-extras-api";
 import { setBookmarks } from "./slices/bookmarksSlice";
+import { restoreMaterialBalances } from "./slices/gptSlice";
 import { clearHistory, restoreHistory } from "./slices/historySlice";
 import { showToast } from "../components/toast/toastStore";
 
@@ -47,7 +49,9 @@ function mergeById(...lists: HistoryEntry[][]): HistoryEntry[] {
 }
 
 /**
- * Открыт сохранённый граф — поднять его закладки и историю с сервера.
+ * Открыт сохранённый граф — поднять его закладки, историю и расчёты
+ * материального баланса с сервера. Расчёты — те, что изменились после
+ * сохранения графа: пришли позже или их убрали (см. graphExtrasMiddleware).
  *
  * Зовётся сразу после loadGraphFromFile и setOpenedGraph. К этому моменту
  * локальные списки уже очищены под новый граф, а в истории лежит запись
@@ -62,10 +66,21 @@ export const openGraphExtras = createAsyncThunk<
   string,
   { state: RootState }
 >("graphExtras/open", async (graphId, { dispatch, getState }) => {
-  const [bookmarks, history] = await Promise.allSettled([
+  const [bookmarks, history, balances] = await Promise.allSettled([
     fetchBookmarks(graphId),
     fetchHistory(graphId),
+    fetchMaterialBalances(graphId),
   ]);
+
+  // Пока ждали ответа, могли открыть другой граф — его узлы чужие расчёты
+  // не получают.
+  if (balances.status === "fulfilled") {
+    if (getState().savedGraphs.openedGraphId === graphId) {
+      dispatch(restoreMaterialBalances(balances.value));
+    }
+  } else {
+    console.warn("Не удалось загрузить расчёты баланса графа", balances.reason);
+  }
 
   if (bookmarks.status === "fulfilled") {
     dispatch(setBookmarks(bookmarks.value));

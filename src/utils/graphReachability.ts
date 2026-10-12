@@ -11,6 +11,7 @@
 // ребра anchor → tr → O замыкает направленный контур.
 
 import type { Edge } from "@xyflow/react";
+import { withoutRecycle } from "./recycleEdge";
 
 /**
  * Можно ли из `fromId` дойти до `toId`, двигаясь по рёбрам source → target.
@@ -22,8 +23,9 @@ export function canReachNode(
 ): boolean {
   if (fromId === toId) return true;
 
+  // Связь рециклинга ведёт назад по цепочке — по ней не «спускаемся».
   const out = new Map<string, string[]>();
-  for (const e of edges) {
+  for (const e of withoutRecycle([...edges])) {
     const arr = out.get(e.source);
     if (arr) arr.push(e.target);
     else out.set(e.source, [e.target]);
@@ -73,8 +75,10 @@ export function getAncestorProductLabels(
   nodes: ReadonlyArray<{ id: string; type?: string; data?: { label?: string } }>,
   edges: ReadonlyArray<Edge>,
 ): string[] {
+  // Предки — по цепочке построения: связь рециклинга сделала бы предками
+  // потомков (поликарбонат — «предком» бисфенола А, из которого он сделан).
   const incoming = new Map<string, string[]>();
-  for (const e of edges) {
+  for (const e of withoutRecycle([...edges])) {
     const arr = incoming.get(e.target);
     if (arr) arr.push(e.source);
     else incoming.set(e.target, [e.source]);

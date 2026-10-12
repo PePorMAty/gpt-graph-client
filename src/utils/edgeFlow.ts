@@ -2,6 +2,7 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { orientByBuildDirection } from "./orientByBuildDirection";
+import { withoutRecycle } from "./recycleEdge";
 
 /**
  * Чем продукт приходится преобразованию на связи между ними: "in" — сырьё
@@ -91,13 +92,18 @@ export function inferTFlow(nodes: CustomNode[], edges: Edge[]): Edge[] {
         | undefined,
     ]),
   );
-  const canon = orientByBuildDirection(nodes, edges);
+  // Ход производства — по цепочке построения: связь рециклинга (у неё смысл
+  // всегда проставлен) обход сбила бы.
+  const chain = withoutRecycle(edges);
+  const canonOf = new Map(
+    orientByBuildDirection(nodes, chain).map((c, i) => [chain[i], c]),
+  );
 
-  return edges.map((e, i) => {
+  return edges.map((e) => {
     if (tFlowOf(e)) return e;
     const ends = productTransformationEnds(e, typeOf);
     if (!ends) return e;
-    const c = canon[i];
+    const c = canonOf.get(e) ?? e;
     if (c.source !== e.source) {
       return withTFlow(e, c.source === ends.product ? "in" : "out");
     }

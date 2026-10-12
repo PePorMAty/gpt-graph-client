@@ -258,6 +258,14 @@
   stroke-width: 2px;
 }
 
+/* Обратная переработка (рециклинг, utils/recycleEdge.ts): связь назад к
+   продукту, который уже стоит выше по цепочке, — пунктиром. */
+:global(.react-flow__edge.edge--recycle path.react-flow__edge-path) {
+  stroke: #0d9488 !important;
+  stroke-width: 2px;
+  stroke-dasharray: 6 5;
+}
+
 /* Центр фокус-режима: текущий фокус-узел выделяется рамкой и свечением,
    чтобы точка отсчёта навигации всегда читалась на полотне. */
 :global(.react-flow__node.node--focus) {
