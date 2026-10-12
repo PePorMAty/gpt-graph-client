@@ -430,3 +430,15 @@
   line-height: var(--lh-normal);
   color: var(--c-text);
 }
+
+/* Шаг ведёт назад по цепочке — ляжет связью рециклинга (пунктир того же
+   цвета, styles/Flow.module.css). */
+.recycle {
+  padding: var(--s-3) var(--s-4);
+  border-left: 3px solid #0d9488;
+  border-radius: var(--r-md);
+  background: var(--c-surface-soft);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+}

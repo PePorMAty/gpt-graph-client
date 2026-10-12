@@ -1,12 +1,15 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import { withoutRecycle } from "./recycleEdge";
 
 export function getMaxDepth(
   nodes: CustomNode[],
-  edges: Edge[],
+  allEdges: Edge[],
   nodeId: string,
   direction: "up" | "down",
 ): number {
+  // Глубина — по цепочке построения, без связей рециклинга.
+  const edges = withoutRecycle(allEdges);
   const visited = new Set<string>();
 
   const walk = (id: string): number => {

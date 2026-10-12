@@ -4,11 +4,13 @@ import { useDismiss } from "../../hooks/useDismiss";
 import { BookIcon, HelpIcon } from "../icons";
 import styles from "./HelpMenu.module.css";
 
-/** Обозначения узлов на полотне — те же цвета, что и на графе. */
-const LEGEND = [
+/** Обозначения на полотне — те же цвета, что и на графе. line — связь, а не узел. */
+const LEGEND: { color: string; label: string; line?: boolean }[] = [
   { color: "var(--c-product)", label: "Продукт" },
   { color: "var(--c-transform)", label: "Преобразование" },
   { color: "var(--c-alt)", label: "Альтернативный маршрут" },
+  // Связь рециклинга — пунктир (styles/Flow.module.css, .edge--recycle).
+  { color: "#0d9488", label: "Обратная переработка", line: true },
 ];
 
 const SHORTCUTS = [
@@ -53,8 +55,10 @@ export const HelpMenu = () => {
             {LEGEND.map((item) => (
               <li key={item.label} className={styles.legendItem}>
                 <span
-                  className={styles.swatch}
-                  style={{ background: item.color }}
+                  className={item.line ? styles.swatchLine : styles.swatch}
+                  style={
+                    item.line ? { color: item.color } : { background: item.color }
+                  }
                   aria-hidden
                 />
                 {item.label}

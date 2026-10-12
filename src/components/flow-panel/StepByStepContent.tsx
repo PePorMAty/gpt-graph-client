@@ -24,10 +24,8 @@ import {
 } from "../icons";
 import { parseDomainsInput } from "../../utils/parseDomains";
 import {
-  parseAlternatives,
   stepFarSideEmpty,
   stepLoopsBack,
-  variantLoopsBack,
 } from "../../utils/parseAlternatives";
 import {
   AI_MODELS,
@@ -155,24 +153,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     [stepAggregatedText, direction],
   );
   // Основной вариант ведёт только назад по цепочке — к продуктам, которые уже
-  // стоят выше (см. stepLoopsBack): по нему шаг не строим.
+  // стоят выше (см. stepLoopsBack): это обратная переработка, шаг ляжет со
+  // связью рециклинга. Предупреждаем заранее, строить не мешаем.
   const aggregateLoopsBack = useMemo(
     () =>
       stepLineage?.length
         ? stepLoopsBack(stepAggregatedText ?? "", direction, stepLineage)
         : [],
-    [stepAggregatedText, direction, stepLineage],
-  );
-  // Альтернативы на полотне — те, что ведут вперёд (см. Flow.tsx).
-  const hasAlternatives = useMemo(
-    () =>
-      parseAlternatives(stepAggregatedText ?? "")
-        .slice(1)
-        .some(
-          (a) =>
-            !variantLoopsBack(a.fullDescription, direction, stepLineage ?? [])
-              .length,
-        ),
     [stepAggregatedText, direction, stepLineage],
   );
   const hasSteps = stepChainStepCount > 0;
@@ -1010,8 +997,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )}
 
           {aggregateLoopsBack.length > 0 && (
-            <div className={styles.warningText}>
-              {`Основной путь ведёт к «${aggregateLoopsBack.join("», «")}», а ${aggregateLoopsBack.length > 1 ? "они уже стоят" : "он уже стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${productName}»: шаг вернулся бы к предку (это обратная переработка), и на полотне легло бы преобразование без продуктов. По такому тексту шаг не строим. ${hasAlternatives ? "Постройте одну из альтернатив — они на полотне фиолетовым — или поправьте текст выше." : "Доберите источники через модель и обобщите заново — или поправьте текст выше."}`}
+            <div className={wiz.recycleNote}>
+              {`Основной путь ведёт к «${aggregateLoopsBack.join("», «")}», а ${aggregateLoopsBack.length > 1 ? "они уже стоят" : "он уже стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${productName}» — это обратная переработка (рециклинг). Шаг ляжет преобразованием со связью назад, пунктиром; цепочка от неё дальше не пойдёт. Нужно новое направление — постройте альтернативу или доберите источники.`}
             </div>
           )}
 
@@ -1044,8 +1031,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 buildLoading ||
                 isBuildPromptEmpty ||
                 stepBuiltFromAggregate ||
-                aggregateFoundNothing ||
-                aggregateLoopsBack.length > 0
+                aggregateFoundNothing
               }
               className={`${wiz.primary} ${buildLoading ? wiz.primaryBusy : ""}`}
             >

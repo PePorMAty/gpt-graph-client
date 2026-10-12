@@ -1,6 +1,7 @@
 // src/utils/inferLayoutDirection.ts
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import { withoutRecycle } from "./recycleEdge";
 
 /**
  * Определяет вертикальную ориентацию графа по ФАКТИЧЕСКИМ позициям узлов:
@@ -25,7 +26,8 @@ export function inferLayoutDirection(
 
   let down = 0;
   let up = 0;
-  for (const e of edges) {
+  // Связь рециклинга идёт против хода цепочки — в голосовании не участвует.
+  for (const e of withoutRecycle(edges)) {
     const s = posById.get(e.source);
     const t = posById.get(e.target);
     if (!s || !t) continue;

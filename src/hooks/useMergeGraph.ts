@@ -16,6 +16,7 @@ import { assignTopologicalLayers } from "../utils/assignTopologicalLayers";
 import { orientByBuildDirection } from "../utils/orientByBuildDirection";
 import { applyHandlesByGeometry } from "../utils/normalize-edges";
 import { inferTFlow, orientByTFlow, tFlowOf } from "../utils/edgeFlow";
+import { isRecycleEdge, withoutRecycle } from "../utils/recycleEdge";
 import { mergeProductGraph } from "../utils/mergeProductGraph";
 import { collapseDuplicateTransformations } from "../utils/collapseDuplicateTransformations";
 import { markChainRoots } from "../utils/markChainRoots";
@@ -136,8 +137,12 @@ function renamePoolKeysForCollapsed(
 //    фактическим Y-координатам — в т.ч. у развёрнутых на шаге 1 рёбер.
 export const layoutForMergeTab = async (
   nodes: CustomNode[],
-  edges: Edge[],
+  allEdges: Edge[],
 ): Promise<{ nodes: CustomNode[]; edges: Edge[] }> => {
+  // Связи рециклинга (recycleEdge.ts) ведут назад по цепочке и замкнули бы
+  // круг: ярусы считаем без них, а на полотно возвращаем как есть.
+  const edges = withoutRecycle(allEdges);
+  const recycle = orientByTFlow(nodes, allEdges.filter(isRecycleEdge));
   // Рёбра — по ходу производства (сырьё сверху). Связи «продукт ↔
   // преобразование» разворачиваем по их смыслу (edgeFlow.ts); смысл тем, у
   // кого его нет (старые графы, файлы), выводим. Прочие — прежним способом.
@@ -157,7 +162,7 @@ export const layoutForMergeTab = async (
     const spread = separateComponentsHorizontally(aligned, laid.edges);
     return {
       nodes: spread,
-      edges: applyHandlesByGeometry(spread, laid.edges),
+      edges: applyHandlesByGeometry(spread, [...laid.edges, ...recycle]),
     };
   } catch (e) {
     console.warn(
@@ -169,7 +174,10 @@ export const layoutForMergeTab = async (
     const spread = separateComponentsHorizontally(aligned, laid.edges);
     return {
       nodes: spread,
-      edges: applyHandlesByGeometry(spread, laid.edges),
+      edges: applyHandlesByGeometry(spread, [
+        ...withoutRecycle(laid.edges),
+        ...recycle,
+      ]),
     };
   }
 };

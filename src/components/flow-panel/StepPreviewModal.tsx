@@ -247,9 +247,9 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   const loopsStand = `${(outcome?.loops.length ?? 0) > 1 ? "стоят" : "стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${anchorProductName}»`;
   const body = (
     <>
-        {/* Чем кончится принятие: шаг уже есть на графе или ведёт назад по
-            цепочке. После «Добавить шаг» это сказало бы уведомление — уже
-            молча ничего не добавив. */}
+        {/* Чем кончится принятие: шаг уже есть на графе, ведёт назад по
+            цепочке (обратная переработка — связь рециклинга) или ничего не
+            даст. Иначе это выяснилось бы только после «Добавить шаг». */}
         {outcome?.onGraph ? (
           <div className={styles.outcome} role="status">
             Такой шаг уже есть на графе — «{outcome.onGraph}»: те же сырьё и
@@ -262,10 +262,11 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             Постройте альтернативу или найдите другие источники.
           </div>
         ) : loopNames ? (
-          <div className={styles.outcome} role="status">
-            {loopNames} уже {loopsStand} — связь с{" "}
-            {(outcome?.loops.length ?? 0) > 1 ? "ними" : "ним"} не нарисуем,
-            чтобы не замкнуть петлю.
+          <div className={styles.recycle} role="status">
+            {loopNames} уже {loopsStand} — это обратная переработка
+            (рециклинг). Связь к{" "}
+            {(outcome?.loops.length ?? 0) > 1 ? "ним" : "нему"} ляжет
+            пунктиром, и цепочка от неё дальше не пойдёт.
           </div>
         ) : null}
 

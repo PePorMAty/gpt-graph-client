@@ -38,7 +38,10 @@ export interface StepToFlowOpts {
 export interface StepOutcome {
   /** Шаг целиком уже стоит на графе — это преобразование. */
   onGraph?: string;
-  /** Продукты, которые стоят в цепочке выше: их связь замкнула бы петлю. */
+  /**
+   * Продукты, которые стоят в цепочке выше. Шаг ложится — к ним связь
+   * рециклинга; тупик — их связь не рисуется.
+   */
   loops: string[];
   /** Принятие ничего не добавит на полотно. */
   deadEnd: boolean;
@@ -237,7 +240,13 @@ export function stepToFlow(
     }
   }
 
+  // Продукт дальней стороны, который уже стоит выше по цепочке (предок
+  // якоря), — обратная переработка: поликарбонат гидролизуют обратно в
+  // бисфенол А, из которого его и сделали. Обычная связь замкнула бы круг;
+  // рисуем её связью рециклинга (recycle, см. recycleEdge.ts) — пунктиром,
+  // и цепочка от неё дальше не идёт.
   const cycleProductNames: string[] = [];
+  const recycleProducts: typeof classified = [];
   const renderProducts: typeof classified = [];
   for (const c of classified) {
     // Уже связан с тем же преобразованием — это та же связь, а не петля.
@@ -251,6 +260,7 @@ export function stepToFlow(
       wouldCreateCycle(c.existingNodeId, anchorNodeId, existingEdges)
     ) {
       cycleProductNames.push(c.product.name);
+      recycleProducts.push(c);
       continue;
     }
     renderProducts.push(c);
@@ -301,15 +311,15 @@ export function stepToFlow(
   // предку, а не схождение. (Законное схождение: newCount===0, НО предков нет —
   // cycleProductNames пуст — тогда ребро рисуем.)
   //
-  // Найденного шагом не осталось — все продукты дальней стороны замкнули бы
-  // петлю — тоже тупик, даже если на стороне якоря есть новое второе сырьё:
-  // иначе ложилось преобразование без единого продукта («Гидролиз
-  // поликарбоната» из поликарбоната, воды и щёлочи — а бисфенол А, который он
-  // даёт, стоит выше в цепочке).
+  // Все продукты дальней стороны — предки: это чистая обратная переработка
+  // («Гидролиз поликарбоната» из поликарбоната, воды и щёлочи даёт бисфенол
+  // А) — не тупик, шаг ложится со связью рециклинга. Тупик — только если
+  // нет ни продуктов, ни предков.
   const newCount = renderProducts.filter((r) => !r.existingNodeId).length;
-  const degenerateAncestorLoop = newCount === 0 && cycleProductNames.length > 0;
   const farLeft = renderProducts.some((r) => r.flow === foundFlow);
-  if (renderProducts.length === 0 || degenerateAncestorLoop || !farLeft) {
+  const degenerateAncestorLoop =
+    farLeft && newCount === 0 && cycleProductNames.length > 0;
+  if (degenerateAncestorLoop || (!farLeft && recycleProducts.length === 0)) {
     return {
       nodes: [],
       edges: [],
@@ -508,6 +518,22 @@ export function stepToFlow(
     }
   });
 
+  // --- 6а) обратная переработка: связь к предку, пунктиром ---
+  // Узел предка не двигаем и в продолжения шага не берём: он уже стоит выше.
+  for (const r of recycleProducts) {
+    const pid = r.existingNodeId!;
+    const edgeId = `step::${sessionKey}::e::${trFlowId}::${pid}`;
+    edges.push({
+      id: edgeId,
+      source: trFlowId,
+      target: pid,
+      type: "straight",
+      className: "edge--recycle",
+      data: { tFlow: foundFlow, recycle: true },
+    });
+    addedEdgeIds.push(edgeId);
+  }
+
   // --- 7) развод коллизий ---
   // Преобразование и дальний ряд сдвигаются вместе, если место занято
   // настоящими узлами (заготовки альтернатив не в счёт — см. шаг 4).
@@ -536,6 +562,9 @@ export function stepToFlow(
     ...(sideProductNodeIds.length ? { sideProductNodeIds } : {}),
     addedEdgeIds,
     cycleProductNames,
+    ...(recycleProducts.length
+      ? { recycleProductNames: recycleProducts.map((r) => r.product.name) }
+      : {}),
     isDeadEnd: false,
     ...(reusedTrNode ? { transformationReused: true } : {}),
   };

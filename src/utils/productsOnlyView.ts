@@ -2,6 +2,7 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { applyHandlesByGeometry } from "./normalize-edges";
+import { isRecycleEdge } from "./recycleEdge";
 
 /**
  * Проекция «только продукты» (режим-тумблер на панели управления): скрывает
@@ -24,14 +25,18 @@ export function collapseToProductsView(
   );
   const seenPairs = new Set(directEdges.map((e) => `${e.source}->${e.target}`));
 
-  // Входы/выходы каждой скрытой (не-product) ноды.
+  // Входы/выходы каждой скрытой (не-product) ноды. Выход по связи
+  // рециклинга (recycleEdge.ts) — отдельно: склеенная через него связь тоже
+  // рециклинг, пунктиром, и встречная обычная связь её не отменяет.
   const insByNode = new Map<string, string[]>();
   const outsByNode = new Map<string, string[]>();
+  const recycleOuts = new Set<string>();
   for (const e of edges) {
     if (!productIds.has(e.source) && productIds.has(e.target)) {
       const arr = outsByNode.get(e.source) ?? [];
       arr.push(e.target);
       outsByNode.set(e.source, arr);
+      if (isRecycleEdge(e)) recycleOuts.add(`${e.source}->${e.target}`);
     }
     if (productIds.has(e.source) && !productIds.has(e.target)) {
       const arr = insByNode.get(e.target) ?? [];
@@ -51,6 +56,20 @@ export function collapseToProductsView(
     for (const src of ins) {
       for (const tgt of outs) {
         if (src === tgt) continue;
+        if (recycleOuts.has(`${n.id}->${tgt}`)) {
+          const recycleKey = `${src}->${tgt}::recycle`;
+          if (seenPairs.has(recycleKey)) continue;
+          seenPairs.add(recycleKey);
+          syntheticEdges.push({
+            id: `pv::${src}::${tgt}::recycle`,
+            source: src,
+            target: tgt,
+            type: "straight",
+            className: "edge--recycle",
+            data: { recycle: true },
+          });
+          continue;
+        }
         const pairKey = `${src}->${tgt}`;
         if (seenPairs.has(pairKey) || seenPairs.has(`${tgt}->${src}`)) continue;
         seenPairs.add(pairKey);

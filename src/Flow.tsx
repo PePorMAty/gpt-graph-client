@@ -120,10 +120,10 @@ import {
   parseAlternatives,
   dedupeAlternatives,
   alternativeKey,
-  variantLoopsBack,
 } from "./utils/parseAlternatives";
 import { previewStepOutcome } from "./utils/stepToFlow";
 import { getAncestorProductLabels } from "./utils/graphReachability";
+import { isRecycleEdge } from "./utils/recycleEdge";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
 import { normalizeSourceUrl, sourceUrlKey } from "./utils/sourceUrl";
@@ -253,8 +253,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // --- keep a live ref so timeouts always see the latest nodes ---
   const nodesRef = useRef(data.nodes);
   nodesRef.current = data.nodes;
-  const edgesRef = useRef(data.edges);
-  edgesRef.current = data.edges;
 
   // stable key that changes only when the SET of node IDs changes
   const nodeIdsKey = useMemo(
@@ -1138,9 +1136,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
     // приглушены (balanceLayer, edges).
     const lit = balance && balance.lit.size > 0 ? balance.lit : null;
-    if (!chainSet && !lit) return baseEdges;
+    // Связь рециклинга — пунктиром, откуда бы она ни пришла (шаг, файл,
+    // объединение графов).
+    const recycleClass = (e: (typeof baseEdges)[number]) =>
+      isRecycleEdge(e) && !(e.className ?? "").includes("edge--recycle")
+        ? [e.className, "edge--recycle"].filter(Boolean).join(" ")
+        : e.className;
+    if (!chainSet && !lit) {
+      return baseEdges.map((e) => {
+        const cls = recycleClass(e);
+        return cls === e.className ? e : { ...e, className: cls };
+      });
+    }
     return baseEdges.map((e) => {
-      const existing = e.className ?? "";
+      const existing = recycleClass(e) ?? "";
       const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
       const extra = [
         chainSet && !(chainSet.has(e.source) && chainSet.has(e.target))
@@ -1152,7 +1161,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             ? `edge--balance-${tone}`
             : "edge--balance-muted",
       ].filter(Boolean);
-      if (!extra.length) return e;
+      if (!extra.length) {
+        return existing === (e.className ?? "") ? e : { ...e, className: existing };
+      }
       return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
     });
   }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance]);
@@ -2663,30 +2674,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
       // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
       const alts = dedupeAlternatives(parseAlternatives(text));
-      // Альтернатива, ведущая только назад по цепочке (все её продукты уже
-      // стоят выше), шага не даст — на полотно её не ставим.
-      const lineage = [
-        String(
-          nodesRef.current.find((n) => n.id === selectedNodeId)?.data?.label ??
-            "",
-        ),
-        ...getAncestorProductLabels(
-          selectedNodeId,
-          nodesRef.current,
-          edgesRef.current,
-        ),
-      ];
-      const forward = alts
-        .slice(1)
-        .filter(
-          (a) => !variantLoopsBack(a.fullDescription, direction, lineage).length,
-        );
-      if (forward.length) {
+      if (alts.length > 1) {
         dispatch(
           createStepAlternativeNodes({
             nodeId: selectedNodeId,
             direction,
-            alternatives: forward,
+            alternatives: alts.slice(1),
           }),
         );
       } else {

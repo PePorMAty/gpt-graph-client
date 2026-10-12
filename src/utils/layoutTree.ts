@@ -1,6 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import { Position, type Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
+import { withoutRecycle } from "./recycleEdge";
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 80;
@@ -144,14 +145,17 @@ function hierarchicalLayout(
 
 export async function layoutTree(
   nodes: CustomNode[],
-  edges: Edge[],
+  allEdges: Edge[],
   rootId?: string,
   direction?: "TB" | "BT",
   spacing?: LayoutSpacing,
 ): Promise<LayoutTreeResult> {
   if (!nodes.length) {
-    return { nodes, edges };
+    return { nodes, edges: allEdges };
   }
+  // Раскладка — по цепочке построения: связь рециклинга ведёт назад и
+  // поставила бы предка ниже потомка. Сама связь остаётся на полотне.
+  const edges = withoutRecycle(allEdges);
 
   const { nodeWidth, nodeHeight, rankSep, nodeSep } = resolveSpacing(spacing);
 
@@ -177,7 +181,7 @@ export async function layoutTree(
     try {
       const { layoutWithElk } = await import("./layoutWithElk");
       const result = await layoutWithElk(nodes, edges, rankdir, spacing);
-      return result;
+      return { ...result, edges: allEdges };
     } catch (e) {
       console.warn("[layoutTree] ELK failed, fallback to dagre:", e);
     }
@@ -211,7 +215,7 @@ export async function layoutTree(
     dagre.layout(g);
   } catch {
     // dagre упал — используем hierarchical fallback
-    return { nodes: hierarchicalLayout(nodes, edges, rankdir, spacing), edges };
+    return { nodes: hierarchicalLayout(nodes, edges, rankdir, spacing), edges: allEdges };
   }
 
   // Проверяем валидность позиций от dagre
@@ -228,7 +232,7 @@ export async function layoutTree(
 
   if (validCount < nodes.length) {
     // Часть нод не получила валидных позиций — используем fallback
-    return { nodes: hierarchicalLayout(nodes, edges, rankdir, spacing), edges };
+    return { nodes: hierarchicalLayout(nodes, edges, rankdir, spacing), edges: allEdges };
   }
 
   const layoutedNodes: CustomNode[] = nodes.map((node, i) => ({
@@ -238,5 +242,5 @@ export async function layoutTree(
     targetPosition: Position.Top,
   }));
 
-  return { nodes: layoutedNodes, edges };
+  return { nodes: layoutedNodes, edges: allEdges };
 }

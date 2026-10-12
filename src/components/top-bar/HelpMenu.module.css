@@ -73,6 +73,19 @@
   flex: 0 0 auto;
 }
 
+/* Образец связи — пунктирная линия, штрихи цветом связи (color). */
+.swatchLine {
+  width: 18px;
+  height: 2px;
+  margin: 0 -3px;
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 4px,
+    transparent 4px 7px
+  );
+  flex: 0 0 auto;
+}
+
 .shortcuts {
   margin: 0;
   padding: 0;
