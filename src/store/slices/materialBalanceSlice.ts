@@ -27,6 +27,11 @@ import {
   type BalanceRecord,
   type BalanceSummary,
 } from "../api/material-balance-api";
+import {
+  fetchMaterialBalances,
+  putMaterialBalances,
+} from "../api/graph-extras-api";
+import { loadSavedGraph } from "../api/saved-graph-api";
 import type { AppDispatch, RootState } from "../store";
 import type { CustomNode } from "../../types";
 import { updateNodeData } from "./gptSlice";
@@ -420,10 +425,42 @@ function amountsForRecord(
   return out;
 }
 
+/** Расчёт из записи сервера: обозначения — к узлам графа, количества — из формы. */
+function makeCalc(args: {
+  record: BalanceRecord;
+  ends: { transformationId: string; ins: CustomNode[]; outs: CustomNode[] };
+  hint?: Record<string, string>;
+  draft: Record<string, DraftAmount>;
+  fromCache: boolean;
+}): MaterialBalanceCalc {
+  const nodeIds = nodeIdsFor(args.record, args.ends, args.hint);
+  return {
+    record: args.record,
+    nodeIds,
+    ...(args.fromCache ? { fromCache: true } : {}),
+    addedAt: new Date().toISOString(),
+    amounts: amountsForRecord(args.record, nodeIds, args.draft),
+  };
+}
+
 /**
- * Положить расчёт в узел преобразования. У набора продуктов один расчёт:
- * новый заменяет прежний тех же продуктов; расчёты других наборов
- * остаются. Если преобразование выбрано — открыть новый расчёт.
+ * Список расчётов узла с новым. У набора продуктов один расчёт: новый
+ * заменяет прежний тех же продуктов; расчёты других наборов остаются.
+ */
+function withCalc(
+  list: MaterialBalanceCalc[],
+  calc: MaterialBalanceCalc,
+): MaterialBalanceCalc[] {
+  const key = calcKey(calc);
+  return [
+    calc,
+    ...list.filter((c) => calcKey(c) !== key && c.record.id !== calc.record.id),
+  ];
+}
+
+/**
+ * Положить расчёт в узел преобразования. Если преобразование выбрано —
+ * открыть новый расчёт.
  */
 function attachCalc(
   dispatch: AppDispatch,
@@ -440,24 +477,38 @@ function attachCalc(
   const node = nodes.find((n) => n.id === args.transformationId);
   if (!node) return false;
   const { ins, outs } = balanceEnds(node.id, nodes, edges);
-  const nodeIds = nodeIdsFor(args.record, { transformationId: node.id, ins, outs }, args.hint);
-  const calc: MaterialBalanceCalc = {
-    record: args.record,
-    nodeIds,
-    ...(args.fromCache ? { fromCache: true } : {}),
-    addedAt: new Date().toISOString(),
-    amounts: amountsForRecord(args.record, nodeIds, args.draft),
-  };
-  const key = calcKey(calc);
-  const rest = calcsOf(node).filter((c) => calcKey(c) !== key && c.record.id !== args.record.id);
+  const calc = makeCalc({ ...args, ends: { transformationId: node.id, ins, outs } });
   dispatch(
-    updateNodeData({ nodeId: node.id, data: { materialBalances: [calc, ...rest] } }),
+    updateNodeData({ nodeId: node.id, data: { materialBalances: withCalc(calcsOf(node), calc) } }),
   );
   dispatch(setBalanceActive({ nodeId: node.id, recordId: args.record.id }));
   // Преобразование открыто — во вкладке готовый расчёт, а не форма.
   if (getState().materialBalance.selection?.transformationId === node.id) {
     dispatch(openBalanceCalc(args.record.id));
   }
+  return true;
+}
+
+/**
+ * Расчёт пришёл, когда его граф уже закрыт: записать его в расчёты графа на
+ * сервере (см. graphExtrasMiddleware) — при открытии он будет на месте.
+ * Список узла — записанный после сохранения графа, а если такого нет — из
+ * самого файла. false — преобразования в сохранённом графе нет.
+ */
+async function storeCalcInClosedGraph(
+  graphId: string,
+  nodeId: string,
+  calc: MaterialBalanceCalc,
+): Promise<boolean> {
+  const stored = (await fetchMaterialBalances(graphId))[nodeId];
+  let base = stored;
+  if (!Array.isArray(base)) {
+    const file = await loadSavedGraph(graphId);
+    const node = file.graph?.nodes?.find((n) => n.id === nodeId);
+    if (!node) return false;
+    base = calcsOf(node);
+  }
+  await putMaterialBalances(graphId, nodeId, withCalc(base as MaterialBalanceCalc[], calc));
   return true;
 }
 
@@ -484,8 +535,9 @@ export function balanceRequestOf(
  * Обычный запрос сервер может закрыть готовым расчётом из базы — тогда
  * ответ сразу. Иначе расчёт идёт в фоне, а мы спрашиваем ход, пока он не
  * кончится. Граф за это время могли сменить: тогда в новый граф ничего не
- * кладём — ответ уже в базе сервера, и на том же преобразовании
- * «Рассчитать» возьмёт его сразу.
+ * кладём, а ответ пишем в расчёты закрытого графа на сервере — при
+ * открытии он будет на месте (граф ещё не сохраняли — ответ остаётся в базе
+ * сервера, и на том же преобразовании «Рассчитать» возьмёт его сразу).
  *
  * «Отменить расчёт» (cancelMaterialBalance) убирает задачу: опрос это видит
  * и заканчивается, ничего не положив в граф.
@@ -512,6 +564,10 @@ export const runMaterialBalance =
 
     const { draft, prompt } = state.materialBalance;
     const draftSnapshot = { ...draft.amounts };
+    // Граф и концы преобразования на момент запуска: расчёт идёт минуты, и
+    // граф могут закрыть — тогда ответ пишем в его расчёты на сервере.
+    const graphId = state.savedGraphs.openedGraphId;
+    const ends = { transformationId: t.id, ins, outs };
     const basisAmount = draft.amounts[basis.id];
     const tLabel = labelOf(t);
     const what = `→ ${targets.map(labelOf).join(", ")}`;
@@ -541,15 +597,36 @@ export const runMaterialBalance =
 
     const finish = (record: BalanceRecord, fromCache: boolean, hint?: Record<string, string>) => {
       dispatch(jobEnded({ key }));
-      if (getNotificationCanvas() !== canvas) {
-        showToast(
-          "info",
-          `Материальный баланс готов: «${tLabel}»`,
-          "Граф с этим преобразованием закрыт. Расчёт сохранён в базе: откройте граф и нажмите «Рассчитать» — он придёт сразу.",
-          { canvas },
-        );
+      // Тот же граф открыт заново — полотно другое, а узлы те же.
+      const sameGraph =
+        getNotificationCanvas() === canvas ||
+        (!!graphId && getState().savedGraphs.openedGraphId === graphId);
+      if (!sameGraph) {
+        const inBase =
+          "Граф с этим преобразованием закрыт. Расчёт сохранён в базе: откройте граф и нажмите «Рассчитать» — он придёт сразу.";
+        if (!graphId) {
+          showToast("info", `Материальный баланс готов: «${tLabel}»`, inBase, { canvas });
+          return;
+        }
+        const calc = makeCalc({ record, ends, hint, draft: draftSnapshot, fromCache });
+        void storeCalcInClosedGraph(graphId, t.id, calc)
+          .then((stored) =>
+            showToast(
+              "info",
+              `Материальный баланс готов: «${tLabel}»`,
+              stored
+                ? "Граф с этим преобразованием закрыт — расчёт записан в него: откройте граф, и он будет на месте."
+                : inBase,
+              { canvas },
+            ),
+          )
+          .catch(() =>
+            showToast("info", `Материальный баланс готов: «${tLabel}»`, inBase, { canvas }),
+          );
         return;
       }
+      // Граф могли открыть заново — уведомление на его нынешнее полотно.
+      const shownOn = getNotificationCanvas();
       const attached = attachCalc(dispatch, getState, {
         transformationId: t.id,
         record,
@@ -562,7 +639,7 @@ export const runMaterialBalance =
           "info",
           `Материальный баланс готов, но «${tLabel}» на графе уже нет`,
           "Расчёт сохранён в базе: на таком же преобразовании «Рассчитать» возьмёт его сразу.",
-          { canvas },
+          { canvas: shownOn },
         );
         return;
       }
@@ -572,7 +649,7 @@ export const runMaterialBalance =
           record.status === "calculated" || record.status === "partial" ? "success" : "info",
           `Материальный баланс: «${tLabel}»`,
           `${what} · ${STATUS_TEXT[record.status]}`,
-          { canvas, target: nodeTarget },
+          { canvas: shownOn, target: nodeTarget },
         );
       }
     };

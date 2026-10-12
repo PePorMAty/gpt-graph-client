@@ -460,6 +460,24 @@ const gptSlice = createSlice({
   name: "graph",
   initialState,
   reducers: {
+    /**
+     * Расчёты баланса, записанные на сервере после сохранения графа (см.
+     * openGraphExtras): список узла заменяет то, что лежит в файле, — в нём
+     * могут быть и пришедшие позже расчёты, и убранные. Узлов, которых на
+     * полотне нет, не касается.
+     */
+    restoreMaterialBalances: (
+      state,
+      action: PayloadAction<Record<string, unknown[]>>,
+    ) => {
+      for (const node of state.data.nodes) {
+        if (node.type !== "transformation") continue;
+        const calcs = action.payload[node.id];
+        if (!Array.isArray(calcs)) continue;
+        node.data = { ...node.data, materialBalances: calcs };
+      }
+    },
+
     updateNodeData: (
       state,
       action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>,
@@ -2094,6 +2112,7 @@ const gptSlice = createSlice({
 });
 
 export const {
+  restoreMaterialBalances,
   updateNodeData,
   forceStepPreview,
   onNodesChange,

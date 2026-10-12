@@ -8,6 +8,7 @@ import {
   deleteBookmark,
   isSyncableEntry,
   putBookmark,
+  putMaterialBalances,
 } from "../api/graph-extras-api";
 import { showToast } from "../../components/toast/toastStore";
 
@@ -70,6 +71,49 @@ function installUnloadFlush() {
 
 installUnloadFlush();
 
+/**
+ * Расчёты баланса узлов, ждущие отправки: «граф::узел» → последний список.
+ * Количество сырья правят прямо в таблице, по правке на нажатие клавиши, —
+ * на сервер уходит последний список узла после короткой паузы.
+ */
+const BALANCES_DELAY_MS = 500;
+const pendingBalances = new Map<
+  string,
+  { graphId: string; nodeId: string; calcs: unknown[] }
+>();
+let balancesTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushBalances() {
+  if (balancesTimer) clearTimeout(balancesTimer);
+  balancesTimer = null;
+  const batch = [...pendingBalances.values()];
+  pendingBalances.clear();
+  for (const { graphId, nodeId, calcs } of batch) {
+    putMaterialBalances(graphId, nodeId, calcs).catch((e) => {
+      console.warn("Не удалось сохранить расчёт баланса на сервере", e);
+      showToast(
+        "error",
+        "Расчёт баланса не сохранился на сервере",
+        "На полотне он есть, но при следующем открытии графа его может не быть. Следующая правка расчёта попробует записать снова.",
+      );
+    });
+  }
+}
+
+function queueBalances(graphId: string, nodeId: string, calcs: unknown[]) {
+  pendingBalances.set(`${graphId}::${nodeId}`, { graphId, nodeId, calcs });
+  if (balancesTimer) clearTimeout(balancesTimer);
+  balancesTimer = setTimeout(flushBalances, BALANCES_DELAY_MS);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && pendingBalances.size) {
+      flushBalances();
+    }
+  });
+}
+
 /** Закладка изменилась — отражаем правку на сервере. */
 function syncBookmark(promise: Promise<void>) {
   promise.catch((e) => {
@@ -79,7 +123,8 @@ function syncBookmark(promise: Promise<void>) {
 }
 
 /**
- * Синхронизация закладок и истории сохранённого графа с сервером.
+ * Синхронизация закладок, истории и расчётов баланса сохранённого графа с
+ * сервером.
  *
  * Локальное состояние остаётся ведущим — интерфейс обновляется сразу, а запрос
  * уходит следом. Пока полотно не сохранено (нет openedGraphId), синхронизировать
@@ -151,6 +196,19 @@ export const graphExtrasMiddleware: Middleware =
 
       case "bookmarks/removeBookmark": {
         syncBookmark(deleteBookmark(graphId, payload as string));
+        break;
+      }
+
+      case "graph/updateNodeData": {
+        // Расчёт баланса пришёл, убран или пересчитан на другое количество —
+        // на сервер сразу, не дожидаясь сохранения графа: подпись «Все
+        // изменения сохранены» расчётов не видит, и без этого при следующем
+        // открытии графа их не было.
+        const p = payload as { nodeId: string; data?: Record<string, unknown> };
+        const calcs = p?.data?.materialBalances;
+        if (p?.nodeId && Array.isArray(calcs)) {
+          queueBalances(graphId, p.nodeId, calcs);
+        }
         break;
       }
 
