@@ -815,6 +815,18 @@ const PanelBuildViewInner: FC<{
   // снова на втором шаге» было бы неправдой.
   const [backTo, setBackTo] = useState<WizardStep | null>(null);
 
+  // Обобщили заново, вернувшись к источникам, — дальше обобщение: из него
+  // строится шаг. Иначе признак возврата держал мастер на источниках, и
+  // готовое обобщение надо было искать по полосе шагов.
+  const aggregateStatus = tab.stepAggregateStatus;
+  const [prevAggregateStatus, setPrevAggregateStatus] = useState(aggregateStatus);
+  if (aggregateStatus !== prevAggregateStatus) {
+    setPrevAggregateStatus(aggregateStatus);
+    if (prevAggregateStatus === "loading" && aggregateStatus === "succeeded") {
+      setBackTo(null);
+    }
+  }
+
   // Назад можно, вперёд нет: шаг, до которого ещё не дошли, показывать нечем.
   const shown: WizardStep = dir === null ? 1 : Math.min(backTo ?? step, step) as WizardStep;
   const showIntro = shown === 1;

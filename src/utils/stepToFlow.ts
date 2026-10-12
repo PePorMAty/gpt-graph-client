@@ -315,10 +315,14 @@ export function stepToFlow(
   // («Гидролиз поликарбоната» из поликарбоната, воды и щёлочи даёт бисфенол
   // А) — не тупик, шаг ложится со связью рециклинга. Тупик — только если
   // нет ни продуктов, ни предков.
+  //
+  // Преобразование уже стоит на графе (переиспользуем, см. 2б) — тоже не
+  // дрейф: «Гликолиз поликарбоната» давал диолы, а теперь выяснилось, что и
+  // бисфенол А; к нему ляжет связь рециклинга.
   const newCount = renderProducts.filter((r) => !r.existingNodeId).length;
   const farLeft = renderProducts.some((r) => r.flow === foundFlow);
   const degenerateAncestorLoop =
-    farLeft && newCount === 0 && cycleProductNames.length > 0;
+    !reusedTrNode && farLeft && newCount === 0 && cycleProductNames.length > 0;
   if (degenerateAncestorLoop || (!farLeft && recycleProducts.length === 0)) {
     return {
       nodes: [],
