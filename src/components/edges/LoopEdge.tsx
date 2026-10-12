@@ -62,6 +62,7 @@ function LoopEdgeImpl({
   sourcePosition,
   targetPosition,
   style,
+  markerStart,
   markerEnd,
   interactionWidth,
 }: EdgeProps) {
@@ -102,6 +103,7 @@ function LoopEdgeImpl({
       id={id}
       path={path}
       style={style}
+      markerStart={markerStart}
       markerEnd={markerEnd}
       interactionWidth={interactionWidth}
     />

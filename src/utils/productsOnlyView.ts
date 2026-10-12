@@ -30,13 +30,20 @@ export function collapseToProductsView(
   // рециклинг, пунктиром, и встречная обычная связь её не отменяет.
   const insByNode = new Map<string, string[]>();
   const outsByNode = new Map<string, string[]>();
-  const recycleOuts = new Set<string>();
+  // «узел->продукт» → смысл связи рециклинга: по нему — с какого конца
+  // склеенной связи стрелка.
+  const recycleOuts = new Map<string, unknown>();
   for (const e of edges) {
     if (!productIds.has(e.source) && productIds.has(e.target)) {
       const arr = outsByNode.get(e.source) ?? [];
       arr.push(e.target);
       outsByNode.set(e.source, arr);
-      if (isRecycleEdge(e)) recycleOuts.add(`${e.source}->${e.target}`);
+      if (isRecycleEdge(e)) {
+        recycleOuts.set(
+          `${e.source}->${e.target}`,
+          (e.data as { tFlow?: unknown } | undefined)?.tFlow,
+        );
+      }
     }
     if (productIds.has(e.source) && !productIds.has(e.target)) {
       const arr = insByNode.get(e.target) ?? [];
@@ -66,7 +73,13 @@ export function collapseToProductsView(
             target: tgt,
             type: "straight",
             className: "edge--recycle",
-            data: { recycle: true },
+            // Выход — вещество идёт к продукту на конце (src → tgt); вход
+            // (шаг «вверх») — от него, к продукту в начале.
+            data: {
+              recycle: true,
+              recycleArrow:
+                recycleOuts.get(`${n.id}->${tgt}`) === "in" ? "start" : "end",
+            },
           });
           continue;
         }

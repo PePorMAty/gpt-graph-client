@@ -4,6 +4,7 @@ import {
   Background,
   ReactFlow,
   ConnectionLineType,
+  MarkerType,
   type Node,
   type OnConnect,
   type OnConnectEnd,
@@ -123,7 +124,7 @@ import {
 } from "./utils/parseAlternatives";
 import { previewStepOutcome } from "./utils/stepToFlow";
 import { getAncestorProductLabels } from "./utils/graphReachability";
-import { isRecycleEdge } from "./utils/recycleEdge";
+import { isRecycleEdge, recycleArrowAt } from "./utils/recycleEdge";
 import { alternativeRouteText } from "./utils/transformationRoutesView";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
@@ -176,6 +177,14 @@ import {
 const nodeTypes: NodeTypes = {
   product: ProductNode,
   transformation: TransformationNode,
+};
+
+/** Стрелка связи рециклинга — цветом пунктира (styles/Flow.module.css). */
+const RECYCLE_ARROW = {
+  type: MarkerType.ArrowClosed,
+  color: "#0d9488",
+  width: 20,
+  height: 20,
 };
 
 interface FlowProps {
@@ -1140,20 +1149,24 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
     // приглушены (balanceLayer, edges).
     const lit = balance && balance.lit.size > 0 ? balance.lit : null;
-    // Связь рециклинга — пунктиром, откуда бы она ни пришла (шаг, файл,
-    // объединение графов).
-    const recycleClass = (e: (typeof baseEdges)[number]) =>
-      isRecycleEdge(e) && !(e.className ?? "").includes("edge--recycle")
-        ? [e.className, "edge--recycle"].filter(Boolean).join(" ")
-        : e.className;
-    if (!chainSet && !lit) {
-      return baseEdges.map((e) => {
-        const cls = recycleClass(e);
-        return cls === e.className ? e : { ...e, className: cls };
-      });
-    }
-    return baseEdges.map((e) => {
-      const existing = recycleClass(e) ?? "";
+    // Связь рециклинга — пунктиром и со стрелкой туда, куда идёт вещество,
+    // откуда бы она ни пришла (шаг, файл, объединение графов).
+    const recycleStyled = (e: (typeof baseEdges)[number]) => {
+      if (!isRecycleEdge(e)) return e;
+      const cls = (e.className ?? "").includes("edge--recycle")
+        ? e.className
+        : [e.className, "edge--recycle"].filter(Boolean).join(" ");
+      const at = recycleArrowAt(e, (id) => nodeTypeById.get(id));
+      return {
+        ...e,
+        className: cls,
+        ...(at === "end" ? { markerEnd: RECYCLE_ARROW } : { markerStart: RECYCLE_ARROW }),
+      };
+    };
+    if (!chainSet && !lit) return baseEdges.map(recycleStyled);
+    return baseEdges.map((raw) => {
+      const e = recycleStyled(raw);
+      const existing = e.className ?? "";
       const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
       const extra = [
         chainSet && !(chainSet.has(e.source) && chainSet.has(e.target))
@@ -1165,12 +1178,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             ? `edge--balance-${tone}`
             : "edge--balance-muted",
       ].filter(Boolean);
-      if (!extra.length) {
-        return existing === (e.className ?? "") ? e : { ...e, className: existing };
-      }
+      if (!extra.length) return e;
       return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
     });
-  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance]);
+  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance, nodeTypeById]);
 
   // Просьба извне вписать граф в экран (открытие графа из библиотеки,
   // объединение). Узлы к моменту события ещё не измерены React Flow, а по

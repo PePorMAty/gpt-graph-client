@@ -24,3 +24,28 @@ export function withoutRecycle<E extends Edge>(edges: E[]): E[] {
     ? edges.filter((e) => !isRecycleEdge(e))
     : edges;
 }
+
+/**
+ * С какого конца рисовать стрелку связи рециклинга: туда, куда идёт вещество.
+ * Иначе по пунктиру не понять, нижнее преобразование даёт верхний продукт или
+ * верхний продукт идёт в нижнее преобразование.
+ *
+ * Связь «продукт ↔ преобразование» несёт смысл (data.tFlow): выход — вещество
+ * идёт из преобразования в продукт, вход — наоборот. Склеенная связь режима
+ * «Только продукты» смысла не несёт — у неё конец задан при склейке
+ * (data.recycleArrow).
+ */
+export function recycleArrowAt(
+  edge: Edge,
+  typeOf: (id: string) => string | undefined,
+): "start" | "end" {
+  const data = edge.data as
+    | { recycleArrow?: unknown; tFlow?: unknown }
+    | undefined;
+  if (data?.recycleArrow === "start" || data?.recycleArrow === "end") {
+    return data.recycleArrow;
+  }
+  const trIsSource = typeOf(edge.source) === "transformation";
+  const towardsTarget = data?.tFlow === "in" ? !trIsSource : trIsSource;
+  return towardsTarget ? "end" : "start";
+}
