@@ -1,6 +1,6 @@
 /* Материальный баланс: вкладка левой панели — выбранное преобразование
-   (направления, схема пары, форма запроса или данные расчёта) и список
-   расчётов графа. */
+   (его расчёты, схема «сырьё → продукты», форма запроса, расчёт целиком или
+   одного продукта) и список расчётов графа. */
 
 /* Вкладка прокручивается целиком: форма с двумя промптами и данные расчёта
    длиннее панели. */
@@ -57,21 +57,7 @@
   line-height: 1.5;
 }
 
-/* ─── Сырьё и продукты преобразования, посчитанные пары ─── */
-
-.roles {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-  color: var(--c-text-muted);
-}
-
-.roles b {
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-soft);
-}
+/* ─── Расчёты преобразования ─── */
 
 .pairs {
   display: flex;
@@ -111,7 +97,7 @@
   color: var(--c-brand-strong);
 }
 
-/* ─── Схема пары: сырьё сверху, продукт снизу, как на полотне ─── */
+/* ─── Схема: сырьё сверху, продукты снизу, как на полотне ─── */
 
 .scheme {
   display: flex;
@@ -119,7 +105,7 @@
   gap: var(--s-1);
 }
 
-.schemeRow {
+.schemeBlock {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
@@ -134,34 +120,12 @@
   border-color: var(--c-brand-border);
 }
 
-.schemeHead {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-
 .schemeRole {
   font-size: 11px;
   font-weight: var(--fw-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--c-text-muted);
-}
-
-.schemeAmount {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
-}
-
-.schemeResult {
-  font-size: var(--fs-md);
-  color: var(--c-text-soft);
-}
-
-.schemeResult b {
-  color: var(--c-text);
-  font-variant-numeric: tabular-nums;
 }
 
 .schemeArrow {
@@ -180,6 +144,92 @@
   color: var(--c-brand);
 }
 
+/* Строка сырья или продукта: название, количество или масса, пояснение
+   строкой ниже. */
+.flowRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-2);
+  padding: var(--s-1) 0;
+  border: none;
+  border-top: 1px solid var(--c-border-soft);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.schemeRole + .flowRow {
+  border-top: none;
+}
+
+.flowName {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.flowMass {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-soft);
+}
+
+.flowMass b {
+  color: var(--c-text);
+}
+
+.flowNote {
+  flex: 1 1 100%;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--c-text-muted);
+}
+
+.flowWarn {
+  color: #b45309;
+}
+
+.flowGone {
+  font-weight: normal;
+  font-size: 12px;
+  color: var(--c-danger);
+}
+
+.flowCheck {
+  cursor: pointer;
+}
+
+.flowCheck input {
+  margin: 0;
+}
+
+/* Продукт ведёт в свой расчёт. */
+.flowLink {
+  cursor: pointer;
+  border-radius: var(--r-xs);
+}
+
+.flowLink:hover {
+  background: var(--c-brand-softer);
+}
+
+.flowLink:hover .flowName {
+  color: var(--c-brand-strong);
+  text-decoration: underline;
+}
+
+.flowOff .flowName {
+  font-weight: normal;
+  color: var(--c-text-muted);
+}
+
+.flowOff .flowNote {
+  flex: 0 0 auto;
+}
+
 .question {
   margin: var(--s-1) 0 0;
   font-size: var(--fs-sm);
@@ -195,11 +245,6 @@
 }
 
 /* ─── Форма запроса ─── */
-
-.pairName {
-  font-weight: var(--fw-medium);
-  color: var(--c-text);
-}
 
 .form {
   display: flex;
@@ -224,7 +269,7 @@ label.fieldLabel {
 }
 
 .amount {
-  width: 96px;
+  width: 116px;
   height: 32px;
   padding: 0 var(--s-2);
   border: 1px solid var(--c-border-strong);
@@ -543,26 +588,46 @@ label.fieldLabel {
   text-align: center;
 }
 
+/* Расчёт в списке: «преобразование → продукты» открывает расчёт целиком,
+   продукт под ним — свой расчёт. */
 .item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 100%;
+  gap: var(--s-1);
   padding: var(--s-2) var(--s-3);
-  border: none;
   border-top: 1px solid var(--c-border-soft);
   background: var(--c-surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
 
 .item:first-of-type {
   border-top: none;
 }
 
-.item:hover {
-  background: var(--c-brand-softer);
+.itemOpen {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.itemOpen:hover .itemTitle {
+  color: var(--c-brand-strong);
+}
+
+.itemProducts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.chipBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .itemTitle {
@@ -610,7 +675,33 @@ label.fieldLabel {
   gap: var(--s-1);
 }
 
+/* «Пропилен + Аммиак → Акрилонитрил» — расчёт одного продукта. */
+.productTitle {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
+  color: var(--c-text);
+}
+
+.excerpt {
+  margin-top: var(--s-2);
+}
+
+.excerpt > .fieldLabel {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Markdown внутри пункта списка — строкой. */
+.inlineMd {
+  display: inline;
+}
+
 .reason {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
   margin: var(--s-1) 0 0;
   padding: var(--s-2) var(--s-3);
   background: var(--c-warning-soft);
@@ -619,6 +710,12 @@ label.fieldLabel {
   font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--c-text-soft);
+}
+
+.reasonIcon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--c-brand);
 }
 
 .section {
@@ -699,4 +796,324 @@ details.more > summary {
 
 details.more[open] > summary {
   margin-bottom: var(--s-2);
+}
+
+/* Как сервер проверил источник. */
+.sourceCheck {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sourceCheck a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.sourceCheckLocal {
+  color: var(--c-brand-strong);
+}
+
+.sourceCheckSaved {
+  color: #047857;
+}
+
+.sourceCheckFailed {
+  color: var(--c-danger);
+}
+
+/* Этап расчёта на сервере: «Сервер загружает и проверяет источники: 2 из 5». */
+.stage {
+  font-weight: var(--fw-semibold);
+}
+
+/* Опорное сырьё: от его количества считает модель. */
+.basisPick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.basisPick input {
+  margin: 0;
+}
+
+.basisTag {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-brand-soft);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  color: var(--c-brand-strong);
+}
+
+/* ─── Карточка готового расчёта: таблица баланса, коэффициенты ─── */
+
+/* «Расчёт для преобразования: …» */
+.forTransformation {
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--c-text-soft);
+}
+
+.forTransformation b {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.cardBlock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Заголовок блока: значок, название, «?» с подсказкой. */
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.cardIcon {
+  display: inline-flex;
+  color: var(--c-brand);
+}
+
+.cardHelp {
+  display: inline-flex;
+  color: var(--c-text-faint);
+  cursor: help;
+}
+
+.cardHelp:hover {
+  color: var(--c-text-muted);
+}
+
+/* Таблица сжимается до ширины панели: длинные названия и роли переносятся.
+   Не уложилась и так (очень узкое окно) — прокручивается вбок, а не
+   обрезает «Перейти». */
+.tableCard {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+  background: var(--c-surface);
+}
+
+.balanceTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.balanceTable th {
+  padding: 8px;
+  background: var(--c-surface-soft);
+  border-bottom: 1px solid var(--c-border);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.balanceTable td {
+  padding: 8px;
+  border-bottom: 1px solid var(--c-border-soft);
+  vertical-align: middle;
+  color: var(--c-text);
+}
+
+.balanceTable tr:last-child td {
+  border-bottom: none;
+}
+
+.balanceTable td b {
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.balanceTable .goCol {
+  width: 1%;
+  text-align: center;
+}
+
+/* «Фенолформальдегидные» шире столбца — переносим по слогам, а не
+   раздвигаем таблицу. */
+.flowTitle,
+.flowLinkBtn {
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+/* Подпись под сырьём: «ограничивает выход», «нужно ≈0,48 т». */
+.rowNote {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--c-text-muted);
+}
+
+/* Продукт расчёта — ссылка на его подробный расчёт. */
+.flowLinkBtn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--c-text);
+  text-align: left;
+  text-decoration: underline dotted var(--c-text-faint);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.flowLinkBtn:hover {
+  color: var(--c-brand);
+  text-decoration-color: var(--c-brand);
+}
+
+.rowOff td {
+  color: var(--c-text-faint);
+}
+
+/* «побочный продукт» переносится на две строки; точка — у первой. */
+.role {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--c-text-soft);
+}
+
+.roleDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-top: 0.3em;
+  border-radius: 50%;
+  background: var(--c-text-faint);
+}
+
+.role_input {
+  background: var(--c-brand);
+}
+
+.role_target {
+  background: var(--c-success);
+}
+
+.role_reagent {
+  background: var(--c-product);
+}
+
+.role_byproduct {
+  background: var(--c-text-muted);
+}
+
+.role_waste {
+  background: var(--c-warning);
+}
+
+.role_loss {
+  background: var(--c-text-faint);
+}
+
+.role_flow {
+  background: var(--c-text-faint);
+}
+
+.role_off {
+  background: none;
+  border: 1.5px solid var(--c-text-faint);
+}
+
+.goBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-brand);
+  cursor: pointer;
+}
+
+.goBtn:hover {
+  border-color: var(--c-brand-border);
+  background: var(--c-brand-soft);
+}
+
+.goNone {
+  color: var(--c-text-faint);
+}
+
+/* Поле количества в таблице — узкое. */
+.basisCompact {
+  gap: 4px;
+}
+
+.basisCompact .amount {
+  width: 56px;
+  height: 30px;
+  padding: 0 6px;
+}
+
+.basisCompact .select {
+  width: 54px;
+  height: 30px;
+  padding: 0 2px;
+}
+
+/* Сворачиваемый блок («Коэффициенты»). */
+.fold > .foldSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+}
+
+.fold > .foldSummary::-webkit-details-marker {
+  display: none;
+}
+
+.foldChevron {
+  color: var(--c-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.fold:not([open]) .foldChevron {
+  transform: rotate(-90deg);
+}
+
+.coefList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-text-soft);
+}
+
+.coefList li {
+  margin: 3px 0;
+}
+
+.coefList b {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
 }

@@ -175,3 +175,78 @@ export function dedupeAlternatives(
   }
   return result;
 }
+
+/**
+ * Продукты дальней стороны варианта — найденное шагом: у шага «вниз» «Что
+ * производят», у шага «вверх» — «Из чего производят». Названия как в тексте.
+ */
+function farSideNames(description: string, direction: "up" | "down"): string[] {
+  const label = direction === "up" ? "Из чего производят" : "Что производят";
+  const m = new RegExp(`\\*\\*${label}:\\*\\*([^\\n]*)`).exec(description || "");
+  if (!m) return [];
+  return m[1]
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]\.?$/, "")
+    .split(/[;,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Вариант шага ведёт только назад по цепочке: все его продукты дальней
+ * стороны уже есть в родословной раскрываемого продукта (lineage — он сам и
+ * его предки по построению). Шаг вниз от поликарбоната «Что производят:
+ * [Бисфенол А]», а поликарбонат из бисфенола А и получен — это обратная
+ * переработка (рециклинг): шаг ляжет связью рециклинга, нового направления
+ * цепочки не даст. Возвращает эти продукты; пусто — вариант ведёт вперёд
+ * (или формат не тот).
+ */
+export function variantLoopsBack(
+  description: string,
+  direction: "up" | "down",
+  lineage: string[],
+): string[] {
+  const names = farSideNames(description, direction);
+  if (!names.length) return [];
+  const known = new Set(lineage.map(normalizeProductName).filter(Boolean));
+  return names.every((n) => known.has(normalizeProductName(n))) ? names : [];
+}
+
+/** То же для основного варианта обобщения. */
+export function stepLoopsBack(
+  text: string,
+  direction: "up" | "down",
+  lineage: string[],
+): string[] {
+  if (!text) return [];
+  const main = parseAlternatives(text)[0]?.fullDescription ?? text;
+  return variantLoopsBack(main, direction, lineage);
+}
+
+const EMPTY_LIST_WORDS =
+  /^(?:—|–|-|нет|нет данных|не найден[оаы]?|не указан[оаы]?|отсутству\w*)\.?$/i;
+
+/**
+ * Обобщение не нашло продуктов шага: у шага «вниз» пусто «Что производят», у
+ * шага «вверх» — «Из чего производят». Промпты обобщения так и пишут («[]»),
+ * когда в источниках нет нужной связи. Строить по такому тексту нельзя:
+ * построение требует непустых списков, и модель придумала бы продукты сама.
+ * Смотрим основной вариант. Поля нет вовсе — формат другой, решать не нам.
+ */
+export function stepFarSideEmpty(
+  text: string,
+  direction: "up" | "down",
+): boolean {
+  if (!text) return false;
+  const main = parseAlternatives(text)[0]?.fullDescription ?? text;
+  const label = direction === "up" ? "Из чего производят" : "Что производят";
+  const m = new RegExp(`\\*\\*${label}:\\*\\*([^\\n]*)`).exec(main);
+  if (!m) return false;
+  const inner = m[1]
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]\.?$/, "")
+    .trim();
+  return inner === "" || EMPTY_LIST_WORDS.test(inner);
+}

@@ -2,6 +2,7 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { applyHandlesByGeometry } from "./normalize-edges";
+import { isRecycleEdge } from "./recycleEdge";
 
 /**
  * Проекция «только продукты» (режим-тумблер на панели управления): скрывает
@@ -24,14 +25,25 @@ export function collapseToProductsView(
   );
   const seenPairs = new Set(directEdges.map((e) => `${e.source}->${e.target}`));
 
-  // Входы/выходы каждой скрытой (не-product) ноды.
+  // Входы/выходы каждой скрытой (не-product) ноды. Выход по связи
+  // рециклинга (recycleEdge.ts) — отдельно: склеенная через него связь тоже
+  // рециклинг, пунктиром, и встречная обычная связь её не отменяет.
   const insByNode = new Map<string, string[]>();
   const outsByNode = new Map<string, string[]>();
+  // «узел->продукт» → смысл связи рециклинга: по нему — с какого конца
+  // склеенной связи стрелка.
+  const recycleOuts = new Map<string, unknown>();
   for (const e of edges) {
     if (!productIds.has(e.source) && productIds.has(e.target)) {
       const arr = outsByNode.get(e.source) ?? [];
       arr.push(e.target);
       outsByNode.set(e.source, arr);
+      if (isRecycleEdge(e)) {
+        recycleOuts.set(
+          `${e.source}->${e.target}`,
+          (e.data as { tFlow?: unknown } | undefined)?.tFlow,
+        );
+      }
     }
     if (productIds.has(e.source) && !productIds.has(e.target)) {
       const arr = insByNode.get(e.target) ?? [];
@@ -51,6 +63,26 @@ export function collapseToProductsView(
     for (const src of ins) {
       for (const tgt of outs) {
         if (src === tgt) continue;
+        if (recycleOuts.has(`${n.id}->${tgt}`)) {
+          const recycleKey = `${src}->${tgt}::recycle`;
+          if (seenPairs.has(recycleKey)) continue;
+          seenPairs.add(recycleKey);
+          syntheticEdges.push({
+            id: `pv::${src}::${tgt}::recycle`,
+            source: src,
+            target: tgt,
+            type: "straight",
+            className: "edge--recycle",
+            // Выход — вещество идёт к продукту на конце (src → tgt); вход
+            // (шаг «вверх») — от него, к продукту в начале.
+            data: {
+              recycle: true,
+              recycleArrow:
+                recycleOuts.get(`${n.id}->${tgt}`) === "in" ? "start" : "end",
+            },
+          });
+          continue;
+        }
         const pairKey = `${src}->${tgt}`;
         if (seenPairs.has(pairKey) || seenPairs.has(`${tgt}->${src}`)) continue;
         seenPairs.add(pairKey);

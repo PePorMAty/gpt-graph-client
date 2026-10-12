@@ -1,18 +1,20 @@
 // src/store/slices/materialBalanceSlice.ts
 //
-// Материальный баланс: режим на полотне, выбранное преобразование и пара,
-// черновик количества и своих данных, правки промпта, идущие расчёты и
+// Материальный баланс: режим на полотне, выбранное преобразование и его
+// открытый расчёт или продукт, черновик формы (количество каждого сырья,
+// выбранные продукты, свои данные), правки промпта, идущие расчёты и
 // подсказки базы.
 //
 // Сами расчёты сюда не кладутся: они живут в данных узла преобразования
-// (materialBalances) и сохраняются с графом — по одному на пару «сырьё →
-// продукт». Здесь — состояние сеанса.
+// (materialBalances) и сохраняются с графом — по одному на набор продуктов.
+// Здесь — состояние сеанса.
 
 import {
   createAsyncThunk,
   createSlice,
   type PayloadAction,
 } from "@reduxjs/toolkit";
+import type { Edge } from "@xyflow/react";
 
 import {
   cancelBalanceJob,
@@ -25,6 +27,11 @@ import {
   type BalanceRecord,
   type BalanceSummary,
 } from "../api/material-balance-api";
+import {
+  fetchMaterialBalances,
+  putMaterialBalances,
+} from "../api/graph-extras-api";
+import { loadSavedGraph } from "../api/saved-graph-api";
 import type { AppDispatch, RootState } from "../store";
 import type { CustomNode } from "../../types";
 import { updateNodeData } from "./gptSlice";
@@ -37,21 +44,37 @@ import {
   balanceEnds,
   calcKey,
   calcsOf,
+  defaultBasisId,
+  inputRefs,
   nodeIdsFor,
-  pairFor,
+  selectionFor,
+  targetRefs,
   STATUS_TEXT,
+  type BalanceAmounts,
+  type BalanceInputAmount,
   type BalanceSelection,
   type BalanceUnit,
-  type BalanceView,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 
 export type { BalanceSelection };
 
-export interface BalanceDraft {
-  /** Количество строкой: так поле можно очистить и вписать заново. */
+/** Количество сырья в форме: строкой — так поле можно очистить и вписать заново. */
+export interface DraftAmount {
   amount: string;
   unit: BalanceUnit;
+}
+
+export interface BalanceDraft {
+  /** По id узла сырья; нет или пусто — «сколько нужно». */
+  amounts: Record<string, DraftAmount>;
+  /**
+   * Опорное сырьё: от его количества считает модель (id узла). Выбирается
+   * явно; по умолчанию — основное невспомогательное (defaultBasisId).
+   */
+  basisId: string | null;
+  /** id выбранных продуктов; null — все продукты преобразования. */
+  targets: string[] | null;
   knownData: string;
 }
 
@@ -64,8 +87,11 @@ export interface BalanceJobState {
   runId: string;
   jobId: string | null;
   startedAt: string;
-  inputId: string;
-  outputId: string;
+  transformationId: string;
+  /** Продукты расчёта (id узлов). */
+  targetIds: string[];
+  /** Что сейчас идёт на сервере — этап расчёта. */
+  stage?: string;
   error?: string;
 }
 
@@ -81,33 +107,29 @@ interface MaterialBalanceState {
   selection: BalanceSelection | null;
   /** Расчёт, открытый во вкладке последним: его числа — на узлах без выбора. */
   active: { nodeId: string; recordId: number } | null;
-  /**
-   * У выбранной пары уже есть расчёт, а человек нажал «Новый расчёт» — во
-   * вкладке форма запроса вместо готовых данных.
-   */
-  formOpen: boolean;
   draft: BalanceDraft;
   /**
-   * Чьё количество в черновике: преобразование и сырьё пары (draftOwnerOf).
-   * Другое преобразование или другое сырьё — количество снова 1 т: прежнее
-   * вводили для другого сырья, и оно незаметно уходило в новый расчёт.
+   * Чей черновик: преобразование. Другое преобразование — черновик заново
+   * (1 т основного сырья, все продукты): прежние количества вводили для
+   * другого сырья, и они незаметно уходили бы в новый расчёт.
    */
   draftOwner: string | null;
   /** Правленый промпт; null — как на сервере по умолчанию. */
   prompt: { system: string | null; template: string | null };
   defaults: { system: string; template: string } | null;
-  /** Идущие и упавшие расчёты — по преобразованию и паре (jobKey). */
+  /** Идущие и упавшие расчёты — по преобразованию и продуктам (jobKey). */
   jobs: Record<string, BalanceJobState>;
   /** Подсказки базы — по lookupKey. */
   lookups: Record<string, BalanceLookupState>;
 }
 
+const DEFAULT_AMOUNT: DraftAmount = { amount: "1", unit: "т" };
+
 const initialState: MaterialBalanceState = {
   mode: false,
   selection: null,
   active: null,
-  formOpen: false,
-  draft: { amount: "1", unit: "т", knownData: "" },
+  draft: { amounts: {}, basisId: null, targets: null, knownData: "" },
   draftOwner: null,
   prompt: { system: null, template: null },
   defaults: null,
@@ -116,28 +138,30 @@ const initialState: MaterialBalanceState = {
 };
 
 /**
- * Ключ расчёта пары: под ним — идущая задача и подсказки базы. Разные пары
- * одного преобразования считаются одновременно.
+ * Ключ расчёта преобразования с этими продуктами: под ним — идущая задача и
+ * подсказки базы. Разные наборы продуктов считаются одновременно.
  */
-export const lookupKey = (transformationId: string, inputId: string, outputId: string) =>
-  `${transformationId}|${inputId}|${outputId}`;
+export const jobKey = (transformationId: string, targetIds: string[]) =>
+  `${transformationId}|${[...targetIds].sort().join("|")}`;
 
-export const jobKey = lookupKey;
+export const lookupKey = (transformationId: string, inputIds: string[], targetIds: string[]) =>
+  `${jobKey(transformationId, targetIds)}|${[...inputIds].sort().join("|")}`;
 
-const draftOwnerOf = (sel: BalanceSelection | null) =>
-  sel ? `${sel.transformationId}|${sel.inputId ?? ""}` : null;
+/** Количество из поля: «1,5» и «1.5» — одно и то же; пусто, ноль, не число — null. */
+export function draftAmount(text: string | undefined): number | null {
+  const t = String(text ?? "").replace(/\s/g, "").replace(",", ".");
+  if (!t) return null;
+  const v = Number(t);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
 
-/**
- * Выбрали пару с другим сырьём — количество снова 1 т. Снятый выбор
- * черновик не трогает: вернувшись к той же паре, человек видит то, что
- * вводил.
- */
-function takeDraft(state: MaterialBalanceState) {
-  const owner = draftOwnerOf(state.selection);
-  if (!owner || owner === state.draftOwner) return;
-  state.draftOwner = owner;
-  state.draft.amount = initialState.draft.amount;
-  state.draft.unit = initialState.draft.unit;
+/** Черновик количеств по id узла — для слоя на полотне и формы. */
+export function draftAmounts(draft: BalanceDraft): Record<string, BalanceInputAmount> {
+  const out: Record<string, BalanceInputAmount> = {};
+  for (const [id, a] of Object.entries(draft.amounts)) {
+    out[id] = { amount: draftAmount(a.amount), unit: a.unit };
+  }
+  return out;
 }
 
 const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
@@ -150,7 +174,6 @@ const nodeRef = (n: CustomNode): BalanceNodeRef => ({
     : {}),
 });
 
-
 /** Промпт по умолчанию — для редактора. */
 export const loadBalancePrompt = createAsyncThunk(
   "materialBalance/loadPrompt",
@@ -160,23 +183,19 @@ export const loadBalancePrompt = createAsyncThunk(
   },
 );
 
-/** Есть ли в базе готовый расчёт этой пары. */
+/** Есть ли в базе готовый расчёт этого сырья и этих продуктов. */
 export const lookupBalanceFor = createAsyncThunk(
   "materialBalance/lookup",
   async (
-    arg: {
-      transformationId: string;
-      inputId: string;
-      outputId: string;
-    },
+    arg: { transformationId: string; inputIds: string[]; targetIds: string[] },
     { getState },
   ) => {
     const { nodes } = (getState() as RootState).graph.data;
-    const byId = (id: string) => nodes.find((n) => n.id === id);
+    const name = (id: string) => labelOf(nodes.find((n) => n.id === id));
     return lookupBalance({
-      transformation: labelOf(byId(arg.transformationId)),
-      basis: labelOf(byId(arg.inputId)),
-      target: labelOf(byId(arg.outputId)),
+      transformation: name(arg.transformationId),
+      inputs: arg.inputIds.map(name).filter(Boolean),
+      targets: arg.targetIds.map(name).filter(Boolean),
     });
   },
 );
@@ -189,26 +208,41 @@ const slice = createSlice({
       state.mode = action.payload;
       if (!action.payload) state.selection = null;
     },
+    /**
+     * Выбрать преобразование (или снять выбор). inputIds — его сырьё,
+     * основное первым: новый черновик — 1 т основного, остальное «сколько
+     * нужно».
+     */
     selectBalanceTransformation(
       state,
-      action: PayloadAction<BalanceSelection | null>,
+      action: PayloadAction<{ selection: BalanceSelection | null; basisId?: string | null }>,
     ) {
-      state.selection = action.payload;
-      state.formOpen = false;
-      takeDraft(state);
+      const { selection, basisId } = action.payload;
+      state.selection = selection;
+      if (!selection || selection.transformationId === state.draftOwner) return;
+      state.draftOwner = selection.transformationId;
+      state.draft.amounts = basisId ? { [basisId]: { ...DEFAULT_AMOUNT } } : {};
+      state.draft.basisId = basisId ?? null;
+      state.draft.targets = null;
     },
-    setBalanceFormOpen(state, action: PayloadAction<boolean>) {
-      state.formOpen = action.payload;
+    /** Сделать сырьё опорным; пустое количество у него — 1 т. */
+    setDraftBasis(state, action: PayloadAction<string>) {
+      const id = action.payload;
+      state.draft.basisId = id;
+      if (draftAmount(state.draft.amounts[id]?.amount) === null) {
+        state.draft.amounts[id] = { amount: "1", unit: state.draft.amounts[id]?.unit ?? "т" };
+      }
     },
-    setBalancePair(
-      state,
-      action: PayloadAction<{ inputId?: string; outputId?: string }>,
-    ) {
+    /** Открыть расчёт (номер записи) или форму нового (null). */
+    openBalanceCalc(state, action: PayloadAction<number | null>) {
       if (!state.selection) return;
-      state.formOpen = false;
-      if (action.payload.inputId) state.selection.inputId = action.payload.inputId;
-      if (action.payload.outputId) state.selection.outputId = action.payload.outputId;
-      takeDraft(state);
+      state.selection.recordId = action.payload;
+      state.selection.productId = null;
+    },
+    /** Провалиться в расчёт продукта (id узла) или вернуться к расчёту (null). */
+    openBalanceProduct(state, action: PayloadAction<string | null>) {
+      if (!state.selection) return;
+      state.selection.productId = action.payload;
     },
     setBalanceActive(
       state,
@@ -216,8 +250,18 @@ const slice = createSlice({
     ) {
       state.active = action.payload;
     },
-    setBalanceDraft(state, action: PayloadAction<Partial<BalanceDraft>>) {
-      state.draft = { ...state.draft, ...action.payload };
+    /** Количество одного сырья в форме. */
+    setDraftAmount(state, action: PayloadAction<{ inputId: string; amount: DraftAmount }>) {
+      state.draft.amounts[action.payload.inputId] = action.payload.amount;
+    },
+    setDraftAmounts(state, action: PayloadAction<Record<string, DraftAmount>>) {
+      state.draft.amounts = action.payload;
+    },
+    setDraftTargets(state, action: PayloadAction<string[] | null>) {
+      state.draft.targets = action.payload;
+    },
+    setBalanceKnownData(state, action: PayloadAction<string>) {
+      state.draft.knownData = action.payload;
     },
     setBalancePrompt(
       state,
@@ -231,8 +275,8 @@ const slice = createSlice({
       action: PayloadAction<{
         key: string;
         runId: string;
-        inputId: string;
-        outputId: string;
+        transformationId: string;
+        targetIds: string[];
         startedAt: string;
       }>,
     ) {
@@ -248,6 +292,10 @@ const slice = createSlice({
       job.status = "running";
       job.jobId = action.payload.jobId;
       job.startedAt = action.payload.startedAt || job.startedAt;
+    },
+    jobStage(state, action: PayloadAction<{ key: string; stage?: string }>) {
+      const job = state.jobs[action.payload.key];
+      if (job) job.stage = action.payload.stage;
     },
     /** Расчёт закончился: удачный — задача уходит, неудачный — остаётся с ошибкой. */
     jobEnded(state, action: PayloadAction<{ key: string; error?: string }>) {
@@ -267,8 +315,8 @@ const slice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    const keyOf = (a: { transformationId: string; inputId: string; outputId: string }) =>
-      lookupKey(a.transformationId, a.inputId, a.outputId);
+    const keyOf = (a: { transformationId: string; inputIds: string[]; targetIds: string[] }) =>
+      lookupKey(a.transformationId, a.inputIds, a.targetIds);
     builder
       .addCase(loadBalancePrompt.fulfilled, (state, action) => {
         state.defaults = action.payload;
@@ -287,15 +335,18 @@ const slice = createSlice({
 
 export const {
   setBalanceMode,
-  selectBalanceTransformation,
-  setBalanceFormOpen,
-  setBalancePair,
+  openBalanceCalc,
+  openBalanceProduct,
   setBalanceActive,
-  setBalanceDraft,
+  setDraftAmount,
+  setDraftAmounts,
+  setDraftBasis,
+  setDraftTargets,
+  setBalanceKnownData,
   setBalancePrompt,
   dismissBalanceJob,
 } = slice.actions;
-const { jobStarted, jobRunning, jobEnded } = slice.actions;
+const { jobStarted, jobRunning, jobStage, jobEnded } = slice.actions;
 
 export default slice.reducer;
 
@@ -308,27 +359,108 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let runSeq = 0;
 
-/** Количество из поля: «1,5» и «1.5» — одно и то же; пусто и ноль — 1. */
-export function draftAmount(text: string): number {
-  const v = Number(String(text).replace(/\s/g, "").replace(",", "."));
-  return Number.isFinite(v) && v > 0 ? v : 1;
-}
-
 /**
- * Щелчок по преобразованию в режиме баланса: выбрать его и пару — свежего
- * расчёта, а нет расчётов — основную (pairFor).
+ * Выбрать преобразование: открыть его расчёт (prefer — номер записи, иначе
+ * свежий) или форму нового, если расчётов нет. null — снять выбор.
  */
 export const pickBalanceTransformation =
-  (transformationId: string) =>
+  (transformationId: string | null, prefer?: { recordId?: number | null; productId?: string | null }) =>
   (dispatch: AppDispatch, getState: () => RootState): void => {
+    if (!transformationId) {
+      dispatch(slice.actions.selectBalanceTransformation({ selection: null }));
+      return;
+    }
     const { nodes, edges } = getState().graph.data;
-    dispatch(selectBalanceTransformation(pairFor(transformationId, nodes, edges)));
+    const node = nodes.find((n) => n.id === transformationId);
+    const selection = selectionFor(node, transformationId, prefer?.recordId);
+    if (prefer?.productId && selection.recordId !== null) selection.productId = prefer.productId;
+    const { ins } = balanceEnds(transformationId, nodes, edges);
+    dispatch(
+      slice.actions.selectBalanceTransformation({ selection, basisId: defaultBasisId(node, ins) }),
+    );
   };
 
 /**
- * Положить расчёт в узел преобразования. У пары один расчёт: новый заменяет
- * прежний той же пары (и старые лишние из прежних версий); расчёты других
- * пар остаются.
+ * Щелчок по продукту на полотне: если это продукт открытого расчёта —
+ * провалиться в его расчёт (true). Иначе ничего (false) — откроется
+ * карточка.
+ */
+export const focusBalanceProduct =
+  (productId: string) =>
+  (dispatch: AppDispatch, getState: () => RootState): boolean => {
+    const { selection } = getState().materialBalance;
+    if (!selection || selection.recordId === null) return false;
+    const node = getState().graph.data.nodes.find((n) => n.id === selection.transformationId);
+    const calc = calcsOf(node).find((c) => c.record.id === selection.recordId);
+    if (!calc || !targetRefs(calc.record).some((r) => calc.nodeIds[r.ref] === productId)) {
+      return false;
+    }
+    dispatch(openBalanceProduct(productId));
+    return true;
+  };
+
+/** Черновик количеств — по обозначениям расчёта (через узлы). */
+function amountsForRecord(
+  record: BalanceRecord,
+  nodeIds: Record<string, string>,
+  draft: Record<string, DraftAmount>,
+): BalanceAmounts {
+  const out: BalanceAmounts = {};
+  for (const r of inputRefs(record)) {
+    const a = draft[nodeIds[r.ref] ?? ""];
+    out[r.ref] = { amount: draftAmount(a?.amount), unit: a?.unit ?? "т" };
+  }
+  // Ни одно количество не легло на сырьё расчёта — то, с которым считала
+  // модель: иначе пересчитывать не из чего.
+  if (!Object.values(out).some((a) => a.amount !== null)) {
+    const basis = inputRefs(record).find((r) => r.role === "basis");
+    const b = record.basisAmount;
+    if (basis) {
+      const unit = (["кг", "т", "тыс. т"] as string[]).includes(b?.unit ?? "")
+        ? (b!.unit as BalanceUnit)
+        : "т";
+      out[basis.ref] = { amount: b?.amount ?? 1, unit };
+    }
+  }
+  return out;
+}
+
+/** Расчёт из записи сервера: обозначения — к узлам графа, количества — из формы. */
+function makeCalc(args: {
+  record: BalanceRecord;
+  ends: { transformationId: string; ins: CustomNode[]; outs: CustomNode[] };
+  hint?: Record<string, string>;
+  draft: Record<string, DraftAmount>;
+  fromCache: boolean;
+}): MaterialBalanceCalc {
+  const nodeIds = nodeIdsFor(args.record, args.ends, args.hint);
+  return {
+    record: args.record,
+    nodeIds,
+    ...(args.fromCache ? { fromCache: true } : {}),
+    addedAt: new Date().toISOString(),
+    amounts: amountsForRecord(args.record, nodeIds, args.draft),
+  };
+}
+
+/**
+ * Список расчётов узла с новым. У набора продуктов один расчёт: новый
+ * заменяет прежний тех же продуктов; расчёты других наборов остаются.
+ */
+function withCalc(
+  list: MaterialBalanceCalc[],
+  calc: MaterialBalanceCalc,
+): MaterialBalanceCalc[] {
+  const key = calcKey(calc);
+  return [
+    calc,
+    ...list.filter((c) => calcKey(c) !== key && c.record.id !== calc.record.id),
+  ];
+}
+
+/**
+ * Положить расчёт в узел преобразования. Если преобразование выбрано —
+ * открыть новый расчёт.
  */
 function attachCalc(
   dispatch: AppDispatch,
@@ -336,48 +468,76 @@ function attachCalc(
   args: {
     transformationId: string;
     record: BalanceRecord;
-    inputId: string;
-    outputId: string;
+    hint?: Record<string, string>;
+    draft: Record<string, DraftAmount>;
     fromCache: boolean;
-    view: BalanceView;
   },
 ): boolean {
   const { nodes, edges } = getState().graph.data;
   const node = nodes.find((n) => n.id === args.transformationId);
   if (!node) return false;
   const { ins, outs } = balanceEnds(node.id, nodes, edges);
-  const calc: MaterialBalanceCalc = {
-    record: args.record,
-    nodeIds: nodeIdsFor(args.record, {
-      transformationId: node.id,
-      inputId: args.inputId,
-      outputId: args.outputId,
-      ins,
-      outs,
-    }),
-    ...(args.fromCache ? { fromCache: true } : {}),
-    addedAt: new Date().toISOString(),
-    view: args.view,
-  };
-  const key = calcKey(calc);
-  const rest = calcsOf(node).filter((c) => calcKey(c) !== key);
+  const calc = makeCalc({ ...args, ends: { transformationId: node.id, ins, outs } });
   dispatch(
-    updateNodeData({ nodeId: node.id, data: { materialBalances: [calc, ...rest] } }),
+    updateNodeData({ nodeId: node.id, data: { materialBalances: withCalc(calcsOf(node), calc) } }),
   );
   dispatch(setBalanceActive({ nodeId: node.id, recordId: args.record.id }));
-  // Расчёт готов — во вкладке его данные, а не форма запроса.
-  dispatch(slice.actions.setBalanceFormOpen(false));
+  // Преобразование открыто — во вкладке готовый расчёт, а не форма.
+  if (getState().materialBalance.selection?.transformationId === node.id) {
+    dispatch(openBalanceCalc(args.record.id));
+  }
   return true;
 }
 
 /**
- * Рассчитать баланс выбранной пары: сколько продукта получится из сырья.
+ * Расчёт пришёл, когда его граф уже закрыт: записать его в расчёты графа на
+ * сервере (см. graphExtrasMiddleware) — при открытии он будет на месте.
+ * Список узла — записанный после сохранения графа, а если такого нет — из
+ * самого файла. false — преобразования в сохранённом графе нет.
+ */
+async function storeCalcInClosedGraph(
+  graphId: string,
+  nodeId: string,
+  calc: MaterialBalanceCalc,
+): Promise<boolean> {
+  const stored = (await fetchMaterialBalances(graphId))[nodeId];
+  let base = stored;
+  if (!Array.isArray(base)) {
+    const file = await loadSavedGraph(graphId);
+    const node = file.graph?.nodes?.find((n) => n.id === nodeId);
+    if (!node) return false;
+    base = calcsOf(node);
+  }
+  await putMaterialBalances(graphId, nodeId, withCalc(base as MaterialBalanceCalc[], calc));
+  return true;
+}
+
+/** Что уйдёт в запрос: сырьё, продукты, опорное сырьё с количеством. */
+export function balanceRequestOf(
+  args: { nodes: CustomNode[]; edges: Edge[]; draft: BalanceDraft },
+  transformationId: string,
+) {
+  const { nodes, edges, draft } = args;
+  const { ins, outs } = balanceEnds(transformationId, nodes, edges);
+  const targets = outs.filter((n) => !draft.targets || draft.targets.includes(n.id));
+  // Опорное — выбранное, если у него есть количество. Выбранного нет на
+  // графе — первое сырьё с количеством.
+  const set = (n: CustomNode) => draftAmount(draft.amounts[n.id]?.amount) !== null;
+  const chosen = ins.find((n) => n.id === draft.basisId);
+  const basis = chosen ? (set(chosen) ? chosen : undefined) : ins.find(set);
+  return { ins, outs, targets, basis, chosen };
+}
+
+/**
+ * Рассчитать баланс выбранного преобразования: всё его сырьё, выбранные
+ * продукты, количество опорного сырья из формы.
  *
  * Обычный запрос сервер может закрыть готовым расчётом из базы — тогда
  * ответ сразу. Иначе расчёт идёт в фоне, а мы спрашиваем ход, пока он не
  * кончится. Граф за это время могли сменить: тогда в новый граф ничего не
- * кладём — ответ уже в базе сервера, и на том же преобразовании
- * «Рассчитать» возьмёт его сразу.
+ * кладём, а ответ пишем в расчёты закрытого графа на сервере — при
+ * открытии он будет на месте (граф ещё не сохраняли — ответ остаётся в базе
+ * сервера, и на том же преобразовании «Рассчитать» возьмёт его сразу).
  *
  * «Отменить расчёт» (cancelMaterialBalance) убирает задачу: опрос это видит
  * и заканчивается, ничего не положив в граф.
@@ -387,24 +547,30 @@ export const runMaterialBalance =
   async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
     const state = getState();
     const sel = state.materialBalance.selection;
-    if (!sel?.inputId || !sel.outputId) return;
-    const { nodes, edges } = state.graph.data;
-    const byId = (id: string) => nodes.find((n) => n.id === id);
-    const t = byId(sel.transformationId);
-    const input = byId(sel.inputId);
-    const output = byId(sel.outputId);
-    if (!t || !input || !output) return;
-    const key = jobKey(t.id, input.id, output.id);
-    // Расчёт этой пары уже идёт или запускается — второй щелчок не запускает
-    // второй.
+    if (!sel) return;
+    const t = state.graph.data.nodes.find((n) => n.id === sel.transformationId);
+    if (!t) return;
+    const { ins, outs, targets, basis } = balanceRequestOf(
+      { ...state.graph.data, draft: state.materialBalance.draft },
+      t.id,
+    );
+    if (!ins.length || !targets.length || !basis) return;
+    const targetIds = targets.map((n) => n.id);
+    const key = jobKey(t.id, targetIds);
+    // Расчёт этих продуктов уже идёт или запускается — второй щелчок не
+    // запускает второй.
     const current = state.materialBalance.jobs[key]?.status;
     if (current === "running" || current === "starting") return;
 
-    const { ins, outs } = balanceEnds(t.id, nodes, edges);
     const { draft, prompt } = state.materialBalance;
-    const view: BalanceView = { amount: draftAmount(draft.amount), unit: draft.unit };
+    const draftSnapshot = { ...draft.amounts };
+    // Граф и концы преобразования на момент запуска: расчёт идёт минуты, и
+    // граф могут закрыть — тогда ответ пишем в его расчёты на сервере.
+    const graphId = state.savedGraphs.openedGraphId;
+    const ends = { transformationId: t.id, ins, outs };
+    const basisAmount = draft.amounts[basis.id];
     const tLabel = labelOf(t);
-    const pair = `${labelOf(input)} → ${labelOf(output)}`;
+    const what = `→ ${targets.map(labelOf).join(", ")}`;
     const canvas = getNotificationCanvas();
     const nodeTarget = { nodeId: t.id, label: tLabel };
 
@@ -413,8 +579,8 @@ export const runMaterialBalance =
       jobStarted({
         key,
         runId,
-        inputId: input.id,
-        outputId: output.id,
+        transformationId: t.id,
+        targetIds,
         startedAt: new Date().toISOString(),
       }),
     );
@@ -429,31 +595,51 @@ export const runMaterialBalance =
       });
     };
 
-    const finish = (record: BalanceRecord, fromCache: boolean) => {
+    const finish = (record: BalanceRecord, fromCache: boolean, hint?: Record<string, string>) => {
       dispatch(jobEnded({ key }));
-      if (getNotificationCanvas() !== canvas) {
-        showToast(
-          "info",
-          `Материальный баланс готов: «${tLabel}»`,
-          "Граф с этим преобразованием закрыт. Расчёт сохранён в базе: откройте граф и нажмите «Рассчитать» — он придёт сразу.",
-          { canvas },
-        );
+      // Тот же граф открыт заново — полотно другое, а узлы те же.
+      const sameGraph =
+        getNotificationCanvas() === canvas ||
+        (!!graphId && getState().savedGraphs.openedGraphId === graphId);
+      if (!sameGraph) {
+        const inBase =
+          "Граф с этим преобразованием закрыт. Расчёт сохранён в базе: откройте граф и нажмите «Рассчитать» — он придёт сразу.";
+        if (!graphId) {
+          showToast("info", `Материальный баланс готов: «${tLabel}»`, inBase, { canvas });
+          return;
+        }
+        const calc = makeCalc({ record, ends, hint, draft: draftSnapshot, fromCache });
+        void storeCalcInClosedGraph(graphId, t.id, calc)
+          .then((stored) =>
+            showToast(
+              "info",
+              `Материальный баланс готов: «${tLabel}»`,
+              stored
+                ? "Граф с этим преобразованием закрыт — расчёт записан в него: откройте граф, и он будет на месте."
+                : inBase,
+              { canvas },
+            ),
+          )
+          .catch(() =>
+            showToast("info", `Материальный баланс готов: «${tLabel}»`, inBase, { canvas }),
+          );
         return;
       }
+      // Граф могли открыть заново — уведомление на его нынешнее полотно.
+      const shownOn = getNotificationCanvas();
       const attached = attachCalc(dispatch, getState, {
         transformationId: t.id,
         record,
-        inputId: input.id,
-        outputId: output.id,
+        hint,
+        draft: draftSnapshot,
         fromCache,
-        view,
       });
       if (!attached) {
         showToast(
           "info",
           `Материальный баланс готов, но «${tLabel}» на графе уже нет`,
           "Расчёт сохранён в базе: на таком же преобразовании «Рассчитать» возьмёт его сразу.",
-          { canvas },
+          { canvas: shownOn },
         );
         return;
       }
@@ -462,8 +648,8 @@ export const runMaterialBalance =
         showToast(
           record.status === "calculated" || record.status === "partial" ? "success" : "info",
           `Материальный баланс: «${tLabel}»`,
-          `${pair} · ${STATUS_TEXT[record.status]}`,
-          { canvas, target: nodeTarget },
+          `${what} · ${STATUS_TEXT[record.status]}`,
+          { canvas: shownOn, target: nodeTarget },
         );
       }
     };
@@ -472,10 +658,14 @@ export const runMaterialBalance =
     try {
       started = await startBalance({
         transformation: nodeRef(t),
-        basis: nodeRef(input),
-        target: nodeRef(output),
         inputs: ins.map(nodeRef),
         outputs: outs.map(nodeRef),
+        targets: targetIds,
+        basis: {
+          id: basis.id,
+          amount: draftAmount(basisAmount?.amount) ?? 1,
+          unit: basisAmount?.unit ?? "т",
+        },
         ...(draft.knownData.trim() ? { knownData: draft.knownData.trim() } : {}),
         ...(prompt.system ? { system: prompt.system } : {}),
         ...(prompt.template ? { template: prompt.template } : {}),
@@ -495,7 +685,7 @@ export const runMaterialBalance =
     }
 
     if (started.fromCache) {
-      finish(started.result, true);
+      finish(started.result, true, started.nodeIds);
       return;
     }
 
@@ -520,7 +710,10 @@ export const runMaterialBalance =
         continue;
       }
       if (!alive()) return;
-      if (job.status === "running") continue;
+      if (job.status === "running") {
+        dispatch(jobStage({ key, stage: job.stage }));
+        continue;
+      }
       // Такой же расчёт отменили из другой вкладки или другим человеком:
       // задача на сервере общая.
       if (job.status === "cancelled") {
@@ -537,23 +730,21 @@ export const runMaterialBalance =
   };
 
 /**
- * Взять готовый расчёт из базы — из подсказки «есть расчёт по технологии …».
- * Он той же пары (подсказки базы — по ней) и заменяет её расчёт.
+ * Взять готовый расчёт из базы — из подсказки «в базе есть расчёт …».
+ * Заменяет расчёт тех же продуктов, если он был.
  */
 export const takeBalanceFromBase =
   (recordId: number) =>
   async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
     const { selection: sel, draft } = getState().materialBalance;
-    if (!sel?.inputId || !sel.outputId) return;
+    if (!sel) return;
     try {
       const record = await fetchBalanceRecord(recordId);
       attachCalc(dispatch, getState, {
         transformationId: sel.transformationId,
         record,
-        inputId: sel.inputId,
-        outputId: sel.outputId,
+        draft: draft.amounts,
         fromCache: true,
-        view: { amount: draftAmount(draft.amount), unit: draft.unit },
       });
     } catch (e) {
       showToast(
@@ -565,9 +756,8 @@ export const takeBalanceFromBase =
   };
 
 /**
- * «Отменить расчёт» пары (jobKey): опрос заканчивается, сервер обрывает
- * запрос к модели и ответ в базу не пишет. Во вкладке — снова прежний
- * расчёт пары, если он был, иначе форма запроса.
+ * «Отменить расчёт» (jobKey): опрос заканчивается, сервер обрывает запрос к
+ * модели и ответ в базу не пишет.
  */
 export const cancelMaterialBalance =
   (key: string) =>
@@ -575,7 +765,6 @@ export const cancelMaterialBalance =
     const job = getState().materialBalance.jobs[key];
     if (!job) return;
     dispatch(slice.actions.dismissBalanceJob(key));
-    dispatch(slice.actions.setBalanceFormOpen(false));
     // Номера задачи ещё нет — сервер не ответил на запуск. Снимет её сам
     // запуск, когда ответ придёт (runMaterialBalance).
     if (!job.jobId) return;
@@ -594,20 +783,46 @@ export const removeMaterialBalance =
     if (!node) return;
     const rest = calcsOf(node).filter((c) => c.record.id !== recordId);
     dispatch(updateNodeData({ nodeId, data: { materialBalances: rest } }));
-    const active = getState().materialBalance.active;
+    const { active, selection } = getState().materialBalance;
     if (active?.nodeId === nodeId && active.recordId === recordId) {
       dispatch(setBalanceActive(null));
     }
+    if (selection?.transformationId === nodeId && selection.recordId === recordId) {
+      dispatch(openBalanceCalc(rest[0]?.record.id ?? null));
+    }
   };
 
-/** Сменить количество или единицу показа расчёта. */
-export const setMaterialBalanceView =
-  (nodeId: string, recordId: number, view: BalanceView) =>
+/** Сменить количество сырья расчёта — пересчёт без модели. */
+export const setMaterialBalanceAmounts =
+  (nodeId: string, recordId: number, amounts: BalanceAmounts) =>
   (dispatch: AppDispatch, getState: () => RootState): void => {
     const node = getState().graph.data.nodes.find((n) => n.id === nodeId);
     if (!node) return;
     const next = calcsOf(node).map((c) =>
-      c.record.id === recordId ? { ...c, view } : c,
+      c.record.id === recordId ? { ...c, amounts, view: undefined } : c,
     );
     dispatch(updateNodeData({ nodeId, data: { materialBalances: next } }));
+  };
+
+/**
+ * «Новый расчёт» от открытого: форма с его количествами и продуктами.
+ */
+export const newCalcFrom =
+  (calc: MaterialBalanceCalc, amounts: BalanceAmounts) =>
+  (dispatch: AppDispatch): void => {
+    const draft: Record<string, DraftAmount> = {};
+    for (const [ref, a] of Object.entries(amounts)) {
+      const id = calc.nodeIds[ref];
+      if (!id) continue;
+      draft[id] = { amount: a.amount === null ? "" : String(a.amount).replace(".", ","), unit: a.unit };
+    }
+    dispatch(setDraftAmounts(draft));
+    const basis = calc.record.refs.find((r) => r.role === "basis");
+    const basisId = basis ? calc.nodeIds[basis.ref] : undefined;
+    if (basisId) dispatch(setDraftBasis(basisId));
+    const targets = Object.entries(calc.nodeIds)
+      .filter(([ref]) => calc.record.refs.some((r) => r.ref === ref && r.role === "target"))
+      .map(([, id]) => id);
+    dispatch(setDraftTargets(targets.length ? targets : null));
+    dispatch(openBalanceCalc(null));
   };

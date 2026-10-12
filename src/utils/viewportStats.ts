@@ -2,6 +2,7 @@ import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { industryKey } from "../store/slices/industrySlice";
 import { estimateNodeSize } from "../components/nodes/nodeBox";
+import { withoutRecycle } from "./recycleEdge";
 
 export interface ViewportStats {
   /** Узлы, попавшие в видимую область (продукты и преобразования). */
@@ -62,13 +63,15 @@ function isVisible(node: CustomNode, view: ViewportRect): boolean {
  * Считается по продуктам: преобразования — это переходы, а не шаги, поэтому
  * продукт→преобразование→продукт даёт длину 2, а не 3. За пределы набора
  * `visibleIds` поиск не уходит: для строки состояния это видимая область, для
- * сводки о графе — все его узлы.
+ * сводки о графе — все его узлы. Связи рециклинга (recycleEdge.ts) не в счёт.
  */
 export function longestProductChain(
   visibleIds: Set<string>,
   nodes: CustomNode[],
-  edges: Edge[],
+  allEdges: Edge[],
 ): number {
+  // Связь рециклинга ведёт назад по цепочке — длину цепочки она не удлиняет.
+  const edges = withoutRecycle(allEdges);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const isProduct = (id: string) => byId.get(id)?.type === "product";
 

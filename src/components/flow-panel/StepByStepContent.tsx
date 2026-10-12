@@ -4,9 +4,10 @@ import { StepPreviewModal } from "./StepPreviewModal";
 import { MarkdownEditor } from "../markdown-editor";
 import { getDefaultStepSourcesPrompt } from "../../prompts/sourcesPrompt";
 import {
-  getDefaultStepAggregateFullPrompt,
+  joinStepAggregatePrompt,
   splitStepAggregatePrompt,
 } from "../../prompts/aggregatePrompt";
+import { fetchStepAggregatePrompt } from "../../store/api/step-chain-api";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { AddSourceForm } from "./AddSourceForm";
 import { SearchPromptEditor } from "./SearchPromptEditor";
@@ -22,6 +23,10 @@ import {
   SearchIcon,
 } from "../icons";
 import { parseDomainsInput } from "../../utils/parseDomains";
+import {
+  stepFarSideEmpty,
+  stepLoopsBack,
+} from "../../utils/parseAlternatives";
 import {
   AI_MODELS,
   AI_PROVIDERS,
@@ -58,6 +63,8 @@ type StepByStepContentProps = Pick<
   | "stepBuildStatus"
   | "stepBuildError"
   | "pendingStep"
+  | "pendingStepOutcome"
+  | "stepLineage"
   | "onFetchStepSources"
   | "onCancelStepSources"
   | "onAggregateStepSources"
@@ -96,6 +103,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepBuildStatus = "idle",
   stepBuildError,
   pendingStep,
+  pendingStepOutcome = null,
+  stepLineage,
 
   stepBuiltFromAggregate = false,
 
@@ -137,6 +146,22 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const aggregateLoading = stepAggregateStatus === "loading";
   const buildLoading = stepBuildStatus === "loading";
   const hasValidAggregate = !!stepAggregatedText && !stepNeedsSources;
+  // Обобщение не нашло, из чего получают продукт (вверх) или что получают из
+  // него (вниз): строить не из чего — см. stepFarSideEmpty.
+  const aggregateFoundNothing = useMemo(
+    () => stepFarSideEmpty(stepAggregatedText ?? "", direction),
+    [stepAggregatedText, direction],
+  );
+  // Основной вариант ведёт только назад по цепочке — к продуктам, которые уже
+  // стоят выше (см. stepLoopsBack): это обратная переработка, шаг ляжет со
+  // связью рециклинга. Предупреждаем заранее, строить не мешаем.
+  const aggregateLoopsBack = useMemo(
+    () =>
+      stepLineage?.length
+        ? stepLoopsBack(stepAggregatedText ?? "", direction, stepLineage)
+        : [],
+    [stepAggregatedText, direction, stepLineage],
+  );
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview =
@@ -206,16 +231,48 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";
 
   // ── Aggregate prompt state ──
+  // Промпт по умолчанию — с сервера, по направлению: сервер им и обобщает.
+  // Загружается, когда окно промпта открыто; без правки обобщение идёт с
+  // промптом сервера, даже если загрузить его не удалось.
   const [aggPromptOpen, setAggPromptOpen] = useState(false);
   const [manualAggPrompt, setManualAggPrompt] = useState<string | null>(null);
+  const [loadedAggPrompt, setLoadedAggPrompt] = useState<{
+    direction: typeof direction;
+    text: string;
+  } | null>(null);
+  const [aggPromptError, setAggPromptError] = useState<string | null>(null);
 
-  const autoAggPrompt = useMemo(
-    () => getDefaultStepAggregateFullPrompt(direction, productName),
-    [direction, productName],
-  );
-  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt;
+  const autoAggPrompt =
+    loadedAggPrompt?.direction === direction ? loadedAggPrompt.text : null;
+
+  useEffect(() => {
+    if (!aggPromptOpen || autoAggPrompt !== null) return;
+    let alive = true;
+    setAggPromptError(null);
+    fetchStepAggregatePrompt(direction)
+      .then(({ system, template }) => {
+        if (alive) {
+          setLoadedAggPrompt({
+            direction,
+            text: joinStepAggregatePrompt(system, template),
+          });
+        }
+      })
+      .catch((e: unknown) => {
+        if (alive) {
+          setAggPromptError(
+            e instanceof Error ? e.message : "Сервер не ответил",
+          );
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [aggPromptOpen, autoAggPrompt, direction]);
+
+  const displayedAggPrompt = manualAggPrompt ?? autoAggPrompt ?? "";
   const isAggPromptDirty = manualAggPrompt !== null;
-  const isAggPromptEmpty = displayedAggPrompt.trim() === "";
+  const isAggPromptEmpty = isAggPromptDirty && displayedAggPrompt.trim() === "";
 
   // ── Build prompt state ──
   const [buildPromptOpen, setBuildPromptOpen] = useState(false);
@@ -458,6 +515,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
             direction={direction}
+            outcome={pendingStepOutcome}
             onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
             // Перестроение — тем же путём, что и кнопка построения: с текущим
             // промптом и выбранными провайдером/моделью (onRetryStep без
@@ -722,7 +780,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 onChange={(e) => setManualAggPrompt(e.target.value)}
                 className={styles.promptTextarea}
                 rows={12}
+                disabled={!isAggPromptDirty && autoAggPrompt === null}
+                placeholder={
+                  aggPromptError ? "" : "Загружаю промпт с сервера…"
+                }
               />
+              {!isAggPromptDirty && aggPromptError && (
+                <div className={styles.errorText}>
+                  Не удалось загрузить промпт: {readableReason(aggPromptError)}.
+                  Обобщение всё равно пойдёт с промптом сервера.
+                </div>
+              )}
               {isAggPromptDirty && (
                 <button
                   type="button"
@@ -920,6 +988,20 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
 
+          {aggregateFoundNothing && (
+            <div className={styles.warningText}>
+              {direction === "up"
+                ? `Обобщение не нашло в источниках, из чего получают «${productName}»: «Из чего производят» пусто. По такому тексту шаг не строим — сырьё пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново — или впишите сырьё в текст выше.`
+                : `Обобщение не нашло в источниках, что получают из «${productName}»: «Что производят» пусто. По такому тексту шаг не строим — продукты пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново — или впишите продукты в текст выше.`}
+            </div>
+          )}
+
+          {aggregateLoopsBack.length > 0 && (
+            <div className={wiz.recycleNote}>
+              {`Основной путь ведёт к «${aggregateLoopsBack.join("», «")}», а ${aggregateLoopsBack.length > 1 ? "они уже стоят" : "он уже стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${productName}» — это обратная переработка (рециклинг). Шаг ляжет преобразованием со связью назад, пунктиром; цепочка от неё дальше не пойдёт. Нужно новое направление — постройте альтернативу или доберите источники.`}
+            </div>
+          )}
+
           {stepBuildError && (
             <div className={wiz.error}>
               Ошибка: {readableReason(stepBuildError)}
@@ -946,7 +1028,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               type="button"
               onClick={() => handleBuild()}
               disabled={
-                buildLoading || isBuildPromptEmpty || stepBuiltFromAggregate
+                buildLoading ||
+                isBuildPromptEmpty ||
+                stepBuiltFromAggregate ||
+                aggregateFoundNothing
               }
               className={`${wiz.primary} ${buildLoading ? wiz.primaryBusy : ""}`}
             >
@@ -1034,6 +1119,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           // Третий экран того же окна, а не модалка поверх него: заголовок и
           // полосу шагов даёт окно построения.
           inline
+          outcome={pendingStepOutcome}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.

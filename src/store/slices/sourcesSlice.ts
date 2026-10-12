@@ -311,24 +311,26 @@ const sourcesSlice = createSlice({
           (action.payload as string) || "Ошибка обобщения step-источников";
       })
       // --------- STEP BUILD (/step/build) ----------
+      // Статус — у statusNodeId, если он есть: альтернативы строятся от
+      // одного продукта, но каждая со своим статусом.
       .addCase(buildStep.pending, (state, action) => {
-        const { nodeId, direction } = action.meta.arg;
-        const key = sourcesKey(nodeId, direction);
+        const { nodeId, statusNodeId, direction } = action.meta.arg;
+        const key = sourcesKey(statusNodeId ?? nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepBuildStatus = "loading";
         state.byNodeId[key].stepBuildError = null;
       })
       .addCase(buildStep.fulfilled, (state, action) => {
-        const { nodeId, direction, chain } = action.payload;
-        const key = sourcesKey(nodeId, direction);
+        const { nodeId, statusNodeId, direction, chain } = action.payload;
+        const key = sourcesKey(statusNodeId ?? nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepBuildStatus = "succeeded";
         state.byNodeId[key].stepBuildError = null;
         state.byNodeId[key].stepBuildResult = chain;
       })
       .addCase(buildStep.rejected, (state, action) => {
-        const { nodeId, direction } = action.meta.arg;
-        const key = sourcesKey(nodeId, direction);
+        const { nodeId, statusNodeId, direction } = action.meta.arg;
+        const key = sourcesKey(statusNodeId ?? nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepBuildStatus = "failed";
         state.byNodeId[key].stepBuildError =

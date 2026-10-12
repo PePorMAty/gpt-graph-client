@@ -4,11 +4,12 @@ import type { CustomNode } from "../types";
 import type { StepChainApiStep, StepRecord } from "../store/types";
 import { normalizeProductName } from "./normalizeProductName";
 import { findExistingProductNode } from "./productIdentity";
-import { computeShiftX } from "./resolveChainOverlap";
+import { computeShiftX, overlapsAny, pushAsideX } from "./resolveChainOverlap";
 import { wouldCreateCycle } from "./graphReachability";
 import { applyHandlesByGeometry } from "./normalize-edges";
 import type { TFlow } from "./edgeFlow";
 import {
+  sameIO,
   sameProcess,
   transformationIO,
   type ProcessIO,
@@ -31,6 +32,53 @@ export interface StepToFlowOpts {
   /** Обобщённое описание шага (markdown) от продукта-якоря — кладём на
    *  transformation-ноду для показа в карточке (переключатель «Обобщённое»). */
   anchorAggregatedText?: string | null;
+}
+
+/** Чем кончится принятие построенного шага — для предупреждения в превью. */
+export interface StepOutcome {
+  /** Шаг целиком уже стоит на графе — это преобразование. */
+  onGraph?: string;
+  /**
+   * Продукты, которые стоят в цепочке выше. Шаг ложится — к ним связь
+   * рециклинга; тупик — их связь не рисуется.
+   */
+  loops: string[];
+  /** Принятие ничего не добавит на полотно. */
+  deadEnd: boolean;
+}
+
+/**
+ * Тот же расчёт, что сделает принятие шага (acceptPendingStep → stepToFlow),
+ * только без изменения графа: превью заранее говорит, что шаг уже есть на
+ * графе или ведёт назад по цепочке. null — якоря на полотне нет.
+ */
+export function previewStepOutcome(
+  step: StepChainApiStep,
+  args: {
+    anchorNodeId: string;
+    direction: "up" | "down";
+    existingNodes: CustomNode[];
+    existingEdges: Edge[];
+  },
+): StepOutcome | null {
+  const anchor = args.existingNodes.find((n) => n.id === args.anchorNodeId);
+  if (!anchor) return null;
+  const { stepRecord } = stepToFlow(step, {
+    sessionKey: "",
+    rootNodeId: args.anchorNodeId,
+    direction: args.direction,
+    anchorNodeId: args.anchorNodeId,
+    anchorX: anchor.position?.x ?? 0,
+    anchorY: anchor.position?.y ?? 0,
+    stepNumber: 0,
+    existingNodes: args.existingNodes,
+    existingEdges: args.existingEdges,
+  });
+  return {
+    onGraph: stepRecord.alreadyOnGraph?.transformation,
+    loops: stepRecord.cycleProductNames ?? [],
+    deadEnd: !!stepRecord.isDeadEnd,
+  };
 }
 
 export function stepToFlow(
@@ -148,12 +196,17 @@ export function stepToFlow(
   // смыслу связей, поэтому направление шага не мешает: преобразование,
   // построенное шагом «вниз», узнаётся и шагом «вверх». Такой узел
   // переиспользуем вместо создания дубля.
+  //
+  // Название другое, но сырьё и продукты ровно те же (sameIO) — тоже тот же
+  // процесс: модель называет его в каждом шаге по-своему, и альтернатива
+  // «Синтез капролактама по фенольной схеме» ложилась вторым узлом рядом с
+  // уже построенным «Синтезом капролактама из фенола».
   const trNorm = normalizeProductName(step.transformation.name);
   let reusedTrNode: CustomNode | null = null;
   // Продукты, уже связанные с переиспользуемым преобразованием: второй раз
   // их не связываем.
   let linked = new Set<string>();
-  if (trNorm) {
+  {
     const stepIO: ProcessIO = { ins: new Set(), outs: new Set() };
     const sideOf = (flow: TFlow) => (flow === "in" ? stepIO.ins : stepIO.outs);
     sideOf(anchorFlow).add(anchorNodeId);
@@ -163,21 +216,37 @@ export function stepToFlow(
       );
     }
     const io = transformationIO(existingNodes, existingEdges);
-    for (const n of existingNodes) {
-      if (n.type !== "transformation") continue;
-      if (n.data?.chainVariant === "alt") continue;
-      const label = typeof n.data?.label === "string" ? n.data.label : "";
-      if (normalizeProductName(label) !== trNorm) continue;
-      const cur = io.get(n.id);
-      if (cur && sameProcess(cur, stepIO)) {
-        reusedTrNode = n;
-        linked = new Set([...cur.ins, ...cur.outs]);
-        break;
-      }
+    const candidates = existingNodes.filter(
+      (n) => n.type === "transformation" && n.data?.chainVariant !== "alt",
+    );
+    const sameName = (n: CustomNode) =>
+      !!trNorm &&
+      normalizeProductName(
+        typeof n.data?.label === "string" ? n.data.label : "",
+      ) === trNorm;
+    const found =
+      candidates.find((n) => {
+        const cur = io.get(n.id);
+        return sameName(n) && !!cur && sameProcess(cur, stepIO);
+      }) ??
+      candidates.find((n) => {
+        const cur = io.get(n.id);
+        return !!cur && sameIO(cur, stepIO);
+      });
+    if (found) {
+      const cur = io.get(found.id)!;
+      reusedTrNode = found;
+      linked = new Set([...cur.ins, ...cur.outs]);
     }
   }
 
+  // Продукт дальней стороны, который уже стоит выше по цепочке (предок
+  // якоря), — обратная переработка: поликарбонат гидролизуют обратно в
+  // бисфенол А, из которого его и сделали. Обычная связь замкнула бы круг;
+  // рисуем её связью рециклинга (recycle, см. recycleEdge.ts) — пунктиром,
+  // и цепочка от неё дальше не идёт.
   const cycleProductNames: string[] = [];
+  const recycleProducts: typeof classified = [];
   const renderProducts: typeof classified = [];
   for (const c of classified) {
     // Уже связан с тем же преобразованием — это та же связь, а не петля.
@@ -191,6 +260,7 @@ export function stepToFlow(
       wouldCreateCycle(c.existingNodeId, anchorNodeId, existingEdges)
     ) {
       cycleProductNames.push(c.product.name);
+      recycleProducts.push(c);
       continue;
     }
     renderProducts.push(c);
@@ -240,9 +310,20 @@ export function stepToFlow(
   // через вход-предок «Чар»). Рисовать ребро к соседу не нужно — это возврат к
   // предку, а не схождение. (Законное схождение: newCount===0, НО предков нет —
   // cycleProductNames пуст — тогда ребро рисуем.)
+  //
+  // Все продукты дальней стороны — предки: это чистая обратная переработка
+  // («Гидролиз поликарбоната» из поликарбоната, воды и щёлочи даёт бисфенол
+  // А) — не тупик, шаг ложится со связью рециклинга. Тупик — только если
+  // нет ни продуктов, ни предков.
+  //
+  // Преобразование уже стоит на графе (переиспользуем, см. 2б) — тоже не
+  // дрейф: «Гликолиз поликарбоната» давал диолы, а теперь выяснилось, что и
+  // бисфенол А; к нему ляжет связь рециклинга.
   const newCount = renderProducts.filter((r) => !r.existingNodeId).length;
-  const degenerateAncestorLoop = newCount === 0 && cycleProductNames.length > 0;
-  if (renderProducts.length === 0 || degenerateAncestorLoop) {
+  const farLeft = renderProducts.some((r) => r.flow === foundFlow);
+  const degenerateAncestorLoop =
+    !reusedTrNode && farLeft && newCount === 0 && cycleProductNames.length > 0;
+  if (degenerateAncestorLoop || (!farLeft && recycleProducts.length === 0)) {
     return {
       nodes: [],
       edges: [],
@@ -263,15 +344,46 @@ export function stepToFlow(
   const edges: Edge[] = [];
   const newProductNodeIds: string[] = [];
   const mergedProductNodeIds: string[] = [];
+  const sideProductNodeIds: string[] = [];
   const addedEdgeIds: string[] = [];
 
-  // --- 4) узел-трансформация (новый или переиспользуемый, см. 2б) ---
+  // --- 4) раскладка ---
+  // Альтернативы этого же продукта — заготовки, стоят там, куда ляжет шаг.
+  // Место им не уступаем: их отодвигает в стороны acceptPendingStep
+  // (nudgeStepPlaceholders).
+  const obstacles = existingNodes.filter(
+    (n) => !isStepPlaceholder(n, anchorNodeId),
+  );
+  const far = renderProducts.filter((r) => r.flow === foundFlow);
+  const near = renderProducts.filter((r) => r.flow !== foundFlow);
+  const trY = reusedTrNode ? reusedTrNode.position.y : anchorY + sign * stepY1;
+  const nearY = trY - sign * stepY1;
+
+  // Новые продукты стороны якоря — второе сырьё шага «вниз», попутный продукт
+  // шага «вверх» — встают в ряд якоря вплотную к нему, а новое преобразование
+  // — посередине между ними и якорем. Иначе якорь оставался в одном углу, а
+  // второе сырьё уезжало в другой, к сдвинутому преобразованию.
+  const nearPos = new Map<string, { x: number; y: number }>();
+  const placedNear: CustomNode[] = [];
+  for (const r of near) {
+    if (r.existingNodeId) continue;
+    const start = { x: anchorX + spacingX * (placedNear.length + 1), y: nearY };
+    const probe = { id: "", type: "product", position: start, data: {} } as CustomNode;
+    const shift = computeShiftX([probe], [...obstacles, ...placedNear], spacingX);
+    const pos = { x: start.x + shift, y: nearY };
+    nearPos.set(normalizeProductName(r.product.name), pos);
+    placedNear.push({ ...probe, position: pos });
+  }
+
+  // --- 4а) узел-трансформация (новый или переиспользуемый, см. 2б) ---
   const trId = step.transformation.id || String(stepNumber);
   const trFlowId = reusedTrNode
     ? reusedTrNode.id
     : `step::${sessionKey}::tr::${stepNumber}::${trId}`;
-  const trX = reusedTrNode ? reusedTrNode.position.x : anchorX;
-  const trY = reusedTrNode ? reusedTrNode.position.y : anchorY + sign * stepY1;
+  const trX = reusedTrNode
+    ? reusedTrNode.position.x
+    : (anchorX + placedNear.reduce((sum, n) => sum + n.position.x, 0)) /
+      (placedNear.length + 1);
 
   if (!reusedTrNode) {
     nodes.push({
@@ -320,13 +432,10 @@ export function stepToFlow(
 
   // --- 6) узлы-продукты ---
   // Дальняя сторона — рядом под (над) преобразованием, как всегда. Сторона
-  // якоря — в ряд якоря; места им ищутся после развода коллизий (шаг 7).
+  // якоря — в ряд якоря, места им найдены выше (шаг 4).
   // Новые продукты дальней стороны — первыми в списке: следующий шаг по
   // умолчанию идёт от первого из них.
-  const far = renderProducts.filter((r) => r.flow === foundFlow);
-  const near = renderProducts.filter((r) => r.flow !== foundFlow);
   const productsY = trY + sign * stepY2;
-  const nearY = trY - sign * stepY1;
   const rowWidth = far.length > 1 ? (far.length - 1) * spacingX : 0;
   const startX = trX - rowWidth / 2;
   const nearNodes: CustomNode[] = [];
@@ -358,6 +467,7 @@ export function stepToFlow(
       // 2026-10-05) — раньше он цеплялся к верху, как сырьё.
       if (linked.has(existingNodeId)) return;
       mergedProductNodeIds.push(existingNodeId);
+      if (!isFar) sideProductNodeIds.push(existingNodeId);
       link(existingNodeId);
     } else {
       // Новый продукт — узел + ребро
@@ -370,7 +480,9 @@ export function stepToFlow(
       const node: CustomNode = {
         id: pFlowId,
         type: "product",
-        position: { x, y: isFar ? productsY : nearY },
+        position: isFar
+          ? { x, y: productsY }
+          : (nearPos.get(normalizeProductName(product.name)) ?? { x, y: nearY }),
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
         data: {
@@ -405,31 +517,37 @@ export function stepToFlow(
       };
       (isFar ? nodes : nearNodes).push(node);
       newProductNodeIds.push(pFlowId);
+      if (!isFar) sideProductNodeIds.push(pFlowId);
       link(pFlowId);
     }
   });
 
+  // --- 6а) обратная переработка: связь к предку, пунктиром ---
+  // Узел предка не двигаем и в продолжения шага не берём: он уже стоит выше.
+  for (const r of recycleProducts) {
+    const pid = r.existingNodeId!;
+    const edgeId = `step::${sessionKey}::e::${trFlowId}::${pid}`;
+    edges.push({
+      id: edgeId,
+      source: trFlowId,
+      target: pid,
+      type: "straight",
+      className: "edge--recycle",
+      data: { tFlow: foundFlow, recycle: true },
+    });
+    addedEdgeIds.push(edgeId);
+  }
+
   // --- 7) развод коллизий ---
-  const existingForCollision = existingNodes.filter(
-    (n) => !nodes.some((newN) => newN.id === n.id),
-  );
-  const dx = computeShiftX(nodes, existingForCollision);
+  // Преобразование и дальний ряд сдвигаются вместе, если место занято
+  // настоящими узлами (заготовки альтернатив не в счёт — см. шаг 4).
+  const dx = computeShiftX(nodes, [...obstacles, ...nearNodes]);
   if (dx !== 0) {
     for (const n of nodes) {
       n.position = { x: n.position.x + dx, y: n.position.y };
     }
   }
-  // Сторона якоря: ближайшее свободное место в ряду якоря, начиная справа от
-  // преобразования.
-  const trFinalX =
-    nodes.find((n) => n.id === trFlowId)?.position.x ?? trX;
-  for (const n of nearNodes) {
-    n.position = { x: trFinalX + spacingX, y: nearY };
-    const taken = [...existingForCollision, ...nodes];
-    const shift = computeShiftX([n], taken, spacingX);
-    n.position = { x: n.position.x + shift, y: nearY };
-    nodes.push(n);
-  }
+  nodes.push(...nearNodes);
 
   // Хэндлы по смыслу и по итоговым позициям (после развода коллизий).
   const placed = [
@@ -445,11 +563,71 @@ export function stepToFlow(
     transformationNodeId: trFlowId,
     newProductNodeIds,
     mergedProductNodeIds,
+    ...(sideProductNodeIds.length ? { sideProductNodeIds } : {}),
     addedEdgeIds,
     cycleProductNames,
+    ...(recycleProducts.length
+      ? { recycleProductNames: recycleProducts.map((r) => r.product.name) }
+      : {}),
     isDeadEnd: false,
     ...(reusedTrNode ? { transformationReused: true } : {}),
   };
 
   return { nodes, edges, stepRecord };
+}
+
+/**
+ * Заготовка альтернативы продукта: alt-узел из обобщения, ещё не построенный
+ * шаг. Стоит, где легло бы продолжение, поэтому шагу места не загораживает.
+ */
+export function isStepPlaceholder(n: CustomNode, productNodeId: string): boolean {
+  return (
+    n.type === "transformation" &&
+    n.data?.chainVariant === "alt" &&
+    n.data?.chainRootNodeId === productNodeId
+  );
+}
+
+/**
+ * Куда отодвинуть заготовки альтернатив продукта, на которые лёг новый шаг:
+ * стоявшие левее середины шага — дальше влево, правее — дальше вправо, до
+ * первого свободного места. Возвращает только сдвинутые.
+ */
+export function nudgeStepPlaceholders(
+  newNodes: CustomNode[],
+  allNodes: CustomNode[],
+  productNodeId: string,
+  spacingX = 260,
+): Array<{ id: string; position: { x: number; y: number } }> {
+  if (!newNodes.length) return [];
+  const newIds = new Set(newNodes.map((n) => n.id));
+  const placeholders = allNodes.filter(
+    (n) => !newIds.has(n.id) && isStepPlaceholder(n, productNodeId),
+  );
+  if (!placeholders.length) return [];
+  const centerX =
+    newNodes.reduce((sum, n) => sum + n.position.x, 0) / newNodes.length;
+  const holderIds = new Set(placeholders.map((n) => n.id));
+  const solid = [
+    ...allNodes.filter((n) => !holderIds.has(n.id) && !newIds.has(n.id)),
+    ...newNodes,
+  ];
+  const moved: Array<{ id: string; position: { x: number; y: number } }> = [];
+  // Ближние к шагу — первыми: дальние потом обходят уже отодвинутых.
+  const byDistance = [...placeholders].sort(
+    (a, b) => Math.abs(a.position.x - centerX) - Math.abs(b.position.x - centerX),
+  );
+  for (const p of byDistance) {
+    // Не задевает новый шаг — остаётся где стоит (даже если стояла тесно
+    // и раньше: это не наша забота).
+    if (!overlapsAny(p.position, newNodes)) {
+      solid.push(p);
+      continue;
+    }
+    const dir = p.position.x < centerX ? -1 : 1;
+    const position = pushAsideX(p.position, solid, dir, spacingX);
+    moved.push({ id: p.id, position });
+    solid.push({ ...p, position });
+  }
+  return moved;
 }

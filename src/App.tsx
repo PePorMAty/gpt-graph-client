@@ -10,6 +10,7 @@ import { StatusBar } from "./components/status-bar/StatusBar";
 import { ShareGraphModal } from "./components/share-graph-modal";
 import { LibraryScreen } from "./components/library/LibraryScreen";
 import { SharedGraphView } from "./components/shared-graph-view";
+import { GuidePage } from "./components/guide/GuidePage";
 import { ToastContainer } from "./components/toast/ToastContainer";
 
 import styles from "./styles/App.module.css";
@@ -143,6 +144,9 @@ function App() {
             </ReactFlowProvider>
           }
         />
+        {/* Руководство пользователя — тоже вне каркаса: открывается в новой
+            вкладке из меню «?». */}
+        <Route path="/guide" element={<GuidePage />} />
         <Route
           path="*"
           element={
