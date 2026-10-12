@@ -901,10 +901,13 @@ details.more[open] > summary {
   color: var(--c-text-muted);
 }
 
+/* Таблица сжимается до ширины панели: длинные названия и роли переносятся.
+   Не уложилась и так (очень узкое окно) — прокручивается вбок, а не
+   обрезает «Перейти». */
 .tableCard {
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
-  overflow: hidden;
+  overflow-x: auto;
   background: var(--c-surface);
 }
 
@@ -916,7 +919,7 @@ details.more[open] > summary {
 }
 
 .balanceTable th {
-  padding: 8px 10px;
+  padding: 8px;
   background: var(--c-surface-soft);
   border-bottom: 1px solid var(--c-border);
   font-weight: var(--fw-medium);
@@ -926,7 +929,7 @@ details.more[open] > summary {
 }
 
 .balanceTable td {
-  padding: 8px 10px;
+  padding: 8px;
   border-bottom: 1px solid var(--c-border-soft);
   vertical-align: middle;
   color: var(--c-text);
@@ -947,8 +950,12 @@ details.more[open] > summary {
   text-align: center;
 }
 
-.flowTitle {
-  word-break: break-word;
+/* «Фенолформальдегидные» шире столбца — переносим по слогам, а не
+   раздвигаем таблицу. */
+.flowTitle,
+.flowLinkBtn {
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 /* Подпись под сырьём: «ограничивает выход», «нужно ≈0,48 т». */
@@ -982,11 +989,11 @@ details.more[open] > summary {
   color: var(--c-text-faint);
 }
 
+/* «побочный продукт» переносится на две строки; точка — у первой. */
 .role {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  white-space: nowrap;
   color: var(--c-text-soft);
 }
 
@@ -994,6 +1001,7 @@ details.more[open] > summary {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
+  margin-top: 0.3em;
   border-radius: 50%;
   background: var(--c-text-faint);
 }
