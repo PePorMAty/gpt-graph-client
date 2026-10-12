@@ -2918,6 +2918,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           const rootStepSKey = stepSessionKey(rootNodeId, direction);
           const rootStepSession = stepChainSessions[rootStepSKey];
           const altDesc = String(selectedNode.data?.description || "");
+          // У каждой альтернативы своё построение — статус и превью шага: их
+          // строят несколько сразу. Источники и обобщение — продукта, общие;
+          // принятый шаг уходит в историю продукта (отмена — там же).
+          const altNodeId = selectedNode.id;
+          const altSliceState =
+            sourcesByNodeId[sourcesKey(altNodeId, direction)];
+          const altStepSKey = `alt::${altNodeId}::${direction}`;
+          const altStepSession = stepChainSessions[altStepSKey];
 
           baseResult.isAlternativeNode = true;
           baseResult.altDescription = altDesc;
@@ -2932,15 +2940,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           baseResult.stepAggregateStatus =
             rootSliceState?.stepAggregateStatus ?? "idle";
           baseResult.stepBuildStatus =
-            rootSliceState?.stepBuildStatus ?? "idle";
+            altSliceState?.stepBuildStatus ?? "idle";
           baseResult.stepBuildError =
-            rootSliceState?.stepBuildError ?? null;
+            altSliceState?.stepBuildError ?? null;
           baseResult.pendingStep =
-            rootStepSession?.pendingStep ?? null;
+            altStepSession?.pendingStep ?? null;
           baseResult.stepChainStepCount =
             rootStepSession?.steps.length ?? 0;
           baseResult.stepChainStatus =
-            rootStepSession?.status ?? "idle";
+            altStepSession?.status ?? "idle";
 
           baseResult.onBuildStep = (
             customText?: string,
@@ -2948,29 +2956,22 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             provider?: string,
             model?: string,
           ) => {
-            const sKey = stepSessionKey(rootNodeId, direction);
-            if (!stepChainSessions[sKey]) {
-              dispatch(
-                initStepChainSession({
-                  sessionKey: sKey,
-                  direction,
-                  rootNodeId,
-                  currentProductNodeId: rootNodeId,
-                }),
-              );
-            }
+            // Сессия построения этой альтернативы: шаг — от продукта.
             dispatch(
-              setStepChainContinueProduct({
-                sessionKey: sKey,
-                productNodeId: rootNodeId,
+              initStepChainSession({
+                sessionKey: altStepSKey,
+                direction,
+                rootNodeId,
+                currentProductNodeId: rootNodeId,
               }),
             );
             const poolSrcs =
               sourcesPool[poolKey(rootProductName, direction)]?.sources ?? [];
             dispatch(
               buildStep({
-                sessionKey: sKey,
+                sessionKey: altStepSKey,
                 nodeId: rootNodeId,
+                statusNodeId: altNodeId,
                 productName: rootProductName,
                 direction,
                 techText: customText || altDesc,
@@ -2990,6 +2991,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             filteredStep?: import("./store/types").StepChainApiStep,
           ) => {
             const sKey = stepSessionKey(rootNodeId, direction);
+            // Шаг принимается в сессию продукта — там история и отмена; у
+            // продукта её может ещё не быть, если строили только альтернативы.
+            if (!stepChainSessions[sKey]) {
+              dispatch(
+                initStepChainSession({
+                  sessionKey: sKey,
+                  direction,
+                  rootNodeId,
+                  currentProductNodeId: rootNodeId,
+                }),
+              );
+            }
             // Ключ содержимого альтернативы. «Принятой» её пометит сам reducer
             // и ТОЛЬКО если шаг реально материализовался — при dead-end цикла
             // alt-нода должна остаться на полотне (задача №4). Ключ по
@@ -3002,19 +3015,22 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             dispatch(
               acceptPendingStep({
                 sessionKey: sKey,
+                pendingFrom: altStepSKey,
                 selectedContinueProductNodeId,
                 filteredStep,
                 isAlternativeFirstStep: true,
                 ...(altAcceptKey ? { altAcceptKey } : {}),
               }),
             );
-            dispatch(resetStepBuild({ nodeId: rootNodeId, direction }));
+            dispatch(resetStepBuild({ nodeId: altNodeId, direction }));
           };
 
           baseResult.onRejectStep = () => {
-            const sKey = stepSessionKey(rootNodeId, direction);
-            dispatch(rejectPendingStep(sKey));
+            dispatch(rejectPendingStep(altStepSKey));
+            dispatch(resetStepBuild({ nodeId: altNodeId, direction }));
           };
+          baseResult.onForceStepPreview = () =>
+            dispatch(forceStepPreview(altStepSKey));
         }
       }
 

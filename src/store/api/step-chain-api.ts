@@ -445,6 +445,7 @@ export const buildStep = createAsyncThunk<
   {
     sessionKey: string;
     nodeId: string;
+    statusNodeId?: string;
     direction: BuildDirection;
     step: StepChainApiStep;
     chain: TechChain | null;
@@ -453,7 +454,14 @@ export const buildStep = createAsyncThunk<
   },
   {
     sessionKey: string;
+    /** Продукт, от которого строится шаг. */
     nodeId: string;
+    /**
+     * Чей статус построения показывать, если не продукта: альтернатива
+     * строится от продукта, но статус у каждой свой — их строят
+     * одновременно.
+     */
+    statusNodeId?: string;
     productName: string;
     direction: BuildDirection;
     techText: string;
@@ -520,6 +528,7 @@ export const buildStep = createAsyncThunk<
     return {
       sessionKey: args.sessionKey,
       nodeId: args.nodeId,
+      ...(args.statusNodeId ? { statusNodeId: args.statusNodeId } : {}),
       direction: args.direction,
       step: await identifyStepProducts(res.data.step),
       chain: res.data.chain ?? null,

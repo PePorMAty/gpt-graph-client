@@ -31,6 +31,7 @@ import {
 
 import type { CustomNode, CustomNodeData } from "../../types";
 import type {
+  DataI,
   InitialGraphStateI,
   SourcesPoolEntry,
   StepChainApiStep,
@@ -113,6 +114,347 @@ export const sourcesPoolKey = (
   productName: string,
   direction: "up" | "down",
 ) => `${normalizeProductName(productName)}::${direction}`;
+
+/** Что приходит в acceptPendingStep. */
+type AcceptStepPayload = {
+  sessionKey: string;
+  selectedContinueProductNodeId?: string;
+  filteredStep?: StepChainApiStep;
+  // Принимается ПЕРВЫЙ шаг альтернативы: его новые продукты НЕ наследуют
+  // пул корня, а помечаются «нужны свежие источники» (reason: alternative),
+  // чтобы альтернатива не реюзала источники основного пути и не сходилась
+  // к его продуктам.
+  isAlternativeFirstStep?: boolean;
+  // Обобщённое описание шага (markdown) продукта-якоря — кладём на
+  // создаваемую transformation-ноду (карточка: тумблер «Обобщённое»).
+  anchorAggregatedText?: string | null;
+  // Ключ содержимого принимаемой альтернативы (alternativeKey). Пометка
+  // «принята» и снятие alt-ноды с полотна происходят ТОЛЬКО если шаг
+  // реально материализовался — при dead-end цикла альтернатива остаётся
+  // доступной (задача №4).
+  altAcceptKey?: string;
+};
+
+/** Принять построенный шаг сессии sessionKey: шаг ложится на полотно, запись — в её историю. */
+function acceptStepInto(state: InitialGraphStateI, payload: AcceptStepPayload) {
+  const {
+    sessionKey,
+    selectedContinueProductNodeId,
+    filteredStep,
+    isAlternativeFirstStep,
+    anchorAggregatedText,
+    altAcceptKey,
+  } = payload;
+  const session = state.stepChainSessions[sessionKey];
+  if (!session || !session.pendingStep) return;
+  if (filteredStep) {
+    session.pendingStep = filteredStep;
+  }
+
+  const anchor = state.data.nodes.find(
+    (n) => n.id === session.currentProductNodeId,
+  );
+  // Продукта, от которого строился шаг, на полотне больше нет: его удалили
+  // или полотно сменилось (открытие другого графа, объединение — там id
+  // получают новый префикс). Класть шаг некуда, но и оставлять сессию с
+  // pendingStep нельзя: превью висело бы с нерабочей кнопкой «Принять».
+  if (!anchor) {
+    session.pendingStep = null;
+    session.status = "idle";
+    session.accumulatedSources = [];
+    return;
+  }
+
+  const stepNumber = session.steps.length + 1;
+
+  const { nodes, edges, stepRecord } = stepToFlow(session.pendingStep, {
+    sessionKey,
+    rootNodeId: session.rootNodeId,
+    direction: session.direction,
+    anchorNodeId: session.currentProductNodeId,
+    anchorX: anchor.position.x,
+    anchorY: anchor.position.y,
+    stepNumber,
+    existingNodes: state.data.nodes,
+    existingEdges: state.data.edges,
+    anchorAggregatedText: anchorAggregatedText ?? null,
+  });
+
+  // Тупик: шаг свёлся бы только к петле(ям) на предка или целиком уже
+  // стоит на графе → граф НЕ трогаем, помечаем продукт «нужны свежие
+  // источники» (тот же канал, что и серверный insufficientProducts) и
+  // закрываем превью.
+  if (stepRecord.isDeadEnd) {
+    const deadEndLabel =
+      anchor.data?.label ||
+      (anchor as unknown as { label?: string }).label ||
+      "";
+    if (deadEndLabel) {
+      const onGraph = stepRecord.alreadyOnGraph;
+      state.needsFreshSources[
+        sourcesPoolKey(deadEndLabel, session.direction)
+      ] = onGraph
+        ? {
+            fromProduct: deadEndLabel,
+            reason: "exists",
+            loopOn: onGraph.products,
+            transformation: onGraph.transformation,
+          }
+        : {
+            fromProduct: deadEndLabel,
+            reason: "cycle",
+            loopOn: stepRecord.cycleProductNames ?? [],
+          };
+    }
+    session.pendingStep = null;
+    session.status = "idle";
+    session.accumulatedSources = [];
+    return;
+  }
+
+  // Add nodes (dedup by id)
+  const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
+  state.data.nodes.push(...nodes.filter((n) => !existingNodeIds.has(n.id)));
+
+  // Add edges (dedup by id)
+  const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
+  state.data.edges.push(...edges.filter((e) => !existingEdgeIds.has(e.id)));
+
+  // Заготовки альтернатив якоря стоят там, куда лёг шаг: отодвигаем их в
+  // стороны, чтобы шаг встал под якорем, а не уезжал от них вбок.
+  for (const { id, position } of nudgeStepPlaceholders(
+    nodes,
+    state.data.nodes,
+    session.currentProductNodeId,
+  )) {
+    const holder = state.data.nodes.find((n) => n.id === id);
+    if (holder) holder.position = position;
+  }
+
+  // Наследование легенды: новые продукты шага получают презентации
+  // родителя-якоря и красятся в цвет его дерева (у общего родителя набор
+  // презентаций > 1 → потомки тоже общие/серые). Существующий узел, в
+  // который сошёлся шаг из другого дерева, получает объединение
+  // презентаций — и тем самым общий цвет. Якорь без презентаций (обычный
+  // step-граф без легенды) ничего не меняет.
+  const anchorPresentations = Array.isArray(anchor.data?.presentations)
+    ? (anchor.data.presentations as string[]).filter(
+        (p) => typeof p === "string" && p.trim(),
+      )
+    : [];
+  if (anchorPresentations.length > 0) {
+    for (const nid of stepRecord.newProductNodeIds) {
+      const node = state.data.nodes.find((n) => n.id === nid);
+      if (!node) continue;
+      const label =
+        typeof node.data?.label === "string" ? node.data.label : "";
+      node.data = {
+        ...node.data,
+        presentations: [...anchorPresentations],
+        presentationColor: colorForPresentations(
+          anchorPresentations,
+          state.presentationColors,
+        ),
+        ...(label
+          ? {
+              labelsByPresentation: Object.fromEntries(
+                anchorPresentations.map((p) => [p, label]),
+              ),
+            }
+          : {}),
+      };
+    }
+
+    const recolored: NonNullable<
+      typeof stepRecord.recoloredMergedNodes
+    > = [];
+    for (const nid of stepRecord.mergedProductNodeIds) {
+      const node = state.data.nodes.find((n) => n.id === nid);
+      if (!node || node.type !== "product") continue;
+      const prev = Array.isArray(node.data?.presentations)
+        ? (node.data.presentations as string[])
+        : [];
+      const union = Array.from(
+        new Set([...prev, ...anchorPresentations]),
+      );
+      if (union.length === prev.length) continue;
+      recolored.push({
+        nodeId: nid,
+        presentations: prev,
+        presentationColor:
+          typeof node.data?.presentationColor === "string"
+            ? node.data.presentationColor
+            : undefined,
+      });
+      node.data = {
+        ...node.data,
+        presentations: union,
+        presentationColor: colorForPresentations(
+          union,
+          state.presentationColors,
+        ),
+      };
+    }
+    if (recolored.length) stepRecord.recoloredMergedNodes = recolored;
+  }
+
+  // Альтернатива материализовалась в реальный шаг — только теперь помечаем
+  // её «принятой» (по содержимому) и снимаем alt-ноду с полотна. При
+  // dead-end выше сюда не доходим — alt-нода остаётся.
+  if (isAlternativeFirstStep && altAcceptKey) {
+    const accKey = `${session.rootNodeId}::${session.direction}`;
+    const arr = state.acceptedStepAlternatives[accKey] ?? [];
+    if (!arr.includes(altAcceptKey)) arr.push(altAcceptKey);
+    state.acceptedStepAlternatives[accKey] = arr;
+    // Запоминаем ключ в записи шага: undo вернёт альтернативу на полотно.
+    stepRecord.altAcceptKey = altAcceptKey;
+
+    const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
+    const matched = state.data.nodes.filter(
+      (n) =>
+        n.id.startsWith(altPrefix) &&
+        alternativeKey({
+          fullDescription: String(n.data?.description ?? ""),
+          title: String(n.data?.label ?? ""),
+        }) === altAcceptKey,
+    );
+    const removedAlt: DataI = { nodes: [], edges: [] };
+    for (const altNode of matched) {
+      const idx = altNode.id.slice(altPrefix.length);
+      const altEdgeId = `step::${session.rootNodeId}::${session.direction}::alt-edge::${idx}`;
+      removedAlt.nodes.push(altNode);
+      removedAlt.edges.push(
+        ...state.data.edges.filter((e) => e.id === altEdgeId),
+      );
+      state.data.nodes = state.data.nodes.filter(
+        (n) => n.id !== altNode.id,
+      );
+      state.data.edges = state.data.edges.filter(
+        (e) => e.id !== altEdgeId,
+      );
+    }
+    if (removedAlt.nodes.length) stepRecord.removedAlt = removedAlt;
+  }
+
+  session.steps.push(stepRecord);
+
+  // Продукты стороны якоря — второе сырьё шага «вниз» и попутный продукт
+  // шага «вверх»: цепочка от них дальше не идёт, и источники якоря им не
+  // подходят — те описывают передел самого якоря.
+  const sideIds = new Set(stepRecord.sideProductNodeIds ?? []);
+
+  // Update current product node for next step
+  if (selectedContinueProductNodeId) {
+    session.currentProductNodeId = selectedContinueProductNodeId;
+  } else {
+    session.currentProductNodeId =
+      stepRecord.newProductNodeIds.find((id) => !sideIds.has(id)) ??
+      stepRecord.mergedProductNodeIds.find((id) => !sideIds.has(id)) ??
+      session.currentProductNodeId;
+  }
+
+  // Унаследование источников от родителя в новые потомки:
+  // - копируем pool родителя только в те новые product-ноды, которых НЕТ
+  //   в insufficientProducts (для них модель явно сказала, что текущих
+  //   источников недостаточно — нужно искать заново);
+  // - не трогаем pool потомка, если у него уже есть собственный pool;
+  // - переиск источников у конкретного продукта (addSourcesToPool)
+  //   затирает старый pool ТОЛЬКО у этого продукта, не у братьев/детей.
+  const anchorLabel =
+    anchor.data?.label || (anchor as { label?: string }).label || "";
+  if (anchorLabel) {
+    const anchorPoolKey = sourcesPoolKey(anchorLabel, session.direction);
+    const anchorPool = state.sourcesPool[anchorPoolKey];
+    const insufficient = new Set(
+      (session.insufficientProducts ?? []).map((p: string) =>
+        normalizeProductName(p),
+      ),
+    );
+    const allNewNodeIds = [
+      ...stepRecord.newProductNodeIds,
+      ...stepRecord.mergedProductNodeIds,
+    ].filter((id) => !sideIds.has(id));
+    for (const nid of allNewNodeIds) {
+      const newNode = state.data.nodes.find((n) => n.id === nid);
+      const newLabel =
+        newNode?.data?.label ||
+        (newNode as unknown as { label?: string })?.label ||
+        "";
+      if (!newLabel) continue;
+      const normalized = normalizeProductName(newLabel);
+      const newKey = sourcesPoolKey(newLabel, session.direction);
+      if (insufficient.has(normalized)) {
+        // Сервер на build родителя пометил: источников для этого ребёнка
+        // не хватает. Пул не наследуем + ставим маркер, чтобы панель
+        // ребёнка показала плашку «нужен свежий поиск». Свежий поиск
+        // получит следующий глобальный номер.
+        state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
+        continue;
+      }
+      if (newNode?.data?.isUserAdded === true) {
+        // Продукт добавлен пользователем вручную: он не выведен из
+        // источников родителя (назвать его можно как угодно), поэтому
+        // наследовать их нельзя — иначе обобщение следующего шага пошло бы
+        // по материалу, который об этом продукте ничего не говорит.
+        // Маркер ставим, только если своих источников ещё нет: продукт мог
+        // попасть в шаг повторно (схождение) уже после собственного поиска.
+        const own = state.sourcesPool[newKey];
+        const hasOwnSources =
+          !!own &&
+          own.sources.length > 0 &&
+          normalizeProductName(own.originProduct ?? "") === normalized;
+        if (!hasOwnSources) {
+          state.needsFreshSources[newKey] = {
+            fromProduct: anchorLabel,
+            reason: "manual",
+          };
+        }
+        continue;
+      }
+      if (
+        isAlternativeFirstStep &&
+        stepRecord.newProductNodeIds.includes(nid)
+      ) {
+        // Первый шаг альтернативы: НЕ наследуем источники основного пути в
+        // новые продукты — иначе альтернатива обобщала бы по тем же
+        // источникам и сходилась к маршруту основного шага. Просим свежие.
+        // (Слитые/существующие продукты — mergedProductNodeIds — не трогаем:
+        // у них уже свой пул.)
+        state.needsFreshSources[newKey] = {
+          fromProduct: anchorLabel,
+          reason: "alternative",
+        };
+        continue;
+      }
+      if (
+        anchorPool &&
+        anchorPool.sources.length > 0 &&
+        !state.sourcesPool[newKey]
+      ) {
+        state.sourcesPool[newKey] = {
+          sources: [...anchorPool.sources],
+          product: newLabel,
+          // Источники взяты «взаймы» — сохраняем истинное происхождение
+          // (исходный продукт-предок, а не ребёнка).
+          originProduct: anchorPool.originProduct ?? anchorLabel,
+          // Номер бейджа наследуется от предка (счётчик не трогаем) —
+          // унаследованный продукт показывает номер своего источника.
+          seq: anchorPool.seq,
+          lastFetchedAt: new Date().toISOString(),
+        };
+      }
+    }
+  }
+
+  // Alt-ноды у anchor НЕ трогаем: пользователь мог принять основной шаг,
+  // оставив альтернативы как опции для последующего построения.
+  // Удаляются alt-ноды только при accept конкретной альтернативы — это
+  // делает caller отдельно (см. baseResult.onAcceptStep в Flow.tsx).
+
+  session.pendingStep = null;
+  session.status = "idle";
+  session.accumulatedSources = [];
+}
 
 const gptSlice = createSlice({
   name: "graph",
@@ -676,338 +1018,46 @@ const gptSlice = createSlice({
       };
     },
 
+    /**
+     * Принять построенный шаг. pendingFrom — сессия, где шаг строился, если
+     * не та, что принимает: у каждой альтернативы своя сессия построения (их
+     * строят одновременно), а принимается шаг в сессию продукта — там история
+     * шагов и «Отменить последний шаг». Якорь — продукт той сессии, где шаг
+     * строился. Непринятое превью самого продукта, если было, остаётся.
+     */
     acceptPendingStep: (
       state,
-      action: PayloadAction<{
-        sessionKey: string;
-        selectedContinueProductNodeId?: string;
-        filteredStep?: StepChainApiStep;
-        // Принимается ПЕРВЫЙ шаг альтернативы: его новые продукты НЕ наследуют
-        // пул корня, а помечаются «нужны свежие источники» (reason: alternative),
-        // чтобы альтернатива не реюзала источники основного пути и не сходилась
-        // к его продуктам.
-        isAlternativeFirstStep?: boolean;
-        // Обобщённое описание шага (markdown) продукта-якоря — кладём на
-        // создаваемую transformation-ноду (карточка: тумблер «Обобщённое»).
-        anchorAggregatedText?: string | null;
-        // Ключ содержимого принимаемой альтернативы (alternativeKey). Пометка
-        // «принята» и снятие alt-ноды с полотна происходят ТОЛЬКО если шаг
-        // реально материализовался — при dead-end цикла альтернатива остаётся
-        // доступной (задача №4).
-        altAcceptKey?: string;
-      }>,
+      action: PayloadAction<AcceptStepPayload & { pendingFrom?: string }>,
     ) => {
-      const {
-        sessionKey,
-        selectedContinueProductNodeId,
-        filteredStep,
-        isAlternativeFirstStep,
-        anchorAggregatedText,
-        altAcceptKey,
-      } = action.payload;
-      const session = state.stepChainSessions[sessionKey];
-      if (!session || !session.pendingStep) return;
-      if (filteredStep) {
-        session.pendingStep = filteredStep;
-      }
-
-      const anchor = state.data.nodes.find(
-        (n) => n.id === session.currentProductNodeId,
-      );
-      // Продукта, от которого строился шаг, на полотне больше нет: его удалили
-      // или полотно сменилось (открытие другого графа, объединение — там id
-      // получают новый префикс). Класть шаг некуда, но и оставлять сессию с
-      // pendingStep нельзя: превью висело бы с нерабочей кнопкой «Принять».
-      if (!anchor) {
-        session.pendingStep = null;
-        session.status = "idle";
-        session.accumulatedSources = [];
+      const { pendingFrom, ...payload } = action.payload;
+      const staging = pendingFrom
+        ? state.stepChainSessions[pendingFrom]
+        : undefined;
+      const session = state.stepChainSessions[payload.sessionKey];
+      if (!staging || staging === session) {
+        acceptStepInto(state, payload);
         return;
       }
-
-      const stepNumber = session.steps.length + 1;
-
-      const { nodes, edges, stepRecord } = stepToFlow(session.pendingStep, {
-        sessionKey,
-        rootNodeId: session.rootNodeId,
-        direction: session.direction,
-        anchorNodeId: session.currentProductNodeId,
-        anchorX: anchor.position.x,
-        anchorY: anchor.position.y,
-        stepNumber,
-        existingNodes: state.data.nodes,
-        existingEdges: state.data.edges,
-        anchorAggregatedText: anchorAggregatedText ?? null,
-      });
-
-      // Тупик: шаг свёлся бы только к петле(ям) на предка или целиком уже
-      // стоит на графе → граф НЕ трогаем, помечаем продукт «нужны свежие
-      // источники» (тот же канал, что и серверный insufficientProducts) и
-      // закрываем превью.
-      if (stepRecord.isDeadEnd) {
-        const deadEndLabel =
-          anchor.data?.label ||
-          (anchor as unknown as { label?: string }).label ||
-          "";
-        if (deadEndLabel) {
-          const onGraph = stepRecord.alreadyOnGraph;
-          state.needsFreshSources[
-            sourcesPoolKey(deadEndLabel, session.direction)
-          ] = onGraph
-            ? {
-                fromProduct: deadEndLabel,
-                reason: "exists",
-                loopOn: onGraph.products,
-                transformation: onGraph.transformation,
-              }
-            : {
-                fromProduct: deadEndLabel,
-                reason: "cycle",
-                loopOn: stepRecord.cycleProductNames ?? [],
-              };
-        }
-        session.pendingStep = null;
-        session.status = "idle";
-        session.accumulatedSources = [];
-        return;
+      if (!session || !staging.pendingStep) return;
+      const kept = {
+        pendingStep: session.pendingStep,
+        insufficientProducts: session.insufficientProducts,
+        status: session.status,
+        currentProductNodeId: session.currentProductNodeId,
+      };
+      session.pendingStep = staging.pendingStep;
+      session.insufficientProducts = staging.insufficientProducts;
+      session.currentProductNodeId = staging.currentProductNodeId;
+      staging.pendingStep = null;
+      staging.status = "idle";
+      staging.error = null;
+      acceptStepInto(state, payload);
+      if (kept.pendingStep) {
+        session.pendingStep = kept.pendingStep;
+        session.insufficientProducts = kept.insufficientProducts;
+        session.status = kept.status;
+        session.currentProductNodeId = kept.currentProductNodeId;
       }
-
-      // Add nodes (dedup by id)
-      const existingNodeIds = new Set(state.data.nodes.map((n) => n.id));
-      state.data.nodes.push(...nodes.filter((n) => !existingNodeIds.has(n.id)));
-
-      // Add edges (dedup by id)
-      const existingEdgeIds = new Set(state.data.edges.map((e) => e.id));
-      state.data.edges.push(...edges.filter((e) => !existingEdgeIds.has(e.id)));
-
-      // Заготовки альтернатив якоря стоят там, куда лёг шаг: отодвигаем их в
-      // стороны, чтобы шаг встал под якорем, а не уезжал от них вбок.
-      for (const { id, position } of nudgeStepPlaceholders(
-        nodes,
-        state.data.nodes,
-        session.currentProductNodeId,
-      )) {
-        const holder = state.data.nodes.find((n) => n.id === id);
-        if (holder) holder.position = position;
-      }
-
-      // Наследование легенды: новые продукты шага получают презентации
-      // родителя-якоря и красятся в цвет его дерева (у общего родителя набор
-      // презентаций > 1 → потомки тоже общие/серые). Существующий узел, в
-      // который сошёлся шаг из другого дерева, получает объединение
-      // презентаций — и тем самым общий цвет. Якорь без презентаций (обычный
-      // step-граф без легенды) ничего не меняет.
-      const anchorPresentations = Array.isArray(anchor.data?.presentations)
-        ? (anchor.data.presentations as string[]).filter(
-            (p) => typeof p === "string" && p.trim(),
-          )
-        : [];
-      if (anchorPresentations.length > 0) {
-        for (const nid of stepRecord.newProductNodeIds) {
-          const node = state.data.nodes.find((n) => n.id === nid);
-          if (!node) continue;
-          const label =
-            typeof node.data?.label === "string" ? node.data.label : "";
-          node.data = {
-            ...node.data,
-            presentations: [...anchorPresentations],
-            presentationColor: colorForPresentations(
-              anchorPresentations,
-              state.presentationColors,
-            ),
-            ...(label
-              ? {
-                  labelsByPresentation: Object.fromEntries(
-                    anchorPresentations.map((p) => [p, label]),
-                  ),
-                }
-              : {}),
-          };
-        }
-
-        const recolored: NonNullable<
-          typeof stepRecord.recoloredMergedNodes
-        > = [];
-        for (const nid of stepRecord.mergedProductNodeIds) {
-          const node = state.data.nodes.find((n) => n.id === nid);
-          if (!node || node.type !== "product") continue;
-          const prev = Array.isArray(node.data?.presentations)
-            ? (node.data.presentations as string[])
-            : [];
-          const union = Array.from(
-            new Set([...prev, ...anchorPresentations]),
-          );
-          if (union.length === prev.length) continue;
-          recolored.push({
-            nodeId: nid,
-            presentations: prev,
-            presentationColor:
-              typeof node.data?.presentationColor === "string"
-                ? node.data.presentationColor
-                : undefined,
-          });
-          node.data = {
-            ...node.data,
-            presentations: union,
-            presentationColor: colorForPresentations(
-              union,
-              state.presentationColors,
-            ),
-          };
-        }
-        if (recolored.length) stepRecord.recoloredMergedNodes = recolored;
-      }
-
-      // Альтернатива материализовалась в реальный шаг — только теперь помечаем
-      // её «принятой» (по содержимому) и снимаем alt-ноду с полотна. При
-      // dead-end выше сюда не доходим — alt-нода остаётся.
-      if (isAlternativeFirstStep && altAcceptKey) {
-        const accKey = `${session.rootNodeId}::${session.direction}`;
-        const arr = state.acceptedStepAlternatives[accKey] ?? [];
-        if (!arr.includes(altAcceptKey)) arr.push(altAcceptKey);
-        state.acceptedStepAlternatives[accKey] = arr;
-        // Запоминаем ключ в записи шага: undo вернёт альтернативу на полотно.
-        stepRecord.altAcceptKey = altAcceptKey;
-
-        const altPrefix = `step::${session.rootNodeId}::${session.direction}::alt::`;
-        const matched = state.data.nodes.filter(
-          (n) =>
-            n.id.startsWith(altPrefix) &&
-            alternativeKey({
-              fullDescription: String(n.data?.description ?? ""),
-              title: String(n.data?.label ?? ""),
-            }) === altAcceptKey,
-        );
-        for (const altNode of matched) {
-          const idx = altNode.id.slice(altPrefix.length);
-          const altEdgeId = `step::${session.rootNodeId}::${session.direction}::alt-edge::${idx}`;
-          state.data.nodes = state.data.nodes.filter(
-            (n) => n.id !== altNode.id,
-          );
-          state.data.edges = state.data.edges.filter(
-            (e) => e.id !== altEdgeId,
-          );
-        }
-      }
-
-      session.steps.push(stepRecord);
-
-      // Продукты стороны якоря — второе сырьё шага «вниз» и попутный продукт
-      // шага «вверх»: цепочка от них дальше не идёт, и источники якоря им не
-      // подходят — те описывают передел самого якоря.
-      const sideIds = new Set(stepRecord.sideProductNodeIds ?? []);
-
-      // Update current product node for next step
-      if (selectedContinueProductNodeId) {
-        session.currentProductNodeId = selectedContinueProductNodeId;
-      } else {
-        session.currentProductNodeId =
-          stepRecord.newProductNodeIds.find((id) => !sideIds.has(id)) ??
-          stepRecord.mergedProductNodeIds.find((id) => !sideIds.has(id)) ??
-          session.currentProductNodeId;
-      }
-
-      // Унаследование источников от родителя в новые потомки:
-      // - копируем pool родителя только в те новые product-ноды, которых НЕТ
-      //   в insufficientProducts (для них модель явно сказала, что текущих
-      //   источников недостаточно — нужно искать заново);
-      // - не трогаем pool потомка, если у него уже есть собственный pool;
-      // - переиск источников у конкретного продукта (addSourcesToPool)
-      //   затирает старый pool ТОЛЬКО у этого продукта, не у братьев/детей.
-      const anchorLabel =
-        anchor.data?.label || (anchor as { label?: string }).label || "";
-      if (anchorLabel) {
-        const anchorPoolKey = sourcesPoolKey(anchorLabel, session.direction);
-        const anchorPool = state.sourcesPool[anchorPoolKey];
-        const insufficient = new Set(
-          (session.insufficientProducts ?? []).map((p: string) =>
-            normalizeProductName(p),
-          ),
-        );
-        const allNewNodeIds = [
-          ...stepRecord.newProductNodeIds,
-          ...stepRecord.mergedProductNodeIds,
-        ].filter((id) => !sideIds.has(id));
-        for (const nid of allNewNodeIds) {
-          const newNode = state.data.nodes.find((n) => n.id === nid);
-          const newLabel =
-            newNode?.data?.label ||
-            (newNode as unknown as { label?: string })?.label ||
-            "";
-          if (!newLabel) continue;
-          const normalized = normalizeProductName(newLabel);
-          const newKey = sourcesPoolKey(newLabel, session.direction);
-          if (insufficient.has(normalized)) {
-            // Сервер на build родителя пометил: источников для этого ребёнка
-            // не хватает. Пул не наследуем + ставим маркер, чтобы панель
-            // ребёнка показала плашку «нужен свежий поиск». Свежий поиск
-            // получит следующий глобальный номер.
-            state.needsFreshSources[newKey] = { fromProduct: anchorLabel };
-            continue;
-          }
-          if (newNode?.data?.isUserAdded === true) {
-            // Продукт добавлен пользователем вручную: он не выведен из
-            // источников родителя (назвать его можно как угодно), поэтому
-            // наследовать их нельзя — иначе обобщение следующего шага пошло бы
-            // по материалу, который об этом продукте ничего не говорит.
-            // Маркер ставим, только если своих источников ещё нет: продукт мог
-            // попасть в шаг повторно (схождение) уже после собственного поиска.
-            const own = state.sourcesPool[newKey];
-            const hasOwnSources =
-              !!own &&
-              own.sources.length > 0 &&
-              normalizeProductName(own.originProduct ?? "") === normalized;
-            if (!hasOwnSources) {
-              state.needsFreshSources[newKey] = {
-                fromProduct: anchorLabel,
-                reason: "manual",
-              };
-            }
-            continue;
-          }
-          if (
-            isAlternativeFirstStep &&
-            stepRecord.newProductNodeIds.includes(nid)
-          ) {
-            // Первый шаг альтернативы: НЕ наследуем источники основного пути в
-            // новые продукты — иначе альтернатива обобщала бы по тем же
-            // источникам и сходилась к маршруту основного шага. Просим свежие.
-            // (Слитые/существующие продукты — mergedProductNodeIds — не трогаем:
-            // у них уже свой пул.)
-            state.needsFreshSources[newKey] = {
-              fromProduct: anchorLabel,
-              reason: "alternative",
-            };
-            continue;
-          }
-          if (
-            anchorPool &&
-            anchorPool.sources.length > 0 &&
-            !state.sourcesPool[newKey]
-          ) {
-            state.sourcesPool[newKey] = {
-              sources: [...anchorPool.sources],
-              product: newLabel,
-              // Источники взяты «взаймы» — сохраняем истинное происхождение
-              // (исходный продукт-предок, а не ребёнка).
-              originProduct: anchorPool.originProduct ?? anchorLabel,
-              // Номер бейджа наследуется от предка (счётчик не трогаем) —
-              // унаследованный продукт показывает номер своего источника.
-              seq: anchorPool.seq,
-              lastFetchedAt: new Date().toISOString(),
-            };
-          }
-        }
-      }
-
-      // Alt-ноды у anchor НЕ трогаем: пользователь мог принять основной шаг,
-      // оставив альтернативы как опции для последующего построения.
-      // Удаляются alt-ноды только при accept конкретной альтернативы — это
-      // делает caller отдельно (см. baseResult.onAcceptStep в Flow.tsx).
-
-      session.pendingStep = null;
-      session.status = "idle";
-      session.accumulatedSources = [];
     },
 
     rejectPendingStep: (state, action: PayloadAction<string>) => {
@@ -1060,13 +1110,28 @@ const gptSlice = createSlice({
         };
       }
 
-      // Откат первого шага альтернативы → снимаем пометку «принята», чтобы
-      // useEffect пересоздал alt-ноду и её можно было построить снова.
+      // Откат первого шага альтернативы → снимаем пометку «принята» и
+      // возвращаем alt-ноду на полотно — её можно построить снова.
       if (lastStep.altAcceptKey) {
         const accKey = `${session.rootNodeId}::${session.direction}`;
         state.acceptedStepAlternatives[accKey] = (
           state.acceptedStepAlternatives[accKey] ?? []
         ).filter((k) => k !== lastStep.altAcceptKey);
+        const { nodes = [], edges = [] } = lastStep.removedAlt ?? {};
+        const hasNode = new Set(state.data.nodes.map((n) => n.id));
+        const hasEdge = new Set(state.data.edges.map((e) => e.id));
+        state.data.nodes.push(...nodes.filter((n) => !hasNode.has(n.id)));
+        // Связь — только если оба конца на полотне (продукт могли удалить).
+        hasNode.clear();
+        for (const n of state.data.nodes) hasNode.add(n.id);
+        state.data.edges.push(
+          ...edges.filter(
+            (e) =>
+              !hasEdge.has(e.id) &&
+              hasNode.has(e.source) &&
+              hasNode.has(e.target),
+          ),
+        );
       }
 
       session.currentProductNodeId = lastStep.fromProductNodeId;

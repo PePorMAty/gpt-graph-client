@@ -289,13 +289,19 @@ export const notifyMiddleware: Middleware = (store) => (next) => (action) => {
 
   // ── Построение шага ──
   else if (buildStep.fulfilled.match(action)) {
-    const target = nodeTarget(action.meta.arg.nodeId, action.meta.arg.productName);
+    // Альтернатива (statusNodeId): их строят несколько сразу — уведомление
+    // называет её и ведёт к ней, там превью шага и «Принять».
+    const alt = action.meta.arg.statusNodeId;
+    const target = alt
+      ? nodeTarget(alt)
+      : nodeTarget(action.meta.arg.nodeId, action.meta.arg.productName);
+    const what = alt ? "Альтернатива построена" : "Шаг построен";
     const insufficient = action.payload.sourcesStatus === "insufficient";
     notify(
       insufficient ? "info" : "success",
       insufficient
-        ? `Шаг построен, но источников не хватило${about(target?.label)}`
-        : `Шаг построен${about(target?.label)}`,
+        ? `${what}, но источников не хватило${about(target?.label)}`
+        : `${what}${about(target?.label)}`,
       insufficient
         ? "Шаг собран по тому, что было: по части продуктов данных не нашлось. " +
           "Их названия перечислены в панели продукта — найдите для них источники " +
@@ -306,8 +312,17 @@ export const notifyMiddleware: Middleware = (store) => (next) => (action) => {
     );
   } else if (buildStep.rejected.match(action)) {
     if (!action.meta.aborted) {
-      const target = nodeTarget(action.meta.arg.nodeId, action.meta.arg.productName);
-      notifyFailure("build", action.payload, action.meta.arg.productName, canvas, target);
+      const alt = action.meta.arg.statusNodeId;
+      const target = alt
+        ? nodeTarget(alt)
+        : nodeTarget(action.meta.arg.nodeId, action.meta.arg.productName);
+      notifyFailure(
+        "build",
+        action.payload,
+        alt ? target?.label : action.meta.arg.productName,
+        canvas,
+        target,
+      );
     }
   }
 
