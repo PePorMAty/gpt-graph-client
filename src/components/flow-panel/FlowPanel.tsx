@@ -97,6 +97,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
   stepBuildError,
   stepBuiltFromAggregate,
   pendingStep,
+  pendingStepOutcome,
+  stepLineage,
   onFetchStepSources,
   onCancelStepSources,
   onAggregateStepSources,
@@ -234,6 +236,8 @@ const DirectionContent: FC<DirectionTabProps> = ({
           stepBuiltFromAggregate={stepBuiltFromAggregate}
           stageOverride={stageOverride}
           pendingStep={pendingStep}
+          pendingStepOutcome={pendingStepOutcome}
+          stepLineage={stepLineage}
           onFetchStepSources={onFetchStepSources}
           onCancelStepSources={onCancelStepSources}
           onAggregateStepSources={onAggregateStepSources}

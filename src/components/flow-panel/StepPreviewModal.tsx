@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import type { StepChainApiStep, StepProduct } from "../../store/types";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 import { StepWizardSteps } from "./StepWizardSteps";
+import type { StepOutcome } from "./types";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -64,6 +65,8 @@ interface StepPreviewModalProps {
    * одно окно: заголовок и полосу шагов даёт оно.
    */
   inline?: boolean;
+  /** Чем кончится «Добавить шаг» на текущем графе — предупредить заранее. */
+  outcome?: StepOutcome | null;
   onAccept: (filteredStep: StepChainApiStep) => void;
   onRetry: () => void;
   onReject: () => void;
@@ -75,6 +78,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   stepNumber,
   direction,
   inline = false,
+  outcome = null,
   onAccept,
   onRetry,
   onReject,
@@ -237,8 +241,34 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     visibleOutputs.length > 0 ||
     (customSide === "output" && customProducts.length > 0);
 
+  const loopNames = outcome?.loops.length
+    ? `«${outcome.loops.join("», «")}»`
+    : "";
+  const loopsStand = `${(outcome?.loops.length ?? 0) > 1 ? "стоят" : "стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${anchorProductName}»`;
   const body = (
     <>
+        {/* Чем кончится принятие: шаг уже есть на графе или ведёт назад по
+            цепочке. После «Добавить шаг» это сказало бы уведомление — уже
+            молча ничего не добавив. */}
+        {outcome?.onGraph ? (
+          <div className={styles.outcome} role="status">
+            Такой шаг уже есть на графе — «{outcome.onGraph}»: те же сырьё и
+            продукты. «Добавить шаг» новых узлов и связей не даст.
+          </div>
+        ) : outcome?.deadEnd && loopNames ? (
+          <div className={styles.outcome} role="status">
+            {loopNames} уже {loopsStand}: шаг вёл бы назад, к предку (обратная
+            переработка), а нового не даёт — «Добавить шаг» ничего не добавит.
+            Постройте альтернативу или найдите другие источники.
+          </div>
+        ) : loopNames ? (
+          <div className={styles.outcome} role="status">
+            {loopNames} уже {loopsStand} — связь с{" "}
+            {(outcome?.loops.length ?? 0) > 1 ? "ними" : "ним"} не нарисуем,
+            чтобы не замкнуть петлю.
+          </div>
+        ) : null}
+
         {/* Сам шаг: что за процесс получился. */}
         <section className={styles.card}>
           <span className={styles.cardIcon}>

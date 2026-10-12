@@ -9,6 +9,7 @@ import { wouldCreateCycle } from "./graphReachability";
 import { applyHandlesByGeometry } from "./normalize-edges";
 import type { TFlow } from "./edgeFlow";
 import {
+  sameIO,
   sameProcess,
   transformationIO,
   type ProcessIO,
@@ -31,6 +32,50 @@ export interface StepToFlowOpts {
   /** Обобщённое описание шага (markdown) от продукта-якоря — кладём на
    *  transformation-ноду для показа в карточке (переключатель «Обобщённое»). */
   anchorAggregatedText?: string | null;
+}
+
+/** Чем кончится принятие построенного шага — для предупреждения в превью. */
+export interface StepOutcome {
+  /** Шаг целиком уже стоит на графе — это преобразование. */
+  onGraph?: string;
+  /** Продукты, которые стоят в цепочке выше: их связь замкнула бы петлю. */
+  loops: string[];
+  /** Принятие ничего не добавит на полотно. */
+  deadEnd: boolean;
+}
+
+/**
+ * Тот же расчёт, что сделает принятие шага (acceptPendingStep → stepToFlow),
+ * только без изменения графа: превью заранее говорит, что шаг уже есть на
+ * графе или ведёт назад по цепочке. null — якоря на полотне нет.
+ */
+export function previewStepOutcome(
+  step: StepChainApiStep,
+  args: {
+    anchorNodeId: string;
+    direction: "up" | "down";
+    existingNodes: CustomNode[];
+    existingEdges: Edge[];
+  },
+): StepOutcome | null {
+  const anchor = args.existingNodes.find((n) => n.id === args.anchorNodeId);
+  if (!anchor) return null;
+  const { stepRecord } = stepToFlow(step, {
+    sessionKey: "",
+    rootNodeId: args.anchorNodeId,
+    direction: args.direction,
+    anchorNodeId: args.anchorNodeId,
+    anchorX: anchor.position?.x ?? 0,
+    anchorY: anchor.position?.y ?? 0,
+    stepNumber: 0,
+    existingNodes: args.existingNodes,
+    existingEdges: args.existingEdges,
+  });
+  return {
+    onGraph: stepRecord.alreadyOnGraph?.transformation,
+    loops: stepRecord.cycleProductNames ?? [],
+    deadEnd: !!stepRecord.isDeadEnd,
+  };
 }
 
 export function stepToFlow(
@@ -148,12 +193,17 @@ export function stepToFlow(
   // смыслу связей, поэтому направление шага не мешает: преобразование,
   // построенное шагом «вниз», узнаётся и шагом «вверх». Такой узел
   // переиспользуем вместо создания дубля.
+  //
+  // Название другое, но сырьё и продукты ровно те же (sameIO) — тоже тот же
+  // процесс: модель называет его в каждом шаге по-своему, и альтернатива
+  // «Синтез капролактама по фенольной схеме» ложилась вторым узлом рядом с
+  // уже построенным «Синтезом капролактама из фенола».
   const trNorm = normalizeProductName(step.transformation.name);
   let reusedTrNode: CustomNode | null = null;
   // Продукты, уже связанные с переиспользуемым преобразованием: второй раз
   // их не связываем.
   let linked = new Set<string>();
-  if (trNorm) {
+  {
     const stepIO: ProcessIO = { ins: new Set(), outs: new Set() };
     const sideOf = (flow: TFlow) => (flow === "in" ? stepIO.ins : stepIO.outs);
     sideOf(anchorFlow).add(anchorNodeId);
@@ -163,17 +213,27 @@ export function stepToFlow(
       );
     }
     const io = transformationIO(existingNodes, existingEdges);
-    for (const n of existingNodes) {
-      if (n.type !== "transformation") continue;
-      if (n.data?.chainVariant === "alt") continue;
-      const label = typeof n.data?.label === "string" ? n.data.label : "";
-      if (normalizeProductName(label) !== trNorm) continue;
-      const cur = io.get(n.id);
-      if (cur && sameProcess(cur, stepIO)) {
-        reusedTrNode = n;
-        linked = new Set([...cur.ins, ...cur.outs]);
-        break;
-      }
+    const candidates = existingNodes.filter(
+      (n) => n.type === "transformation" && n.data?.chainVariant !== "alt",
+    );
+    const sameName = (n: CustomNode) =>
+      !!trNorm &&
+      normalizeProductName(
+        typeof n.data?.label === "string" ? n.data.label : "",
+      ) === trNorm;
+    const found =
+      candidates.find((n) => {
+        const cur = io.get(n.id);
+        return sameName(n) && !!cur && sameProcess(cur, stepIO);
+      }) ??
+      candidates.find((n) => {
+        const cur = io.get(n.id);
+        return !!cur && sameIO(cur, stepIO);
+      });
+    if (found) {
+      const cur = io.get(found.id)!;
+      reusedTrNode = found;
+      linked = new Set([...cur.ins, ...cur.outs]);
     }
   }
 
@@ -240,9 +300,16 @@ export function stepToFlow(
   // через вход-предок «Чар»). Рисовать ребро к соседу не нужно — это возврат к
   // предку, а не схождение. (Законное схождение: newCount===0, НО предков нет —
   // cycleProductNames пуст — тогда ребро рисуем.)
+  //
+  // Найденного шагом не осталось — все продукты дальней стороны замкнули бы
+  // петлю — тоже тупик, даже если на стороне якоря есть новое второе сырьё:
+  // иначе ложилось преобразование без единого продукта («Гидролиз
+  // поликарбоната» из поликарбоната, воды и щёлочи — а бисфенол А, который он
+  // даёт, стоит выше в цепочке).
   const newCount = renderProducts.filter((r) => !r.existingNodeId).length;
   const degenerateAncestorLoop = newCount === 0 && cycleProductNames.length > 0;
-  if (renderProducts.length === 0 || degenerateAncestorLoop) {
+  const farLeft = renderProducts.some((r) => r.flow === foundFlow);
+  if (renderProducts.length === 0 || degenerateAncestorLoop || !farLeft) {
     return {
       nodes: [],
       edges: [],

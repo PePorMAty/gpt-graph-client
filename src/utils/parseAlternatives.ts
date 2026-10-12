@@ -176,6 +176,53 @@ export function dedupeAlternatives(
   return result;
 }
 
+/**
+ * Продукты дальней стороны варианта — найденное шагом: у шага «вниз» «Что
+ * производят», у шага «вверх» — «Из чего производят». Названия как в тексте.
+ */
+function farSideNames(description: string, direction: "up" | "down"): string[] {
+  const label = direction === "up" ? "Из чего производят" : "Что производят";
+  const m = new RegExp(`\\*\\*${label}:\\*\\*([^\\n]*)`).exec(description || "");
+  if (!m) return [];
+  return m[1]
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]\.?$/, "")
+    .split(/[;,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Вариант шага ведёт только назад по цепочке: все его продукты дальней
+ * стороны уже есть в родословной раскрываемого продукта (lineage — он сам и
+ * его предки по построению). Шаг вниз от поликарбоната «Что производят:
+ * [Бисфенол А]», а поликарбонат из бисфенола А и получен — это обратная
+ * переработка: на полотне легло бы преобразование без продуктов. Возвращает
+ * эти продукты; пусто — вариант ведёт вперёд (или формат не тот).
+ */
+export function variantLoopsBack(
+  description: string,
+  direction: "up" | "down",
+  lineage: string[],
+): string[] {
+  const names = farSideNames(description, direction);
+  if (!names.length) return [];
+  const known = new Set(lineage.map(normalizeProductName).filter(Boolean));
+  return names.every((n) => known.has(normalizeProductName(n))) ? names : [];
+}
+
+/** То же для основного варианта обобщения. */
+export function stepLoopsBack(
+  text: string,
+  direction: "up" | "down",
+  lineage: string[],
+): string[] {
+  if (!text) return [];
+  const main = parseAlternatives(text)[0]?.fullDescription ?? text;
+  return variantLoopsBack(main, direction, lineage);
+}
+
 const EMPTY_LIST_WORDS =
   /^(?:—|–|-|нет|нет данных|не найден[оаы]?|не указан[оаы]?|отсутству\w*)\.?$/i;
 

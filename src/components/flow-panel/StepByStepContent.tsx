@@ -23,7 +23,12 @@ import {
   SearchIcon,
 } from "../icons";
 import { parseDomainsInput } from "../../utils/parseDomains";
-import { stepFarSideEmpty } from "../../utils/parseAlternatives";
+import {
+  parseAlternatives,
+  stepFarSideEmpty,
+  stepLoopsBack,
+  variantLoopsBack,
+} from "../../utils/parseAlternatives";
 import {
   AI_MODELS,
   AI_PROVIDERS,
@@ -60,6 +65,8 @@ type StepByStepContentProps = Pick<
   | "stepBuildStatus"
   | "stepBuildError"
   | "pendingStep"
+  | "pendingStepOutcome"
+  | "stepLineage"
   | "onFetchStepSources"
   | "onCancelStepSources"
   | "onAggregateStepSources"
@@ -98,6 +105,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepBuildStatus = "idle",
   stepBuildError,
   pendingStep,
+  pendingStepOutcome = null,
+  stepLineage,
 
   stepBuiltFromAggregate = false,
 
@@ -144,6 +153,27 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   const aggregateFoundNothing = useMemo(
     () => stepFarSideEmpty(stepAggregatedText ?? "", direction),
     [stepAggregatedText, direction],
+  );
+  // Основной вариант ведёт только назад по цепочке — к продуктам, которые уже
+  // стоят выше (см. stepLoopsBack): по нему шаг не строим.
+  const aggregateLoopsBack = useMemo(
+    () =>
+      stepLineage?.length
+        ? stepLoopsBack(stepAggregatedText ?? "", direction, stepLineage)
+        : [],
+    [stepAggregatedText, direction, stepLineage],
+  );
+  // Альтернативы на полотне — те, что ведут вперёд (см. Flow.tsx).
+  const hasAlternatives = useMemo(
+    () =>
+      parseAlternatives(stepAggregatedText ?? "")
+        .slice(1)
+        .some(
+          (a) =>
+            !variantLoopsBack(a.fullDescription, direction, stepLineage ?? [])
+              .length,
+        ),
+    [stepAggregatedText, direction, stepLineage],
   );
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
@@ -498,6 +528,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             anchorProductName={productName}
             stepNumber={stepChainStepCount + 1}
             direction={direction}
+            outcome={pendingStepOutcome}
             onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
             // Перестроение — тем же путём, что и кнопка построения: с текущим
             // промптом и выбранными провайдером/моделью (onRetryStep без
@@ -978,6 +1009,12 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </div>
           )}
 
+          {aggregateLoopsBack.length > 0 && (
+            <div className={styles.warningText}>
+              {`Основной путь ведёт к «${aggregateLoopsBack.join("», «")}», а ${aggregateLoopsBack.length > 1 ? "они уже стоят" : "он уже стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${productName}»: шаг вернулся бы к предку (это обратная переработка), и на полотне легло бы преобразование без продуктов. По такому тексту шаг не строим. ${hasAlternatives ? "Постройте одну из альтернатив — они на полотне фиолетовым — или поправьте текст выше." : "Доберите источники через модель и обобщите заново — или поправьте текст выше."}`}
+            </div>
+          )}
+
           {stepBuildError && (
             <div className={wiz.error}>
               Ошибка: {readableReason(stepBuildError)}
@@ -1007,7 +1044,8 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
                 buildLoading ||
                 isBuildPromptEmpty ||
                 stepBuiltFromAggregate ||
-                aggregateFoundNothing
+                aggregateFoundNothing ||
+                aggregateLoopsBack.length > 0
               }
               className={`${wiz.primary} ${buildLoading ? wiz.primaryBusy : ""}`}
             >
@@ -1095,6 +1133,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           // Третий экран того же окна, а не модалка поверх него: заголовок и
           // полосу шагов даёт окно построения.
           inline
+          outcome={pendingStepOutcome}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.

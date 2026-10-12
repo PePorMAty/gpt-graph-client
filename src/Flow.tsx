@@ -120,7 +120,10 @@ import {
   parseAlternatives,
   dedupeAlternatives,
   alternativeKey,
+  variantLoopsBack,
 } from "./utils/parseAlternatives";
+import { previewStepOutcome } from "./utils/stepToFlow";
+import { getAncestorProductLabels } from "./utils/graphReachability";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
 import { normalizeSourceUrl, sourceUrlKey } from "./utils/sourceUrl";
@@ -250,6 +253,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // --- keep a live ref so timeouts always see the latest nodes ---
   const nodesRef = useRef(data.nodes);
   nodesRef.current = data.nodes;
+  const edgesRef = useRef(data.edges);
+  edgesRef.current = data.edges;
 
   // stable key that changes only when the SET of node IDs changes
   const nodeIdsKey = useMemo(
@@ -2658,12 +2663,30 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // Схлопываем дубли вариантов: модель иногда возвращает 2 одинаковых по
       // сути альтернативы (тот же набор прекурсоров/продуктов) — оставляем одну.
       const alts = dedupeAlternatives(parseAlternatives(text));
-      if (alts.length > 1) {
+      // Альтернатива, ведущая только назад по цепочке (все её продукты уже
+      // стоят выше), шага не даст — на полотно её не ставим.
+      const lineage = [
+        String(
+          nodesRef.current.find((n) => n.id === selectedNodeId)?.data?.label ??
+            "",
+        ),
+        ...getAncestorProductLabels(
+          selectedNodeId,
+          nodesRef.current,
+          edgesRef.current,
+        ),
+      ];
+      const forward = alts
+        .slice(1)
+        .filter(
+          (a) => !variantLoopsBack(a.fullDescription, direction, lineage).length,
+        );
+      if (forward.length) {
         dispatch(
           createStepAlternativeNodes({
             nodeId: selectedNodeId,
             direction,
-            alternatives: alts.slice(1),
+            alternatives: forward,
           }),
         );
       } else {
@@ -2842,6 +2865,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
 
         pendingStep: stepSession?.pendingStep ?? null,
+        pendingStepOutcome: stepSession?.pendingStep
+          ? previewStepOutcome(stepSession.pendingStep, {
+              anchorNodeId: stepSession.currentProductNodeId,
+              direction,
+              existingNodes: data.nodes,
+              existingEdges: data.edges,
+            })
+          : null,
+        // Продукт и его предки по построению: обобщение, ведущее только к
+        // ним, — шаг назад по цепочке (см. stepLoopsBack).
+        stepLineage: [
+          String(selectedNode.data?.label || "").trim(),
+          ...getAncestorProductLabels(selectedNodeId, data.nodes, data.edges),
+        ].filter(Boolean),
 
         stepChainBranchOptions: branchOptions,
         onSelectBranch: (nodeId: string) =>
@@ -2945,6 +2982,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             altSliceState?.stepBuildError ?? null;
           baseResult.pendingStep =
             altStepSession?.pendingStep ?? null;
+          baseResult.pendingStepOutcome = altStepSession?.pendingStep
+            ? previewStepOutcome(altStepSession.pendingStep, {
+                anchorNodeId: rootNodeId,
+                direction,
+                existingNodes: data.nodes,
+                existingEdges: data.edges,
+              })
+            : null;
           baseResult.stepChainStepCount =
             rootStepSession?.steps.length ?? 0;
           baseResult.stepChainStatus =
@@ -3057,6 +3102,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       handleBuildStep,
       handleClearStepState,
       data.nodes,
+      data.edges,
       dispatch,
     ],
   );

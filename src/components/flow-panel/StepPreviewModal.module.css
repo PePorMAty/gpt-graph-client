@@ -419,3 +419,14 @@
   align-items: center;
   gap: var(--s-3);
 }
+
+/* Чем кончится «Добавить шаг»: такой шаг уже есть, продукт стоит выше. */
+.outcome {
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--r-md);
+  background: var(--c-warning-soft);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+}

@@ -88,6 +88,24 @@ export function sameProcess(a: ProcessIO, b: ProcessIO): boolean {
   return (subset(a.ins, b.ins) || subset(b.ins, a.ins)) && meets(a.outs, b.outs);
 }
 
+/**
+ * Ровно те же сырьё и продукты. Так узнаётся тот же процесс под другим
+ * названием: «Синтез капролактама из фенола» и «Синтез капролактама по
+ * фенольной схеме» — оба из фенола, аммиака и серной кислоты в капролактам.
+ * Только при построении шага: в графе, собранном человеком, разные
+ * технологии с одинаковым сырьём и продуктами могут стоять намеренно.
+ */
+export function sameIO(a: ProcessIO, b: ProcessIO): boolean {
+  return (
+    a.ins.size > 0 &&
+    a.outs.size > 0 &&
+    a.ins.size === b.ins.size &&
+    a.outs.size === b.outs.size &&
+    subset(a.ins, b.ins) &&
+    subset(a.outs, b.outs)
+  );
+}
+
 const isBlank = (v: unknown) =>
   v === undefined ||
   v === null ||
