@@ -699,6 +699,9 @@ label.fieldLabel {
 }
 
 .reason {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
   margin: var(--s-1) 0 0;
   padding: var(--s-2) var(--s-3);
   background: var(--c-warning-soft);
@@ -707,6 +710,12 @@ label.fieldLabel {
   font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--c-text-soft);
+}
+
+.reasonIcon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--c-brand);
 }
 
 .section {
@@ -840,4 +849,263 @@ details.more[open] > summary {
   font-size: 11px;
   font-weight: var(--fw-medium);
   color: var(--c-brand-strong);
+}
+
+/* ─── Карточка готового расчёта: таблица баланса, коэффициенты ─── */
+
+/* «Расчёт для преобразования: …» */
+.forTransformation {
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-surface-soft);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--c-text-soft);
+}
+
+.forTransformation b {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.cardBlock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Заголовок блока: значок, название, «?» с подсказкой. */
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.cardIcon {
+  display: inline-flex;
+  color: var(--c-brand);
+}
+
+.cardHelp {
+  display: inline-flex;
+  color: var(--c-text-faint);
+  cursor: help;
+}
+
+.cardHelp:hover {
+  color: var(--c-text-muted);
+}
+
+.tableCard {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--c-surface);
+}
+
+.balanceTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.balanceTable th {
+  padding: 8px 10px;
+  background: var(--c-surface-soft);
+  border-bottom: 1px solid var(--c-border);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.balanceTable td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--c-border-soft);
+  vertical-align: middle;
+  color: var(--c-text);
+}
+
+.balanceTable tr:last-child td {
+  border-bottom: none;
+}
+
+.balanceTable td b {
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.balanceTable .goCol {
+  width: 1%;
+  text-align: center;
+}
+
+.flowTitle {
+  word-break: break-word;
+}
+
+/* Подпись под сырьём: «ограничивает выход», «нужно ≈0,48 т». */
+.rowNote {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--c-text-muted);
+}
+
+/* Продукт расчёта — ссылка на его подробный расчёт. */
+.flowLinkBtn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--c-text);
+  text-align: left;
+  text-decoration: underline dotted var(--c-text-faint);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.flowLinkBtn:hover {
+  color: var(--c-brand);
+  text-decoration-color: var(--c-brand);
+}
+
+.rowOff td {
+  color: var(--c-text-faint);
+}
+
+.role {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--c-text-soft);
+}
+
+.roleDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c-text-faint);
+}
+
+.role_input {
+  background: var(--c-brand);
+}
+
+.role_target {
+  background: var(--c-success);
+}
+
+.role_reagent {
+  background: var(--c-product);
+}
+
+.role_byproduct {
+  background: var(--c-text-muted);
+}
+
+.role_waste {
+  background: var(--c-warning);
+}
+
+.role_loss {
+  background: var(--c-text-faint);
+}
+
+.role_flow {
+  background: var(--c-text-faint);
+}
+
+.role_off {
+  background: none;
+  border: 1.5px solid var(--c-text-faint);
+}
+
+.goBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-brand);
+  cursor: pointer;
+}
+
+.goBtn:hover {
+  border-color: var(--c-brand-border);
+  background: var(--c-brand-soft);
+}
+
+.goNone {
+  color: var(--c-text-faint);
+}
+
+/* Поле количества в таблице — узкое. */
+.basisCompact {
+  gap: 4px;
+}
+
+.basisCompact .amount {
+  width: 56px;
+  height: 30px;
+  padding: 0 6px;
+}
+
+.basisCompact .select {
+  width: 54px;
+  height: 30px;
+  padding: 0 2px;
+}
+
+/* Сворачиваемый блок («Коэффициенты»). */
+.fold > .foldSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+}
+
+.fold > .foldSummary::-webkit-details-marker {
+  display: none;
+}
+
+.foldChevron {
+  color: var(--c-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.fold:not([open]) .foldChevron {
+  transform: rotate(-90deg);
+}
+
+.coefList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--c-text-soft);
+}
+
+.coefList li {
+  margin: 3px 0;
+}
+
+.coefList b {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
 }

@@ -23,6 +23,8 @@ interface Props {
   /** Подпись поля для экранного диктора: название сырья. */
   label: string;
   disabled?: boolean;
+  /** Узкое поле — в таблице баланса. */
+  compact?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ interface Props {
  * Количество держим строкой: иначе «1,» на полпути к «1,5» превращалось бы
  * в «1», и дробное число было бы не вписать.
  */
-export const BasisFields: FC<Props> = ({ value, onChange, label, disabled }) => {
+export const BasisFields: FC<Props> = ({ value, onChange, label, disabled, compact }) => {
   const [text, setText] = useState(() => show(value.amount));
   useEffect(() => {
     // Количество сменилось снаружи (другой расчёт) — показать его число.
@@ -45,12 +47,12 @@ export const BasisFields: FC<Props> = ({ value, onChange, label, disabled }) => 
   const parsed = parseAmount(text);
   const bad = parsed === undefined;
   return (
-    <span className={styles.basisFields}>
+    <span className={`${styles.basisFields} ${compact ? styles.basisCompact : ""}`}>
       <input
         className={`${styles.amount} ${bad ? styles.amountBad : ""}`}
         value={text}
         inputMode="decimal"
-        placeholder="сколько нужно"
+        placeholder={compact ? "нужно" : "сколько нужно"}
         aria-label={`Количество: ${label}`}
         aria-invalid={bad}
         title={bad ? "Нужно положительное число — или пусто: сколько нужно" : undefined}

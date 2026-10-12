@@ -20,6 +20,7 @@ import type { CustomNode } from "../types";
 import type {
   BalanceAmount,
   BalanceCoefficient,
+  BalanceFlow,
   BalanceRecord,
   BalanceRef,
   BalanceSource,
@@ -970,4 +971,79 @@ export function stepField(record: BalanceRecord, label: string): string[] {
   return (record.steps ?? []).flatMap((s) =>
     s.fields.filter((f) => f.label.toLowerCase().startsWith(want)).map((f) => f.text),
   );
+}
+
+/** Роль потока баланса сверх сырья и продуктов графа — в таблице баланса. */
+export type FlowKind = "reagent" | "byproduct" | "waste" | "loss" | "flow";
+
+export const FLOW_KIND_TEXT: Record<FlowKind, string> = {
+  reagent: "реагент",
+  byproduct: "побочный продукт",
+  waste: "отходы",
+  loss: "потери",
+  flow: "поток",
+};
+
+/**
+ * Что за поток: потери — по названию («Технологические потери»), входы —
+ * реагенты (воздух, вода, катализатор), выходы — отходы (выбросы, стоки,
+ * шлам) или побочные продукты.
+ */
+export function flowKind(f: Pick<BalanceFlow, "name" | "direction">): FlowKind {
+  const n = normalizeProductName(f.name);
+  if (/потер/.test(n)) return "loss";
+  if (f.direction === "in") return "reagent";
+  if (/отход|выброс|сточн|шлам|отходящ|абгаз|дымов/.test(n)) return "waste";
+  if (f.direction === "out") return "byproduct";
+  return "flow";
+}
+
+/**
+ * Коэффициенты расчёта — пункты полей «Коэффициенты» всех стадий (новый
+ * промпт). У расчётов прежнего промпта — таблица record.coefficients, её
+ * показывает сама карточка.
+ */
+export function coefficientItems(record: BalanceRecord): string[] {
+  return stepField(record, "Коэффициент").flatMap(fieldItems);
+}
+
+/** Ссылки на источники в конце пункта: «[S1]», «[L1, S2]», «[S1][S3]». */
+const TRAILING_REFS = /((?:\s*\(?\[[SL]\s*\d+(?:\s*[,;]\s*[SL]?\s*\d+)*\]\)?)+)\s*\.?\s*$/;
+
+/**
+ * Пункт коэффициента — подпись, значение и источники: «Выход акрилонитрила:
+ * 0,82 кг/кг пропилена [S1]» → { label: "Выход акрилонитрила", value: "0,82
+ * кг/кг пропилена", refs: "[S1]" }. Нет «подписи: значения» — всё в value.
+ */
+export function splitCoefficient(item: string): { label: string; value: string; refs: string } {
+  let text = String(item || "").trim();
+  let refs = "";
+  const m = TRAILING_REFS.exec(text);
+  if (m && m.index > 0) {
+    refs = m[1].replace(/[()]/g, "").trim();
+    text = text.slice(0, m.index).trim();
+  }
+  const colon = text.indexOf(": ");
+  if (colon > 0 && colon <= 90 && text.slice(colon + 2).trim()) {
+    return { label: text.slice(0, colon).trim(), value: text.slice(colon + 2).trim(), refs };
+  }
+  return { label: "", value: text, refs };
+}
+
+/** Что сказать под сырьём расчёта. */
+export function balanceInputNote(f: BalanceFlowResult, res: BalanceResult): string {
+  const setCount = res.inputs.filter((x) => x.set && !x.noRecipe).length;
+  if (f.noRecipe)
+    return "расход этого сырья модель не нашла — в пересчёт не вошло";
+  if (!f.set)
+    return f.mass
+      ? `нужно ${formatMass(f.mass, f.unit)}`
+      : "сколько нужно — модель не нашла";
+  if (f.limiting)
+    return setCount > 1
+      ? "расходуется целиком — его меньше всего, оно ограничивает выход"
+      : "расходуется целиком";
+  if (f.excess)
+    return `нужно ${formatMass(f.mass, f.unit)}, останется ${formatMass(f.excess, f.unit)}`;
+  return "расходуется целиком";
 }

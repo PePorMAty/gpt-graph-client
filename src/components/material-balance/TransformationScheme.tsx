@@ -1,6 +1,7 @@
 import type { FC, ReactNode } from "react";
 
 import {
+  balanceInputNote,
   formatMass,
   formatView,
   type BalanceFlowResult,
@@ -191,24 +192,6 @@ interface CalcProps {
   readOnly?: boolean;
 }
 
-/** Что сказать под сырьём расчёта. */
-function inputNote(f: BalanceFlowResult, res: BalanceResult): string {
-  const setCount = res.inputs.filter((x) => x.set && !x.noRecipe).length;
-  if (f.noRecipe)
-    return "расход этого сырья модель не нашла — в пересчёт не вошло";
-  if (!f.set)
-    return f.mass
-      ? `нужно ${formatMass(f.mass, f.unit)}`
-      : "сколько нужно — модель не нашла";
-  if (f.limiting)
-    return setCount > 1
-      ? "расходуется целиком — его меньше всего, оно ограничивает выход"
-      : "расходуется целиком";
-  if (f.excess)
-    return `нужно ${formatMass(f.mass, f.unit)}, останется ${formatMass(f.excess, f.unit)}`;
-  return "расходуется целиком";
-}
-
 /**
  * Схема готового расчёта: количество каждого сырья правится сразу — массы
  * продуктов пересчитываются без модели; продукт ведёт в свой расчёт.
@@ -260,7 +243,7 @@ export const CalcScheme: FC<CalcProps> = ({
           <span
             className={`${styles.flowNote} ${f.noRecipe ? styles.flowWarn : ""}`}
           >
-            {inputNote(f, result)}
+            {balanceInputNote(f, result)}
           </span>
         </div>
       ))}

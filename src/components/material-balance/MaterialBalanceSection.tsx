@@ -45,7 +45,8 @@ import {
 } from "../icons";
 import { CalcDetails, Status } from "./CalcDetails";
 import { ProductDetails } from "./ProductDetails";
-import { CalcScheme, FormScheme } from "./TransformationScheme";
+import { FormScheme } from "./TransformationScheme";
+import { normalizeProductName } from "../../utils/normalizeProductName";
 import { RequestForm } from "./RequestForm";
 import styles from "./MaterialBalance.module.css";
 
@@ -84,6 +85,14 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
   const [now, setNow] = useState(() => Date.now());
 
   const ends = useMemo(() => balanceEnds(t.id, nodes, edges), [t.id, nodes, edges]);
+  // Продукт графа по названию: потоки баланса сверх сырья и продуктов
+  // расчёта (побочные, реагенты) — тоже бывают на полотне.
+  const findNode = useMemo(() => {
+    const byName = new Map(
+      nodes.filter((n) => n.type === "product").map((n) => [normalizeProductName(label(n)), n.id]),
+    );
+    return (name: string) => byName.get(normalizeProductName(name));
+  }, [nodes]);
   const calcs = calcsOf(t);
   const calc = calcs.find((c) => c.record.id === selection?.recordId);
   const tJobs = Object.entries(jobs).filter(([, j]) => j.transformationId === t.id);
@@ -216,21 +225,15 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
                 баланс, посчитайте заново.
               </p>
             )}
-            <CalcScheme
-              transformation={t}
+            <CalcDetails
+              nodeId={t.id}
+              calc={calc}
               result={computeBalance(calc)}
               labelOf={labelOf}
               onAmount={onCalcAmount(calc)}
               onProduct={(id) => dispatch(openBalanceProduct(id))}
-            />
-            <p className={styles.muted}>
-              Количество любого сырья можно менять — массы пересчитаются сразу, без
-              модели. Щелчок по продукту — его подробный расчёт.
-            </p>
-            <CalcDetails
-              nodeId={t.id}
-              calc={calc}
-              labelOf={labelOf}
+              onGo={(id) => focusNode(id, { zoom: 1 })}
+              findNode={findNode}
               onNewRequest={() => dispatch(newCalcFrom(calc, amountsOf(calc)))}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
             />

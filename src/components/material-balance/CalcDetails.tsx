@@ -5,19 +5,19 @@ import remarkGfm from "remark-gfm";
 import { useAppDispatch } from "../../store/hooks";
 import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
-  computeBalance,
-  flowRef,
+  coefficientItems,
   formatBasisAmount,
-  formatMass,
   formatPercent,
   formatWhen,
   isPairCalc,
   massFraction,
-  scaleByFactor,
   sortSources,
+  splitCoefficient,
   STATUS_TEXT,
   STATUS_TONE,
   statusReason,
+  type BalanceInputAmount,
+  type BalanceResult,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import { mentionsRefs, readableRecord } from "../../utils/readableModelText";
@@ -28,6 +28,8 @@ import {
 } from "../../store/api/material-balance-api";
 import { sourceHref } from "../../store/api/local-sources-api";
 import { plural } from "../../utils/plural";
+import { ChevronDownIcon, InfoIcon, NoteIcon, SigmaIcon } from "../icons";
+import { BalanceTable, CardTitle } from "./BalanceTable";
 import md from "../markdown-editor/MarkdownEditor.module.css";
 import styles from "./MaterialBalance.module.css";
 
@@ -174,8 +176,18 @@ function tookText(ms: number | null | undefined): string {
 interface Props {
   nodeId: string;
   calc: MaterialBalanceCalc;
+  /** Пересчёт на количества человека (computeBalance). */
+  result: BalanceResult;
   /** Подпись узла по id; нет узла — пусто. */
   labelOf: (id: string | undefined) => string;
+  /** Количество сырья по обозначению; нет — таблица только для чтения. */
+  onAmount?: (ref: string, value: BalanceInputAmount) => void;
+  /** Подробный расчёт продукта. */
+  onProduct?: (nodeId: string) => void;
+  /** Показать узел на полотне. */
+  onGo?: (nodeId: string) => void;
+  /** Узел графа с таким названием — для потоков сверх сырья и продуктов. */
+  findNode?: (name: string) => string | undefined;
   /** «Новый расчёт» — форма с количествами и продуктами этого расчёта. */
   onNewRequest?: () => void;
   /** «Показать на графе» — камера к преобразованию. */
@@ -184,10 +196,10 @@ interface Props {
 }
 
 /**
- * Расчёт преобразования целиком: сведения о расчёте, потоки сверх сырья и
- * продуктов графа, примечания, ответ модели по разделам, источники.
- * Сырьё и продукты с массами — в схеме над ним, расчёт одного продукта — по
- * щелчку на нём.
+ * Расчёт преобразования целиком: сведения о расчёте, таблица материального
+ * баланса (сырьё с количествами, продукты, потоки сверх графа), коэффициенты,
+ * примечания, ответ модели по разделам, источники. Расчёт одного продукта —
+ * по щелчку на нём в таблице.
  *
  * Тексты модели — читаемыми (readableRecord): без LaTeX и служебных имён
  * промпта. Обозначения P1, P2 из ответа расшифрованы над ним.
@@ -195,7 +207,12 @@ interface Props {
 export const CalcDetails: FC<Props> = ({
   nodeId,
   calc,
+  result,
   labelOf,
+  onAmount,
+  onProduct,
+  onGo,
+  findNode,
   onNewRequest,
   onShowOnGraph,
   readOnly,
@@ -203,10 +220,10 @@ export const CalcDetails: FC<Props> = ({
   const dispatch = useAppDispatch();
   const [confirmRemove, setConfirmRemove] = useState(false);
   const record = readableRecord(calc.record);
-  const result = computeBalance({ ...calc, record });
   const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
-  const extraFlows = record.flows.filter((f) => !flowRef(record, f.name));
   const reason = statusReason(record);
+  const coefs = coefficientItems(record);
+  const tName = labelOf(nodeId) || record.transformation;
   const transitions = record.steps?.length
     ? record.steps.map((s) => `## ${s.title}\n\n${s.body}`).join("\n\n")
     : record.sections.transitions;
@@ -232,14 +249,20 @@ export const CalcDetails: FC<Props> = ({
         )}
         {reason && (
           <p className={styles.reason}>
-            <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
+            <InfoIcon size={16} className={styles.reasonIcon} />
+            <span>
+              <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
+            </span>
           </p>
         )}
         {record.searchOff && (
           <p className={styles.reason}>
-            <b>Модель считала без поиска в интернете:</b> провайдер отверг для неё
-            поиск. Данные — только из базы источников и знаний модели; для
-            расчёта с поиском выберите другую модель в «Промпт и модель».
+            <InfoIcon size={16} className={styles.reasonIcon} />
+            <span>
+              <b>Модель считала без поиска в интернете:</b> провайдер отверг для неё
+              поиск. Данные — только из базы источников и знаний модели; для
+              расчёта с поиском выберите другую модель в «Промпт и модель».
+            </span>
           </p>
         )}
         {record.sourceChecks && (
@@ -253,49 +276,58 @@ export const CalcDetails: FC<Props> = ({
         )}
       </div>
 
-      {extraFlows.length > 0 && (
-        <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Другие потоки баланса</h4>
-          <p className={styles.muted}>
-            Реагенты, побочные продукты и отходы, которых нет на графе, — на ваше количество
-            сырья.
-          </p>
-          <table className={styles.flows}>
-            <tbody>
-              {extraFlows.map((f) => (
-                <tr key={`flow-${f.name}`}>
-                  <td>
-                    {f.name}
-                    <span className={styles.flowRole}>
-                      {f.direction === "in" ? "вход" : f.direction === "out" ? "выход" : "поток"}
-                    </span>
-                  </td>
-                  <td>{formatMass(scaleByFactor(f.massKg, result.factor), result.unit)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      <div className={styles.forTransformation}>
+        Расчёт для преобразования: <b>{tName}</b>
+      </div>
 
-      {record.coefficients.length > 0 && (
-        <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Коэффициенты</h4>
-          <ul className={styles.coef}>
+      <BalanceTable
+        result={result}
+        record={record}
+        labelOf={labelOf}
+        onAmount={readOnly ? undefined : onAmount}
+        onProduct={onProduct}
+        onGo={onGo}
+        findNode={findNode}
+      />
+
+      {(coefs.length > 0 || record.coefficients.length > 0) && (
+        <details className={`${styles.cardBlock} ${styles.fold}`} open>
+          <summary className={styles.foldSummary}>
+            <CardTitle
+              as="span"
+              icon={<SigmaIcon size={16} />}
+              title="Коэффициенты"
+              help="Удельные показатели, по которым считала модель: выходы, расходы, конверсия, состав — с источниками в квадратных скобках."
+            />
+            <ChevronDownIcon size={16} className={styles.foldChevron} />
+          </summary>
+          <ul className={styles.coefList}>
+            {coefs.map((item, i) => {
+              const c = splitCoefficient(item);
+              return (
+                <li key={i}>
+                  {c.label && (
+                    <>
+                      <Markdown text={c.label} inline />:{" "}
+                    </>
+                  )}
+                  <b>
+                    <Markdown text={c.value} inline />
+                  </b>
+                  {c.refs && <span className={styles.sourceMeta}> · {c.refs}</span>}
+                </li>
+              );
+            })}
             {record.coefficients.map((c, i) => {
               // «кг/кг», «т/т» — доля массы: процентами понятнее.
               const share = massFraction(c);
               return (
-                <li key={i}>
+                <li key={`old-${i}`}>
                   {c.indicator}
                   {c.fromRef && c.toRef ? ` (${nameOf(c.fromRef)} → ${nameOf(c.toRef)})` : ""}:{" "}
                   <b>
                     {c.valueText}
-                    {c.unit && !/%/.test(c.valueText)
-                      ? c.unit === "%"
-                        ? "%"
-                        : ` ${c.unit}`
-                      : ""}
+                    {c.unit && !/%/.test(c.valueText) ? (c.unit === "%" ? "%" : ` ${c.unit}`) : ""}
                   </b>
                   {share ? ` — ${formatPercent(share)}` : ""}
                   {c.source ? <span className={styles.sourceMeta}> · {c.source}</span> : null}
@@ -303,7 +335,7 @@ export const CalcDetails: FC<Props> = ({
               );
             })}
           </ul>
-        </section>
+        </details>
       )}
 
       {record.knownData && (
@@ -313,8 +345,8 @@ export const CalcDetails: FC<Props> = ({
         </section>
       )}
 
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Примечания</h4>
+      <section className={styles.cardBlock}>
+        <CardTitle icon={<NoteIcon size={16} />} title="Примечания" />
         <Markdown text={record.sections.notes} />
       </section>
 
