@@ -112,8 +112,14 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
 
 ## Что обещано в документах — и должно быть правдой
 
-- **Журналы nginx хранятся не дольше 30 дней** (политика, п. 6). На Ubuntu
-  по умолчанию — 14 дней: `grep -E "daily|weekly|rotate" /etc/logrotate.d/nginx`.
+- **Журналы nginx хранятся не дольше 30 дней** (политика, п. 6). На сервере
+  было `daily` + `rotate 52` (52 дня); нужно `rotate 29` — сегодняшний файл
+  и 29 архивных:
+  ```
+  sed -i -E 's/^(\s*)rotate [0-9]+$/\1rotate 29/' /etc/logrotate.d/nginx
+  grep -E "daily|weekly|rotate" /etc/logrotate.d/nginx
+  ```
+  Лишние архивы logrotate удалит сам при ближайшей ежедневной ротации.
 - **Поставщики моделей** — OpenAI и Alibaba Cloud (DashScope) (политика,
   п. 5). Появится новый — дописать в политику.
 - **Шрифты с Google Fonts** (политика, п. 5.2). Если перенести шрифт Inter на
