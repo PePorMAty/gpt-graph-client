@@ -63,10 +63,11 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    `deploy/nginx/sorangptgraph.xyz.conf`: прежний (API, CORS, сертификат,
    таймауты — без изменений) плюс сайт по корню, заголовки безопасности,
    кэш, сжатие, редиректы на https и на адрес без www. Сначала копия
-   прежнего (`cp -n` не перезапишет её при повторном запуске), потом новые
+   прежнего (при повторном запуске она не перезапишется), потом новые
    файлы и проверка:
    ```
-   cp -n /etc/nginx/sites-available/sorangptgraph.xyz /root/sorangptgraph.xyz.nginx-before-site
+   [ -e /root/sorangptgraph.xyz.nginx-before-site ] || cp /etc/nginx/sites-available/sorangptgraph.xyz /root/sorangptgraph.xyz.nginx-before-site
+   mkdir -p /etc/nginx/snippets
    cp ~/site-develop/deploy/nginx/security-headers.conf /etc/nginx/snippets/
    cp ~/site-develop/deploy/nginx/sorangptgraph.xyz.conf /etc/nginx/sites-available/sorangptgraph.xyz
    nginx -t && systemctl reload nginx
