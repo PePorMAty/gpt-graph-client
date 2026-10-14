@@ -49,19 +49,46 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    По 152-ФЗ оператор персональных данных — конкретное лицо (ФИО, ИП или
    организация); когда сервис станет публичным, вписать его в
    `public/terms.html` (п. 1.1) и `public/privacy.html` (п. 1.2).
-2. **Заголовки безопасности.** Скопировать сниппет:
+2. **Первая выкладка — до смены nginx.** Скрипт должен быть в рабочей
+   копии: если `ls ~/gpt-graph-client/deploy/deploy-site.sh` его не находит,
+   обновите её (`git pull`). Затем:
    ```
-   cp ~/gpt-graph-client/deploy/nginx/security-headers.conf /etc/nginx/snippets/
+   bash ~/gpt-graph-client/deploy/deploy-site.sh
    ```
-3. **Конфиг nginx.** Дополнить нынешний конфиг домена по образцу
-   `deploy/nginx/sorangptgraph.conf.example`: сайт по корню, кэш, сжатие,
-   редиректы. Блок `location /api/` и строки сертификата остаются как есть.
-   Перед правкой — копия, после — проверка:
+   Сайт ляжет в `/var/www/sorangptgraph`, а nginx его пока не отдаёт — API
+   работает как работал. Скрипт создаст `~/site-develop` с веткой `develop`:
+   файлы для nginx на следующем шаге берутся оттуда.
+3. **Конфиг nginx.** Рабочий конфиг лежит в репозитории —
+   `deploy/nginx/sorangptgraph.xyz.conf`: прежний (API, CORS, сертификат,
+   таймауты — без изменений) плюс сайт по корню, заголовки безопасности,
+   кэш, сжатие, редиректы на https и на адрес без www. Сначала копия
+   прежнего (`cp -n` не перезапишет её при повторном запуске), потом новые
+   файлы и проверка:
    ```
-   cp -a /etc/nginx/sites-available /root/nginx-sites-backup-$(date +%F)
+   cp -n /etc/nginx/sites-available/sorangptgraph.xyz /root/sorangptgraph.xyz.nginx-before-site
+   cp ~/site-develop/deploy/nginx/security-headers.conf /etc/nginx/snippets/
+   cp ~/site-develop/deploy/nginx/sorangptgraph.xyz.conf /etc/nginx/sites-available/sorangptgraph.xyz
    nginx -t && systemctl reload nginx
    ```
-4. **Первая выкладка:** `bash ~/gpt-graph-client/deploy/deploy-site.sh`.
+   Если `nginx -t` ругается, `reload` не выполнится и сайт продолжит работать
+   на прежнем конфиге; вернуть файл на место:
+   ```
+   cp /root/sorangptgraph.xyz.nginx-before-site /etc/nginx/sites-available/sorangptgraph.xyz && nginx -t && systemctl reload nginx
+   ```
+   Конфиг меняется так же: правка в репозитории → `develop` → те же `cp`,
+   `nginx -t`, `reload`. Остальные конфиги (`graph-server`, `hello`) не
+   затрагиваются.
+4. **Проверка на сервере:**
+   ```
+   curl -s -o /dev/null -w '%{http_code}\n' https://sorangptgraph.xyz/api/industry/status
+   curl -sI https://sorangptgraph.xyz/ | grep -iE '^(HTTP|strict-transport|content-security)'
+   certbot certificates
+   certbot renew --dry-run
+   ```
+   Первая — API отвечает 200; вторая — сайт и заголовки безопасности;
+   третья — есть ли `www.sorangptgraph.xyz` в списке `Domains` сертификата
+   (без него адрес с www откроется с ошибкой сертификата); четвёртая —
+   продление сертификата работает с новым конфигом.
 
 ## Проверки после выкладки
 
