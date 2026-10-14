@@ -1,5 +1,5 @@
 # Сообщить об уязвимости сервиса «Граф производства» (RFC 9116).
-Contact: mailto:{{EMAIL}}
+Contact: mailto:support@sorangptgraph.xyz
 Expires: 2027-10-14T00:00:00.000Z
 Preferred-Languages: ru, en
 Canonical: https://sorangptgraph.xyz/.well-known/security.txt
