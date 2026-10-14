@@ -24,6 +24,9 @@ const SHORTCUTS = [
 
 /** Руководство пользователя — страница /guide приложения. */
 const GUIDE_HREF = `${import.meta.env.BASE_URL}guide`;
+/** Юридические страницы — статичные файлы рядом с приложением (public/). */
+const TERMS_HREF = `${import.meta.env.BASE_URL}terms.html`;
+const PRIVACY_HREF = `${import.meta.env.BASE_URL}privacy.html`;
 
 /**
  * Краткая справка по интерфейсу: обозначения, горячие клавиши и ссылка на
@@ -86,6 +89,14 @@ export const HelpMenu = () => {
             <BookIcon size={16} />
             Руководство пользователя
           </a>
+          <div className={styles.legal}>
+            <a href={TERMS_HREF} target="_blank" rel="noopener" onClick={close}>
+              Пользовательское соглашение
+            </a>
+            <a href={PRIVACY_HREF} target="_blank" rel="noopener" onClick={close}>
+              Политика конфиденциальности
+            </a>
+          </div>
         </div>
       )}
     </div>

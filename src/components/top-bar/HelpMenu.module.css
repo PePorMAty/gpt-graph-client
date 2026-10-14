@@ -138,3 +138,21 @@
   text-decoration: underline;
 }
 
+/* Ссылки на соглашение и политику — мелко, под руководством. */
+.legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 4px 0;
+  font-size: var(--fs-xs);
+}
+
+.legal a {
+  color: var(--c-text-muted);
+  text-decoration: none;
+}
+
+.legal a:hover {
+  color: var(--c-brand);
+  text-decoration: underline;
+}
