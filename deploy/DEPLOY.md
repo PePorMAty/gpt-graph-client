@@ -15,10 +15,10 @@
 ## Выкладка — только из `develop`
 
 ```
-bash ~/gpt-graph-client/deploy/deploy-site.sh
+git -C ~/gpt-graph-client pull -q && bash ~/gpt-graph-client/deploy/deploy-site.sh
 ```
 
-Скрипт берёт **только** `develop` с GitHub и собирает его в отдельной папке
+`pull` — чтобы и сам скрипт был свежим. Скрипт берёт **только** `develop` с GitHub и собирает его в отдельной папке
 `~/site-develop` (вторая рабочая папка того же репозитория). Рабочая копия
 `~/gpt-graph-client` может стоять на любой ветке — скрипт её не трогает,
 поэтому собрать на сайт «не ту ветку» нельзя.
@@ -49,10 +49,11 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    По 152-ФЗ оператор персональных данных — конкретное лицо (ФИО, ИП или
    организация); когда сервис станет публичным, вписать его в
    `public/terms.html` (п. 1.1) и `public/privacy.html` (п. 1.2).
-2. **Первая выкладка — до смены nginx.** Скрипт должен быть в рабочей
-   копии: если `ls ~/gpt-graph-client/deploy/deploy-site.sh` его не находит,
-   обновите её (`git pull`). Затем:
+2. **Первая выкладка — до смены nginx.** На сервере нужна копия репозитория
+   клиента — оттуда запускается скрипт. Сборка требует Node.js 20.19+ или
+   22.12+ (`node -v`). Репозиторий публичный, ключи не нужны:
    ```
+   git clone -b develop https://github.com/PePorMAty/gpt-graph-client.git ~/gpt-graph-client
    bash ~/gpt-graph-client/deploy/deploy-site.sh
    ```
    Сайт ляжет в `/var/www/sorangptgraph`, а nginx его пока не отдаёт — API
