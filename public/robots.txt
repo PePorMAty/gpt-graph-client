@@ -1,0 +1,9 @@
+# Сайт «Граф производства» — https://sorangptgraph.xyz
+# API и опубликованные пользователями графы в поиск не попадают: графы
+# открываются по ссылке тем, кому её дали, а не всем.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /g/
+
+Sitemap: https://sorangptgraph.xyz/sitemap.xml
