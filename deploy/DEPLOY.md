@@ -78,7 +78,10 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    cp /root/sorangptgraph.xyz.nginx-before-site /etc/nginx/sites-available/sorangptgraph.xyz && nginx -t && systemctl reload nginx
    ```
    Конфиг меняется так же: правка в репозитории → `develop` → те же `cp`,
-   `nginx -t`, `reload`. Остальные конфиги (`graph-server`, `hello`) не
+   `nginx -t`, `reload`. Если новые заголовки рассчитаны на новую сборку
+   (например, политика CSP стала строже), сначала выкладка сайта, потом
+   `cp` заголовков: иначе старая сборка какое-то время работает под новой
+   политикой. Остальные конфиги (`graph-server`, `hello`) не
    затрагиваются.
 4. **Проверка на сервере:**
    ```
