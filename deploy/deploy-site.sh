@@ -53,7 +53,12 @@ if [ "$(cat "$SRC/node_modules/.lock-hash" 2>/dev/null)" != "$LOCK_HASH" ]; then
 fi
 
 step "Собираю"
-(cd "$SRC" && VITE_BASE=/ VITE_API_URL="$API_URL" npm run build)
+# Сборщику — не больше 768 МБ: на сервере 2 ГБ, рядом работают API и VPN.
+# Без лимита Node берёт память с запасом (до 1,1 ГБ), с лимитом сборка
+# укладывается примерно в 0,9 ГБ; 512 МБ ей уже мало. Если однажды не
+# хватит и этого, сборка остановится с «heap out of memory», а сайт
+# останется прежним.
+(cd "$SRC" && NODE_OPTIONS=--max-old-space-size=768 VITE_BASE=/ VITE_API_URL="$API_URL" npm run build)
 
 step "Проверяю заглушки {{…}}"
 LEFT="$(grep -rlE '\{\{[^}]+\}\}' "$SRC/dist" --include='*.html' --include='*.txt' || true)"
