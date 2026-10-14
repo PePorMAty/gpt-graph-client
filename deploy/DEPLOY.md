@@ -81,11 +81,15 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    затрагиваются.
 4. **Проверка на сервере:**
    ```
-   curl -s -o /dev/null -w '%{http_code}\n' https://sorangptgraph.xyz/api/industry/status
-   curl -sI https://sorangptgraph.xyz/ | grep -iE '^(HTTP|strict-transport|content-security)'
+   curl -s --resolve sorangptgraph.xyz:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://sorangptgraph.xyz/api/industry/status
+   curl -sI --resolve sorangptgraph.xyz:443:127.0.0.1 https://sorangptgraph.xyz/ | grep -iE '^(HTTP|strict-transport|content-security)'
    certbot certificates
    certbot renew --dry-run
    ```
+   `--resolve … 127.0.0.1` — запрос идёт в nginx этой же машины: с сервера
+   на собственный внешний адрес curl не достучится (покажет 000), хотя
+   снаружи сайт работает. Снаружи проверять браузером.
+
    Первая — API отвечает 200; вторая — сайт и заголовки безопасности;
    третья — есть ли `www.sorangptgraph.xyz` в списке `Domains` сертификата
    (без него адрес с www откроется с ошибкой сертификата); четвёртая —
