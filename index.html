@@ -24,26 +24,9 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <script type="text/javascript">
-      // Single Page Apps for GitHub Pages — восстановление пути из 404.html
-      // https://github.com/rafgraph/spa-github-pages
-      (function (l) {
-        if (l.search[1] === "/") {
-          var decoded = l.search
-            .slice(1)
-            .split("&")
-            .map(function (s) {
-              return s.replace(/~and~/g, "&");
-            })
-            .join("?");
-          window.history.replaceState(
-            null,
-            null,
-            l.pathname.slice(0, -1) + decoded + l.hash
-          );
-        }
-      })(window.location);
-    </script>
+    <!-- Переходы со старых ссылок GitHub Pages. Обычный (не module) скрипт:
+         выполняется до приложения. -->
+    <script src="/spa-redirect.js"></script>
   </head>
   <body>
     <!-- Без JavaScript приложение не работает. Этот текст видят такие

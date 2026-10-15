@@ -81,4 +81,14 @@ mv "$DEST.new" "$DEST"
 
 step "Готово"
 echo "На сайте: $COMMIT"
-echo "Проверка: $(curl -s -o /dev/null -w '%{http_code}' https://sorangptgraph.xyz/) — главная, $(curl -s -o /dev/null -w '%{http_code}' https://sorangptgraph.xyz/api/industry/status) — API (оба должны быть 200)"
+# Проверяем через nginx этой же машины (127.0.0.1): запрос с сервера на свой
+# же внешний адрес у многих хостингов не проходит — curl показал бы 000,
+# хотя снаружи сайт открывается.
+LOCAL=(-s --max-time 20 --resolve sorangptgraph.xyz:443:127.0.0.1)
+if curl "${LOCAL[@]}" https://sorangptgraph.xyz/ | cmp -s - "$DEST/index.html"; then
+  SITE="отдаёт эту сборку"
+else
+  SITE="отдаёт НЕ эту сборку (nginx ещё не настроен на $DEST?)"
+fi
+API="$(curl "${LOCAL[@]}" -o /dev/null -w '%{http_code}' https://sorangptgraph.xyz/api/industry/status || true)"
+echo "Проверка через nginx на сервере: главная $SITE; API — $API (должно быть 200)"
