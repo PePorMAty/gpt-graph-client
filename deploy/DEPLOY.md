@@ -63,10 +63,11 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    `deploy/nginx/sorangptgraph.xyz.conf`: прежний (API, CORS, сертификат,
    таймауты — без изменений) плюс сайт по корню, заголовки безопасности,
    кэш, сжатие, редиректы на https и на адрес без www. Сначала копия
-   прежнего (`cp -n` не перезапишет её при повторном запуске), потом новые
+   прежнего (при повторном запуске она не перезапишется), потом новые
    файлы и проверка:
    ```
-   cp -n /etc/nginx/sites-available/sorangptgraph.xyz /root/sorangptgraph.xyz.nginx-before-site
+   [ -e /root/sorangptgraph.xyz.nginx-before-site ] || cp /etc/nginx/sites-available/sorangptgraph.xyz /root/sorangptgraph.xyz.nginx-before-site
+   mkdir -p /etc/nginx/snippets
    cp ~/site-develop/deploy/nginx/security-headers.conf /etc/nginx/snippets/
    cp ~/site-develop/deploy/nginx/sorangptgraph.xyz.conf /etc/nginx/sites-available/sorangptgraph.xyz
    nginx -t && systemctl reload nginx
@@ -77,15 +78,22 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
    cp /root/sorangptgraph.xyz.nginx-before-site /etc/nginx/sites-available/sorangptgraph.xyz && nginx -t && systemctl reload nginx
    ```
    Конфиг меняется так же: правка в репозитории → `develop` → те же `cp`,
-   `nginx -t`, `reload`. Остальные конфиги (`graph-server`, `hello`) не
+   `nginx -t`, `reload`. Если новые заголовки рассчитаны на новую сборку
+   (например, политика CSP стала строже), сначала выкладка сайта, потом
+   `cp` заголовков: иначе старая сборка какое-то время работает под новой
+   политикой. Остальные конфиги (`graph-server`, `hello`) не
    затрагиваются.
 4. **Проверка на сервере:**
    ```
-   curl -s -o /dev/null -w '%{http_code}\n' https://sorangptgraph.xyz/api/industry/status
-   curl -sI https://sorangptgraph.xyz/ | grep -iE '^(HTTP|strict-transport|content-security)'
+   curl -s --resolve sorangptgraph.xyz:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://sorangptgraph.xyz/api/industry/status
+   curl -sI --resolve sorangptgraph.xyz:443:127.0.0.1 https://sorangptgraph.xyz/ | grep -iE '^(HTTP|strict-transport|content-security)'
    certbot certificates
    certbot renew --dry-run
    ```
+   `--resolve … 127.0.0.1` — запрос идёт в nginx этой же машины: с сервера
+   на собственный внешний адрес curl не достучится (покажет 000), хотя
+   снаружи сайт работает. Снаружи проверять браузером.
+
    Первая — API отвечает 200; вторая — сайт и заголовки безопасности;
    третья — есть ли `www.sorangptgraph.xyz` в списке `Domains` сертификата
    (без него адрес с www откроется с ошибкой сертификата); четвёртая —
@@ -104,8 +112,14 @@ mv /var/www/sorangptgraph /var/www/sorangptgraph.bad && mv /var/www/sorangptgrap
 
 ## Что обещано в документах — и должно быть правдой
 
-- **Журналы nginx хранятся не дольше 30 дней** (политика, п. 6). На Ubuntu
-  по умолчанию — 14 дней: `grep -E "daily|weekly|rotate" /etc/logrotate.d/nginx`.
+- **Журналы nginx хранятся не дольше 30 дней** (политика, п. 6). На сервере
+  было `daily` + `rotate 52` (52 дня); нужно `rotate 29` — сегодняшний файл
+  и 29 архивных:
+  ```
+  sed -i -E 's/^(\s*)rotate [0-9]+$/\1rotate 29/' /etc/logrotate.d/nginx
+  grep -E "daily|weekly|rotate" /etc/logrotate.d/nginx
+  ```
+  Лишние архивы logrotate удалит сам при ближайшей ежедневной ротации.
 - **Поставщики моделей** — OpenAI и Alibaba Cloud (DashScope) (политика,
   п. 5). Появится новый — дописать в политику.
 - **Шрифты с Google Fonts** (политика, п. 5.2). Если перенести шрифт Inter на
