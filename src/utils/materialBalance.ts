@@ -602,8 +602,8 @@ export function shareOfAllInputs(record: BalanceRecord, productRef: string): Bal
 }
 
 /**
- * Как показывать баланс: доли массы (приход = расход = 100 %) или массы на
- * количество человека (кг, т, тыс. т).
+ * Как показывать баланс: проценты (сырьё — 100 %, продукт — 100 %,
+ * побочное — отдельно) или массы на количество человека (кг, т, тыс. т).
  */
 export type BalanceDisplay = "percent" | "mass";
 
@@ -615,38 +615,64 @@ export interface PercentRow {
   kind: "input" | "target" | "off" | FlowKind;
   /** Масса по расчёту модели, кг; модель не дала — null. */
   mass: BalanceAmount | null;
-  /** Доля от всего прихода; нет массы — null. */
+  /**
+   * Доля: у сырья — от всего сырья, у продукта — от всех продуктов расчёта,
+   * у прочего — от массы продуктов. Нет массы — null.
+   */
   share: BalanceAmount | null;
 }
 
 export interface PercentBalance {
-  /** Приход: сырьё расчёта и реагенты сверх графа (воздух, вода). */
-  incoming: PercentRow[];
-  /** Расход: продукты, невыбранные выходы с массой, побочные, отходы, потери. */
-  outgoing: PercentRow[];
-  /** Не у всего сырья есть масса: проценты — от сырья с массой. */
-  partialIn: boolean;
+  /** Сырьё расчёта (с графа): доли между собой, вместе — 100 %. */
+  raw: PercentRow[];
+  /** Продукты расчёта: доли между собой, вместе — 100 %. */
+  products: PercentRow[];
   /**
-   * Расход не сходится с приходом, доля от прихода: больше нуля — часть
-   * прихода расчёт не распределил (потери, неучтённые потоки), меньше нуля —
-   * выходов больше, чем вошло. В пределах полупроцента — null.
+   * Отдельно, вне этих 100 %: реагенты сверх графа (кислород, вода),
+   * невыбранные выходы, побочные продукты, отходы, потери — в процентах от
+   * массы продуктов («на 100 % продукта — 120 % воды»).
    */
-  gap: number | null;
+  separate: PercentRow[];
+  /** Не у всего сырья есть масса: доли — от сырья с массой. */
+  partialRaw: boolean;
+  /** Не у всех продуктов есть масса: доли — от продуктов с массой. */
+  partialProducts: boolean;
   /** Ни у одного сырья нет массы — процентов не посчитать. */
   empty: boolean;
 }
 
 const midOf = (a: BalanceAmount) => (a.min + a.max) / 2;
+const isRange = (a: BalanceAmount | null) => !!a && (a.approx || a.min !== a.max);
 
 /**
- * Материальный баланс в процентах — как в таблице технолога: приход (всё
- * сырьё) — 100 %, расход (продукты, побочные, отходы, потери) — тоже 100 %.
- * Доли — от массы всего прихода по расчёту модели, поэтому от количества
- * сырья не зависят. Расход сводится к 100 % строкой невязки: что расчёт не
- * распределил или на сколько выходов больше, чем вошло.
+ * Доли строк от суммы масс; «≈», если оценкой была хоть одна масса суммы.
+ * Масса в сумме одна — у её строки ровно 100 %, без «≈».
+ */
+function shareOf(rows: PercentRow[], total: number, approx: boolean) {
+  const withMass = rows.filter((r) => r.mass);
+  if (withMass.length === 1 && massSum(withMass) === total) {
+    withMass[0].share = { min: 1, max: 1, approx: false };
+    return;
+  }
+  for (const r of rows) {
+    if (r.mass && total > 0) {
+      r.share = { min: r.mass.min / total, max: r.mass.max / total, approx: r.mass.approx || approx };
+    }
+  }
+}
+
+const massSum = (rows: PercentRow[]) => rows.reduce((s, r) => s + (r.mass ? midOf(r.mass) : 0), 0);
+
+/**
+ * Материальный баланс в процентах — как его считает заказчик (2026-10-19):
+ * сырьё графа вместе — 100 % («64 % пропилена + 36 % аммиака»), продукт —
+ * 100 % (несколько продуктов делят эти 100 %), а отходы, побочные
+ * продукты, примеси и реагенты сверх графа в эти 100 % не входят — они
+ * отдельно, в процентах от массы продукта.
  *
- * Сумма — по серединам диапазонов. Доля — оценка («≈»), если оценкой была
- * хоть одна масса прихода: от неё зависит каждая доля.
+ * Доли — по массам расчёта модели, от количества сырья не зависят. Сумма —
+ * по серединам диапазонов; доля — оценка («≈»), если оценкой была хоть одна
+ * масса суммы: от неё зависит каждая доля.
  */
 export function percentBalance(record: BalanceRecord): PercentBalance {
   const extra = record.flows.filter((f) => !flowRef(record, f.name));
@@ -657,34 +683,32 @@ export function percentBalance(record: BalanceRecord): PercentBalance {
     mass,
     share: null,
   });
-  const incoming = [
-    ...inputRefs(record).map((r) => row(r.ref, r.name, "input", recipeMass(record, r.ref))),
+  const raw = inputRefs(record).map((r) => row(r.ref, r.name, "input", recipeMass(record, r.ref)));
+  const products = targetRefs(record).map((r) => row(r.ref, r.name, "target", recipeMass(record, r.ref)));
+  const separate = [
     ...extra.filter((f) => flowKind(f) === "reagent").map((f) => row(null, f.name, "reagent", f.massKg)),
-  ];
-  const outgoing = [
-    ...targetRefs(record).map((r) => row(r.ref, r.name, "target", recipeMass(record, r.ref))),
     ...otherOutputRefs(record)
       .map((r) => row(r.ref, r.name, "off", recipeMass(record, r.ref)))
       .filter((r) => r.mass),
     ...extra.filter((f) => flowKind(f) !== "reagent").map((f) => row(null, f.name, flowKind(f), f.massKg)),
   ];
-  const partialIn = incoming.some((r) => !r.mass);
-  const total = incoming.reduce((s, r) => s + (r.mass ? midOf(r.mass) : 0), 0);
-  if (total <= 0) return { incoming, outgoing, partialIn, gap: null, empty: true };
-  const approxIn = incoming.some((r) => r.mass?.approx || (r.mass && r.mass.min !== r.mass.max));
-  for (const r of [...incoming, ...outgoing]) {
-    if (r.mass) r.share = { min: r.mass.min / total, max: r.mass.max / total, approx: r.mass.approx || approxIn };
-  }
-  const out = outgoing.reduce((s, r) => s + (r.mass ? midOf(r.mass) : 0), 0);
-  const gap = 1 - out / total;
-  return { incoming, outgoing, partialIn, gap: Math.abs(gap) > 0.005 ? gap : null, empty: false };
+  const partialRaw = raw.some((r) => !r.mass);
+  const partialProducts = products.some((r) => !r.mass);
+  const rawTotal = massSum(raw);
+  if (rawTotal <= 0) return { raw, products, separate, partialRaw, partialProducts, empty: true };
+  shareOf(raw, rawTotal, raw.some((r) => isRange(r.mass)));
+  const productTotal = massSum(products);
+  const productsApprox = products.some((r) => isRange(r.mass));
+  shareOf(products, productTotal, productsApprox);
+  shareOf(separate, productTotal, productsApprox);
+  return { raw, products, separate, partialRaw, partialProducts, empty: false };
 }
 
 /** Доли сырья и продуктов расчёта по обозначениям — для подписей на узлах. */
 export function percentShares(record: BalanceRecord): Map<string, BalanceAmount> {
   const pb = percentBalance(record);
   const out = new Map<string, BalanceAmount>();
-  for (const r of [...pb.incoming, ...pb.outgoing]) if (r.ref && r.share) out.set(r.ref, r.share);
+  for (const r of [...pb.raw, ...pb.products, ...pb.separate]) if (r.ref && r.share) out.set(r.ref, r.share);
   return out;
 }
 
@@ -900,7 +924,7 @@ export function balanceLayer(args: {
   /** Подписи и связи одного расчёта. */
   const paint = (nodeId: string, calc: MaterialBalanceCalc, focus: boolean, productId?: string | null) => {
     const res = computeBalance(calc);
-    // Доли — от прихода по расчёту модели: от количества не зависят.
+    // Доли — по массам расчёта модели: от количества не зависят.
     const shares = percent ? percentShares(calc.record) : null;
     lit.add(nodeId);
     for (const f of res.inputs) {
@@ -937,7 +961,7 @@ export function balanceLayer(args: {
         if (!n) continue;
         lit.add(n.id);
         link(input ? n.id : nodeId, input ? nodeId : n.id, focus ? "active" : "calc");
-        const row = pb && [...pb.incoming, ...pb.outgoing].find((r) => !r.ref && r.name === f.name);
+        const row = pb && pb.separate.find((r) => !r.ref && r.name === f.name);
         const value = pb
           ? row?.share
             ? formatPercent(row.share)
@@ -954,8 +978,8 @@ export function balanceLayer(args: {
         put(f.nodeId, "продукт", { text: "продукт", tone: "role" });
       }
     }
-    // «Выход» — на опорное сырьё, другая мера, чем доли прихода: рядом с
-    // «продукт · 25,5 %» число «выход 88,5 %» выглядело противоречием.
+    // «Выход» — на опорное сырьё, другая мера, чем проценты: рядом с
+    // «продукт · 100 %» число «выход 88,5 %» выглядело бы противоречием.
     if (!percent) coefficient(nodeId, calc, focus ? productId : null);
   };
 

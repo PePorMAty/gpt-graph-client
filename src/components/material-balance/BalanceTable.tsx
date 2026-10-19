@@ -132,7 +132,7 @@ interface Props {
   onGo?: (nodeId: string) => void;
   /** Узел графа с таким названием — для потоков сверх сырья и продуктов. */
   findNode?: (name: string) => string | undefined;
-  /** Доли (приход = расход = 100 %) или массы; по умолчанию — массы. */
+  /** Проценты (сырьё — 100 %, продукт — 100 %) или массы; по умолчанию — массы. */
   display?: BalanceDisplay;
   /** Поставить поток сверх графа на граф; нет — только смотреть. */
   onPlaceFlow?: (flow: Pick<BalanceFlow, "name" | "direction">) => void;
@@ -141,16 +141,12 @@ interface Props {
 const MASS_HELP =
   "Массы — на ваше количество сырья. Количество любого сырья меняется прямо в таблице — массы пересчитаются без модели. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне.";
 const PERCENT_HELP =
-  "Доли массы по расчёту модели: приход — всё сырьё и реагенты, расход — продукты, побочные продукты, отходы и потери; каждая сторона — 100 %. От количества сырья доли не зависят; массы на ваше количество — переключатель «т». Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне.";
-
-/** «−3,2 %» / «≈7,8 %» — невязка баланса долей прихода. */
-const gapText = (gap: number) =>
-  `${gap < 0 ? "−" : ""}${formatPercent({ min: Math.abs(gap), max: Math.abs(gap), approx: true })}`;
+  "Проценты по массам расчёта модели: сырьё вместе — 100 %, продукт — 100 % (несколько продуктов делят эти 100 %). Реагенты сверх графа, побочные продукты, отходы и потери в эти 100 % не входят — они ниже, отдельно, в процентах от массы продукта. От количества сырья проценты не зависят; массы на ваше количество — переключатель «т». Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне, «+» — поставить вещество на граф.";
 
 /**
- * Баланс в процентах: приход и расход, каждая сторона — 100 %. Строки
- * сырья и продуктов расчёта ведут к узлам по обозначению, потоки сверх
- * графа — по названию.
+ * Баланс в процентах: сырьё — 100 %, продукт — 100 %, прочее — отдельно, в
+ * процентах от массы продукта. Строки сырья и продуктов расчёта ведут к
+ * узлам по обозначению, потоки сверх графа — по названию.
  */
 const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
   result,
@@ -224,6 +220,16 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
     );
   };
 
+  const total = (title: string) => (
+    <tr className={styles.totalRow}>
+      <td>{title}</td>
+      <td className={styles.roleCol} />
+      <td className={styles.numCol}>100 %</td>
+      <td />
+    </tr>
+  );
+  const many = pb.products.length > 1;
+
   return (
     <>
       <div className={styles.tableCard}>
@@ -232,7 +238,7 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
             <tr>
               <th>Поток</th>
               <th className={styles.roleCol}>Роль</th>
-              <th className={styles.numCol}>% масс.</th>
+              <th className={styles.numCol}>%</th>
               <th className={styles.goCol}>
                 <span className={styles.goHead}>Перейти</span>
               </th>
@@ -240,50 +246,39 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
           </thead>
           <tbody>
             <tr className={styles.sideRow}>
-              <td colSpan={4}>Приход</td>
+              <td colSpan={4}>Сырьё</td>
             </tr>
-            {pb.incoming.map(line)}
-            <tr className={styles.totalRow}>
-              <td>Итого приход</td>
-              <td className={styles.roleCol} />
-              <td className={styles.numCol}>100 %</td>
-              <td />
-            </tr>
+            {pb.raw.map(line)}
+            {pb.raw.length > 1 && total("Итого сырьё")}
             <tr className={styles.sideRow}>
-              <td colSpan={4}>Расход</td>
+              <td colSpan={4}>{many ? "Продукты" : "Продукт"}</td>
             </tr>
-            {pb.outgoing.map(line)}
-            {pb.gap !== null && (
-              <tr>
-                <td>
-                  <span className={styles.flowTitle}>
-                    {pb.gap > 0 ? "Не распределено расчётом" : "Невязка баланса"}
-                  </span>
-                  <span className={styles.rowNote}>
-                    {pb.gap > 0
-                      ? "потери и потоки, которых модель не назвала"
-                      : "выходов больше, чем вошло сырья: расчёт не сходится"}
-                  </span>
-                </td>
-                <td className={styles.roleCol}>—</td>
-                <td className={styles.numCol}>
-                  <b>{gapText(pb.gap)}</b>
-                </td>
-                <td />
-              </tr>
+            {pb.products.map(line)}
+            {many && total("Итого продукты")}
+            {pb.separate.length > 0 && (
+              <>
+                <tr className={styles.sideRow}>
+                  <td colSpan={4}>Отдельно — % от массы {many ? "продуктов" : "продукта"}</td>
+                </tr>
+                {pb.separate.map(line)}
+              </>
             )}
-            <tr className={styles.totalRow}>
-              <td>Итого расход</td>
-              <td className={styles.roleCol} />
-              <td className={styles.numCol}>100 %</td>
-              <td />
-            </tr>
           </tbody>
         </table>
       </div>
-      {pb.partialIn && (
+      {pb.partialRaw && (
         <p className={styles.note}>
           У части сырья массы в расчёте нет — доли посчитаны от сырья с массой.
+        </p>
+      )}
+      {pb.partialProducts && (
+        <p className={styles.note}>
+          У части продуктов массы в расчёте нет — доли посчитаны от продуктов с массой.
+        </p>
+      )}
+      {pb.separate.length === 0 && (
+        <p className={styles.note}>
+          Побочных продуктов, отходов и реагентов сверх графа модель не назвала.
         </p>
       )}
     </>

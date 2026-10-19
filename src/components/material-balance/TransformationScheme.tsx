@@ -184,7 +184,7 @@ export const FormScheme: FC<FormProps> = ({
           )}
           <p className={styles.question}>
             {percent && chosen.length
-              ? `Какую долю ${chosen.map((n) => `«${label(n)}»`).join(", ")} даёт сырьё ${ins.map((n) => `«${label(n)}»`).join(", ")}? Баланс — в процентах массы: приход и расход по 100 %.`
+              ? `Какую долю ${chosen.map((n) => `«${label(n)}»`).join(", ")} даёт сырьё ${ins.map((n) => `«${label(n)}»`).join(", ")}? В процентах: сырьё — 100 %, продукт — 100 %, побочные продукты и отходы — отдельно.`
               : basis && chosen.length
               ? `Сколько ${chosen.map((n) => `«${label(n)}»`).join(", ")} получится из ${formatView(amounts[basis.id])} «${label(basis)}»${others.length ? ` и ${others.map((n) => `«${label(n)}»`).join(", ")}` : ""}?`
               : picked
@@ -210,7 +210,7 @@ interface CalcProps {
   only?: string;
   readOnly?: boolean;
   /**
-   * Доли от прихода по обозначениям (percentShares) — схема в процентах:
+   * Доли по обозначениям (percentShares) — схема в процентах:
    * количества не правятся, у сырья и продуктов — их доли.
    */
   shares?: Map<string, BalanceAmount>;
@@ -274,7 +274,7 @@ export const CalcScheme: FC<CalcProps> = ({
           <span
             className={`${styles.flowNote} ${!shares && f.noRecipe ? styles.flowWarn : ""}`}
           >
-            {shares ? "доля прихода" : balanceInputNote(f, result)}
+            {shares ? "доля в сырье" : balanceInputNote(f, result)}
           </span>
         </div>
       ))}
