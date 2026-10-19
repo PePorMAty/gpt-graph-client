@@ -188,6 +188,8 @@ interface Props {
   onGo?: (nodeId: string) => void;
   /** Узел графа с таким названием — для потоков сверх сырья и продуктов. */
   findNode?: (name: string) => string | undefined;
+  /** Поставить поток сверх графа (вода, кислород) на граф. */
+  onPlaceFlow?: (flow: { name: string; direction: "in" | "out" | "" }) => void;
   /** «Новый расчёт» — форма с количествами и продуктами этого расчёта. */
   onNewRequest?: () => void;
   /** «Показать на графе» — камера к преобразованию. */
@@ -213,6 +215,7 @@ export const CalcDetails: FC<Props> = ({
   onProduct,
   onGo,
   findNode,
+  onPlaceFlow,
   onNewRequest,
   onShowOnGraph,
   readOnly,
@@ -290,6 +293,7 @@ export const CalcDetails: FC<Props> = ({
         onGo={onGo}
         findNode={findNode}
         display={display}
+        onPlaceFlow={readOnly ? undefined : onPlaceFlow}
       />
 
       {(coefs.length > 0 || record.coefficients.length > 0) && (

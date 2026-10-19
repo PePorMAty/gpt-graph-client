@@ -9,6 +9,7 @@ import {
   formatPercent,
   formatView,
   percentBalance,
+  placeableFlow,
   scaleByFactor,
   type BalanceDisplay,
   type BalanceFlowResult,
@@ -17,8 +18,8 @@ import {
   type FlowKind,
   type PercentRow,
 } from "../../utils/materialBalance";
-import type { BalanceRecord } from "../../store/api/material-balance-api";
-import { ArrowRightIcon, HelpIcon, TableIcon } from "../icons";
+import type { BalanceFlow, BalanceRecord } from "../../store/api/material-balance-api";
+import { ArrowRightIcon, HelpIcon, PlusIcon, TableIcon } from "../icons";
 import { BasisFields } from "./BasisFields";
 import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
@@ -71,6 +72,34 @@ const Go: FC<{ nodeId: string | undefined; name: string; onGo?: (id: string) => 
     </span>
   );
 
+/**
+ * Поток сверх графа: узел у преобразования — стрелка к нему; нет — «+»,
+ * поставить на граф (выходом или сырьём). Несколько веществ одной строкой и
+ * потери не ставятся — прочерк.
+ */
+const FlowGo: FC<{
+  flow: Pick<BalanceFlow, "name" | "direction">;
+  nodeId: string | undefined;
+  onGo?: (id: string) => void;
+  onPlace?: (flow: Pick<BalanceFlow, "name" | "direction">) => void;
+}> = ({ flow, nodeId, onGo, onPlace }) => {
+  if (nodeId || !onPlace || !placeableFlow(flow)) {
+    return <Go nodeId={nodeId} name={flow.name} onGo={onGo} />;
+  }
+  const where = flowKind(flow) === "reagent" ? "сырьём" : "выходом";
+  return (
+    <button
+      type="button"
+      className={styles.goBtn}
+      onClick={() => onPlace(flow)}
+      title={`Поставить «${flow.name}» на граф ${where} этого преобразования`}
+      aria-label={`Поставить «${flow.name}» на граф`}
+    >
+      <PlusIcon size={14} />
+    </button>
+  );
+};
+
 /** Заголовок блока карточки: значок, название, подсказка по наведению. */
 export const CardTitle: FC<{ icon: ReactNode; title: string; help?: string; as?: "h4" | "span" }> = ({
   icon,
@@ -105,6 +134,8 @@ interface Props {
   findNode?: (name: string) => string | undefined;
   /** Доли (приход = расход = 100 %) или массы; по умолчанию — массы. */
   display?: BalanceDisplay;
+  /** Поставить поток сверх графа на граф; нет — только смотреть. */
+  onPlaceFlow?: (flow: Pick<BalanceFlow, "name" | "direction">) => void;
 }
 
 const MASS_HELP =
@@ -128,6 +159,7 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
   onProduct,
   onGo,
   findNode,
+  onPlaceFlow,
 }) => {
   const pb = percentBalance(record);
   const nodeByRef = new Map(
@@ -177,7 +209,16 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
           {r.share ? <b>{formatPercent(r.share)}</b> : <span className={styles.muted}>нет данных</span>}
         </td>
         <td className={styles.goCol}>
-          <Go nodeId={id} name={name} onGo={onGo} />
+          {r.ref ? (
+            <Go nodeId={id} name={name} onGo={onGo} />
+          ) : (
+            <FlowGo
+              flow={{ name: r.name, direction: r.kind === "reagent" ? "in" : "out" }}
+              nodeId={id}
+              onGo={onGo}
+              onPlace={onPlaceFlow}
+            />
+          )}
         </td>
       </tr>
     );
@@ -264,6 +305,7 @@ export const BalanceTable: FC<Props> = ({
   onGo,
   findNode,
   display = "mass",
+  onPlaceFlow,
 }) => {
   const name = (f: BalanceFlowResult) => labelOf(f.nodeId) || f.name;
   const gone = (f: BalanceFlowResult) => !labelOf(f.nodeId);
@@ -288,6 +330,7 @@ export const BalanceTable: FC<Props> = ({
           onProduct={onProduct}
           onGo={onGo}
           findNode={findNode}
+          onPlaceFlow={onPlaceFlow}
         />
       ) : (
         <div className={styles.tableCard}>
@@ -396,7 +439,7 @@ export const BalanceTable: FC<Props> = ({
                     </td>
                     <td>{mass ? <b>{formatMass(mass, result.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
                     <td className={styles.goCol}>
-                      <Go nodeId={findNode?.(f.name)} name={f.name} onGo={onGo} />
+                      <FlowGo flow={f} nodeId={findNode?.(f.name)} onGo={onGo} onPlace={onPlaceFlow} />
                     </td>
                   </tr>
                 );

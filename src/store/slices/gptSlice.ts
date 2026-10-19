@@ -662,6 +662,32 @@ const gptSlice = createSlice({
       );
     },
     /**
+     * Связать продукт с преобразованием, когда смысл связи известен (tFlow):
+     * поток материального баланса, поставленный на граф из таблицы, —
+     * сырьё или выход, где бы ни стоял узел. Связь уже есть — ничего.
+     */
+    connectWithFlow: (
+      state,
+      action: PayloadAction<{ productId: string; transformationId: string; flow: "in" | "out" }>,
+    ) => {
+      const { productId, transformationId, flow } = action.payload;
+      if (productId === transformationId) return;
+      const exists = state.data.edges.some(
+        (e) =>
+          (e.source === productId && e.target === transformationId) ||
+          (e.source === transformationId && e.target === productId),
+      );
+      if (exists) return;
+      const [source, target] =
+        flow === "in" ? [productId, transformationId] : [transformationId, productId];
+      state.data.edges = normalizeEdges(
+        addEdge(
+          { source, target, sourceHandle: null, targetHandle: null, type: "straight", data: { tFlow: flow } },
+          state.data.edges,
+        ),
+      );
+    },
+    /**
      * Связать два продукта в режиме «только продукты» — через заглушку.
      *
      * На том полотне преобразований нет, и прямая связь продукт→продукт
@@ -2118,6 +2144,7 @@ const gptSlice = createSlice({
 
 export const {
   restoreMaterialBalances,
+  connectWithFlow,
   updateNodeData,
   forceStepPreview,
   onNodesChange,

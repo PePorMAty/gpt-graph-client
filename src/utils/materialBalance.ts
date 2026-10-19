@@ -924,6 +924,28 @@ export function balanceLayer(args: {
       const value = shares ? (share ? formatPercent(share) : "нет данных") : formatMass(f.mass, f.unit);
       put(f.nodeId, "продукт", { text: `продукт · ${value}`, tone: "mass" });
     }
+    // Потоки сверх расчёта, поставленные на граф из таблицы (вода,
+    // кислород): узел с тем же названием у этого преобразования.
+    const extra = calc.record.flows.filter((f) => !flowRef(calc.record, f.name));
+    if (extra.length) {
+      const ends = balanceEnds(nodeId, args.nodes, args.edges);
+      const pb = percent ? percentBalance(calc.record) : null;
+      for (const f of extra) {
+        const kind = flowKind(f);
+        const input = kind === "reagent";
+        const n = flowNodeAmong(input ? ends.ins : ends.outs, f.name);
+        if (!n) continue;
+        lit.add(n.id);
+        link(input ? n.id : nodeId, input ? nodeId : n.id, focus ? "active" : "calc");
+        const row = pb && [...pb.incoming, ...pb.outgoing].find((r) => !r.ref && r.name === f.name);
+        const value = pb
+          ? row?.share
+            ? formatPercent(row.share)
+            : "нет данных"
+          : formatMass(scaleByFactor(f.massKg, res.factor), res.unit);
+        put(n.id, input ? "сырьё" : "продукт", { text: `${FLOW_PILL[kind]} · ${value}`, tone: "mass" });
+      }
+    }
     if (focus) {
       for (const f of res.outputs) {
         if (!isProduct(f.nodeId)) continue;
@@ -1121,6 +1143,37 @@ export function flowKind(f: Pick<BalanceFlow, "name" | "direction">): FlowKind {
   if (/отход|выброс|сточн|шлам|отходящ|абгаз|дымов/.test(n)) return "waste";
   if (f.direction === "out") return "byproduct";
   return "flow";
+}
+
+/** Слово подписи потока на узле — короче, чем в таблице: подпись не должна наезжать на значки узла. */
+const FLOW_PILL: Record<FlowKind, string> = {
+  reagent: "реагент",
+  byproduct: "побочный",
+  waste: "отходы",
+  loss: "потери",
+  flow: "поток",
+};
+
+/** Название узла для потока: без пояснения в скобках, с заглавной — «кислород (из воздуха)» → «Кислород». */
+export function flowNodeLabel(name: string): string {
+  const s = String(name ?? "").replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * Поток сверх графа можно поставить на граф: одно вещество, не потери.
+ * «Вода, CO2, Синильная кислота» — несколько веществ одной строкой: одним
+ * узлом они стали бы чепухой.
+ */
+export function placeableFlow(f: Pick<BalanceFlow, "name" | "direction">): boolean {
+  const name = flowNodeLabel(f.name);
+  return !!name && flowKind(f) !== "loss" && !/[,;]/.test(name) && !/\s(?:и|или)\s/i.test(name);
+}
+
+/** Узел потока: продукт с тем же названием, пояснения в скобках не в счёт. */
+export function flowNodeAmong(nodes: CustomNode[], name: string): CustomNode | undefined {
+  const want = coreName(name);
+  return want ? nodes.find((n) => n.type === "product" && coreName(n.data?.label) === want) : undefined;
 }
 
 /**

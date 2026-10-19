@@ -25,6 +25,7 @@ import {
   fetchReadyBalances,
   lookupBalance,
   startBalance,
+  type BalanceFlow,
   type BalanceNodeRef,
   type BalanceRecord,
   type BalanceSummary,
@@ -36,7 +37,7 @@ import {
 import { loadSavedGraph } from "../api/saved-graph-api";
 import type { AppDispatch, RootState } from "../store";
 import type { CustomNode } from "../../types";
-import { updateNodeData } from "./gptSlice";
+import { addNode, connectWithFlow, updateNodeData } from "./gptSlice";
 import { getAiRequestFields } from "../../hooks/useAiConfig";
 import {
   getNotificationCanvas,
@@ -47,8 +48,12 @@ import {
   calcKey,
   calcsOf,
   defaultBasisId,
+  flowKind,
+  flowNodeAmong,
+  flowNodeLabel,
   inputRefs,
   nodeIdsFor,
+  placeableFlow,
   selectionFor,
   targetRefs,
   STATUS_TEXT,
@@ -865,6 +870,33 @@ export const pullReadyBalances =
           : `Из базы подтянуты готовые расчёты для ${count} преобразований — они во вкладке «Материальный баланс» карточки и в левой панели.`,
       );
     }
+  };
+
+/**
+ * Поставить поток баланса на граф — побочный продукт, отходы или реагент из
+ * таблицы: продукт с этим названием (есть на полотне — он, нет — новый
+ * рядом: реагент над преобразованием, выход под ним, правее прочих) и
+ * связь с преобразованием по смыслу. Возвращает id узла; поток, который
+ * ставить нельзя (несколько веществ одной строкой, потери), — null.
+ */
+export const placeBalanceFlow =
+  (transformationId: string, flow: Pick<BalanceFlow, "name" | "direction">) =>
+  (dispatch: AppDispatch, getState: () => RootState): string | null => {
+    const { nodes, edges } = getState().graph.data;
+    const t = nodes.find((n) => n.id === transformationId && n.type === "transformation");
+    if (!t || !placeableFlow(flow)) return null;
+    const input = flowKind(flow) === "reagent";
+    let id = flowNodeAmong(nodes, flow.name)?.id;
+    if (!id) {
+      const side = balanceEnds(t.id, nodes, edges)[input ? "ins" : "outs"];
+      const position = side.length
+        ? { x: Math.max(...side.map((n) => n.position.x)) + 240, y: side[0].position.y }
+        : { x: t.position.x, y: t.position.y + (input ? -170 : 170) };
+      id = crypto.randomUUID();
+      dispatch(addNode({ type: "product", label: flowNodeLabel(flow.name), position, id }));
+    }
+    dispatch(connectWithFlow({ productId: id, transformationId: t.id, flow: input ? "in" : "out" }));
+    return id;
   };
 
 /**

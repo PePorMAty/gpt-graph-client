@@ -10,6 +10,7 @@ import {
   openBalanceCalc,
   openBalanceProduct,
   pickBalanceTransformation,
+  placeBalanceFlow,
   setBalanceActive,
   setBalanceCard,
   setDraftAmount,
@@ -25,6 +26,7 @@ import {
   calcProductsLabel,
   calcsOf,
   computeBalance,
+  flowNodeAmong,
   formatMass,
   formatWhen,
   formatPercent,
@@ -48,7 +50,6 @@ import {
 import { CalcDetails, Status } from "./CalcDetails";
 import { ProductDetails } from "./ProductDetails";
 import { FormScheme } from "./TransformationScheme";
-import { normalizeProductName } from "../../utils/normalizeProductName";
 import { RequestForm } from "./RequestForm";
 import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
@@ -96,14 +97,13 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
   const [now, setNow] = useState(() => Date.now());
 
   const ends = useMemo(() => balanceEnds(t.id, nodes, edges), [t.id, nodes, edges]);
-  // Продукт графа по названию: потоки баланса сверх сырья и продуктов
-  // расчёта (побочные, реагенты) — тоже бывают на полотне.
+  // Поток баланса сверх сырья и продуктов расчёта (побочный, реагент) на
+  // полотне — продукт с тем же названием, связанный с этим преобразованием.
+  // Не связан — в таблице «+»: поставить или связать.
   const findNode = useMemo(() => {
-    const byName = new Map(
-      nodes.filter((n) => n.type === "product").map((n) => [normalizeProductName(label(n)), n.id]),
-    );
-    return (name: string) => byName.get(normalizeProductName(name));
-  }, [nodes]);
+    const linked = [...ends.ins, ...ends.outs];
+    return (name: string) => flowNodeAmong(linked, name)?.id;
+  }, [ends]);
   const calcs = calcsOf(t);
   const calc = calcs.find((c) => c.record.id === selection?.recordId);
   const tJobs = Object.entries(jobs).filter(([, j]) => j.transformationId === t.id);
@@ -135,8 +135,14 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
   const sameTargets = calcs.find((c) => calcKey(c) === formKey);
 
   // Сырьё на графе, которого нет в открытом расчёте: связь нарисовали позже.
+  // Реагенты, поставленные на граф из таблицы (кислород), в расчёте есть —
+  // строкой потока.
   const missingInputs = calc
-    ? ends.ins.filter((n) => !inputRefs(calc.record).some((r) => calc.nodeIds[r.ref] === n.id))
+    ? ends.ins.filter(
+        (n) =>
+          !inputRefs(calc.record).some((r) => calc.nodeIds[r.ref] === n.id) &&
+          !calc.record.flows.some((f) => flowNodeAmong([n], f.name)),
+      )
     : [];
 
   const onCalcAmount = (c: MaterialBalanceCalc) => (ref: string, value: BalanceInputAmount) => {
@@ -254,6 +260,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
               onProduct={(id) => dispatch(openBalanceProduct(id))}
               onGo={(id) => focusNode(id, { zoom: 1 })}
               findNode={findNode}
+              onPlaceFlow={readOnly ? undefined : (f) => dispatch(placeBalanceFlow(t.id, f))}
               onNewRequest={readOnly ? undefined : () => dispatch(newCalcFrom(calc, amountsOf(calc)))}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
               readOnly={readOnly}
