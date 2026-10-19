@@ -11,7 +11,7 @@ import {
   openBalanceProduct,
   pickBalanceTransformation,
   setBalanceActive,
-  setBalanceMode,
+  setBalanceCard,
   setDraftAmount,
   setDraftBasis,
   setDraftTargets,
@@ -27,7 +27,9 @@ import {
   computeBalance,
   formatMass,
   formatWhen,
+  formatPercent,
   inputRefs,
+  percentShares,
   targetRefs,
   targetsKey,
   type BalanceInputAmount,
@@ -48,6 +50,7 @@ import { ProductDetails } from "./ProductDetails";
 import { FormScheme } from "./TransformationScheme";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 import { RequestForm } from "./RequestForm";
+import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
 
 const label = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
@@ -75,11 +78,19 @@ function useLabelOf() {
  * Выбранное преобразование: его расчёты, ход идущих, схема с количеством
  * сырья и продуктами, форма нового расчёта, общий расчёт или расчёт
  * продукта.
+ *
+ * variant — где показано: левая панель (с «← Все расчёты» и названием) или
+ * вкладка карточки преобразования (название — в шапке карточки). readOnly —
+ * граф по ссылке: расчёты только смотреть.
  */
-const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
+const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: boolean }> = ({
+  t,
+  variant = "panel",
+  readOnly = false,
+}) => {
   const dispatch = useAppDispatch();
   const { nodes, edges } = useAppSelector((s) => s.graph.data);
-  const { selection, jobs, draft } = useAppSelector((s) => s.materialBalance);
+  const { selection, jobs, draft, display } = useAppSelector((s) => s.materialBalance);
   const focusNode = useFocusNode();
   const labelOf = useLabelOf();
   const [now, setNow] = useState(() => Date.now());
@@ -118,7 +129,7 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
   const title = (c: MaterialBalanceCalc) => calcProductsLabel(c, labelOf);
 
   // Форма нового расчёта.
-  const req = balanceRequestOf({ nodes, edges, draft }, t.id);
+  const req = balanceRequestOf({ nodes, edges, draft, display }, t.id);
   const formAmounts = draftAmounts(draft);
   const formKey = targetsKey(req.targets.map((n) => n.id));
   const sameTargets = calcs.find((c) => calcKey(c) === formKey);
@@ -128,15 +139,21 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
     ? ends.ins.filter((n) => !inputRefs(calc.record).some((r) => calc.nodeIds[r.ref] === n.id))
     : [];
 
-  const onCalcAmount = (c: MaterialBalanceCalc) => (ref: string, value: BalanceInputAmount) =>
+  const onCalcAmount = (c: MaterialBalanceCalc) => (ref: string, value: BalanceInputAmount) => {
+    if (readOnly) return;
     dispatch(setMaterialBalanceAmounts(t.id, c.record.id, { ...amountsOf(c), [ref]: value }));
+  };
 
   return (
     <div className={styles.panel}>
-      <button type="button" className={`${styles.linkBtn} ${styles.back}`} onClick={back}>
-        <ChevronLeftIcon size={12} /> Все расчёты
-      </button>
-      <h3 className={styles.detailsTitle}>«{label(t)}»</h3>
+      {variant === "panel" && (
+        <>
+          <button type="button" className={`${styles.linkBtn} ${styles.back}`} onClick={back}>
+            <ChevronLeftIcon size={12} /> Все расчёты
+          </button>
+          <h3 className={styles.detailsTitle}>«{label(t)}»</h3>
+        </>
+      )}
 
       {calcs.length > 0 && (
         <div className={styles.pairs}>
@@ -155,14 +172,16 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
               </button>
             );
           })}
-          <button
-            type="button"
-            className={`${styles.chipBtn} ${!calc ? styles.chipBtnOn : ""}`}
-            aria-pressed={!calc}
-            onClick={() => dispatch(openBalanceCalc(null))}
-          >
-            + Новый расчёт
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className={`${styles.chipBtn} ${!calc ? styles.chipBtnOn : ""}`}
+              aria-pressed={!calc}
+              onClick={() => dispatch(openBalanceCalc(null))}
+            >
+              + Новый расчёт
+            </button>
+          )}
         </div>
       )}
 
@@ -215,6 +234,7 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
             onAmount={onCalcAmount(calc)}
             onBack={() => dispatch(openBalanceProduct(null))}
             calcTitle={title(calc)}
+            readOnly={readOnly}
           />
         ) : (
           <>
@@ -234,11 +254,16 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
               onProduct={(id) => dispatch(openBalanceProduct(id))}
               onGo={(id) => focusNode(id, { zoom: 1 })}
               findNode={findNode}
-              onNewRequest={() => dispatch(newCalcFrom(calc, amountsOf(calc)))}
+              onNewRequest={readOnly ? undefined : () => dispatch(newCalcFrom(calc, amountsOf(calc)))}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
+              readOnly={readOnly}
             />
           </>
         )
+      ) : readOnly ? (
+        <div className={styles.empty}>
+          Расчётов материального баланса у этого преобразования нет.
+        </div>
       ) : !ends.ins.length || !ends.outs.length ? (
         <p className={styles.warn}>
           У преобразования нет продукта {!ends.ins.length ? "на входе" : "на выходе"} —
@@ -246,8 +271,17 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
         </p>
       ) : (
         <>
+          <div className={styles.cardTitleRow}>
+            <span className={styles.fieldLabel}>
+              {display === "percent"
+                ? "Новый расчёт — в процентах массы"
+                : "Новый расчёт — на количество сырья"}
+            </span>
+            <DisplaySwitch />
+          </div>
           <FormScheme
             transformation={t}
+            percent={display === "percent"}
             ins={ends.ins}
             outs={ends.outs}
             amounts={formAmounts}
@@ -282,7 +316,7 @@ const SelectedView: FC<{ t: CustomNode }> = ({ t }) => {
 const ListView: FC = () => {
   const dispatch = useAppDispatch();
   const nodes = useAppSelector((s) => s.graph.data.nodes);
-  const mode = useAppSelector((s) => s.materialBalance.mode);
+  const percent = useAppSelector((s) => s.materialBalance.display) === "percent";
   const focusNode = useFocusNode();
   const labelOf = useLabelOf();
   const list = useMemo(() => allCalcs(nodes), [nodes]);
@@ -315,26 +349,10 @@ const ListView: FC = () => {
 
   return (
     <div className={styles.panel}>
-      {mode ? (
-        <div className={styles.hintBox}>
-          <ScalesIcon size={18} className={styles.barIcon} />
-          <span>{HINT}</span>
-        </div>
-      ) : (
-        <div className={styles.hintBox}>
-          <span>
-            Включите «Материальный баланс» над полотном: выбирать преобразования
-            для расчёта и видеть массы на узлах.
-          </span>
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => dispatch(setBalanceMode(true))}
-          >
-            Включить
-          </button>
-        </div>
-      )}
+      <div className={styles.hintBox}>
+        <ScalesIcon size={18} className={styles.barIcon} />
+        <span>{HINT}</span>
+      </div>
 
       {list.length === 0 ? (
         <div className={styles.empty}>
@@ -342,10 +360,13 @@ const ListView: FC = () => {
         </div>
       ) : (
         <>
-          <p className={styles.muted}>
-            Расчёты по преобразованиям: «преобразование → продукты, для которых
-            посчитано». Щелчок по продукту — его подробный расчёт.
-          </p>
+          <div className={styles.cardTitleRow}>
+            <p className={styles.muted}>
+              Расчёты по преобразованиям: «преобразование → продукты, для которых
+              посчитано». Щелчок по продукту — его подробный расчёт.
+            </p>
+            <DisplaySwitch />
+          </div>
           {[...groups].map(([nodeId, g]) => {
             const expanded = open.has(nodeId);
             return (
@@ -377,6 +398,7 @@ const ListView: FC = () => {
                 {expanded &&
                   g.items.map((calc) => {
                     const res = computeBalance(calc);
+                    const shares = percent ? percentShares(calc.record) : null;
                     return (
                       <div key={calc.record.id} className={styles.item}>
                         <button
@@ -408,7 +430,13 @@ const ListView: FC = () => {
                                 onClick={() => openCalc(nodeId, calc, id)}
                                 title={labelOf(id) ? "Подробный расчёт этого продукта" : "Этого продукта на графе уже нет"}
                               >
-                                {name} · {formatMass(f?.mass ?? null, f?.unit ?? res.unit)}
+                                {name} ·{" "}
+                                {shares
+                                  ? (() => {
+                                      const v = shares.get(r.ref);
+                                      return v ? formatPercent(v) : "нет данных";
+                                    })()
+                                  : formatMass(f?.mass ?? null, f?.unit ?? res.unit)}
                               </button>
                             );
                           })}
@@ -426,12 +454,11 @@ const ListView: FC = () => {
 };
 
 /**
- * Вкладка «Материальный баланс» левой панели.
+ * Вкладка «Материальный баланс» левой панели — с левого рельса.
  *
- * Чип над полотном открывает её и включает режим: выбранное на полотне
- * преобразование — здесь, с формой запроса или готовым расчётом; ничего не
- * выбрано — подсказка и все расчёты графа. Та же вкладка открывается и с
- * левого рельса.
+ * Пока она открыта, на полотне баланс, а щелчок по преобразованию выбирает
+ * его: выбранное — здесь, с формой запроса или готовым расчётом; ничего не
+ * выбрано — подсказка и все расчёты графа.
  */
 export const MaterialBalanceSection: FC = () => {
   const nodes = useAppSelector((s) => s.graph.data.nodes);
@@ -440,4 +467,37 @@ export const MaterialBalanceSection: FC = () => {
     ? nodes.find((n) => n.id === selection.transformationId && n.type === "transformation")
     : undefined;
   return t ? <SelectedView key={t.id} t={t} /> : <ListView />;
+};
+
+/**
+ * Вкладка «Материальный баланс» карточки преобразования: его расчёты и
+ * форма нового — то же, что в левой панели, без списка всех расчётов.
+ *
+ * Пока вкладка открыта, на полотне баланс (setBalanceCard), выбор — это
+ * преобразование. Закрыли вкладку или карточку — выбор снят, если его не
+ * держит левая панель.
+ */
+export const TransformationBalance: FC<{ nodeId: string; readOnly?: boolean }> = ({
+  nodeId,
+  readOnly,
+}) => {
+  const dispatch = useAppDispatch();
+  const t = useAppSelector((s) =>
+    s.graph.data.nodes.find((n) => n.id === nodeId && n.type === "transformation"),
+  );
+  const selected = useAppSelector((s) => s.materialBalance.selection?.transformationId);
+
+  useEffect(() => {
+    dispatch(setBalanceCard(nodeId));
+    return () => {
+      dispatch(setBalanceCard(null));
+    };
+  }, [dispatch, nodeId]);
+
+  useEffect(() => {
+    if (selected !== nodeId) dispatch(pickBalanceTransformation(nodeId));
+  }, [dispatch, nodeId, selected]);
+
+  if (!t || selected !== nodeId) return null;
+  return <SelectedView key={t.id} t={t} variant="card" readOnly={readOnly} />;
 };

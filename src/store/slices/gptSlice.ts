@@ -480,7 +480,12 @@ const gptSlice = createSlice({
 
     updateNodeData: (
       state,
-      action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>,
+      action: PayloadAction<{
+        nodeId: string;
+        data: Partial<CustomNodeData>;
+        /** Не писать в историю: правка не от человека (готовый расчёт из базы). */
+        silent?: boolean;
+      }>,
     ) => {
       const { nodeId, data } = action.payload;
       const node = state.data.nodes.find((node) => node.id === nodeId);

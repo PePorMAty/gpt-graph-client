@@ -2,7 +2,7 @@ import { useState, type FC } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { useAppDispatch } from "../../store/hooks";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
   coefficientItems,
@@ -218,6 +218,7 @@ export const CalcDetails: FC<Props> = ({
   readOnly,
 }) => {
   const dispatch = useAppDispatch();
+  const display = useAppSelector((s) => s.materialBalance.display);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const record = readableRecord(calc.record);
   const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
@@ -288,6 +289,7 @@ export const CalcDetails: FC<Props> = ({
         onProduct={onProduct}
         onGo={onGo}
         findNode={findNode}
+        display={display}
       />
 
       {(coefs.length > 0 || record.coefficients.length > 0) && (

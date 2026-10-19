@@ -578,6 +578,93 @@ export function shareOfAllInputs(record: BalanceRecord, productRef: string): Bal
 }
 
 /**
+ * Как показывать баланс: доли массы (приход = расход = 100 %) или массы на
+ * количество человека (кг, т, тыс. т).
+ */
+export type BalanceDisplay = "percent" | "mass";
+
+/** Строка баланса в процентах. */
+export interface PercentRow {
+  /** Обозначение сырья или продукта расчёта (P1…); поток сверх графа — null. */
+  ref: string | null;
+  name: string;
+  kind: "input" | "target" | "off" | FlowKind;
+  /** Масса по расчёту модели, кг; модель не дала — null. */
+  mass: BalanceAmount | null;
+  /** Доля от всего прихода; нет массы — null. */
+  share: BalanceAmount | null;
+}
+
+export interface PercentBalance {
+  /** Приход: сырьё расчёта и реагенты сверх графа (воздух, вода). */
+  incoming: PercentRow[];
+  /** Расход: продукты, невыбранные выходы с массой, побочные, отходы, потери. */
+  outgoing: PercentRow[];
+  /** Не у всего сырья есть масса: проценты — от сырья с массой. */
+  partialIn: boolean;
+  /**
+   * Расход не сходится с приходом, доля от прихода: больше нуля — часть
+   * прихода расчёт не распределил (потери, неучтённые потоки), меньше нуля —
+   * выходов больше, чем вошло. В пределах полупроцента — null.
+   */
+  gap: number | null;
+  /** Ни у одного сырья нет массы — процентов не посчитать. */
+  empty: boolean;
+}
+
+const midOf = (a: BalanceAmount) => (a.min + a.max) / 2;
+
+/**
+ * Материальный баланс в процентах — как в таблице технолога: приход (всё
+ * сырьё) — 100 %, расход (продукты, побочные, отходы, потери) — тоже 100 %.
+ * Доли — от массы всего прихода по расчёту модели, поэтому от количества
+ * сырья не зависят. Расход сводится к 100 % строкой невязки: что расчёт не
+ * распределил или на сколько выходов больше, чем вошло.
+ *
+ * Сумма — по серединам диапазонов. Доля — оценка («≈»), если оценкой была
+ * хоть одна масса прихода: от неё зависит каждая доля.
+ */
+export function percentBalance(record: BalanceRecord): PercentBalance {
+  const extra = record.flows.filter((f) => !flowRef(record, f.name));
+  const row = (ref: string | null, name: string, kind: PercentRow["kind"], mass: BalanceAmount | null): PercentRow => ({
+    ref,
+    name,
+    kind,
+    mass,
+    share: null,
+  });
+  const incoming = [
+    ...inputRefs(record).map((r) => row(r.ref, r.name, "input", recipeMass(record, r.ref))),
+    ...extra.filter((f) => flowKind(f) === "reagent").map((f) => row(null, f.name, "reagent", f.massKg)),
+  ];
+  const outgoing = [
+    ...targetRefs(record).map((r) => row(r.ref, r.name, "target", recipeMass(record, r.ref))),
+    ...otherOutputRefs(record)
+      .map((r) => row(r.ref, r.name, "off", recipeMass(record, r.ref)))
+      .filter((r) => r.mass),
+    ...extra.filter((f) => flowKind(f) !== "reagent").map((f) => row(null, f.name, flowKind(f), f.massKg)),
+  ];
+  const partialIn = incoming.some((r) => !r.mass);
+  const total = incoming.reduce((s, r) => s + (r.mass ? midOf(r.mass) : 0), 0);
+  if (total <= 0) return { incoming, outgoing, partialIn, gap: null, empty: true };
+  const approxIn = incoming.some((r) => r.mass?.approx || (r.mass && r.mass.min !== r.mass.max));
+  for (const r of [...incoming, ...outgoing]) {
+    if (r.mass) r.share = { min: r.mass.min / total, max: r.mass.max / total, approx: r.mass.approx || approxIn };
+  }
+  const out = outgoing.reduce((s, r) => s + (r.mass ? midOf(r.mass) : 0), 0);
+  const gap = 1 - out / total;
+  return { incoming, outgoing, partialIn, gap: Math.abs(gap) > 0.005 ? gap : null, empty: false };
+}
+
+/** Доли сырья и продуктов расчёта по обозначениям — для подписей на узлах. */
+export function percentShares(record: BalanceRecord): Map<string, BalanceAmount> {
+  const pb = percentBalance(record);
+  const out = new Map<string, BalanceAmount>();
+  for (const r of [...pb.incoming, ...pb.outgoing]) if (r.ref && r.share) out.set(r.ref, r.share);
+  return out;
+}
+
+/**
  * Выход прежнего расчёта пары: продукт (P2) на сырьё (P1), иначе строка
  * «Коэффициентов переходов» P1 → P2 в «кг/кг», «т/т» или процентах.
  */
@@ -734,7 +821,10 @@ export function balanceLayer(args: {
   active: { nodeId: string; recordId: number } | null;
   /** Черновик формы — для подписей до расчёта. */
   draft: BalanceDraftView;
+  /** Доли или массы; по умолчанию — массы. */
+  display?: BalanceDisplay;
 }): BalanceLayer {
+  const percent = args.display === "percent";
   const byId = new Map(args.nodes.map((n) => [n.id, n]));
   const isProduct = (id: string | null | undefined): id is string =>
     !!id && byId.get(id)?.type === "product";
@@ -786,12 +876,18 @@ export function balanceLayer(args: {
   /** Подписи и связи одного расчёта. */
   const paint = (nodeId: string, calc: MaterialBalanceCalc, focus: boolean, productId?: string | null) => {
     const res = computeBalance(calc);
+    // Доли — от прихода по расчёту модели: от количества не зависят.
+    const shares = percent ? percentShares(calc.record) : null;
     lit.add(nodeId);
     for (const f of res.inputs) {
       if (!isProduct(f.nodeId)) continue;
       lit.add(f.nodeId);
       link(f.nodeId, nodeId, focus ? "active" : "calc");
-      if (f.set) put(f.nodeId, "сырьё", { text: `сырьё · ${formatView(f.set)}`, tone: "basis" });
+      const share = shares?.get(f.ref);
+      if (shares) {
+        if (share) put(f.nodeId, "сырьё", { text: `сырьё · ${formatPercent(share)}`, tone: "mass" });
+        else if (focus) put(f.nodeId, "сырьё", { text: "сырьё", tone: "role" });
+      } else if (f.set) put(f.nodeId, "сырьё", { text: `сырьё · ${formatView(f.set)}`, tone: "basis" });
       else if (f.mass) put(f.nodeId, "сырьё", { text: `сырьё · ${formatMass(f.mass, f.unit)}`, tone: "mass" });
       else if (focus) put(f.nodeId, "сырьё", { text: "сырьё", tone: "role" });
     }
@@ -800,7 +896,9 @@ export function balanceLayer(args: {
       lit.add(f.nodeId);
       const strong = focus && (!productId || productId === f.nodeId);
       link(nodeId, f.nodeId, strong ? "active" : "calc");
-      put(f.nodeId, "продукт", { text: `продукт · ${formatMass(f.mass, f.unit)}`, tone: "mass" });
+      const share = shares?.get(f.ref);
+      const value = shares ? (share ? formatPercent(share) : "нет данных") : formatMass(f.mass, f.unit);
+      put(f.nodeId, "продукт", { text: `продукт · ${value}`, tone: "mass" });
     }
     if (focus) {
       for (const f of res.outputs) {
@@ -819,7 +917,8 @@ export function balanceLayer(args: {
     // Форма нового расчёта у выбранного преобразования.
     lit.add(sel.transformationId);
     const { ins, outs } = balanceEnds(sel.transformationId, args.nodes, args.edges);
-    for (const n of ins) {
+    // В процентах количеств в форме нет — у сырья только роль (ниже).
+    for (const n of percent ? [] : ins) {
       const a = args.draft.amounts[n.id];
       if (a && a.amount !== null && a.amount > 0) {
         put(n.id, "сырьё", { text: `сырьё · ${formatView(a)}`, tone: "basis" });

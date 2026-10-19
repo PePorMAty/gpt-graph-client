@@ -6,16 +6,21 @@ import {
   flowRef,
   FLOW_KIND_TEXT,
   formatMass,
+  formatPercent,
   formatView,
+  percentBalance,
   scaleByFactor,
+  type BalanceDisplay,
   type BalanceFlowResult,
   type BalanceInputAmount,
   type BalanceResult,
   type FlowKind,
+  type PercentRow,
 } from "../../utils/materialBalance";
 import type { BalanceRecord } from "../../store/api/material-balance-api";
 import { ArrowRightIcon, HelpIcon, TableIcon } from "../icons";
 import { BasisFields } from "./BasisFields";
+import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
 
 /** Роль строки — точкой цвета и словом. */
@@ -32,6 +37,16 @@ const RoleMark: FC<{ role: Role }> = ({ role }) => (
   <span className={styles.role}>
     <span className={`${styles.roleDot} ${styles[`role_${role}`]}`} aria-hidden />
     {ROLE_TEXT[role]}
+  </span>
+);
+
+/**
+ * Роль под названием — для узкой таблицы (вкладка карточки): там столбец
+ * «Роль» прячется, и без этого названия рвались посреди слова.
+ */
+const RoleInline: FC<{ role: Role }> = ({ role }) => (
+  <span className={styles.roleInline}>
+    <RoleMark role={role} />
   </span>
 );
 
@@ -88,7 +103,151 @@ interface Props {
   onGo?: (nodeId: string) => void;
   /** Узел графа с таким названием — для потоков сверх сырья и продуктов. */
   findNode?: (name: string) => string | undefined;
+  /** Доли (приход = расход = 100 %) или массы; по умолчанию — массы. */
+  display?: BalanceDisplay;
 }
+
+const MASS_HELP =
+  "Массы — на ваше количество сырья. Количество любого сырья меняется прямо в таблице — массы пересчитаются без модели. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне.";
+const PERCENT_HELP =
+  "Доли массы по расчёту модели: приход — всё сырьё и реагенты, расход — продукты, побочные продукты, отходы и потери; каждая сторона — 100 %. От количества сырья доли не зависят; массы на ваше количество — переключатель «т». Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне.";
+
+/** «−3,2 %» / «≈7,8 %» — невязка баланса долей прихода. */
+const gapText = (gap: number) =>
+  `${gap < 0 ? "−" : ""}${formatPercent({ min: Math.abs(gap), max: Math.abs(gap), approx: true })}`;
+
+/**
+ * Баланс в процентах: приход и расход, каждая сторона — 100 %. Строки
+ * сырья и продуктов расчёта ведут к узлам по обозначению, потоки сверх
+ * графа — по названию.
+ */
+const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
+  result,
+  record,
+  labelOf,
+  onProduct,
+  onGo,
+  findNode,
+}) => {
+  const pb = percentBalance(record);
+  const nodeByRef = new Map(
+    [...result.inputs, ...result.targets, ...result.outputs].map((f) => [f.ref, f.nodeId]),
+  );
+  const nodeOf = (r: PercentRow) => {
+    if (!r.ref) return findNode?.(r.name);
+    const id = nodeByRef.get(r.ref);
+    return labelOf(id) ? id : undefined;
+  };
+  const nameOf = (r: PercentRow) => (r.ref ? labelOf(nodeByRef.get(r.ref)) : "") || r.name;
+  const role = (r: PercentRow): Role => (r.kind === "input" ? "input" : r.kind);
+
+  if (pb.empty) {
+    return (
+      <p className={styles.muted}>
+        Масс сырья в расчёте нет — долей не посчитать. Что нашла модель — в
+        разделах ответа ниже.
+      </p>
+    );
+  }
+
+  const line = (r: PercentRow, i: number) => {
+    const id = nodeOf(r);
+    const name = nameOf(r);
+    return (
+      <tr key={`${r.ref ?? r.name}-${i}`} className={r.kind === "off" ? styles.rowOff : undefined}>
+        <td>
+          {r.kind === "target" && onProduct && id ? (
+            <button
+              type="button"
+              className={styles.flowLinkBtn}
+              onClick={() => onProduct(id)}
+              title="Подробный расчёт этого продукта"
+            >
+              {name}
+            </button>
+          ) : (
+            <span className={styles.flowTitle}>{name}</span>
+          )}
+          <RoleInline role={role(r)} />
+        </td>
+        <td className={styles.roleCol}>
+          <RoleMark role={role(r)} />
+        </td>
+        <td className={styles.numCol}>
+          {r.share ? <b>{formatPercent(r.share)}</b> : <span className={styles.muted}>нет данных</span>}
+        </td>
+        <td className={styles.goCol}>
+          <Go nodeId={id} name={name} onGo={onGo} />
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <>
+      <div className={styles.tableCard}>
+        <table className={styles.balanceTable}>
+          <thead>
+            <tr>
+              <th>Поток</th>
+              <th className={styles.roleCol}>Роль</th>
+              <th className={styles.numCol}>% масс.</th>
+              <th className={styles.goCol}>
+                <span className={styles.goHead}>Перейти</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className={styles.sideRow}>
+              <td colSpan={4}>Приход</td>
+            </tr>
+            {pb.incoming.map(line)}
+            <tr className={styles.totalRow}>
+              <td>Итого приход</td>
+              <td className={styles.roleCol} />
+              <td className={styles.numCol}>100 %</td>
+              <td />
+            </tr>
+            <tr className={styles.sideRow}>
+              <td colSpan={4}>Расход</td>
+            </tr>
+            {pb.outgoing.map(line)}
+            {pb.gap !== null && (
+              <tr>
+                <td>
+                  <span className={styles.flowTitle}>
+                    {pb.gap > 0 ? "Не распределено расчётом" : "Невязка баланса"}
+                  </span>
+                  <span className={styles.rowNote}>
+                    {pb.gap > 0
+                      ? "потери и потоки, которых модель не назвала"
+                      : "выходов больше, чем вошло сырья: расчёт не сходится"}
+                  </span>
+                </td>
+                <td className={styles.roleCol}>—</td>
+                <td className={styles.numCol}>
+                  <b>{gapText(pb.gap)}</b>
+                </td>
+                <td />
+              </tr>
+            )}
+            <tr className={styles.totalRow}>
+              <td>Итого расход</td>
+              <td className={styles.roleCol} />
+              <td className={styles.numCol}>100 %</td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {pb.partialIn && (
+        <p className={styles.note}>
+          У части сырья массы в расчёте нет — доли посчитаны от сырья с массой.
+        </p>
+      )}
+    </>
+  );
+};
 
 /**
  * Таблица материального баланса: сырьё (количество правится прямо здесь —
@@ -96,126 +255,156 @@ interface Props {
  * потоки сверх графа — реагенты, побочные продукты, отходы, потери. Массы — на
  * количество человека. «Перейти» — к узлу на полотне.
  */
-export const BalanceTable: FC<Props> = ({ result, record, labelOf, onAmount, onProduct, onGo, findNode }) => {
+export const BalanceTable: FC<Props> = ({
+  result,
+  record,
+  labelOf,
+  onAmount,
+  onProduct,
+  onGo,
+  findNode,
+  display = "mass",
+}) => {
   const name = (f: BalanceFlowResult) => labelOf(f.nodeId) || f.name;
   const gone = (f: BalanceFlowResult) => !labelOf(f.nodeId);
   const extra = record.flows.filter((f) => !flowRef(record, f.name));
+  const percent = display === "percent";
 
   return (
     <section className={styles.cardBlock}>
-      <CardTitle
-        icon={<TableIcon size={16} />}
-        title="Таблица материального баланса"
-        help="Массы — на ваше количество сырья. Количество любого сырья меняется прямо в таблице — массы пересчитаются без модели. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне."
-      />
-      <div className={styles.tableCard}>
-        <table className={styles.balanceTable}>
-          <thead>
-            <tr>
-              <th>Поток</th>
-              <th>Роль</th>
-              <th>Значение</th>
-              <th className={styles.goCol}>Перейти</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.inputs.map((f) => (
-              <tr key={f.ref}>
-                <td>
-                  <span className={styles.flowTitle}>{name(f)}</span>
-                  {f.role === "basis" && result.inputs.length > 1 && (
-                    <span className={styles.basisTag} title="Модель считала от количества этого сырья">
-                      опорное
-                    </span>
-                  )}
-                  {gone(f) && <span className={styles.flowGone}> · нет на графе</span>}
-                  <span className={`${styles.rowNote} ${f.noRecipe ? styles.flowWarn : ""}`}>
-                    {balanceInputNote(f, result)}
-                  </span>
-                </td>
-                <td>
-                  <RoleMark role="input" />
-                </td>
-                <td>
-                  {onAmount ? (
-                    <BasisFields
-                      compact
-                      value={f.set ?? { amount: null, unit: f.unit }}
-                      onChange={(v) => onAmount(f.ref, v)}
-                      label={name(f)}
-                    />
-                  ) : (
-                    <b>{f.set ? formatView(f.set) : formatMass(f.mass, f.unit)}</b>
-                  )}
-                </td>
-                <td className={styles.goCol}>
-                  <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
-                </td>
+      <div className={styles.cardTitleRow}>
+        <CardTitle
+          icon={<TableIcon size={16} />}
+          title="Таблица материального баланса"
+          help={percent ? PERCENT_HELP : MASS_HELP}
+        />
+        <DisplaySwitch />
+      </div>
+      {percent ? (
+        <PercentBody
+          result={result}
+          record={record}
+          labelOf={labelOf}
+          onProduct={onProduct}
+          onGo={onGo}
+          findNode={findNode}
+        />
+      ) : (
+        <div className={styles.tableCard}>
+          <table className={styles.balanceTable}>
+            <thead>
+              <tr>
+                <th>Поток</th>
+                <th className={styles.roleCol}>Роль</th>
+                <th>Значение</th>
+                <th className={styles.goCol}>
+                  <span className={styles.goHead}>Перейти</span>
+                </th>
               </tr>
-            ))}
-            {result.targets.map((f) => (
-              <tr key={f.ref}>
-                <td>
-                  {onProduct && f.nodeId && !gone(f) ? (
-                    <button
-                      type="button"
-                      className={styles.flowLinkBtn}
-                      onClick={() => onProduct(f.nodeId!)}
-                      title="Подробный расчёт этого продукта"
-                    >
-                      {name(f)}
-                    </button>
-                  ) : (
+            </thead>
+            <tbody>
+              {result.inputs.map((f) => (
+                <tr key={f.ref}>
+                  <td>
                     <span className={styles.flowTitle}>{name(f)}</span>
-                  )}
-                  {gone(f) && <span className={styles.flowGone}> · нет на графе</span>}
-                </td>
-                <td>
-                  <RoleMark role="target" />
-                </td>
-                <td>{f.mass ? <b>{formatMass(f.mass, f.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
-                <td className={styles.goCol}>
-                  <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
-                </td>
-              </tr>
-            ))}
-            {result.outputs.map((f) => (
-              <tr key={f.ref} className={styles.rowOff}>
-                <td>
-                  <span className={styles.flowTitle}>{name(f)}</span>
-                </td>
-                <td>
-                  <RoleMark role="off" />
-                </td>
-                <td>{f.mass ? formatMass(f.mass, f.unit) : "—"}</td>
-                <td className={styles.goCol}>
-                  <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
-                </td>
-              </tr>
-            ))}
-            {extra.map((f) => {
-              const kind = flowKind(f);
-              const mass = scaleByFactor(f.massKg, result.factor);
-              return (
-                <tr key={`flow-${f.name}`}>
-                  <td>
-                    <span className={styles.flowTitle} title={f.basis ? `Основание: ${f.basis}` : undefined}>
-                      {f.name}
+                    {f.role === "basis" && result.inputs.length > 1 && (
+                      <span className={styles.basisTag} title="Модель считала от количества этого сырья">
+                        опорное
+                      </span>
+                    )}
+                    {gone(f) && <span className={styles.flowGone}> · нет на графе</span>}
+                    <span className={`${styles.rowNote} ${f.noRecipe ? styles.flowWarn : ""}`}>
+                      {balanceInputNote(f, result)}
                     </span>
+                    <RoleInline role="input" />
+                  </td>
+                  <td className={styles.roleCol}>
+                    <RoleMark role="input" />
                   </td>
                   <td>
-                    <RoleMark role={kind} />
+                    {onAmount ? (
+                      <BasisFields
+                        compact
+                        value={f.set ?? { amount: null, unit: f.unit }}
+                        onChange={(v) => onAmount(f.ref, v)}
+                        label={name(f)}
+                      />
+                    ) : (
+                      <b>{f.set ? formatView(f.set) : formatMass(f.mass, f.unit)}</b>
+                    )}
                   </td>
-                  <td>{mass ? <b>{formatMass(mass, result.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
                   <td className={styles.goCol}>
-                    <Go nodeId={findNode?.(f.name)} name={f.name} onGo={onGo} />
+                    <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+              {result.targets.map((f) => (
+                <tr key={f.ref}>
+                  <td>
+                    {onProduct && f.nodeId && !gone(f) ? (
+                      <button
+                        type="button"
+                        className={styles.flowLinkBtn}
+                        onClick={() => onProduct(f.nodeId!)}
+                        title="Подробный расчёт этого продукта"
+                      >
+                        {name(f)}
+                      </button>
+                    ) : (
+                      <span className={styles.flowTitle}>{name(f)}</span>
+                    )}
+                    {gone(f) && <span className={styles.flowGone}> · нет на графе</span>}
+                    <RoleInline role="target" />
+                  </td>
+                  <td className={styles.roleCol}>
+                    <RoleMark role="target" />
+                  </td>
+                  <td>{f.mass ? <b>{formatMass(f.mass, f.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
+                  <td className={styles.goCol}>
+                    <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
+                  </td>
+                </tr>
+              ))}
+              {result.outputs.map((f) => (
+                <tr key={f.ref} className={styles.rowOff}>
+                  <td>
+                    <span className={styles.flowTitle}>{name(f)}</span>
+                    <RoleInline role="off" />
+                  </td>
+                  <td className={styles.roleCol}>
+                    <RoleMark role="off" />
+                  </td>
+                  <td>{f.mass ? formatMass(f.mass, f.unit) : "—"}</td>
+                  <td className={styles.goCol}>
+                    <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
+                  </td>
+                </tr>
+              ))}
+              {extra.map((f) => {
+                const kind = flowKind(f);
+                const mass = scaleByFactor(f.massKg, result.factor);
+                return (
+                  <tr key={`flow-${f.name}`}>
+                    <td>
+                      <span className={styles.flowTitle} title={f.basis ? `Основание: ${f.basis}` : undefined}>
+                        {f.name}
+                      </span>
+                      <RoleInline role={kind} />
+                    </td>
+                    <td className={styles.roleCol}>
+                      <RoleMark role={kind} />
+                    </td>
+                    <td>{mass ? <b>{formatMass(mass, result.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
+                    <td className={styles.goCol}>
+                      <Go nodeId={findNode?.(f.name)} name={f.name} onGo={onGo} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 };

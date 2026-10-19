@@ -1,7 +1,8 @@
 // src/store/slices/materialBalanceSlice.ts
 //
-// Материальный баланс: режим на полотне, выбранное преобразование и его
-// открытый расчёт или продукт, черновик формы (количество каждого сырья,
+// Материальный баланс: режим на полотне (вкладка левой панели или вкладка
+// карточки преобразования), проценты или массы, выбранное преобразование и
+// его открытый расчёт или продукт, черновик формы (количество каждого сырья,
 // выбранные продукты, свои данные), правки промпта, идущие расчёты и
 // подсказки базы.
 //
@@ -21,6 +22,7 @@ import {
   fetchBalanceJob,
   fetchBalancePrompt,
   fetchBalanceRecord,
+  fetchReadyBalances,
   lookupBalance,
   startBalance,
   type BalanceNodeRef,
@@ -51,6 +53,7 @@ import {
   targetRefs,
   STATUS_TEXT,
   type BalanceAmounts,
+  type BalanceDisplay,
   type BalanceInputAmount,
   type BalanceSelection,
   type BalanceUnit,
@@ -102,8 +105,15 @@ export interface BalanceLookupState {
 }
 
 interface MaterialBalanceState {
-  /** Чип «Материальный баланс» включён. */
+  /** Открыта вкладка «Материальный баланс» левой панели. */
   mode: boolean;
+  /**
+   * Преобразование, у которого в карточке открыта вкладка «Материальный
+   * баланс»: на полотне тогда тоже баланс, а выбор — это преобразование.
+   */
+  card: string | null;
+  /** Доли (приход = расход = 100 %) или массы на количество сырья. */
+  display: BalanceDisplay;
   selection: BalanceSelection | null;
   /** Расчёт, открытый во вкладке последним: его числа — на узлах без выбора. */
   active: { nodeId: string; recordId: number } | null;
@@ -127,6 +137,8 @@ const DEFAULT_AMOUNT: DraftAmount = { amount: "1", unit: "т" };
 
 const initialState: MaterialBalanceState = {
   mode: false,
+  card: null,
+  display: "percent",
   selection: null,
   active: null,
   draft: { amounts: {}, basisId: null, targets: null, knownData: "" },
@@ -204,9 +216,25 @@ const slice = createSlice({
   name: "materialBalance",
   initialState,
   reducers: {
+    /**
+     * Вкладка левой панели открыта или закрыта. Закрыта — выбор снят, если
+     * его не держит карточка преобразования.
+     */
     setBalanceMode(state, action: PayloadAction<boolean>) {
       state.mode = action.payload;
-      if (!action.payload) state.selection = null;
+      if (!action.payload && !state.card) state.selection = null;
+    },
+    /**
+     * Вкладка «Материальный баланс» в карточке преобразования открыта (id
+     * преобразования) или закрыта (null). Закрыта — выбор снят, если его не
+     * держит вкладка левой панели.
+     */
+    setBalanceCard(state, action: PayloadAction<string | null>) {
+      state.card = action.payload;
+      if (!action.payload && !state.mode) state.selection = null;
+    },
+    setBalanceDisplay(state, action: PayloadAction<BalanceDisplay>) {
+      state.display = action.payload;
     },
     /**
      * Выбрать преобразование (или снять выбор). inputIds — его сырьё,
@@ -335,6 +363,8 @@ const slice = createSlice({
 
 export const {
   setBalanceMode,
+  setBalanceCard,
+  setBalanceDisplay,
   openBalanceCalc,
   openBalanceProduct,
   setBalanceActive,
@@ -512,9 +542,14 @@ async function storeCalcInClosedGraph(
   return true;
 }
 
-/** Что уйдёт в запрос: сырьё, продукты, опорное сырьё с количеством. */
+/**
+ * Что уйдёт в запрос: сырьё, продукты, опорное сырьё с количеством.
+ *
+ * В процентах количества нет: доли от него не зависят, и модель считает на
+ * 1 т опорного — выбранного или основного (первого).
+ */
 export function balanceRequestOf(
-  args: { nodes: CustomNode[]; edges: Edge[]; draft: BalanceDraft },
+  args: { nodes: CustomNode[]; edges: Edge[]; draft: BalanceDraft; display?: BalanceDisplay },
   transformationId: string,
 ) {
   const { nodes, edges, draft } = args;
@@ -524,7 +559,14 @@ export function balanceRequestOf(
   // графе — первое сырьё с количеством.
   const set = (n: CustomNode) => draftAmount(draft.amounts[n.id]?.amount) !== null;
   const chosen = ins.find((n) => n.id === draft.basisId);
-  const basis = chosen ? (set(chosen) ? chosen : undefined) : ins.find(set);
+  const basis =
+    args.display === "percent"
+      ? (chosen ?? ins.find(set) ?? ins[0])
+      : chosen
+        ? set(chosen)
+          ? chosen
+          : undefined
+        : ins.find(set);
   return { ins, outs, targets, basis, chosen };
 }
 
@@ -551,7 +593,11 @@ export const runMaterialBalance =
     const t = state.graph.data.nodes.find((n) => n.id === sel.transformationId);
     if (!t) return;
     const { ins, outs, targets, basis } = balanceRequestOf(
-      { ...state.graph.data, draft: state.materialBalance.draft },
+      {
+        ...state.graph.data,
+        draft: state.materialBalance.draft,
+        display: state.materialBalance.display,
+      },
       t.id,
     );
     if (!ins.length || !targets.length || !basis) return;
@@ -751,6 +797,72 @@ export const takeBalanceFromBase =
         "error",
         "Не удалось взять расчёт из базы",
         e instanceof Error ? e.message : String(e),
+      );
+    }
+  };
+
+/**
+ * Открыт сохранённый граф — подтянуть готовые расчёты из базы сервера для
+ * преобразований, у которых расчёта нет: то, что «Рассчитать» взял бы из
+ * базы сразу (всё сырьё, все продукты), в том числе посчитанное на другом
+ * графе. Модель не спрашиваем.
+ *
+ * Тихо: выбор и открытый расчёт не меняются, в историю не пишется (расчёт
+ * не делали — он уже был). Пришедшее ложится в граф, как любой расчёт, и
+ * записывается на сервер вместе с ним (graphExtrasMiddleware) — в следующий
+ * раз спрашивать не придётся. Сколько подтянуто — уведомлением.
+ */
+export const pullReadyBalances =
+  (graphId: string) =>
+  async (dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
+    const { nodes, edges } = getState().graph.data;
+    const items = nodes
+      .filter((n) => n.type === "transformation" && calcsOf(n).length === 0)
+      .map((t) => ({ t, ...balanceEnds(t.id, nodes, edges) }))
+      .filter((x) => x.ins.length && x.outs.length);
+    if (!items.length) return;
+    let ready;
+    try {
+      ready = await fetchReadyBalances(
+        items.map((x) => ({
+          transformation: nodeRef(x.t),
+          inputs: x.ins.map(nodeRef),
+          outputs: x.outs.map(nodeRef),
+        })),
+      );
+    } catch (e) {
+      // Без готовых расчётов граф всё равно рабочий: «Рассчитать» возьмёт их.
+      console.warn("Не удалось подтянуть готовые расчёты баланса", e);
+      return;
+    }
+    // Пока ждали, могли открыть другой граф — его узлы чужие расчёты не получают.
+    if (getState().savedGraphs.openedGraphId !== graphId) return;
+    let count = 0;
+    for (const { t } of items) {
+      const hit = ready[t.id];
+      if (!hit?.result) continue;
+      const now = getState().graph.data;
+      const node = now.nodes.find((n) => n.id === t.id);
+      // За это время расчёт мог прийти другим путём — его не трогаем.
+      if (!node || calcsOf(node).length) continue;
+      const { ins, outs } = balanceEnds(node.id, now.nodes, now.edges);
+      const calc = makeCalc({
+        record: hit.result,
+        ends: { transformationId: node.id, ins, outs },
+        hint: hit.nodeIds,
+        draft: {},
+        fromCache: true,
+      });
+      dispatch(updateNodeData({ nodeId: node.id, data: { materialBalances: [calc] }, silent: true }));
+      count += 1;
+    }
+    if (count) {
+      showToast(
+        "info",
+        "Материальный баланс",
+        count === 1
+          ? "Из базы подтянут готовый расчёт для 1 преобразования — откройте его карточку, вкладка «Материальный баланс»."
+          : `Из базы подтянуты готовые расчёты для ${count} преобразований — они во вкладке «Материальный баланс» карточки и в левой панели.`,
       );
     }
   };

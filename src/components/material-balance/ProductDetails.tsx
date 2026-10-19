@@ -1,5 +1,6 @@
 import type { FC } from "react";
 
+import { useAppSelector } from "../../store/hooks";
 import {
   computeBalance,
   formatBasisAmount,
@@ -7,6 +8,7 @@ import {
   formatPercent,
   massYield,
   mentionsProduct,
+  percentShares,
   productExcerpts,
   shareOfAllInputs,
   sortSources,
@@ -19,6 +21,7 @@ import type { CustomNode } from "../../types";
 import { ChevronLeftIcon } from "../icons";
 import { Markdown, SourceItem, Status } from "./CalcDetails";
 import { CalcScheme } from "./TransformationScheme";
+import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
 
 interface Props {
@@ -50,6 +53,7 @@ export const ProductDetails: FC<Props> = ({
   calcTitle,
   readOnly,
 }) => {
+  const percent = useAppSelector((s) => s.materialBalance.display) === "percent";
   const record = readableRecord(calc.record);
   const readable = { ...calc, record };
   const result = computeBalance(readable);
@@ -96,6 +100,10 @@ export const ProductDetails: FC<Props> = ({
         </div>
       </div>
 
+      <div className={styles.cardTitleRow}>
+        <span className={styles.fieldLabel}>{percent ? "Доли массы" : "Массы"}</span>
+        <DisplaySwitch />
+      </div>
       <CalcScheme
         transformation={transformation}
         result={result}
@@ -103,16 +111,19 @@ export const ProductDetails: FC<Props> = ({
         onAmount={onAmount}
         only={target.ref}
         readOnly={readOnly}
+        shares={percent ? percentShares(record) : undefined}
       />
 
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>{name}</h4>
         <table className={styles.flows}>
           <tbody>
-            <tr>
-              <td>Получится</td>
-              <td>{formatMass(target.mass, target.unit)}</td>
-            </tr>
+            {!percent && (
+              <tr>
+                <td>Получится</td>
+                <td>{formatMass(target.mass, target.unit)}</td>
+              </tr>
+            )}
             {yieldOnBasis && (
               <tr>
                 <td>Выход на «{basisName}»</td>

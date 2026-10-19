@@ -291,6 +291,30 @@ export async function lookupBalance(body: {
   }
 }
 
+/** Преобразование графа для готовых расчётов: всё его сырьё и все продукты. */
+export interface ReadyBalanceItem {
+  transformation: BalanceNodeRef;
+  inputs: BalanceNodeRef[];
+  outputs: BalanceNodeRef[];
+}
+
+/**
+ * Готовые расчёты для преобразований графа разом — при открытии
+ * сохранённого графа. Сервер отдаёт то же, что «Рассчитать» взял бы из базы
+ * сразу (всё сырьё, все продукты), и узлы этого графа по обозначениям;
+ * модель не зовётся. Ответ — только найденное, по id преобразования.
+ */
+export async function fetchReadyBalances(
+  items: ReadyBalanceItem[],
+): Promise<Record<string, { result: BalanceRecord; nodeIds?: Record<string, string> }>> {
+  try {
+    const { data } = await axios.post(`${API()}/ready`, { items });
+    return data.results ?? {};
+  } catch (e) {
+    throw serverError(e, "Не удалось спросить базу расчётов");
+  }
+}
+
 export async function startBalance(
   body: StartBalanceBody,
 ): Promise<StartBalanceResult> {

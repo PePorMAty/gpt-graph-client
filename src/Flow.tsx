@@ -165,13 +165,11 @@ import {
   draftAmounts,
   focusBalanceProduct,
   pickBalanceTransformation,
-  setBalanceActive,
   setBalanceMode,
 } from "./store/slices/materialBalanceSlice";
 import {
   balanceLayer as computeBalanceLayer,
   edgeKey as balanceEdgeKey,
-  calcsOf,
 } from "./utils/materialBalance";
 
 const nodeTypes: NodeTypes = {
@@ -798,9 +796,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     };
   }, []);
 
-  // Режим «Материальный баланс» (чип над полотном) — подробнее ниже, у слоя
-  // баланса.
+  // Материальный баланс на полотне — пока открыта его вкладка: слева
+  // (balanceMode) или в карточке преобразования (balanceCard). Подробнее
+  // ниже, у слоя баланса.
   const balanceMode = useAppSelector((s) => s.materialBalance.mode);
+  const balanceCard = useAppSelector((s) => s.materialBalance.card);
+  const balanceOn = balanceMode || balanceCard !== null;
 
   // Подсветка цепочки по hover — только для графов, загруженных через
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
@@ -816,13 +817,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // В фокус-режиме окрестность и так обрезана — hover-затемнение не нужно.
     // В режиме баланса подсвечено своё — выбранное преобразование и
     // посчитанные пары, — и наведение гасило бы его.
-    if (source !== "loaded" || !hoveredChainId || focusOn || balanceMode) return null;
+    if (source !== "loaded" || !hoveredChainId || focusOn || balanceOn) return null;
     return findChainNodeIds(
       data.edges,
       hoveredChainId,
       (id) => nodeTypeById.get(id),
     );
-  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn, balanceMode]);
+  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn, balanceOn]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
@@ -972,34 +973,36 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   );
 
   // ─── Материальный баланс ───
-  // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
-  // расчёта, по продукту открытого расчёта — расчёт этого продукта. На
-  // узлах — все посчитанные расчёты (продукт сверху, сырьё снизу), их связи
+  // Пока открыта вкладка «Материальный баланс» левой панели, щелчок по
+  // преобразованию выбирает его для расчёта, по продукту открытого расчёта —
+  // расчёт этого продукта. Во вкладке карточки преобразования щелчки
+  // обычные: открывают карточки. В обоих случаях на узлах — все посчитанные
+  // расчёты (продукт сверху, сырьё снизу) долями или массами, их связи
   // подсвечены, остальное приглушено (см. utils/materialBalance.ts,
   // balanceLayer).
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
   const balanceDraft = useAppSelector((s) => s.materialBalance.draft);
+  const balanceDisplay = useAppSelector((s) => s.materialBalance.display);
   const balanceModeRef = useRef(balanceMode);
   balanceModeRef.current = balanceMode;
-  const balanceActiveRef = useRef(balanceActive);
-  balanceActiveRef.current = balanceActive;
   const balance = useMemo(
     () =>
-      balanceMode
+      balanceOn
         ? computeBalanceLayer({
             nodes: data.nodes,
             edges: data.edges,
             selection: balanceSelection,
             active: balanceActive,
             draft: { amounts: draftAmounts(balanceDraft), targets: balanceDraft.targets },
+            display: balanceDisplay,
           })
         : null,
-    [balanceMode, balanceSelection, balanceActive, balanceDraft, data.nodes, data.edges],
+    [balanceOn, balanceSelection, balanceActive, balanceDraft, balanceDisplay, data.nodes, data.edges],
   );
-  // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
-  // открывают её, выключенный чип закрывает. Карточка узла занимает то же
-  // место слева — открывая вкладку, её закрываем.
+  // Вкладка «Материальный баланс» левой панели: её открывает выбор
+  // преобразования (щелчок в режиме, пункт меню). Карточка узла занимает то
+  // же место слева — открывая вкладку, её закрываем.
   const openBalancePanel = useCallback(() => {
     saveChangesRef.current();
     setIsPanelOpen(false);
@@ -1007,17 +1010,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       new CustomEvent("rail-open", { detail: { section: "balance" } }),
     );
   }, []);
-  const toggleBalanceMode = useCallback(() => {
-    const next = !balanceModeRef.current;
-    dispatch(setBalanceMode(next));
-    if (readOnly) return;
-    if (next) openBalancePanel();
-    else {
-      window.dispatchEvent(
-        new CustomEvent("rail-close", { detail: { section: "balance" } }),
-      );
-    }
-  }, [dispatch, readOnly, openBalancePanel]);
 
   const flowNodes = useMemo(
     () =>
@@ -1303,25 +1295,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
       lastInteractedNodeIdRef.current = node.id;
-      // Режим «Материальный баланс»: щелчок по преобразованию выбирает его
-      // для расчёта, карточка не открывается. По ссылке выбирать нечего —
-      // щелчок показывает расчёт этого преобразования, повторный — расчёт
-      // другого направления, если он есть.
+      // Открыта вкладка «Материальный баланс» слева: щелчок по
+      // преобразованию выбирает его для расчёта, карточка не открывается. По
+      // ссылке левой панели нет — там баланс смотрят во вкладке карточки.
       if (balanceModeRef.current && node.type === "transformation") {
         setContextMenu(null);
-        if (readOnly) {
-          const calcs = calcsOf(node as CustomNode);
-          const active = balanceActiveRef.current;
-          const at =
-            active?.nodeId === node.id
-              ? calcs.findIndex((c) => c.record.id === active.recordId)
-              : -1;
-          const next = calcs[(at + 1) % Math.max(calcs.length, 1)];
-          if (next) {
-            dispatch(setBalanceActive({ nodeId: node.id, recordId: next.record.id }));
-          }
-          return;
-        }
         dispatch(pickBalanceTransformation(node.id));
         openBalancePanel();
         return;
@@ -3360,8 +3338,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onToggleIndustryData={() => setIndustryData((v) => !v)}
           alternatives={showAlternatives}
           onToggleAlternatives={() => setShowAlternatives((v) => !v)}
-          balance={balanceMode}
-          onToggleBalance={toggleBalanceMode}
           readOnly={sharedView}
         />
       </div>
