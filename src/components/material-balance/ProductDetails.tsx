@@ -35,6 +35,8 @@ interface Props {
   /** Название расчёта для «← К расчёту»: продукты через запятую. */
   calcTitle: string;
   readOnly?: boolean;
+  /** Роль сырья или продукта расчёта (реагент, побочный) — с его связи на графе. */
+  roleOf?: (ref: string) => "reagent" | "byproduct" | undefined;
 }
 
 /**
@@ -52,6 +54,7 @@ export const ProductDetails: FC<Props> = ({
   onBack,
   calcTitle,
   readOnly,
+  roleOf,
 }) => {
   const percent = useAppSelector((s) => s.materialBalance.display) === "percent";
   const record = readableRecord(calc.record);
@@ -111,7 +114,7 @@ export const ProductDetails: FC<Props> = ({
         onAmount={onAmount}
         only={target.ref}
         readOnly={readOnly}
-        shares={percent ? percentShares(record) : undefined}
+        shares={percent ? percentShares(record, roleOf) : undefined}
       />
 
       <section className={styles.section}>

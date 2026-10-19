@@ -190,6 +190,8 @@ interface Props {
   findNode?: (name: string) => string | undefined;
   /** Поставить поток сверх графа (вода, кислород) на граф. */
   onPlaceFlow?: (flow: { name: string; direction: "in" | "out" | "" }) => void;
+  /** Роль сырья или продукта расчёта (реагент, побочный) — с его связи на графе. */
+  roleOf?: (ref: string) => "reagent" | "byproduct" | undefined;
   /** «Новый расчёт» — форма с количествами и продуктами этого расчёта. */
   onNewRequest?: () => void;
   /** «Показать на графе» — камера к преобразованию. */
@@ -216,6 +218,7 @@ export const CalcDetails: FC<Props> = ({
   onGo,
   findNode,
   onPlaceFlow,
+  roleOf,
   onNewRequest,
   onShowOnGraph,
   readOnly,
@@ -294,6 +297,7 @@ export const CalcDetails: FC<Props> = ({
         findNode={findNode}
         display={display}
         onPlaceFlow={readOnly ? undefined : onPlaceFlow}
+        roleOf={roleOf}
       />
 
       {(coefs.length > 0 || record.coefficients.length > 0) && (

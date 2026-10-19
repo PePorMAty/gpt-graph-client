@@ -45,6 +45,7 @@ import {
 } from "../../components/toast/toastStore";
 import {
   balanceEnds,
+  balanceRoleOf,
   calcKey,
   calcsOf,
   defaultBasisId,
@@ -248,15 +249,20 @@ const slice = createSlice({
      */
     selectBalanceTransformation(
       state,
-      action: PayloadAction<{ selection: BalanceSelection | null; basisId?: string | null }>,
+      action: PayloadAction<{
+        selection: BalanceSelection | null;
+        basisId?: string | null;
+        /** Продукты нового черновика; null — все. */
+        targets?: string[] | null;
+      }>,
     ) {
-      const { selection, basisId } = action.payload;
+      const { selection, basisId, targets } = action.payload;
       state.selection = selection;
       if (!selection || selection.transformationId === state.draftOwner) return;
       state.draftOwner = selection.transformationId;
       state.draft.amounts = basisId ? { [basisId]: { ...DEFAULT_AMOUNT } } : {};
       state.draft.basisId = basisId ?? null;
-      state.draft.targets = null;
+      state.draft.targets = targets ?? null;
     },
     /** Сделать сырьё опорным; пустое количество у него — 1 т. */
     setDraftBasis(state, action: PayloadAction<string>) {
@@ -409,9 +415,24 @@ export const pickBalanceTransformation =
     const node = nodes.find((n) => n.id === transformationId);
     const selection = selectionFor(node, transformationId, prefer?.recordId);
     if (prefer?.productId && selection.recordId !== null) selection.productId = prefer.productId;
-    const { ins } = balanceEnds(transformationId, nodes, edges);
+    const { ins, outs } = balanceEnds(transformationId, nodes, edges);
+    // Побочные продукты, поставленные из таблицы (вода), в продукты нового
+    // расчёта по умолчанию не идут: иначе модель посчитала бы их продуктом,
+    // и в процентах они попали бы в 100 % продукта. Модель их видит — как
+    // невыбранные выходы — и даёт их массу потоком баланса.
+    const main = outs.filter((n) => balanceRoleOf(edges, n.id, transformationId) !== "byproduct");
+    const targets = main.length && main.length < outs.length ? main.map((n) => n.id) : null;
     dispatch(
-      slice.actions.selectBalanceTransformation({ selection, basisId: defaultBasisId(node, ins) }),
+      slice.actions.selectBalanceTransformation({
+        selection,
+        // Реагент из таблицы (кислород) опорным не встаёт: от него модель
+        // выход продукта не найдёт.
+        basisId: defaultBasisId(
+          node,
+          ins.filter((n) => balanceRoleOf(edges, n.id, transformationId) !== "reagent"),
+        ) ?? defaultBasisId(node, ins),
+        targets,
+      }),
     );
   };
 
@@ -895,7 +916,23 @@ export const placeBalanceFlow =
       id = crypto.randomUUID();
       dispatch(addNode({ type: "product", label: flowNodeLabel(flow.name), position, id }));
     }
-    dispatch(connectWithFlow({ productId: id, transformationId: t.id, flow: input ? "in" : "out" }));
+    dispatch(
+      connectWithFlow({
+        productId: id,
+        transformationId: t.id,
+        flow: input ? "in" : "out",
+        balanceRole: input ? "reagent" : "byproduct",
+      }),
+    );
+    // Черновик формы этого преобразования «все продукты» — побочный в них
+    // не идёт: остальные отмечены явно (как при выборе преобразования).
+    const mb = getState().materialBalance;
+    if (!input && mb.draftOwner === t.id && mb.draft.targets === null) {
+      const now = getState().graph.data;
+      const outs = balanceEnds(t.id, now.nodes, now.edges).outs;
+      const main = outs.filter((n) => balanceRoleOf(now.edges, n.id, t.id) !== "byproduct");
+      if (main.length && main.length < outs.length) dispatch(setDraftTargets(main.map((n) => n.id)));
+    }
     return id;
   };
 

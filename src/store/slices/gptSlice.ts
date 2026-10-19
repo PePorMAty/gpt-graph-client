@@ -668,21 +668,41 @@ const gptSlice = createSlice({
      */
     connectWithFlow: (
       state,
-      action: PayloadAction<{ productId: string; transformationId: string; flow: "in" | "out" }>,
+      action: PayloadAction<{
+        productId: string;
+        transformationId: string;
+        flow: "in" | "out";
+        /**
+         * Чем продукт приходится преобразованию в материальном балансе:
+         * реагент или побочный продукт. Лежит на связи (balanceRole): тот же
+         * продукт у другого преобразования может быть основным.
+         */
+        balanceRole?: "reagent" | "byproduct";
+      }>,
     ) => {
-      const { productId, transformationId, flow } = action.payload;
+      const { productId, transformationId, flow, balanceRole } = action.payload;
       if (productId === transformationId) return;
-      const exists = state.data.edges.some(
+      const existing = state.data.edges.find(
         (e) =>
           (e.source === productId && e.target === transformationId) ||
           (e.source === transformationId && e.target === productId),
       );
-      if (exists) return;
+      if (existing) {
+        if (balanceRole) existing.data = { ...(existing.data ?? {}), balanceRole };
+        return;
+      }
       const [source, target] =
         flow === "in" ? [productId, transformationId] : [transformationId, productId];
       state.data.edges = normalizeEdges(
         addEdge(
-          { source, target, sourceHandle: null, targetHandle: null, type: "straight", data: { tFlow: flow } },
+          {
+            source,
+            target,
+            sourceHandle: null,
+            targetHandle: null,
+            type: "straight",
+            data: { tFlow: flow, ...(balanceRole ? { balanceRole } : {}) },
+          },
           state.data.edges,
         ),
       );

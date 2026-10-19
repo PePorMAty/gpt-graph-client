@@ -68,6 +68,8 @@ interface FormProps {
    * считает на 1 т опорного (выбранного или основного).
    */
   percent?: boolean;
+  /** Побочные продукты, поставленные из таблицы, — подпись у их галочки. */
+  byproductIds?: string[];
 }
 
 /**
@@ -88,6 +90,7 @@ export const FormScheme: FC<FormProps> = ({
   onTargets,
   disabled,
   percent = false,
+  byproductIds = [],
 }) => {
   const picked = ins.find((n) => n.id === basisId);
   const basis = percent
@@ -168,7 +171,13 @@ export const FormScheme: FC<FormProps> = ({
             />
             <span className={styles.flowName}>{label(n)}</span>
             <span className={styles.flowNote}>
-              {on ? "сколько получится — посчитает модель" : "не считать"}
+              {byproductIds.includes(n.id)
+                ? on
+                  ? "побочный продукт — посчитается продуктом"
+                  : "побочный продукт — модель даст его отдельно"
+                : on
+                  ? "сколько получится — посчитает модель"
+                  : "не считать"}
             </span>
           </label>
         );

@@ -12,6 +12,7 @@ import {
   placeableFlow,
   scaleByFactor,
   type BalanceDisplay,
+  type BalanceEdgeRole,
   type BalanceFlowResult,
   type BalanceInputAmount,
   type BalanceResult,
@@ -136,6 +137,8 @@ interface Props {
   display?: BalanceDisplay;
   /** Поставить поток сверх графа на граф; нет — только смотреть. */
   onPlaceFlow?: (flow: Pick<BalanceFlow, "name" | "direction">) => void;
+  /** Роль сырья или продукта расчёта по обозначению — с его связи на графе. */
+  roleOf?: (ref: string) => BalanceEdgeRole | undefined;
 }
 
 const MASS_HELP =
@@ -156,8 +159,9 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
   onGo,
   findNode,
   onPlaceFlow,
+  roleOf,
 }) => {
-  const pb = percentBalance(record);
+  const pb = percentBalance(record, roleOf);
   const nodeByRef = new Map(
     [...result.inputs, ...result.targets, ...result.outputs].map((f) => [f.ref, f.nodeId]),
   );
@@ -301,6 +305,7 @@ export const BalanceTable: FC<Props> = ({
   findNode,
   display = "mass",
   onPlaceFlow,
+  roleOf,
 }) => {
   const name = (f: BalanceFlowResult) => labelOf(f.nodeId) || f.name;
   const gone = (f: BalanceFlowResult) => !labelOf(f.nodeId);
@@ -326,6 +331,7 @@ export const BalanceTable: FC<Props> = ({
           onGo={onGo}
           findNode={findNode}
           onPlaceFlow={onPlaceFlow}
+          roleOf={roleOf}
         />
       ) : (
         <div className={styles.tableCard}>

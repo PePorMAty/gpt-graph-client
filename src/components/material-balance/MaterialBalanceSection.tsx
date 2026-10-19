@@ -22,6 +22,7 @@ import {
   allCalcs,
   amountsOf,
   balanceEnds,
+  balanceRoleOf,
   calcKey,
   calcProductsLabel,
   calcsOf,
@@ -135,15 +136,22 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
   const sameTargets = calcs.find((c) => calcKey(c) === formKey);
 
   // Сырьё на графе, которого нет в открытом расчёте: связь нарисовали позже.
-  // Реагенты, поставленные на граф из таблицы (кислород), в расчёте есть —
-  // строкой потока.
+  // Реагент, поставленный на граф из таблицы (кислород), в расчёте есть —
+  // строкой потока, если у неё есть масса; без массы — тоже «посчитайте
+  // заново»: тогда модель посчитает, сколько его нужно.
   const missingInputs = calc
     ? ends.ins.filter(
         (n) =>
           !inputRefs(calc.record).some((r) => calc.nodeIds[r.ref] === n.id) &&
-          !calc.record.flows.some((f) => flowNodeAmong([n], f.name)),
+          !calc.record.flows.some((f) => f.massKg && flowNodeAmong([n], f.name)),
       )
     : [];
+  // Роль сырья и продуктов расчёта с их связей: реагенты и побочные,
+  // поставленные из таблицы, в процентах — отдельно.
+  const roleOf = (c: MaterialBalanceCalc) => (ref: string) => balanceRoleOf(edges, c.nodeIds[ref], t.id);
+  const byproductIds = ends.outs
+    .filter((n) => balanceRoleOf(edges, n.id, t.id) === "byproduct")
+    .map((n) => n.id);
 
   const onCalcAmount = (c: MaterialBalanceCalc) => (ref: string, value: BalanceInputAmount) => {
     if (readOnly) return;
@@ -241,6 +249,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
             onBack={() => dispatch(openBalanceProduct(null))}
             calcTitle={title(calc)}
             readOnly={readOnly}
+            roleOf={roleOf(calc)}
           />
         ) : (
           <>
@@ -261,6 +270,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
               onGo={(id) => focusNode(id, { zoom: 1 })}
               findNode={findNode}
               onPlaceFlow={readOnly ? undefined : (f) => dispatch(placeBalanceFlow(t.id, f))}
+              roleOf={roleOf(calc)}
               onNewRequest={readOnly ? undefined : () => dispatch(newCalcFrom(calc, amountsOf(calc)))}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
               readOnly={readOnly}
@@ -304,6 +314,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
             onBasis={(id) => dispatch(setDraftBasis(id))}
             targets={draft.targets}
             onTargets={(ids) => dispatch(setDraftTargets(ids))}
+            byproductIds={byproductIds}
           />
           <RequestForm
             transformation={t}

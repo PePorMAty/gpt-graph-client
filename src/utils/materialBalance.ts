@@ -674,7 +674,11 @@ const massSum = (rows: PercentRow[]) => rows.reduce((s, r) => s + (r.mass ? midO
  * по серединам диапазонов; доля — оценка («≈»), если оценкой была хоть одна
  * масса суммы: от неё зависит каждая доля.
  */
-export function percentBalance(record: BalanceRecord): PercentBalance {
+export function percentBalance(
+  record: BalanceRecord,
+  /** Роль сырья или продукта расчёта по обозначению — с его связи на графе. */
+  roleOf?: (ref: string) => BalanceEdgeRole | undefined,
+): PercentBalance {
   const extra = record.flows.filter((f) => !flowRef(record, f.name));
   const row = (ref: string | null, name: string, kind: PercentRow["kind"], mass: BalanceAmount | null): PercentRow => ({
     ref,
@@ -683,13 +687,30 @@ export function percentBalance(record: BalanceRecord): PercentBalance {
     mass,
     share: null,
   });
-  const raw = inputRefs(record).map((r) => row(r.ref, r.name, "input", recipeMass(record, r.ref)));
-  const products = targetRefs(record).map((r) => row(r.ref, r.name, "target", recipeMass(record, r.ref)));
+  // Реагент и побочный продукт, поставленные на граф из таблицы, — в
+  // «Отдельно», хоть модель и считала их сырьём или продуктом.
+  const role = (ref: string) => roleOf?.(ref);
+  const raw = inputRefs(record)
+    .filter((r) => role(r.ref) !== "reagent")
+    .map((r) => row(r.ref, r.name, "input", recipeMass(record, r.ref)));
+  const products = targetRefs(record)
+    .filter((r) => role(r.ref) !== "byproduct")
+    .map((r) => row(r.ref, r.name, "target", recipeMass(record, r.ref)));
   const separate = [
+    ...inputRefs(record)
+      .filter((r) => role(r.ref) === "reagent")
+      .map((r) => row(r.ref, r.name, "reagent", recipeMass(record, r.ref))),
     ...extra.filter((f) => flowKind(f) === "reagent").map((f) => row(null, f.name, "reagent", f.massKg)),
+    ...targetRefs(record)
+      .filter((r) => role(r.ref) === "byproduct")
+      .map((r) => row(r.ref, r.name, "byproduct", recipeMass(record, r.ref))),
+    // Невыбранные выходы — с массой; побочный продукт, поставленный из
+    // таблицы, — и без неё: его ждут увидеть.
     ...otherOutputRefs(record)
-      .map((r) => row(r.ref, r.name, "off", recipeMass(record, r.ref)))
-      .filter((r) => r.mass),
+      .map((r) =>
+        row(r.ref, r.name, role(r.ref) === "byproduct" ? "byproduct" : "off", recipeMass(record, r.ref)),
+      )
+      .filter((r) => r.mass || r.kind === "byproduct"),
     ...extra.filter((f) => flowKind(f) !== "reagent").map((f) => row(null, f.name, flowKind(f), f.massKg)),
   ];
   const partialRaw = raw.some((r) => !r.mass);
@@ -705,8 +726,11 @@ export function percentBalance(record: BalanceRecord): PercentBalance {
 }
 
 /** Доли сырья и продуктов расчёта по обозначениям — для подписей на узлах. */
-export function percentShares(record: BalanceRecord): Map<string, BalanceAmount> {
-  const pb = percentBalance(record);
+export function percentShares(
+  record: BalanceRecord,
+  roleOf?: (ref: string) => BalanceEdgeRole | undefined,
+): Map<string, BalanceAmount> {
+  const pb = percentBalance(record, roleOf);
   const out = new Map<string, BalanceAmount>();
   for (const r of [...pb.raw, ...pb.products, ...pb.separate]) if (r.ref && r.share) out.set(r.ref, r.share);
   return out;
@@ -925,19 +949,22 @@ export function balanceLayer(args: {
   const paint = (nodeId: string, calc: MaterialBalanceCalc, focus: boolean, productId?: string | null) => {
     const res = computeBalance(calc);
     // Доли — по массам расчёта модели: от количества не зависят.
-    const shares = percent ? percentShares(calc.record) : null;
+    const roleOf = (ref: string) => balanceRoleOf(args.edges, calc.nodeIds[ref], nodeId);
+    const shares = percent ? percentShares(calc.record, roleOf) : null;
     lit.add(nodeId);
     for (const f of res.inputs) {
       if (!isProduct(f.nodeId)) continue;
       lit.add(f.nodeId);
       link(f.nodeId, nodeId, focus ? "active" : "calc");
       const share = shares?.get(f.ref);
+      // Реагент, поставленный из таблицы (кислород), подписан реагентом.
+      const word = roleOf(f.ref) === "reagent" ? "реагент" : "сырьё";
       if (shares) {
-        if (share) put(f.nodeId, "сырьё", { text: `сырьё · ${formatPercent(share)}`, tone: "mass" });
-        else if (focus) put(f.nodeId, "сырьё", { text: "сырьё", tone: "role" });
-      } else if (f.set) put(f.nodeId, "сырьё", { text: `сырьё · ${formatView(f.set)}`, tone: "basis" });
-      else if (f.mass) put(f.nodeId, "сырьё", { text: `сырьё · ${formatMass(f.mass, f.unit)}`, tone: "mass" });
-      else if (focus) put(f.nodeId, "сырьё", { text: "сырьё", tone: "role" });
+        if (share) put(f.nodeId, "сырьё", { text: `${word} · ${formatPercent(share)}`, tone: "mass" });
+        else if (focus) put(f.nodeId, "сырьё", { text: word, tone: "role" });
+      } else if (f.set) put(f.nodeId, "сырьё", { text: `${word} · ${formatView(f.set)}`, tone: "basis" });
+      else if (f.mass) put(f.nodeId, "сырьё", { text: `${word} · ${formatMass(f.mass, f.unit)}`, tone: "mass" });
+      else if (focus) put(f.nodeId, "сырьё", { text: word, tone: "role" });
     }
     for (const f of res.targets) {
       if (!isProduct(f.nodeId)) continue;
@@ -946,14 +973,15 @@ export function balanceLayer(args: {
       link(nodeId, f.nodeId, strong ? "active" : "calc");
       const share = shares?.get(f.ref);
       const value = shares ? (share ? formatPercent(share) : "нет данных") : formatMass(f.mass, f.unit);
-      put(f.nodeId, "продукт", { text: `продукт · ${value}`, tone: "mass" });
+      const word = roleOf(f.ref) === "byproduct" ? "побочный" : "продукт";
+      put(f.nodeId, "продукт", { text: `${word} · ${value}`, tone: "mass" });
     }
     // Потоки сверх расчёта, поставленные на граф из таблицы (вода,
     // кислород): узел с тем же названием у этого преобразования.
     const extra = calc.record.flows.filter((f) => !flowRef(calc.record, f.name));
     if (extra.length) {
       const ends = balanceEnds(nodeId, args.nodes, args.edges);
-      const pb = percent ? percentBalance(calc.record) : null;
+      const pb = percent ? percentBalance(calc.record, roleOf) : null;
       for (const f of extra) {
         const kind = flowKind(f);
         const input = kind === "reagent";
@@ -970,13 +998,17 @@ export function balanceLayer(args: {
         put(n.id, input ? "сырьё" : "продукт", { text: `${FLOW_PILL[kind]} · ${value}`, tone: "mass" });
       }
     }
-    if (focus) {
-      for (const f of res.outputs) {
-        if (!isProduct(f.nodeId)) continue;
-        lit.add(f.nodeId);
-        link(nodeId, f.nodeId, "plain");
-        put(f.nodeId, "продукт", { text: "продукт", tone: "role" });
-      }
+    // Невыбранные выходы: с массой (побочный продукт, который модель всё же
+    // посчитала) — подписаны всегда, без массы — ролью у расчёта в фокусе.
+    for (const f of res.outputs) {
+      if (!isProduct(f.nodeId)) continue;
+      const share = shares?.get(f.ref);
+      const value = shares ? (share ? formatPercent(share) : null) : f.mass ? formatMass(f.mass, f.unit) : null;
+      if (!value && !focus) continue;
+      lit.add(f.nodeId);
+      link(nodeId, f.nodeId, value ? (focus ? "active" : "calc") : "plain");
+      const word = roleOf(f.ref) === "byproduct" ? "побочный" : "продукт";
+      put(f.nodeId, "продукт", value ? { text: `${word} · ${value}`, tone: "mass" } : { text: word, tone: "role" });
     }
     // «Выход» — на опорное сырьё, другая мера, чем проценты: рядом с
     // «продукт · 100 %» число «выход 88,5 %» выглядело бы противоречием.
@@ -1191,7 +1223,44 @@ export function flowNodeLabel(name: string): string {
  */
 export function placeableFlow(f: Pick<BalanceFlow, "name" | "direction">): boolean {
   const name = flowNodeLabel(f.name);
-  return !!name && flowKind(f) !== "loss" && !/[,;]/.test(name) && !/\s(?:и|или)\s/i.test(name);
+  return (
+    !!name &&
+    flowKind(f) !== "loss" &&
+    !/[,;]/.test(name) &&
+    !/\s(?:и|или)\s/i.test(name) &&
+    !GROUP_NAME.test(normalizeProductName(name))
+  );
+}
+
+/**
+ * Название группы, а не вещества: «Побочные продукты», «Прочие примеси»,
+ * «Отходы». Узел с таким названием на графе — чепуха. «Отходящие газы» и
+ * «Сточные воды» — потоки, их ставить можно.
+ */
+const GROUP_NAME = /^(?:побочн\S*(?:\s+продукт\S*)?|прочи\S*(?:\s.*)?|други\S*(?:\s.*)?|примес\S*|отходы|выбросы|потери)$/i;
+
+/** Роль продукта у преобразования в балансе — с его связи (balanceRole). */
+export type BalanceEdgeRole = "reagent" | "byproduct";
+
+/**
+ * Продукт поставлен на граф из таблицы баланса реагентом или побочным
+ * продуктом этого преобразования: так помечена связь между ними. В
+ * процентах такой продукт — в «Отдельно», а не в сырье или продуктах, и
+ * после пересчёта тоже.
+ */
+export function balanceRoleOf(
+  edges: Edge[],
+  productId: string | undefined,
+  transformationId: string,
+): BalanceEdgeRole | undefined {
+  if (!productId) return undefined;
+  const e = edges.find(
+    (x) =>
+      (x.source === productId && x.target === transformationId) ||
+      (x.source === transformationId && x.target === productId),
+  );
+  const role = (e?.data as { balanceRole?: unknown } | undefined)?.balanceRole;
+  return role === "reagent" || role === "byproduct" ? role : undefined;
 }
 
 /** Узел потока: продукт с тем же названием, пояснения в скобках не в счёт. */
