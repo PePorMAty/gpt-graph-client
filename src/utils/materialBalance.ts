@@ -262,18 +262,42 @@ function namedAsAgent(transformation: string, name: string): boolean {
 }
 
 /**
- * Опорное сырьё по умолчанию: первое (основное), если оно не
- * вспомогательное; иначе первое невспомогательное. Опорным модели надо
- * основное сырьё процесса: от количества растворителя («ректификация с
- * ацетонитрилом») она выход продукта не найдёт.
+ * Сырьё названо в самой технологии: «Окислительный аммонолиз пропилена» —
+ * пропилен, «Паровой риформинг природного газа» — природный газ. Каждое
+ * слово названия сырья (от четырёх букв) — основой в начале слова названия
+ * технологии; «аммиак» в «аммонолизе» не узнаётся: основы разные.
+ */
+function namedInTitle(transformation: string, name: string): boolean {
+  const title = normalizeProductName(transformation);
+  const words = normalizeProductName(name)
+    .split(/[\s-]+/)
+    .filter((w) => w.length >= 4);
+  if (!words.length) return false;
+  return words.every((w) => {
+    const stem = w.slice(0, Math.max(4, w.length - 2)).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|[^а-яёa-z0-9])${stem}`, "i").test(title);
+  });
+}
+
+/**
+ * Опорное сырьё по умолчанию — основное сырьё процесса: названное в самой
+ * технологии («…аммонолиз пропилена» — пропилен), иначе первое (с большим
+ * числом связей), если оно не вспомогательное, иначе первое
+ * невспомогательное. От количества растворителя («ректификация с
+ * ацетонитрилом») модель выход продукта не найдёт.
+ *
+ * Название технологии — первым: число связей обманывает. Аммиак, который
+ * идёт в несколько шагов графа, набирал связей больше пропилена и вставал
+ * опорным в аммонолизе пропилена; модель тогда приложила выход на пропилен
+ * к тонне аммиака, и акрилонитрила вышло втрое меньше.
  */
 export function defaultBasisId(transformation: CustomNode | undefined, ins: CustomNode[]): string | null {
   const tLabel = String(transformation?.data?.label ?? "");
-  const aux = (n: CustomNode) => {
-    const label = String(n.data?.label ?? "");
-    return AUXILIARY.test(normalizeProductName(label)) || namedAsAgent(tLabel, label);
-  };
-  return (ins.find((n) => !aux(n)) ?? ins[0])?.id ?? null;
+  const label = (n: CustomNode) => String(n.data?.label ?? "");
+  const aux = (n: CustomNode) =>
+    AUXILIARY.test(normalizeProductName(label(n))) || namedAsAgent(tLabel, label(n));
+  const main = ins.filter((n) => !aux(n));
+  return (main.find((n) => namedInTitle(tLabel, label(n))) ?? main[0] ?? ins[0])?.id ?? null;
 }
 
 const isInputRole = (r: BalanceRef) => r.role === "basis" || r.role === "input";
@@ -908,7 +932,9 @@ export function balanceLayer(args: {
         put(f.nodeId, "продукт", { text: "продукт", tone: "role" });
       }
     }
-    coefficient(nodeId, calc, focus ? productId : null);
+    // «Выход» — на опорное сырьё, другая мера, чем доли прихода: рядом с
+    // «продукт · 25,5 %» число «выход 88,5 %» выглядело противоречием.
+    if (!percent) coefficient(nodeId, calc, focus ? productId : null);
   };
 
   if (shown) {
