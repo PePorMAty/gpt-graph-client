@@ -158,12 +158,6 @@ export function semanticHandles(
   flow: TFlow,
   source: CustomNode,
   target: CustomNode,
-  /**
-   * Связь рециклинга (пунктир): продукт, который она возвращает наверх,
-   * получает её в свой верх — как любой продукт от преобразования, которое
-   * его дало, — а не в низ, откуда уходят его собственные связи.
-   */
-  recycle = false,
 ): Edge {
   const tIsSource = source.type === "transformation";
   const t = tIsSource ? source : target;
@@ -171,7 +165,11 @@ export function semanticHandles(
   const dy = (p.position?.y ?? 0) - (t.position?.y ?? 0);
   const productAbove = dy < 0;
   const tSide = flow === "in" ? "top" : "bottom";
-  const pSide = productAbove && !(recycle && flow === "out") ? "bottom" : "top";
+  // Выход входит в верх продукта всегда — как связь от преобразования,
+  // которое его дало, — и когда продукт стоит выше (связь назад, в обход):
+  // в его низ уходят его собственные связи. Сырьё — со стороны,
+  // ближней к преобразованию.
+  const pSide = flow === "out" || !productAbove ? "top" : "bottom";
   const tHandle = HANDLE[tSide][tIsSource ? "source" : "target"];
   const pHandle = HANDLE[pSide][tIsSource ? "target" : "source"];
   const backward = flow === "in" ? dy > SAME_ROW : dy < -SAME_ROW;

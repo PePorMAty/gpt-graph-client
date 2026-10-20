@@ -1147,10 +1147,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
     // приглушены (balanceLayer, edges).
     const lit = balance && balance.lit.size > 0 ? balance.lit : null;
-    // Связь рециклинга — пунктиром и со стрелкой туда, куда идёт вещество,
-    // откуда бы она ни пришла (шаг, файл, объединение графов).
+    // Связь назад — рециклинг или выход к продукту, который уже стоит выше
+    // (тип "loop", в обход), — пунктиром и со стрелкой туда, куда идёт
+    // вещество, откуда бы она ни пришла (шаг, файл, объединение графов).
     const recycleStyled = (e: (typeof baseEdges)[number]) => {
-      if (!isRecycleEdge(e)) return e;
+      if (!isRecycleEdge(e) && e.type !== "loop") return e;
       const cls = (e.className ?? "").includes("edge--recycle")
         ? e.className
         : [e.className, "edge--recycle"].filter(Boolean).join(" ");

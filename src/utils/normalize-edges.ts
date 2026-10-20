@@ -79,7 +79,7 @@ export function applyHandlesByGeometry(
 
     const flow = semantic ? tFlowOf(e) : undefined;
     if (flow && productTransformationEnds(e, typeOf)) {
-      return semanticHandles(e, flow, src, tgt, isRecycleEdge(e));
+      return semanticHandles(e, flow, src, tgt);
     }
 
     const sy = src.position?.y ?? 0;
