@@ -1,6 +1,7 @@
 import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { productTransformationEnds, semanticHandles, tFlowOf } from "./edgeFlow";
+import { isRecycleEdge, recycleArrowAt } from "./recycleEdge";
 
 /**
  * Отфильтровывает из newEdges те, для которых обратное ребро
@@ -78,12 +79,24 @@ export function applyHandlesByGeometry(
 
     const flow = semantic ? tFlowOf(e) : undefined;
     if (flow && productTransformationEnds(e, typeOf)) {
-      return semanticHandles(e, flow, src, tgt);
+      return semanticHandles(e, flow, src, tgt, isRecycleEdge(e));
     }
 
     const sy = src.position?.y ?? 0;
     const ty = tgt.position?.y ?? 0;
     const isDown = ty >= sy;
+
+    // Пунктир рециклинга, идущий вверх, входит в верх узла, куда идёт
+    // вещество, — в обход, а не в его низ.
+    if (isRecycleEdge(e)) {
+      const toTarget = recycleArrowAt(e, typeOf) === "end";
+      if (toTarget && ty < sy) {
+        return { ...e, sourceHandle: "top-source", targetHandle: "top", type: "loop" };
+      }
+      if (!toTarget && sy < ty) {
+        return { ...e, sourceHandle: "top-source", targetHandle: "top", type: "loop" };
+      }
+    }
 
     return {
       ...e,

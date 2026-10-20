@@ -181,22 +181,25 @@ export const GraphToolbar = ({
         </span>
       </button>
 
-      <button
-        type="button"
-        className={`${styles.chip} ${alternatives ? styles.chipActive : ""}`}
-        onClick={onToggleAlternatives}
-        aria-pressed={alternatives}
-        title="Показать альтернативные пути получения продуктов"
-      >
-        <BranchIcon size={16} className={styles.chipIcon} />
-        Альтернативы
-        <span
-          className={`${styles.switch} ${alternatives ? styles.switchOn : ""}`}
-          aria-hidden
+      {/* В фокус-режиме альтернатив нет: окрестность — сама цепочка. */}
+      {!focusOn && (
+        <button
+          type="button"
+          className={`${styles.chip} ${alternatives ? styles.chipActive : ""}`}
+          onClick={onToggleAlternatives}
+          aria-pressed={alternatives}
+          title="Показать альтернативные пути получения продуктов"
         >
-          <span className={styles.switchKnob} />
-        </span>
-      </button>
+          <BranchIcon size={16} className={styles.chipIcon} />
+          Альтернативы
+          <span
+            className={`${styles.switch} ${alternatives ? styles.switchOn : ""}`}
+            aria-hidden
+          >
+            <span className={styles.switchKnob} />
+          </span>
+        </button>
+      )}
 
     </div>
   );
