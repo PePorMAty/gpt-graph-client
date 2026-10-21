@@ -9,6 +9,7 @@ import { CardTitleField } from "./CardTitleField";
 import { KeyInfoBlock } from "./KeyInfoBlock";
 import { NodeIdentifiers } from "./NodeIdentifiers";
 import { IndustryPanel } from "../industry/IndustryPanel";
+import { TransformationBalance } from "../material-balance/MaterialBalanceSection";
 import { MarkdownEditor } from "../markdown-editor";
 import { toTransformationRoutesView } from "../../utils/transformationRoutesView";
 import { useDismiss } from "../../hooks/useDismiss";
@@ -30,8 +31,11 @@ import { sourceHref } from "../../store/api/local-sources-api";
 import { sourceLinkText } from "../../utils/sourceOrigin";
 import styles from "./NodeCard.module.css";
 
-/** Вкладки карточки. У преобразования третья — маршруты, у продукта — ГИСП. */
-type CardTab = "brief" | "tech" | "industry" | "routes";
+/**
+ * Вкладки карточки. У преобразования — маршруты и материальный баланс, у
+ * продукта — ГИСП.
+ */
+type CardTab = "brief" | "tech" | "industry" | "routes" | "balance";
 
 /** Почему карточка только для просмотра — вместо молча пропавших кнопок. */
 const LOCK_TEXT: Record<NonNullable<FlowPanelProps["lockReason"]>, string> = {
@@ -140,13 +144,14 @@ export const NodeCard: FC<NodeCardProps> = ({
 
   useDismiss(menuRef, () => setMenuOpen(false), menuOpen);
 
-  // Сброс при смене выбранного узла.
+  // Сброс при смене выбранного узла. Материальный баланс остаётся открытым
+  // при переходе к другому преобразованию: так удобно пройти по цепочке.
   useEffect(() => {
-    setTab("brief");
+    setTab((cur) => (cur === "balance" && kind === "transformation" ? cur : "brief"));
     setBuildOpen(false);
     setDescEditing(false);
     setMenuOpen(false);
-  }, [nodeId]);
+  }, [nodeId, kind]);
 
   // Esc закрывает окно построения.
   useEffect(() => {
@@ -180,6 +185,7 @@ export const NodeCard: FC<NodeCardProps> = ({
     if (isProduct) list.push({ id: "industry", label: "Промышленное знание" });
     else if (hasAggregatedDesc)
       list.push({ id: "routes", label: "Технологические маршруты" });
+    if (kind === "transformation") list.push({ id: "balance", label: "Материальный баланс" });
     return list;
   }, [kind, isProduct, hasAggregatedDesc]);
 
@@ -567,6 +573,13 @@ export const NodeCard: FC<NodeCardProps> = ({
               nodeId={nodeId}
               readOnly={readOnly}
             />
+          )}
+
+          {/* ── Материальный баланс преобразования ──
+              Посчитать здесь же, сначала в процентах; по ссылке — только
+              смотреть. «Фокус» и «только продукты» расчёту не мешают. */}
+          {activeTab === "balance" && nodeId && (
+            <TransformationBalance nodeId={nodeId} readOnly={lockReason === "shared"} />
           )}
 
           {/* ── Технологические маршруты (обобщение шага) ── */}

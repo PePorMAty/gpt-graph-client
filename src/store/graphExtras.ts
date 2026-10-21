@@ -9,7 +9,7 @@
 
 import { createAsyncThunk } from "@reduxjs/toolkit";
 
-import type { RootState } from "./store";
+import type { AppDispatch, RootState } from "./store";
 import type { HistoryEntry } from "./types";
 import {
   appendHistory,
@@ -22,6 +22,7 @@ import {
 } from "./api/graph-extras-api";
 import { setBookmarks } from "./slices/bookmarksSlice";
 import { restoreMaterialBalances } from "./slices/gptSlice";
+import { pullReadyBalances } from "./slices/materialBalanceSlice";
 import { clearHistory, restoreHistory } from "./slices/historySlice";
 import { showToast } from "../components/toast/toastStore";
 
@@ -52,6 +53,7 @@ function mergeById(...lists: HistoryEntry[][]): HistoryEntry[] {
  * Открыт сохранённый граф — поднять его закладки, историю и расчёты
  * материального баланса с сервера. Расчёты — те, что изменились после
  * сохранения графа: пришли позже или их убрали (см. graphExtrasMiddleware).
+ * Преобразованиям без расчёта — готовые из базы (pullReadyBalances).
  *
  * Зовётся сразу после loadGraphFromFile и setOpenedGraph. К этому моменту
  * локальные списки уже очищены под новый граф, а в истории лежит запись
@@ -80,6 +82,11 @@ export const openGraphExtras = createAsyncThunk<
     }
   } else {
     console.warn("Не удалось загрузить расчёты баланса графа", balances.reason);
+  }
+  // Расчёты графа на месте — для преобразований без расчёта спросить базу
+  // сервера: готовое (в том числе с другого графа) приходит без «Рассчитать».
+  if (getState().savedGraphs.openedGraphId === graphId) {
+    void (dispatch as AppDispatch)(pullReadyBalances(graphId));
   }
 
   if (bookmarks.status === "fulfilled") {

@@ -68,6 +68,24 @@ export function orientByTFlow(nodes: CustomNode[], edges: Edge[]): Edge[] {
 }
 
 /**
+ * Рёбра цепочки по ходу производства — сырьё → преобразование → продукт, как
+ * их раскладывает полотно. Связи «продукт ↔ преобразование» — по смыслу
+ * (tFlow, у старых графов выводится), прочие — по направлению шагов
+ * построения. Связи рециклинга не входят: они ведут назад и замкнули бы
+ * круг.
+ *
+ * Нужно там, где по рёбрам ищут предков и потомков: шаг «вверх» хранит
+ * связи от якоря к найденному сырью — против хода производства, — и фокус-
+ * режим ставил сырьё («Азот» синтеза аммиака) ниже продукта.
+ */
+export function orientByProduction(nodes: CustomNode[], edges: Edge[]): Edge[] {
+  const chain = withoutRecycle(edges);
+  const byFlow = orientByTFlow(nodes, inferTFlow(nodes, chain));
+  const byBuild = orientByBuildDirection(nodes, byFlow);
+  return byFlow.map((e, i) => (tFlowOf(e) ? e : byBuild[i]));
+}
+
+/**
  * Проставить tFlow рёбрам «продукт ↔ преобразование», у которых его нет:
  * графы, построенные до этой пометки, и графы из файлов.
  *
@@ -147,7 +165,11 @@ export function semanticHandles(
   const dy = (p.position?.y ?? 0) - (t.position?.y ?? 0);
   const productAbove = dy < 0;
   const tSide = flow === "in" ? "top" : "bottom";
-  const pSide = productAbove ? "bottom" : "top";
+  // Выход входит в верх продукта всегда — как связь от преобразования,
+  // которое его дало, — и когда продукт стоит выше (связь назад, в обход):
+  // в его низ уходят его собственные связи. Сырьё — со стороны,
+  // ближней к преобразованию.
+  const pSide = flow === "out" || !productAbove ? "top" : "bottom";
   const tHandle = HANDLE[tSide][tIsSource ? "source" : "target"];
   const pHandle = HANDLE[pSide][tIsSource ? "target" : "source"];
   const backward = flow === "in" ? dy > SAME_ROW : dy < -SAME_ROW;

@@ -12,6 +12,8 @@ import { LibraryScreen } from "./components/library/LibraryScreen";
 import { SharedGraphView } from "./components/shared-graph-view";
 import { GuidePage } from "./components/guide/GuidePage";
 import { ToastContainer } from "./components/toast/ToastContainer";
+import { useAppDispatch } from "./store/hooks";
+import { setBalanceMode } from "./store/slices/materialBalanceSlice";
 
 import styles from "./styles/App.module.css";
 
@@ -51,9 +53,8 @@ function Workspace() {
     return () => window.removeEventListener("node-card-toggle", onToggle);
   }, []);
 
-  // Раздел рельса просят открыть или закрыть из полотна: чип «Материальный
-  // баланс» и выбор преобразования открывают его вкладку, выключенный чип
-  // закрывает — если открыта именно она.
+  // Раздел рельса просят открыть или закрыть из полотна: выбор
+  // преобразования для баланса открывает его вкладку.
   useEffect(() => {
     const sectionOf = (e: Event) =>
       (e as CustomEvent<{ section?: RailSection }>).detail?.section;
@@ -75,6 +76,16 @@ function Workspace() {
 
   const panelSection = PANEL_SECTIONS.includes(section) ? section : null;
   const panelOpen = isGraphScreen && panelSection !== null;
+
+  // Материальный баланс на полотне включается его вкладкой левой панели:
+  // открыта — на узлах расчёты, щелчок по преобразованию выбирает его;
+  // закрыта — обычное полотно. Чипа над полотном больше нет.
+  const dispatch = useAppDispatch();
+  const balanceOpen = panelOpen && panelSection === "balance";
+  useEffect(() => {
+    dispatch(setBalanceMode(balanceOpen));
+  }, [dispatch, balanceOpen]);
+
   // Панель над холстом сдвигается и под карточку узла, и под панель раздела.
   const leftOccupied = isGraphScreen && (panelOpen || cardOpen);
 
