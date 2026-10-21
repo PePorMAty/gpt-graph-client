@@ -77,7 +77,6 @@ import {
 import { applyHandlesByGeometry } from "./utils/normalize-edges";
 import { collapseDuplicateTransformations } from "./utils/collapseDuplicateTransformations";
 import { pushHistory } from "./store/slices/historySlice";
-import { inferLayoutDirection } from "./utils/inferLayoutDirection";
 import { enrichSourcesFromNodes } from "./utils/enrichSourcesFromNodes";
 // Автосейв полотна в sessionStorage: страховка от перезагрузки/зависания
 // вкладки, а не постоянное хранилище (постоянное — сохранение на сервер).
@@ -125,6 +124,7 @@ import {
 import { previewStepOutcome } from "./utils/stepToFlow";
 import { getAncestorProductLabels } from "./utils/graphReachability";
 import { isRecycleEdge, recycleArrowAt } from "./utils/recycleEdge";
+import { orientByProduction, orientByTFlow } from "./utils/edgeFlow";
 import { alternativeRouteText } from "./utils/transformationRoutesView";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
@@ -165,13 +165,11 @@ import {
   draftAmounts,
   focusBalanceProduct,
   pickBalanceTransformation,
-  setBalanceActive,
   setBalanceMode,
 } from "./store/slices/materialBalanceSlice";
 import {
   balanceLayer as computeBalanceLayer,
   edgeKey as balanceEdgeKey,
-  calcsOf,
 } from "./utils/materialBalance";
 
 const nodeTypes: NodeTypes = {
@@ -586,13 +584,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     return () => cancelAnimationFrame(id);
   }, [productsOnly, focusOn, fitView, setCenter, dispatch]);
 
-  // Ориентация раскладки фокус-окрестности — из геометрии текущего графа,
-  // чтобы фокус-вид не переворачивался относительно полотна.
-  const focusLayoutDirection = useMemo(
-    () => inferLayoutDirection(data.nodes, data.edges),
-    [data.nodes, data.edges],
-  );
-
   // Перестройка окрестности фокуса: вход в режим, смена фокуса/глубины или
   // изменение данных графа. Подграф раскладывается заново (dagre/ELK),
   // позиции узлов в store не трогаются.
@@ -605,8 +596,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       focusFitKeyRef.current = null;
       return;
     }
+    // Альтернатив в фокус-режиме нет: окрестность — сама цепочка, а
+    // фиолетовые варианты шага загромождали её связями во все стороны.
+    const chainNodes = data.nodes.filter((n) => n.data?.chainVariant !== "alt");
+    const chainIds = new Set(chainNodes.map((n) => n.id));
+    const chainEdges = data.edges.filter(
+      (e) => chainIds.has(e.source) && chainIds.has(e.target),
+    );
     // Фокус-узел мог исчезнуть из store (undo шага и т.п.) — выходим из режима.
-    if (!data.nodes.some((n) => n.id === focusState.focusId)) {
+    if (!chainIds.has(focusState.focusId)) {
       setFocusState(null);
       return;
     }
@@ -615,40 +613,45 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     lastInteractedNodeIdRef.current = focusState.focusId;
     let cancelled = false;
     (async () => {
-      // Глубины обхода заданы в терминах рёбер (up — по входящим), а охваты
-      // «↑ Вверх»/«↓ Вниз» пользователь читает визуально. В «вверх»-графе
-      // (rankdir BT) входящие рёбра ведут ВНИЗ полотна, поэтому направления
-      // меняем местами — иначе кнопки работали бы зеркально экрану.
-      const depths = focusScopeDepths(focusScope, focusDepth);
+      // Предки и потомки — по ходу производства, как раскладывает полотно:
+      // сырьё сверху, продукты снизу. По сырому направлению рёбер шаг
+      // «вверх» (связи от якоря к сырью) ставил сырьё ниже продукта —
+      // «Азот» синтеза аммиака оказывался под «Аммиаком». Пунктир рециклинга
+      // в обходе и раскладке не участвует, а на экран возвращается.
+      const production = orientByProduction(chainNodes, chainEdges);
+      const recycle = orientByTFlow(chainNodes, chainEdges.filter(isRecycleEdge));
       const sub = buildFocusSubgraph(
-        data.nodes,
-        data.edges,
+        chainNodes,
+        production,
         focusState.focusId,
-        focusLayoutDirection === "BT"
-          ? { up: depths.down, down: depths.up }
-          : depths,
+        focusScopeDepths(focusScope, focusDepth),
       );
-      // Ориентацию берём из геометрии полного графа, а не хардкодим: у
-      // «вверх»-графов рёбра идут продукт → сырьё, и жёсткий "TB" переворачивал
-      // окрестность зеркально тому, что видно на полотне вне фокус-режима.
       // Зазоры зависят от охвата: чем больше рангов в окрестности, тем плотнее
       // ставим узлы, иначе камера отъезжает и подписи мельчают.
       const laid = await layoutTree(
         sub.nodes,
         sub.edges,
         focusState.focusId,
-        focusLayoutDirection,
+        "TB",
         focusLayoutSpacing(sub.nodes, sub.edges),
       );
       if (cancelled) return;
       const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
+      const inSub = new Set(centered.map((n) => n.id));
       const next: FocusSubgraphResult = {
         nodes: centered,
         // Хэндлы из store соответствуют геометрии полного графа —
         // переназначаем по позициям фокус-раскладки.
         // Только по геометрии: окрестность раскладывается своим деревом, и
         // хэндлы по смыслу связей рисовали бы там обходы.
-        edges: applyHandlesByGeometry(centered, sub.edges, { semantic: false }),
+        edges: applyHandlesByGeometry(
+          centered,
+          [
+            ...sub.edges,
+            ...recycle.filter((e) => inSub.has(e.source) && inSub.has(e.target)),
+          ],
+          { semantic: false },
+        ),
       };
 
       focusAnimRef.current?.cancel();
@@ -703,7 +706,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     focusState,
     focusScope,
     focusDepth,
-    focusLayoutDirection,
     data.nodes,
     data.edges,
     fitFocusCamera,
@@ -798,9 +800,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     };
   }, []);
 
-  // Режим «Материальный баланс» (чип над полотном) — подробнее ниже, у слоя
-  // баланса.
+  // Материальный баланс на полотне — пока открыта его вкладка: слева
+  // (balanceMode) или в карточке преобразования (balanceCard). Подробнее
+  // ниже, у слоя баланса.
   const balanceMode = useAppSelector((s) => s.materialBalance.mode);
+  const balanceCard = useAppSelector((s) => s.materialBalance.card);
+  const balanceOn = balanceMode || balanceCard !== null;
 
   // Подсветка цепочки по hover — только для графов, загруженных через
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
@@ -816,13 +821,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // В фокус-режиме окрестность и так обрезана — hover-затемнение не нужно.
     // В режиме баланса подсвечено своё — выбранное преобразование и
     // посчитанные пары, — и наведение гасило бы его.
-    if (source !== "loaded" || !hoveredChainId || focusOn || balanceMode) return null;
+    if (source !== "loaded" || !hoveredChainId || focusOn || balanceOn) return null;
     return findChainNodeIds(
       data.edges,
       hoveredChainId,
       (id) => nodeTypeById.get(id),
     );
-  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn, balanceMode]);
+  }, [source, hoveredChainId, data.edges, nodeTypeById, focusOn, balanceOn]);
 
   // Context menu & panel mode
   const [contextMenu, setContextMenu] = useState<{
@@ -856,12 +861,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // первый продукт графа.
   const enterFocusMode = useCallback(() => {
     const nodes = nodesRef.current;
+    // Альтернатив в фокус-режиме нет — центром она стать не может.
+    const chain = nodes.filter((n) => n.data?.chainVariant !== "alt");
     const isValid = (id: string | null | undefined): id is string =>
-      !!id && nodes.some((n) => n.id === id);
+      !!id && chain.some((n) => n.id === id);
 
     const rfSelected =
-      nodes.find((n) => n.selected && n.type === "product") ??
-      nodes.find((n) => n.selected);
+      chain.find((n) => n.selected && n.type === "product") ??
+      chain.find((n) => n.selected);
 
     let initial: string | undefined;
     if (isValid(selectedNodeId)) initial = selectedNodeId;
@@ -869,7 +876,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     else if (isValid(lastInteractedNodeIdRef.current))
       initial = lastInteractedNodeIdRef.current;
     else if (isValid(rootId)) initial = rootId;
-    else initial = (nodes.find((n) => n.type === "product") ?? nodes[0])?.id;
+    else initial = (chain.find((n) => n.type === "product") ?? chain[0])?.id;
 
     if (!initial) return;
 
@@ -972,34 +979,36 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   );
 
   // ─── Материальный баланс ───
-  // Режим с чипа над полотном: щелчок по преобразованию выбирает его для
-  // расчёта, по продукту открытого расчёта — расчёт этого продукта. На
-  // узлах — все посчитанные расчёты (продукт сверху, сырьё снизу), их связи
+  // Пока открыта вкладка «Материальный баланс» левой панели, щелчок по
+  // преобразованию выбирает его для расчёта, по продукту открытого расчёта —
+  // расчёт этого продукта. Во вкладке карточки преобразования щелчки
+  // обычные: открывают карточки. В обоих случаях на узлах — все посчитанные
+  // расчёты (продукт сверху, сырьё снизу) долями или массами, их связи
   // подсвечены, остальное приглушено (см. utils/materialBalance.ts,
   // balanceLayer).
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
   const balanceDraft = useAppSelector((s) => s.materialBalance.draft);
+  const balanceDisplay = useAppSelector((s) => s.materialBalance.display);
   const balanceModeRef = useRef(balanceMode);
   balanceModeRef.current = balanceMode;
-  const balanceActiveRef = useRef(balanceActive);
-  balanceActiveRef.current = balanceActive;
   const balance = useMemo(
     () =>
-      balanceMode
+      balanceOn
         ? computeBalanceLayer({
             nodes: data.nodes,
             edges: data.edges,
             selection: balanceSelection,
             active: balanceActive,
             draft: { amounts: draftAmounts(balanceDraft), targets: balanceDraft.targets },
+            display: balanceDisplay,
           })
         : null,
-    [balanceMode, balanceSelection, balanceActive, balanceDraft, data.nodes, data.edges],
+    [balanceOn, balanceSelection, balanceActive, balanceDraft, balanceDisplay, data.nodes, data.edges],
   );
-  // Вкладка «Материальный баланс» левой панели: чип и выбор преобразования
-  // открывают её, выключенный чип закрывает. Карточка узла занимает то же
-  // место слева — открывая вкладку, её закрываем.
+  // Вкладка «Материальный баланс» левой панели: её открывает выбор
+  // преобразования (щелчок в режиме, пункт меню). Карточка узла занимает то
+  // же место слева — открывая вкладку, её закрываем.
   const openBalancePanel = useCallback(() => {
     saveChangesRef.current();
     setIsPanelOpen(false);
@@ -1007,17 +1016,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       new CustomEvent("rail-open", { detail: { section: "balance" } }),
     );
   }, []);
-  const toggleBalanceMode = useCallback(() => {
-    const next = !balanceModeRef.current;
-    dispatch(setBalanceMode(next));
-    if (readOnly) return;
-    if (next) openBalancePanel();
-    else {
-      window.dispatchEvent(
-        new CustomEvent("rail-close", { detail: { section: "balance" } }),
-      );
-    }
-  }, [dispatch, readOnly, openBalancePanel]);
 
   const flowNodes = useMemo(
     () =>
@@ -1149,10 +1147,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     // Режим баланса: связи посчитанных пар и выбранной подсвечены, прочие
     // приглушены (balanceLayer, edges).
     const lit = balance && balance.lit.size > 0 ? balance.lit : null;
-    // Связь рециклинга — пунктиром и со стрелкой туда, куда идёт вещество,
-    // откуда бы она ни пришла (шаг, файл, объединение графов).
+    // Связь назад — рециклинг или выход к продукту, который уже стоит выше
+    // (тип "loop", в обход), — пунктиром и со стрелкой туда, куда идёт
+    // вещество, откуда бы она ни пришла (шаг, файл, объединение графов).
     const recycleStyled = (e: (typeof baseEdges)[number]) => {
-      if (!isRecycleEdge(e)) return e;
+      if (!isRecycleEdge(e) && e.type !== "loop") return e;
       const cls = (e.className ?? "").includes("edge--recycle")
         ? e.className
         : [e.className, "edge--recycle"].filter(Boolean).join(" ");
@@ -1303,25 +1302,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
       lastInteractedNodeIdRef.current = node.id;
-      // Режим «Материальный баланс»: щелчок по преобразованию выбирает его
-      // для расчёта, карточка не открывается. По ссылке выбирать нечего —
-      // щелчок показывает расчёт этого преобразования, повторный — расчёт
-      // другого направления, если он есть.
+      // Открыта вкладка «Материальный баланс» слева: щелчок по
+      // преобразованию выбирает его для расчёта, карточка не открывается. По
+      // ссылке левой панели нет — там баланс смотрят во вкладке карточки.
       if (balanceModeRef.current && node.type === "transformation") {
         setContextMenu(null);
-        if (readOnly) {
-          const calcs = calcsOf(node as CustomNode);
-          const active = balanceActiveRef.current;
-          const at =
-            active?.nodeId === node.id
-              ? calcs.findIndex((c) => c.record.id === active.recordId)
-              : -1;
-          const next = calcs[(at + 1) % Math.max(calcs.length, 1)];
-          if (next) {
-            dispatch(setBalanceActive({ nodeId: node.id, recordId: next.record.id }));
-          }
-          return;
-        }
         dispatch(pickBalanceTransformation(node.id));
         openBalancePanel();
         return;
@@ -3360,8 +3345,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onToggleIndustryData={() => setIndustryData((v) => !v)}
           alternatives={showAlternatives}
           onToggleAlternatives={() => setShowAlternatives((v) => !v)}
-          balance={balanceMode}
-          onToggleBalance={toggleBalanceMode}
           readOnly={sharedView}
         />
       </div>

@@ -3,11 +3,13 @@ import type { FC, ReactNode } from "react";
 import {
   balanceInputNote,
   formatMass,
+  formatPercent,
   formatView,
   type BalanceFlowResult,
   type BalanceInputAmount,
   type BalanceResult,
 } from "../../utils/materialBalance";
+import type { BalanceAmount } from "../../store/api/material-balance-api";
 import type { CustomNode } from "../../types";
 import { ChevronRightIcon } from "../icons";
 import { BasisFields } from "./BasisFields";
@@ -61,12 +63,20 @@ interface FormProps {
   targets: string[] | null;
   onTargets: (ids: string[] | null) => void;
   disabled?: boolean;
+  /**
+   * В процентах: полей количества нет — доли от него не зависят, модель
+   * считает на 1 т опорного (выбранного или основного).
+   */
+  percent?: boolean;
+  /** Побочные продукты, поставленные из таблицы, — подпись у их галочки. */
+  byproductIds?: string[];
 }
 
 /**
  * Схема нового расчёта: количество каждого сырья (пусто — сколько нужно),
  * опорное сырьё и продукты, для которых считать. Модель считает от
- * количества опорного; остальное пересчитывается без неё.
+ * количества опорного; остальное пересчитывается без неё. В процентах —
+ * только опорное и продукты.
  */
 export const FormScheme: FC<FormProps> = ({
   transformation,
@@ -79,13 +89,17 @@ export const FormScheme: FC<FormProps> = ({
   targets,
   onTargets,
   disabled,
+  percent = false,
+  byproductIds = [],
 }) => {
   const picked = ins.find((n) => n.id === basisId);
-  const basis = picked
-    ? isSet(amounts[picked.id])
-      ? picked
-      : undefined
-    : ins.find((n) => isSet(amounts[n.id]));
+  const basis = percent
+    ? (picked ?? ins.find((n) => isSet(amounts[n.id])) ?? ins[0])
+    : picked
+      ? isSet(amounts[picked.id])
+        ? picked
+        : undefined
+      : ins.find((n) => isSet(amounts[n.id]));
   const chosen = outs.filter((n) => !targets || targets.includes(n.id));
   const toggle = (id: string, on: boolean) => {
     const next = on
@@ -106,12 +120,14 @@ export const FormScheme: FC<FormProps> = ({
         return (
           <div key={n.id} className={styles.flowRow}>
             <span className={styles.flowName}>{label(n)}</span>
-            <BasisFields
-              value={value}
-              onChange={(v) => onAmount(n.id, v)}
-              label={label(n)}
-              disabled={disabled}
-            />
+            {!percent && (
+              <BasisFields
+                value={value}
+                onChange={(v) => onAmount(n.id, v)}
+                label={label(n)}
+                disabled={disabled}
+              />
+            )}
             {ins.length > 1 && (
               <label
                 className={styles.basisPick}
@@ -128,7 +144,11 @@ export const FormScheme: FC<FormProps> = ({
               </label>
             )}
             <span className={styles.flowNote}>
-              {n === basis
+              {percent
+                ? n === basis
+                  ? "основное сырьё — от него считает модель"
+                  : "сколько нужно — посчитает модель"
+                : n === basis
                 ? "от этого количества считает модель"
                 : n === picked
                   ? "опорное, но количество не задано — задайте его"
@@ -151,7 +171,13 @@ export const FormScheme: FC<FormProps> = ({
             />
             <span className={styles.flowName}>{label(n)}</span>
             <span className={styles.flowNote}>
-              {on ? "сколько получится — посчитает модель" : "не считать"}
+              {byproductIds.includes(n.id)
+                ? on
+                  ? "побочный продукт — посчитается продуктом"
+                  : "побочный продукт — модель даст его отдельно"
+                : on
+                  ? "сколько получится — посчитает модель"
+                  : "не считать"}
             </span>
           </label>
         );
@@ -166,7 +192,9 @@ export const FormScheme: FC<FormProps> = ({
             </p>
           )}
           <p className={styles.question}>
-            {basis && chosen.length
+            {percent && chosen.length
+              ? `Какую долю ${chosen.map((n) => `«${label(n)}»`).join(", ")} даёт сырьё ${ins.map((n) => `«${label(n)}»`).join(", ")}? В процентах: сырьё — 100 %, продукт — 100 %, побочные продукты и отходы — отдельно.`
+              : basis && chosen.length
               ? `Сколько ${chosen.map((n) => `«${label(n)}»`).join(", ")} получится из ${formatView(amounts[basis.id])} «${label(basis)}»${others.length ? ` и ${others.map((n) => `«${label(n)}»`).join(", ")}` : ""}?`
               : picked
                 ? `Задайте количество опорного сырья «${label(picked)}» — от него посчитаем остальное.`
@@ -190,6 +218,11 @@ interface CalcProps {
   /** Только этот продукт (обозначение) — схема расчёта одного продукта. */
   only?: string;
   readOnly?: boolean;
+  /**
+   * Доли по обозначениям (percentShares) — схема в процентах:
+   * количества не правятся, у сырья и продуктов — их доли.
+   */
+  shares?: Map<string, BalanceAmount>;
 }
 
 /**
@@ -204,8 +237,13 @@ export const CalcScheme: FC<CalcProps> = ({
   onProduct,
   only,
   readOnly,
+  shares,
 }) => {
   const name = (f: BalanceFlowResult) => labelOf(f.nodeId) || f.name;
+  const share = (f: BalanceFlowResult) => {
+    const v = shares?.get(f.ref);
+    return v ? formatPercent(v) : "нет данных";
+  };
   const gone = (f: BalanceFlowResult) => !labelOf(f.nodeId);
   const targets = only
     ? result.targets.filter((f) => f.ref === only)
@@ -229,7 +267,9 @@ export const CalcScheme: FC<CalcProps> = ({
               <span className={styles.flowGone}> · нет на графе</span>
             )}
           </span>
-          {readOnly ? (
+          {shares ? (
+            <span className={styles.flowMass}>{share(f)}</span>
+          ) : readOnly ? (
             <span className={styles.flowMass}>
               {f.set ? formatView(f.set) : formatMass(f.mass, f.unit)}
             </span>
@@ -241,9 +281,9 @@ export const CalcScheme: FC<CalcProps> = ({
             />
           )}
           <span
-            className={`${styles.flowNote} ${f.noRecipe ? styles.flowWarn : ""}`}
+            className={`${styles.flowNote} ${!shares && f.noRecipe ? styles.flowWarn : ""}`}
           >
-            {balanceInputNote(f, result)}
+            {shares ? "доля в сырье" : balanceInputNote(f, result)}
           </span>
         </div>
       ))}
@@ -259,7 +299,13 @@ export const CalcScheme: FC<CalcProps> = ({
                   )}
                 </span>
                 <span className={styles.flowMass}>
-                  {f.mass ? <b>{formatMass(f.mass, f.unit)}</b> : "нет данных"}
+                  {shares ? (
+                    <b>{share(f)}</b>
+                  ) : f.mass ? (
+                    <b>{formatMass(f.mass, f.unit)}</b>
+                  ) : (
+                    "нет данных"
+                  )}
                 </span>
                 {onProduct && f.nodeId && !gone(f) && (
                   <ChevronRightIcon size={14} />

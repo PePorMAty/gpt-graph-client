@@ -9,8 +9,8 @@ const LEGEND: { color: string; label: string; line?: boolean }[] = [
   { color: "var(--c-product)", label: "Продукт" },
   { color: "var(--c-transform)", label: "Преобразование" },
   { color: "var(--c-alt)", label: "Альтернативный маршрут" },
-  // Связь рециклинга — пунктир (styles/Flow.module.css, .edge--recycle).
-  { color: "#0d9488", label: "Обратная переработка", line: true },
+  // Связь назад — рециклинг или продукт выше — пунктир (styles/Flow.module.css, .edge--recycle).
+  { color: "#0d9488", label: "Связь назад, к узлу выше", line: true },
 ];
 
 const SHORTCUTS = [

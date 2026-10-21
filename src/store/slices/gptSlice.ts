@@ -480,7 +480,12 @@ const gptSlice = createSlice({
 
     updateNodeData: (
       state,
-      action: PayloadAction<{ nodeId: string; data: Partial<CustomNodeData> }>,
+      action: PayloadAction<{
+        nodeId: string;
+        data: Partial<CustomNodeData>;
+        /** Не писать в историю: правка не от человека (готовый расчёт из базы). */
+        silent?: boolean;
+      }>,
     ) => {
       const { nodeId, data } = action.payload;
       const node = state.data.nodes.find((node) => node.id === nodeId);
@@ -652,6 +657,52 @@ const gptSlice = createSlice({
       state.data.edges = normalizeEdges(
         addEdge(
           { ...action.payload, type: "straight", ...(flow ? { data: { tFlow: flow } } : {}) },
+          state.data.edges,
+        ),
+      );
+    },
+    /**
+     * Связать продукт с преобразованием, когда смысл связи известен (tFlow):
+     * поток материального баланса, поставленный на граф из таблицы, —
+     * сырьё или выход, где бы ни стоял узел. Связь уже есть — ничего.
+     */
+    connectWithFlow: (
+      state,
+      action: PayloadAction<{
+        productId: string;
+        transformationId: string;
+        flow: "in" | "out";
+        /**
+         * Чем продукт приходится преобразованию в материальном балансе:
+         * реагент или побочный продукт. Лежит на связи (balanceRole): тот же
+         * продукт у другого преобразования может быть основным.
+         */
+        balanceRole?: "reagent" | "byproduct";
+      }>,
+    ) => {
+      const { productId, transformationId, flow, balanceRole } = action.payload;
+      if (productId === transformationId) return;
+      const existing = state.data.edges.find(
+        (e) =>
+          (e.source === productId && e.target === transformationId) ||
+          (e.source === transformationId && e.target === productId),
+      );
+      if (existing) {
+        if (balanceRole) existing.data = { ...(existing.data ?? {}), balanceRole };
+        return;
+      }
+      const [source, target] =
+        flow === "in" ? [productId, transformationId] : [transformationId, productId];
+      state.data.edges = normalizeEdges(
+        addEdge(
+          {
+            source,
+            target,
+            sourceHandle: null,
+            targetHandle: null,
+            type: "straight",
+            data: { tFlow: flow, ...(balanceRole ? { balanceRole } : {}) },
+          },
           state.data.edges,
         ),
       );
@@ -2113,6 +2164,7 @@ const gptSlice = createSlice({
 
 export const {
   restoreMaterialBalances,
+  connectWithFlow,
   updateNodeData,
   forceStepPreview,
   onNodesChange,
