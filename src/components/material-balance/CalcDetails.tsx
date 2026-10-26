@@ -2,7 +2,7 @@ import { useState, type FC } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { useAppDispatch } from "../../store/hooks";
 import { removeMaterialBalance } from "../../store/slices/materialBalanceSlice";
 import {
   coefficientItems,
@@ -16,8 +16,7 @@ import {
   STATUS_TEXT,
   STATUS_TONE,
   statusReason,
-  type BalanceInputAmount,
-  type BalanceResult,
+  type BalanceShares,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import { mentionsRefs, readableRecord } from "../../utils/readableModelText";
@@ -176,12 +175,10 @@ function tookText(ms: number | null | undefined): string {
 interface Props {
   nodeId: string;
   calc: MaterialBalanceCalc;
-  /** Пересчёт на количества человека (computeBalance). */
-  result: BalanceResult;
   /** Подпись узла по id; нет узла — пусто. */
   labelOf: (id: string | undefined) => string;
-  /** Количество сырья по обозначению; нет — таблица только для чтения. */
-  onAmount?: (ref: string, value: BalanceInputAmount) => void;
+  /** Сохранить правки процентов; нет — таблица только для чтения. */
+  onShares?: (shares: BalanceShares) => void;
   /** Подробный расчёт продукта. */
   onProduct?: (nodeId: string) => void;
   /** Показать узел на полотне. */
@@ -192,7 +189,7 @@ interface Props {
   onPlaceFlow?: (flow: { name: string; direction: "in" | "out" | "" }) => void;
   /** Роль сырья или продукта расчёта (реагент, побочный) — с его связи на графе. */
   roleOf?: (ref: string) => "reagent" | "byproduct" | undefined;
-  /** «Новый расчёт» — форма с количествами и продуктами этого расчёта. */
+  /** «Новый расчёт» — форма с опорным сырьём и продуктами этого расчёта. */
   onNewRequest?: () => void;
   /** «Показать на графе» — камера к преобразованию. */
   onShowOnGraph?: () => void;
@@ -201,7 +198,7 @@ interface Props {
 
 /**
  * Расчёт преобразования целиком: сведения о расчёте, таблица материального
- * баланса (сырьё с количествами, продукты, потоки сверх графа), коэффициенты,
+ * баланса в процентах (сырьё, продукты, потоки сверх графа), коэффициенты,
  * примечания, ответ модели по разделам, источники. Расчёт одного продукта —
  * по щелчку на нём в таблице.
  *
@@ -211,9 +208,8 @@ interface Props {
 export const CalcDetails: FC<Props> = ({
   nodeId,
   calc,
-  result,
   labelOf,
-  onAmount,
+  onShares,
   onProduct,
   onGo,
   findNode,
@@ -224,7 +220,6 @@ export const CalcDetails: FC<Props> = ({
   readOnly,
 }) => {
   const dispatch = useAppDispatch();
-  const display = useAppSelector((s) => s.materialBalance.display);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const record = readableRecord(calc.record);
   const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
@@ -288,14 +283,14 @@ export const CalcDetails: FC<Props> = ({
       </div>
 
       <BalanceTable
-        result={result}
         record={record}
+        nodeIds={calc.nodeIds}
         labelOf={labelOf}
-        onAmount={readOnly ? undefined : onAmount}
+        shares={calc.shares}
+        onShares={readOnly ? undefined : onShares}
         onProduct={onProduct}
         onGo={onGo}
         findNode={findNode}
-        display={display}
         onPlaceFlow={readOnly ? undefined : onPlaceFlow}
         roleOf={roleOf}
       />
@@ -363,8 +358,8 @@ export const CalcDetails: FC<Props> = ({
       <section className={styles.section}>
         <p className={styles.muted}>
           Ниже — разделы ответа модели как есть: числа в них на {formatBasisAmount(record)}{" "}
-          «{nameOf("P1")}», с которыми она считала. На ваше количество пересчитаны схема и
-          подписи на узлах.
+          «{nameOf("P1")}», с которыми она считала; проценты в таблице — по этим числам
+          (поправленные вручную — как их вписали).
         </p>
         {mentionsRefs(record) && (
           <p className={`${styles.note} ${styles.legend}`}>
