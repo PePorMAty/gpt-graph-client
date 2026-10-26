@@ -161,6 +161,13 @@
   color: var(--c-text-muted);
 }
 
+/* Код, по которому нашёлся продукт: «ТН ВЭД 2902 20 000». */
+.resultCode {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
 .resultArrow {
   flex: 0 0 auto;
   color: var(--c-text-faint);
