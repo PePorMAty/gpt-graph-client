@@ -7,8 +7,6 @@ import {
   invalidateLocalSources,
   type UploadJob,
 } from "../../store/slices/localSourcesSlice";
-import { useAiConfig } from "../../hooks/useAiConfig";
-import { plural } from "../../utils/plural";
 import { SearchIcon, UploadIcon } from "../icons";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
@@ -69,7 +67,7 @@ const JobRow = ({ job }: { job: UploadJob }) => {
       {job.document && (
         <div className={styles.jobNote}>
           {job.state === "duplicate" && "Этот файл уже загружен: "}
-          {`«${job.document.title}» · ${job.document.pages} стр. · ${job.document.sections?.total ?? 0} ${plural(job.document.sections?.total ?? 0, "раздел", "раздела", "разделов")}`}
+          {`«${job.document.title}»`}
         </div>
       )}
       {job.warnings.map((w) => (
@@ -114,7 +112,6 @@ export const LocalDocumentsSection = ({
 }: Props) => {
   const dispatch = useAppDispatch();
   const uploads = useAppSelector((s) => s.localSources.uploads);
-  const { config: aiConfig } = useAiConfig();
 
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -184,10 +181,8 @@ export const LocalDocumentsSection = ({
           {details.open && (
             <span className={styles.hint}>
               PDF с текстом, до 100 МБ, можно несколько сразу. Документ делится
-              на разделы по содержанию, и модель разбирает каждый: что
-              производят и из какого сырья
-              {aiConfig.model ? ` (модель ${aiConfig.model})` : ""}. Сканы без
-              текстового слоя не распознаются.
+              на разделы по содержанию, и каждый разбирается: что производят и
+              из какого сырья. Сканы без текстового слоя не распознаются.
             </span>
           )}
           <input
