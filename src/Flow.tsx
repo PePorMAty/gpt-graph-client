@@ -162,7 +162,6 @@ import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
 import { getDefaultTransformationsBetweenPrompt } from "./prompts/transformationsBetweenPrompt";
 import {
-  draftAmounts,
   focusBalanceProduct,
   pickBalanceTransformation,
   setBalanceMode,
@@ -983,13 +982,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // преобразованию выбирает его для расчёта, по продукту открытого расчёта —
   // расчёт этого продукта. Во вкладке карточки преобразования щелчки
   // обычные: открывают карточки. В обоих случаях на узлах — все посчитанные
-  // расчёты (продукт сверху, сырьё снизу) долями или массами, их связи
+  // расчёты (продукт сверху, сырьё снизу) в массовых процентах, их связи
   // подсвечены, остальное приглушено (см. utils/materialBalance.ts,
   // balanceLayer).
   const balanceSelection = useAppSelector((s) => s.materialBalance.selection);
   const balanceActive = useAppSelector((s) => s.materialBalance.active);
-  const balanceDraft = useAppSelector((s) => s.materialBalance.draft);
-  const balanceDisplay = useAppSelector((s) => s.materialBalance.display);
+  const balanceTargets = useAppSelector((s) => s.materialBalance.draft.targets);
   const balanceModeRef = useRef(balanceMode);
   balanceModeRef.current = balanceMode;
   const balance = useMemo(
@@ -1000,11 +998,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             edges: data.edges,
             selection: balanceSelection,
             active: balanceActive,
-            draft: { amounts: draftAmounts(balanceDraft), targets: balanceDraft.targets },
-            display: balanceDisplay,
+            draft: { targets: balanceTargets },
           })
         : null,
-    [balanceOn, balanceSelection, balanceActive, balanceDraft, balanceDisplay, data.nodes, data.edges],
+    [balanceOn, balanceSelection, balanceActive, balanceTargets, data.nodes, data.edges],
   );
   // Вкладка «Материальный баланс» левой панели: её открывает выбор
   // преобразования (щелчок в режиме, пункт меню). Карточка узла занимает то
@@ -1099,7 +1096,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           };
         }
 
-        const coefficient = balance?.coefficients.get(n.id);
         return compact || bookmarked || balance
           ? {
               ...n,
@@ -1109,12 +1105,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                 ...(compact ? { focusCompact: true } : {}),
                 ...(bookmarked ? { bookmarked: true } : {}),
                 ...(balance ? { balanceQuiet: true } : {}),
-                ...(coefficient
-                  ? {
-                      balanceCoefficient: coefficient.text,
-                      balanceCoefficientTitle: coefficient.title,
-                    }
-                  : {}),
               },
             }
           : { ...n, className: cls };

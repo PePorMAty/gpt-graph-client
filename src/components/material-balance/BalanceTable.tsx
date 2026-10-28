@@ -1,28 +1,23 @@
-import type { FC, ReactNode } from "react";
+import { useState, type FC, type ReactNode } from "react";
 
 import {
-  balanceInputNote,
   flowKind,
-  flowRef,
   FLOW_KIND_TEXT,
-  formatMass,
   formatPercent,
-  formatView,
+  formatShare,
+  formatShareTotal,
+  parseShareInput,
   percentBalance,
   placeableFlow,
-  scaleByFactor,
-  type BalanceDisplay,
+  shareInputValue,
+  shareTotal,
   type BalanceEdgeRole,
-  type BalanceFlowResult,
-  type BalanceInputAmount,
-  type BalanceResult,
+  type BalanceShares,
   type FlowKind,
   type PercentRow,
 } from "../../utils/materialBalance";
 import type { BalanceFlow, BalanceRecord } from "../../store/api/material-balance-api";
 import { ArrowRightIcon, HelpIcon, PlusIcon, TableIcon } from "../icons";
-import { BasisFields } from "./BasisFields";
-import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
 
 /** Роль строки — точкой цвета и словом. */
@@ -120,73 +115,161 @@ export const CardTitle: FC<{ icon: ReactNode; title: string; help?: string; as?:
 );
 
 interface Props {
-  result: BalanceResult;
   /** Запись расчёта — читаемая (readableRecord). */
   record: BalanceRecord;
+  /** Узлы графа по обозначениям расчёта (MaterialBalanceCalc.nodeIds). */
+  nodeIds: Record<string, string>;
   /** Подпись узла по id; нет узла — пусто. */
   labelOf: (id: string | undefined) => string;
-  /** Количество сырья по обозначению; нет — таблица только для чтения. */
-  onAmount?: (ref: string, value: BalanceInputAmount) => void;
+  /** Проценты, поправленные вручную (MaterialBalanceCalc.shares). */
+  shares?: BalanceShares;
+  /** Сохранить правки процентов — все правки расчёта; нет — только смотреть. */
+  onShares?: (shares: BalanceShares) => void;
   /** Подробный расчёт продукта. */
   onProduct?: (nodeId: string) => void;
   /** Показать узел на полотне. */
   onGo?: (nodeId: string) => void;
   /** Узел графа с таким названием — для потоков сверх сырья и продуктов. */
   findNode?: (name: string) => string | undefined;
-  /** Проценты (сырьё — 100 %, продукт — 100 %) или массы; по умолчанию — массы. */
-  display?: BalanceDisplay;
   /** Поставить поток сверх графа на граф; нет — только смотреть. */
   onPlaceFlow?: (flow: Pick<BalanceFlow, "name" | "direction">) => void;
   /** Роль сырья или продукта расчёта по обозначению — с его связи на графе. */
   roleOf?: (ref: string) => BalanceEdgeRole | undefined;
 }
 
-const MASS_HELP =
-  "Массы — на ваше количество сырья. Количество любого сырья меняется прямо в таблице — массы пересчитаются без модели. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне.";
+const TABLE_HELP =
+  "Массовые проценты по расчёту модели: сырьё вместе — 100 % (общая масса сырья), продукт — 100 % (масса продукта; несколько продуктов делят эти 100 %). Реагенты сверх графа, побочные продукты, отходы и потери в эти 100 % не входят — они ниже, отдельно, в процентах от массы продукта. Любой процент можно поправить вручную — щелчком по нему; другие проценты при этом не меняются. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне, «+» — поставить вещество на граф.";
+
 const PERCENT_HELP =
-  "Проценты по массам расчёта модели: сырьё вместе — 100 %, продукт — 100 % (несколько продуктов делят эти 100 %). Реагенты сверх графа, побочные продукты, отходы и потери в эти 100 % не входят — они ниже, отдельно, в процентах от массы продукта. От количества сырья проценты не зависят; массы на ваше количество — переключатель «т». Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне, «+» — поставить вещество на граф.";
+  "Массовые проценты (% масс.): доля массы вещества — не объёма и не молей. Сырьё: 100 % — общая масса всего сырья. Продукт: 100 % — масса продукта (несколько продуктов делят эти 100 %). Отдельно — в процентах от массы продукта.";
 
 /**
- * Баланс в процентах: сырьё — 100 %, продукт — 100 %, прочее — отдельно, в
- * процентах от массы продукта. Строки сырья и продуктов расчёта ведут к
- * узлам по обозначению, потоки сверх графа — по названию.
+ * Процент строки. Можно править — щелчок открывает поле: Enter или уход из
+ * поля — сохранить, Esc — отменить, пусто — вернуть долю модели. Правка
+ * ставит число как есть и другие строки не трогает.
  */
-const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
-  result,
+const ShareCell: FC<{
+  row: PercentRow;
+  name: string;
+  /** Новое значение (проценты); undefined — вернуть долю модели. Нет — только смотреть. */
+  onSet?: (value: number | undefined) => void;
+}> = ({ row, name, onSet }) => {
+  const [text, setText] = useState<string | null>(null);
+  const [bad, setBad] = useState(false);
+  const value = row.share ? <b>{formatShare(row)}</b> : <span className={styles.muted}>нет данных</span>;
+  if (!onSet) return value;
+  const model = row.model ? formatPercent(row.model) : "нет данных";
+
+  if (text !== null) {
+    const close = () => {
+      setText(null);
+      setBad(false);
+    };
+    const save = (leaving: boolean) => {
+      const v = parseShareInput(text);
+      if (v === null) {
+        // Ушли из поля с неверным числом — как было; Enter — подсветить.
+        if (leaving) close();
+        else setBad(true);
+        return;
+      }
+      close();
+      if (v !== undefined || row.edited) onSet(v);
+    };
+    return (
+      <input
+        className={`${styles.amount} ${styles.shareInput} ${bad ? styles.amountBad : ""}`}
+        autoFocus
+        inputMode="decimal"
+        value={text}
+        aria-label={`Массовые проценты «${name}»`}
+        aria-invalid={bad}
+        title={bad ? "Число от 0 до 10 000" : "Enter — сохранить, Esc — отменить, пусто — как у модели"}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => {
+          setText(e.target.value);
+          setBad(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save(false);
+          if (e.key === "Escape") close();
+        }}
+        onBlur={() => save(true)}
+      />
+    );
+  }
+
+  return (
+    <span className={styles.shareCell}>
+      <button
+        type="button"
+        className={`${styles.shareBtn} ${row.edited ? styles.shareEdited : ""}`}
+        onClick={() => setText(shareInputValue(row))}
+        title={
+          row.edited
+            ? `Поправлено вручную; у модели — ${model}. Щелчок — поправить`
+            : "Щелчок — поправить вручную"
+        }
+        aria-label={`Поправить проценты «${name}»`}
+      >
+        {value}
+      </button>
+      {row.edited && (
+        <button
+          type="button"
+          className={styles.shareReset}
+          onClick={() => onSet(undefined)}
+          title={`Вернуть как у модели: ${model}`}
+          aria-label={`Вернуть проценты «${name}» как у модели`}
+        >
+          ↺
+        </button>
+      )}
+    </span>
+  );
+};
+
+/**
+ * Таблица материального баланса в массовых процентах: сырьё — 100 %,
+ * продукт — 100 %, прочее — отдельно, в процентах от массы продукта. Строки
+ * сырья и продуктов расчёта ведут к узлам по обозначению, потоки сверх
+ * графа — по названию. Любой процент правится вручную, сам по себе: «Итого»
+ * показывает сумму как есть.
+ */
+export const BalanceTable: FC<Props> = ({
   record,
+  nodeIds,
   labelOf,
+  shares,
+  onShares,
   onProduct,
   onGo,
   findNode,
   onPlaceFlow,
   roleOf,
 }) => {
-  const pb = percentBalance(record, roleOf);
-  const nodeByRef = new Map(
-    [...result.inputs, ...result.targets, ...result.outputs].map((f) => [f.ref, f.nodeId]),
-  );
+  const pb = percentBalance(record, roleOf, shares);
   const nodeOf = (r: PercentRow) => {
     if (!r.ref) return findNode?.(r.name);
-    const id = nodeByRef.get(r.ref);
+    const id = nodeIds[r.ref];
     return labelOf(id) ? id : undefined;
   };
-  const nameOf = (r: PercentRow) => (r.ref ? labelOf(nodeByRef.get(r.ref)) : "") || r.name;
-  const role = (r: PercentRow): Role => (r.kind === "input" ? "input" : r.kind);
+  const nameOf = (r: PercentRow) => (r.ref ? labelOf(nodeIds[r.ref]) : "") || r.name;
+  const edited = [...pb.raw, ...pb.products, ...pb.separate].filter((r) => r.edited).length;
+  const setShare = onShares
+    ? (key: string) => (value: number | undefined) => {
+        const next = { ...shares };
+        if (value === undefined) delete next[key];
+        else next[key] = value;
+        onShares(next);
+      }
+    : undefined;
 
-  if (pb.empty) {
-    return (
-      <p className={styles.muted}>
-        Масс сырья в расчёте нет — долей не посчитать. Что нашла модель — в
-        разделах ответа ниже.
-      </p>
-    );
-  }
-
-  const line = (r: PercentRow, i: number) => {
+  const line = (r: PercentRow) => {
     const id = nodeOf(r);
     const name = nameOf(r);
     return (
-      <tr key={`${r.ref ?? r.name}-${i}`} className={r.kind === "off" ? styles.rowOff : undefined}>
+      <tr key={r.key} className={r.kind === "off" ? styles.rowOff : undefined}>
         <td>
           {r.kind === "target" && onProduct && id ? (
             <button
@@ -200,13 +283,13 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
           ) : (
             <span className={styles.flowTitle}>{name}</span>
           )}
-          <RoleInline role={role(r)} />
+          <RoleInline role={r.kind} />
         </td>
         <td className={styles.roleCol}>
-          <RoleMark role={role(r)} />
+          <RoleMark role={r.kind} />
         </td>
         <td className={styles.numCol}>
-          {r.share ? <b>{formatPercent(r.share)}</b> : <span className={styles.muted}>нет данных</span>}
+          <ShareCell row={r} name={name} onSet={setShare?.(r.key)} />
         </td>
         <td className={styles.goCol}>
           {r.ref ? (
@@ -224,52 +307,83 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
     );
   };
 
-  const total = (title: string) => (
-    <tr className={styles.totalRow}>
-      <td>{title}</td>
-      <td className={styles.roleCol} />
-      <td className={styles.numCol}>100 %</td>
-      <td />
+  /** «Итого»: сумма как есть — после правок она может уйти от 100 %. */
+  const total = (title: string, rows: PercentRow[]) => {
+    if (rows.length < 2 && !rows.some((r) => r.edited)) return null;
+    const t = shareTotal(rows);
+    if (!t) return null;
+    const off = Math.abs(t.percent - 100) >= 0.05;
+    return (
+      <tr className={styles.totalRow}>
+        <td>{title}</td>
+        <td className={styles.roleCol} />
+        <td
+          className={`${styles.numCol} ${off ? styles.totalOff : ""}`}
+          title={off ? "Сумма не 100 %: проценты правятся каждый сам по себе — поправьте остальные" : undefined}
+        >
+          {formatShareTotal(t)}
+        </td>
+        <td />
+      </tr>
+    );
+  };
+  const many = pb.products.length > 1;
+  const side = (title: string, what: string) => (
+    <tr className={styles.sideRow}>
+      <td colSpan={4}>
+        {title} <span className={styles.sideNote}>— {what}</span>
+      </td>
     </tr>
   );
-  const many = pb.products.length > 1;
 
   return (
-    <>
+    <section className={styles.cardBlock}>
+      <CardTitle icon={<TableIcon size={16} />} title="Таблица материального баланса" help={TABLE_HELP} />
       <div className={styles.tableCard}>
         <table className={styles.balanceTable}>
           <thead>
             <tr>
               <th>Поток</th>
               <th className={styles.roleCol}>Роль</th>
-              <th className={styles.numCol}>%</th>
+              <th className={styles.numCol}>
+                <span className={styles.numHead}>
+                  % масс.
+                  <span className={styles.cardHelp} title={PERCENT_HELP} aria-label={PERCENT_HELP} role="img">
+                    <HelpIcon size={13} />
+                  </span>
+                </span>
+              </th>
               <th className={styles.goCol}>
                 <span className={styles.goHead}>Перейти</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            <tr className={styles.sideRow}>
-              <td colSpan={4}>Сырьё</td>
-            </tr>
+            {side("Сырьё", "100 % = общая масса сырья")}
             {pb.raw.map(line)}
-            {pb.raw.length > 1 && total("Итого сырьё")}
-            <tr className={styles.sideRow}>
-              <td colSpan={4}>{many ? "Продукты" : "Продукт"}</td>
-            </tr>
+            {total("Итого сырьё", pb.raw)}
+            {many
+              ? side("Продукты", "100 % = общая масса продуктов")
+              : side("Продукт", "100 % = масса продукта")}
             {pb.products.map(line)}
-            {many && total("Итого продукты")}
+            {total(many ? "Итого продукты" : "Итого продукт", pb.products)}
             {pb.separate.length > 0 && (
               <>
-                <tr className={styles.sideRow}>
-                  <td colSpan={4}>Отдельно — % от массы {many ? "продуктов" : "продукта"}</td>
-                </tr>
+                {side("Отдельно", `в % от массы ${many ? "продуктов" : "продукта"}`)}
                 {pb.separate.map(line)}
               </>
             )}
           </tbody>
         </table>
       </div>
+      {pb.empty && (
+        <p className={styles.note}>
+          Масс в расчёте нет — модель долей не дала.
+          {onShares
+            ? " Проценты можно вписать вручную: щелчок по «нет данных»."
+            : " Что нашла модель — в разделах ответа ниже."}
+        </p>
+      )}
       {pb.partialRaw && (
         <p className={styles.note}>
           У части сырья массы в расчёте нет — доли посчитаны от сырья с массой.
@@ -285,169 +399,19 @@ const PercentBody: FC<Omit<Props, "onAmount" | "display">> = ({
           Побочных продуктов, отходов и реагентов сверх графа модель не назвала.
         </p>
       )}
-    </>
-  );
-};
-
-/**
- * Таблица материального баланса: сырьё (количество правится прямо здесь —
- * массы пересчитываются без модели), продукты расчёта, невыбранные выходы и
- * потоки сверх графа — реагенты, побочные продукты, отходы, потери. Массы — на
- * количество человека. «Перейти» — к узлу на полотне.
- */
-export const BalanceTable: FC<Props> = ({
-  result,
-  record,
-  labelOf,
-  onAmount,
-  onProduct,
-  onGo,
-  findNode,
-  display = "mass",
-  onPlaceFlow,
-  roleOf,
-}) => {
-  const name = (f: BalanceFlowResult) => labelOf(f.nodeId) || f.name;
-  const gone = (f: BalanceFlowResult) => !labelOf(f.nodeId);
-  const extra = record.flows.filter((f) => !flowRef(record, f.name));
-  const percent = display === "percent";
-
-  return (
-    <section className={styles.cardBlock}>
-      <div className={styles.cardTitleRow}>
-        <CardTitle
-          icon={<TableIcon size={16} />}
-          title="Таблица материального баланса"
-          help={percent ? PERCENT_HELP : MASS_HELP}
-        />
-        <DisplaySwitch />
-      </div>
-      {percent ? (
-        <PercentBody
-          result={result}
-          record={record}
-          labelOf={labelOf}
-          onProduct={onProduct}
-          onGo={onGo}
-          findNode={findNode}
-          onPlaceFlow={onPlaceFlow}
-          roleOf={roleOf}
-        />
-      ) : (
-        <div className={styles.tableCard}>
-          <table className={styles.balanceTable}>
-            <thead>
-              <tr>
-                <th>Поток</th>
-                <th className={styles.roleCol}>Роль</th>
-                <th>Значение</th>
-                <th className={styles.goCol}>
-                  <span className={styles.goHead}>Перейти</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.inputs.map((f) => (
-                <tr key={f.ref}>
-                  <td>
-                    <span className={styles.flowTitle}>{name(f)}</span>
-                    {f.role === "basis" && result.inputs.length > 1 && (
-                      <span className={styles.basisTag} title="Модель считала от количества этого сырья">
-                        опорное
-                      </span>
-                    )}
-                    {gone(f) && <span className={styles.flowGone}> · нет на графе</span>}
-                    <span className={`${styles.rowNote} ${f.noRecipe ? styles.flowWarn : ""}`}>
-                      {balanceInputNote(f, result)}
-                    </span>
-                    <RoleInline role="input" />
-                  </td>
-                  <td className={styles.roleCol}>
-                    <RoleMark role="input" />
-                  </td>
-                  <td>
-                    {onAmount ? (
-                      <BasisFields
-                        compact
-                        value={f.set ?? { amount: null, unit: f.unit }}
-                        onChange={(v) => onAmount(f.ref, v)}
-                        label={name(f)}
-                      />
-                    ) : (
-                      <b>{f.set ? formatView(f.set) : formatMass(f.mass, f.unit)}</b>
-                    )}
-                  </td>
-                  <td className={styles.goCol}>
-                    <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
-                  </td>
-                </tr>
-              ))}
-              {result.targets.map((f) => (
-                <tr key={f.ref}>
-                  <td>
-                    {onProduct && f.nodeId && !gone(f) ? (
-                      <button
-                        type="button"
-                        className={styles.flowLinkBtn}
-                        onClick={() => onProduct(f.nodeId!)}
-                        title="Подробный расчёт этого продукта"
-                      >
-                        {name(f)}
-                      </button>
-                    ) : (
-                      <span className={styles.flowTitle}>{name(f)}</span>
-                    )}
-                    {gone(f) && <span className={styles.flowGone}> · нет на графе</span>}
-                    <RoleInline role="target" />
-                  </td>
-                  <td className={styles.roleCol}>
-                    <RoleMark role="target" />
-                  </td>
-                  <td>{f.mass ? <b>{formatMass(f.mass, f.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
-                  <td className={styles.goCol}>
-                    <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
-                  </td>
-                </tr>
-              ))}
-              {result.outputs.map((f) => (
-                <tr key={f.ref} className={styles.rowOff}>
-                  <td>
-                    <span className={styles.flowTitle}>{name(f)}</span>
-                    <RoleInline role="off" />
-                  </td>
-                  <td className={styles.roleCol}>
-                    <RoleMark role="off" />
-                  </td>
-                  <td>{f.mass ? formatMass(f.mass, f.unit) : "—"}</td>
-                  <td className={styles.goCol}>
-                    <Go nodeId={gone(f) ? undefined : f.nodeId} name={name(f)} onGo={onGo} />
-                  </td>
-                </tr>
-              ))}
-              {extra.map((f) => {
-                const kind = flowKind(f);
-                const mass = scaleByFactor(f.massKg, result.factor);
-                return (
-                  <tr key={`flow-${f.name}`}>
-                    <td>
-                      <span className={styles.flowTitle} title={f.basis ? `Основание: ${f.basis}` : undefined}>
-                        {f.name}
-                      </span>
-                      <RoleInline role={kind} />
-                    </td>
-                    <td className={styles.roleCol}>
-                      <RoleMark role={kind} />
-                    </td>
-                    <td>{mass ? <b>{formatMass(mass, result.unit)}</b> : <span className={styles.muted}>нет данных</span>}</td>
-                    <td className={styles.goCol}>
-                      <FlowGo flow={f} nodeId={findNode?.(f.name)} onGo={onGo} onPlace={onPlaceFlow} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      {edited > 0 && (
+        <p className={styles.note}>
+          Поправлено вручную: {edited} — такие проценты выделены. Правка не меняет
+          другие проценты: «Итого» показывает сумму как есть.
+          {onShares && (
+            <>
+              {" "}
+              <button type="button" className={styles.linkBtn} onClick={() => onShares({})}>
+                Вернуть все как у модели
+              </button>
+            </>
+          )}
+        </p>
       )}
     </section>
   );

@@ -12,31 +12,19 @@ import { ChevronDownIcon, FilePdfIcon, TrashIcon } from "../icons";
 import panel from "./PanelSection.module.css";
 import styles from "./LocalDocuments.module.css";
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} Б`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`;
-  const mb = n / 1024 / 1024;
-  return `${mb.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`;
-}
-
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ru-RU");
 }
 
-/** Как документ разбит на разделы. */
-const STRUCTURE: Record<string, string> = {
-  outline: "по закладкам",
-  links: "по содержанию",
-  headings: "по заголовкам",
-  pages: "кусками по 10 страниц",
-};
-
-const STATUS: Record<LocalSection["status"], { mark: string; title: string }> = {
-  done: { mark: "✓", title: "Разобран моделью" },
-  failed: { mark: "✕", title: "Модель раздел не разобрала" },
+/**
+ * Пометка у раздела — только когда с ним не всё готово: разобранный
+ * раздел ничем не помечен, это обычное состояние.
+ */
+const STATUS: Partial<Record<LocalSection["status"], { mark: string; title: string }>> = {
+  failed: { mark: "✕", title: "Раздел не разобран — «Разобрать заново» в документе" },
   pending: { mark: "…", title: "Ждёт разбора" },
-  working: { mark: "…", title: "Модель разбирает" },
+  working: { mark: "…", title: "Разбирается" },
 };
 
 /** Список названий без простыни: первые, и «ещё N». */
@@ -73,12 +61,14 @@ const SectionRow = ({ s, docId }: { s: LocalSection; docId: number }) => {
   return (
     <li className={styles.sec}>
       <div className={styles.secHead}>
-        <span
-          className={`${styles.secStatus} ${styles[`sec_${s.status}`] ?? ""}`}
-          title={STATUS[s.status]?.title}
-        >
-          {STATUS[s.status]?.mark}
-        </span>
+        {STATUS[s.status] && (
+          <span
+            className={`${styles.secStatus} ${styles[`sec_${s.status}`] ?? ""}`}
+            title={STATUS[s.status]?.title}
+          >
+            {STATUS[s.status]?.mark}
+          </span>
+        )}
         <a
           className={styles.secTitle}
           href={localDocumentHref(docId, s.pageFrom)}
@@ -96,7 +86,7 @@ const SectionRow = ({ s, docId }: { s: LocalSection; docId: number }) => {
       {s.error && <div className={styles.secError}>{s.error}</div>}
       {(s.summary || more.length > 0) && (
         <details className={styles.secSummary}>
-          <summary>{s.summary ? "Описание от модели" : "Ещё вещества раздела"}</summary>
+          <summary>{s.summary ? "Описание раздела" : "Ещё вещества раздела"}</summary>
           {s.summary && <p>{s.summary}</p>}
           {more.map(([key, label]) => (
             <RoleLine key={key} label={label} names={s.products[key] ?? []} />
@@ -107,7 +97,12 @@ const SectionRow = ({ s, docId }: { s: LocalSection; docId: number }) => {
   );
 };
 
-/** Ход разбора разделов моделью. */
+/**
+ * Ход разбора: пока идёт — «разбирается» с полосой, без счёта; готово —
+ * ничего, это обычное состояние; есть ошибки — сколько разделов не
+ * разобрано и «Разобрать заново». Какой моделью и «столько-то из стольки»
+ * в документе не пишем: это служебное, к содержанию отношения не имеет.
+ */
 const DecodeStatus = ({
   doc,
   busy,
@@ -126,8 +121,7 @@ const DecodeStatus = ({
       <div className={styles.decode}>
         <span className={styles.decodeText}>
           <span className={styles.spinner} aria-hidden="true" />
-          Модель разбирает разделы: {done} из {total}
-          {failed ? `, с ошибкой ${failed}` : ""}
+          Документ разбирается
         </span>
         <div className={styles.bar}>
           <div
@@ -138,23 +132,20 @@ const DecodeStatus = ({
       </div>
     );
   }
+  if (!failed) return null;
   return (
     <div className={styles.decode}>
-      <span className={failed ? styles.decodeWarn : styles.decodeOk}>
-        Разобрано моделью: {done} из {total}
-        {failed ? `, с ошибкой ${failed}` : ""}
-        {doc.model ? ` · ${doc.model}` : ""}
+      <span className={styles.decodeWarn}>
+        Не разобрано: {failed} {plural(failed, "раздел", "раздела", "разделов")}
       </span>
-      {failed > 0 && (
-        <button
-          type="button"
-          className={styles.linkBtn}
-          onClick={() => onRedecode("failed")}
-          disabled={busy}
-        >
-          Разобрать {failed === 1 ? "его" : "их"} заново
-        </button>
-      )}
+      <button
+        type="button"
+        className={styles.linkBtn}
+        onClick={() => onRedecode("failed")}
+        disabled={busy}
+      >
+        Разобрать {failed === 1 ? "его" : "их"} заново
+      </button>
     </div>
   );
 };
@@ -199,15 +190,7 @@ export const LocalDocumentRow = ({
     };
   }, [open, doc.id, progress]);
 
-  const meta = [
-    doc.fileName,
-    `${doc.pages} стр.`,
-    formatBytes(doc.bytes),
-    formatDate(doc.addedAt),
-    doc.addedVia === "script" ? "скриптом" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const meta = [`${doc.pages} стр.`, formatDate(doc.addedAt)].filter(Boolean).join(" · ");
 
   const remove = async () => {
     setBusy(true);
@@ -248,12 +231,6 @@ export const LocalDocumentRow = ({
           {doc.title}
         </a>
         <span className={styles.docMeta}>{meta}</span>
-        {doc.textlessPages > 0 && (
-          <span className={styles.docWarn}>
-            {doc.textlessPages} стр. без текста (сканы, рисунки) — в базу не
-            попали
-          </span>
-        )}
         <DecodeStatus doc={doc} busy={busy} onRedecode={redecode} />
         {error && <span className={styles.docWarn}>{error}</span>}
 
@@ -270,7 +247,6 @@ export const LocalDocumentRow = ({
             />
             {total}{" "}
             {plural(total, "раздел-источник", "раздела-источника", "разделов-источников")}
-            {doc.structure ? ` · разбит ${STRUCTURE[doc.structure] ?? ""}` : ""}
           </button>
         )}
 
@@ -290,7 +266,7 @@ export const LocalDocumentRow = ({
                   className={styles.linkBtn}
                   onClick={() => redecode("all")}
                   disabled={busy}
-                  title="Разобрать все разделы заново — моделью, выбранной сейчас в приложении"
+                  title="Разобрать все разделы заново — если разбор неудачный"
                 >
                   Разобрать все разделы заново
                 </button>

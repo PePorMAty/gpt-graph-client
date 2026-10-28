@@ -143,8 +143,9 @@ function describe(
         }
       }
       // Расчёты материального баланса: пришёл новый (посчитан или взят из
-      // базы) или убран. Смена базиса показа — не событие. Готовые расчёты,
-      // подтянутые при открытии графа (silent), — тоже: их никто не делал.
+      // базы), убран или в нём поправили проценты вручную. Готовые расчёты,
+      // подтянутые при открытии графа (silent), — не событие: их никто не
+      // делал.
       if ("materialBalances" in p.data) {
         if ((p as { silent?: boolean }).silent) return null;
         type Calc = {
@@ -155,6 +156,7 @@ function describe(
           };
           fromCache?: boolean;
           nodeIds?: Record<string, string>;
+          shares?: Record<string, number>;
         };
         const list = (v: unknown) => (Array.isArray(v) ? (v as Calc[]) : []);
         const before = list(was?.data?.materialBalances);
@@ -171,7 +173,22 @@ function describe(
                 .join(", ")}`
             : `${labelOf(prevNodes, c.nodeIds?.P1 ?? "")} → ${labelOf(prevNodes, c.nodeIds?.P2 ?? "")}`;
         const changed = added[0] ?? removed[0];
-        if (!changed) return null;
+        if (!changed) {
+          const sharesOf = (c: Calc | undefined) => JSON.stringify(c?.shares ?? {});
+          const edited = after.find(
+            (c) => sharesOf(c) !== sharesOf(before.find((b) => b.record?.id === c.record?.id)),
+          );
+          if (!edited) return null;
+          const count = Object.keys(edited.shares ?? {}).length;
+          return {
+            kind: "edit",
+            title: "Поправлены проценты материального баланса",
+            details: `«${labelOf(prevNodes, p.nodeId)}»: ${pair(edited)} — ${
+              count ? `правок вручную: ${count}` : "все проценты — как у модели"
+            }`,
+            nodeIds: [p.nodeId],
+          };
+        }
         return {
           kind: "edit",
           title: added.length
