@@ -11,6 +11,7 @@ import { useAppSelector } from "../../store/hooks";
 import type { CustomNode } from "../../types";
 import { computeViewportStats } from "../../utils/viewportStats";
 import { graphSignature } from "../../utils/graphSignature";
+import { plural } from "../../utils/plural";
 import {
   ChainLengthIcon,
   FitViewIcon,
@@ -116,7 +117,9 @@ export const StatusBar = ({ readOnly = false }: StatusBarProps) => {
         >
           <ChainLengthIcon size={15} className={styles.statIcon} />
           Длина цепочек:{" "}
-          <b className={styles.statValue}>{stats.chainLength} шагов</b>
+          <b className={styles.statValue}>
+            {stats.chainLength} {plural(stats.chainLength, "шаг", "шага", "шагов")}
+          </b>
         </span>
         <span
           className={styles.stat}

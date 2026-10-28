@@ -773,6 +773,34 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [tempNodeDescription, setTempNodeDescription] = useState<string>("");
   const [initialLabel, setInitialLabel] = useState<string>("");
   const [initialDescription, setInitialDescription] = useState<string>("");
+
+  // Закрытая карточка забывает узел не сразу, а когда доуедет (300 мс), —
+  // чтобы не опустеть на глазах. Щелчок по другому узлу за это время снова
+  // открывал карточку, а запоздавший сброс опустошал уже её: сброс
+  // отменяется, как только карточка открыта.
+  const selectionResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetSelectionAfterClose = useCallback(() => {
+    if (selectionResetRef.current) clearTimeout(selectionResetRef.current);
+    selectionResetRef.current = setTimeout(() => {
+      selectionResetRef.current = null;
+      setSelectedNodeId(null);
+      setTempNodeLabel("");
+      setTempNodeDescription("");
+      setInitialLabel("");
+      setInitialDescription("");
+    }, 300);
+  }, []);
+  useEffect(() => {
+    if (!isPanelOpen || !selectionResetRef.current) return;
+    clearTimeout(selectionResetRef.current);
+    selectionResetRef.current = null;
+  }, [isPanelOpen]);
+  useEffect(
+    () => () => {
+      if (selectionResetRef.current) clearTimeout(selectionResetRef.current);
+    },
+    [],
+  );
   // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
   const readOnly = sharedView;
   // Структурные правки заблокированы: просмотр, «только продукты» или
@@ -1855,15 +1883,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
     if (removedSelected) {
       setIsPanelOpen(false);
-      setTimeout(() => {
-        setSelectedNodeId(null);
-        setTempNodeLabel("");
-        setTempNodeDescription("");
-        setInitialLabel("");
-        setInitialDescription("");
-      }, 300);
+      resetSelectionAfterClose();
     }
-  }, [pendingDeleteIds, selectedNodeId, dispatch]);
+  }, [pendingDeleteIds, selectedNodeId, dispatch, resetSelectionAfterClose]);
 
   // Удаление выделенных нод клавишей Delete/Backspace (с подтверждением).
   // Игнорируем нажатия в полях ввода, чтобы не удалять ноды при правке текста.
@@ -1977,14 +1999,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     saveChanges();
 
     setIsPanelOpen(false);
-    setTimeout(() => {
-      setSelectedNodeId(null);
-      setTempNodeLabel("");
-      setTempNodeDescription("");
-      setInitialLabel("");
-      setInitialDescription("");
-    }, 300);
-  }, [saveChanges]);
+    resetSelectionAfterClose();
+  }, [saveChanges, resetSelectionAfterClose]);
 
   // ─── Ссылки на связанные продукты в карточке ───
   // Соседние продукты выбранной ноды (напрямую или через преобразование) —
