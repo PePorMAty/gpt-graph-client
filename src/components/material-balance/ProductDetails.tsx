@@ -1,19 +1,14 @@
 import type { FC } from "react";
 
-import { useAppSelector } from "../../store/hooks";
 import {
-  computeBalance,
+  calcFlows,
   formatBasisAmount,
-  formatMass,
-  formatPercent,
-  massYield,
+  formatShare,
   mentionsProduct,
-  percentShares,
+  percentRows,
   productExcerpts,
-  shareOfAllInputs,
   sortSources,
   stepField,
-  type BalanceInputAmount,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import { readableRecord } from "../../utils/readableModelText";
@@ -21,7 +16,6 @@ import type { CustomNode } from "../../types";
 import { ChevronLeftIcon } from "../icons";
 import { Markdown, SourceItem, Status } from "./CalcDetails";
 import { CalcScheme } from "./TransformationScheme";
-import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
 
 interface Props {
@@ -30,11 +24,9 @@ interface Props {
   /** id узла продукта. */
   productId: string;
   labelOf: (id: string | undefined) => string;
-  onAmount: (ref: string, value: BalanceInputAmount) => void;
   onBack: () => void;
   /** Название расчёта для «← К расчёту»: продукты через запятую. */
   calcTitle: string;
-  readOnly?: boolean;
   /** Роль сырья или продукта расчёта (реагент, побочный) — с его связи на графе. */
   roleOf?: (ref: string) => "reagent" | "byproduct" | undefined;
 }
@@ -42,34 +34,29 @@ interface Props {
 /**
  * Расчёт одного продукта: всё сырьё преобразования → этот продукт. Модель
  * считает преобразование целиком, а здесь — то, что относится к продукту:
- * его масса и выход, строки расчёта, где он упомянут, и источники, на
- * которые модель для него сослалась.
+ * его доля, строки расчёта, где он упомянут, и источники, на которые
+ * модель для него сослалась.
  */
 export const ProductDetails: FC<Props> = ({
   transformation,
   calc,
   productId,
   labelOf,
-  onAmount,
   onBack,
   calcTitle,
-  readOnly,
   roleOf,
 }) => {
-  const percent = useAppSelector((s) => s.materialBalance.display) === "percent";
   const record = readableRecord(calc.record);
-  const readable = { ...calc, record };
-  const result = computeBalance(readable);
-  const target = result.targets.find((f) => f.nodeId === productId);
+  const flows = calcFlows({ ...calc, record });
+  const rows = percentRows(record, roleOf, calc.shares);
+  const target = flows.targets.find((f) => f.nodeId === productId);
   if (!target) return null;
   const name = labelOf(target.nodeId) || target.name;
   const names = [...new Set([name, target.name])];
   const row = record.products.find((p) => p.ref === target.ref);
-  const basis = result.inputs[0];
+  const share = rows.get(target.ref);
+  const basis = flows.inputs[0];
   const basisName = basis ? labelOf(basis.nodeId) || basis.name : "";
-  const yieldOnBasis = basis ? massYield(record, target.ref, basis.ref) : null;
-  const yieldOnAll =
-    result.inputs.length > 1 ? shareOfAllInputs(record, target.ref) : null;
   const excerpts = productExcerpts(record, target.ref, names);
   const conditions = stepField(record, "Источник и условия");
   const mention = (s: string) => mentionsProduct(s, target.ref, names);
@@ -95,7 +82,7 @@ export const ProductDetails: FC<Props> = ({
       </button>
       <div className={styles.detailsHead}>
         <h4 className={styles.productTitle}>
-          {result.inputs.map((f) => labelOf(f.nodeId) || f.name).join(" + ")} →{" "}
+          {flows.inputs.map((f) => labelOf(f.nodeId) || f.name).join(" + ")} →{" "}
           {name}
         </h4>
         <div className={styles.itemTitle}>
@@ -103,42 +90,32 @@ export const ProductDetails: FC<Props> = ({
         </div>
       </div>
 
-      <div className={styles.cardTitleRow}>
-        <span className={styles.fieldLabel}>{percent ? "Доли массы" : "Массы"}</span>
-        <DisplaySwitch />
-      </div>
+      <span className={styles.fieldLabel}>Массовые проценты</span>
       <CalcScheme
         transformation={transformation}
-        result={result}
+        flows={flows}
+        rows={rows}
         labelOf={labelOf}
-        onAmount={onAmount}
         only={target.ref}
-        readOnly={readOnly}
-        shares={percent ? percentShares(record, roleOf) : undefined}
       />
 
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>{name}</h4>
         <table className={styles.flows}>
           <tbody>
-            {!percent && (
-              <tr>
-                <td>Получится</td>
-                <td>{formatMass(target.mass, target.unit)}</td>
-              </tr>
-            )}
-            {yieldOnBasis && (
-              <tr>
-                <td>Выход на «{basisName}»</td>
-                <td>{formatPercent(yieldOnBasis)}</td>
-              </tr>
-            )}
-            {yieldOnAll && (
-              <tr>
-                <td>Доля от всего сырья</td>
-                <td>{formatPercent(yieldOnAll)}</td>
-              </tr>
-            )}
+            <tr>
+              <td>
+                {share?.kind === "target"
+                  ? flows.targets.length > 1
+                    ? "Доля в массе продуктов"
+                    : "Доля в массе продукта"
+                  : "От массы продукта"}
+              </td>
+              <td>
+                {share ? formatShare(share) : "нет данных"}
+                {share?.edited ? " · поправлено вручную" : ""}
+              </td>
+            </tr>
           </tbody>
         </table>
         {row?.basis && <p className={styles.note}>Основание: {row.basis}.</p>}
@@ -154,8 +131,8 @@ export const ProductDetails: FC<Props> = ({
         <h4 className={styles.sectionTitle}>Как посчитано</h4>
         <p className={styles.muted}>
           Строки из ответа модели — числа в них на {formatBasisAmount(record)} «
-          {basisName}», с которыми она считала. На ваше количество пересчитаны
-          схема и подписи на узлах.
+          {basisName}», с которыми она считала; проценты выше — по этим числам
+          (поправленные вручную — как их вписали).
         </p>
         {excerpts.length ? (
           excerpts.map((e) => (

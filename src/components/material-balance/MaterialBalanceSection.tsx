@@ -5,7 +5,6 @@ import {
   balanceRequestOf,
   cancelMaterialBalance,
   dismissBalanceJob,
-  draftAmounts,
   newCalcFrom,
   openBalanceCalc,
   openBalanceProduct,
@@ -13,29 +12,24 @@ import {
   placeBalanceFlow,
   setBalanceActive,
   setBalanceCard,
-  setDraftAmount,
   setDraftBasis,
   setDraftTargets,
-  setMaterialBalanceAmounts,
+  setMaterialBalanceShares,
 } from "../../store/slices/materialBalanceSlice";
 import {
   allCalcs,
-  amountsOf,
   balanceEnds,
   balanceRoleOf,
   calcKey,
   calcProductsLabel,
   calcsOf,
-  computeBalance,
   flowNodeAmong,
-  formatMass,
+  formatShare,
   formatWhen,
-  formatPercent,
   inputRefs,
-  percentShares,
+  percentRows,
   targetRefs,
   targetsKey,
-  type BalanceInputAmount,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
 import type { CustomNode } from "../../types";
@@ -52,7 +46,6 @@ import { CalcDetails, Status } from "./CalcDetails";
 import { ProductDetails } from "./ProductDetails";
 import { FormScheme } from "./TransformationScheme";
 import { RequestForm } from "./RequestForm";
-import { DisplaySwitch } from "./DisplaySwitch";
 import styles from "./MaterialBalance.module.css";
 
 const label = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
@@ -65,7 +58,7 @@ const elapsed = (ms: number) => {
 const busy = (status: string | undefined) => status === "running" || status === "starting";
 
 const HINT =
-  "Выберите преобразование на полотне — посчитаем его материальный баланс: сколько каждого продукта получится из сырья.";
+  "Выберите преобразование на полотне — посчитаем его материальный баланс в массовых процентах: сырьё — 100 %, продукт — 100 %, побочные продукты и отходы — отдельно.";
 
 /** Подпись узла по id — по текущему графу. */
 function useLabelOf() {
@@ -77,9 +70,8 @@ function useLabelOf() {
 }
 
 /**
- * Выбранное преобразование: его расчёты, ход идущих, схема с количеством
- * сырья и продуктами, форма нового расчёта, общий расчёт или расчёт
- * продукта.
+ * Выбранное преобразование: его расчёты, ход идущих, форма нового расчёта
+ * (опорное сырьё и продукты), общий расчёт или расчёт продукта.
  *
  * variant — где показано: левая панель (с «← Все расчёты» и названием) или
  * вкладка карточки преобразования (название — в шапке карточки). readOnly —
@@ -92,7 +84,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
 }) => {
   const dispatch = useAppDispatch();
   const { nodes, edges } = useAppSelector((s) => s.graph.data);
-  const { selection, jobs, draft, display } = useAppSelector((s) => s.materialBalance);
+  const { selection, jobs, draft } = useAppSelector((s) => s.materialBalance);
   const focusNode = useFocusNode();
   const labelOf = useLabelOf();
   const [now, setNow] = useState(() => Date.now());
@@ -130,8 +122,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
   const title = (c: MaterialBalanceCalc) => calcProductsLabel(c, labelOf);
 
   // Форма нового расчёта.
-  const req = balanceRequestOf({ nodes, edges, draft, display }, t.id);
-  const formAmounts = draftAmounts(draft);
+  const req = balanceRequestOf({ nodes, edges, draft }, t.id);
   const formKey = targetsKey(req.targets.map((n) => n.id));
   const sameTargets = calcs.find((c) => calcKey(c) === formKey);
 
@@ -153,10 +144,6 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
     .filter((n) => balanceRoleOf(edges, n.id, t.id) === "byproduct")
     .map((n) => n.id);
 
-  const onCalcAmount = (c: MaterialBalanceCalc) => (ref: string, value: BalanceInputAmount) => {
-    if (readOnly) return;
-    dispatch(setMaterialBalanceAmounts(t.id, c.record.id, { ...amountsOf(c), [ref]: value }));
-  };
 
   return (
     <div className={styles.panel}>
@@ -245,10 +232,8 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
             calc={calc}
             productId={productId}
             labelOf={labelOf}
-            onAmount={onCalcAmount(calc)}
             onBack={() => dispatch(openBalanceProduct(null))}
             calcTitle={title(calc)}
-            readOnly={readOnly}
             roleOf={roleOf(calc)}
           />
         ) : (
@@ -263,15 +248,18 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
             <CalcDetails
               nodeId={t.id}
               calc={calc}
-              result={computeBalance(calc)}
               labelOf={labelOf}
-              onAmount={onCalcAmount(calc)}
+              onShares={
+                readOnly
+                  ? undefined
+                  : (shares) => dispatch(setMaterialBalanceShares(t.id, calc.record.id, shares))
+              }
               onProduct={(id) => dispatch(openBalanceProduct(id))}
               onGo={(id) => focusNode(id, { zoom: 1 })}
               findNode={findNode}
               onPlaceFlow={readOnly ? undefined : (f) => dispatch(placeBalanceFlow(t.id, f))}
               roleOf={roleOf(calc)}
-              onNewRequest={readOnly ? undefined : () => dispatch(newCalcFrom(calc, amountsOf(calc)))}
+              onNewRequest={readOnly ? undefined : () => dispatch(newCalcFrom(calc))}
               onShowOnGraph={() => focusNode(t.id, { zoom: 1 })}
               readOnly={readOnly}
             />
@@ -288,28 +276,11 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
         </p>
       ) : (
         <>
-          <div className={styles.cardTitleRow}>
-            <span className={styles.fieldLabel}>
-              {display === "percent"
-                ? "Новый расчёт — в процентах массы"
-                : "Новый расчёт — на количество сырья"}
-            </span>
-            <DisplaySwitch />
-          </div>
+          <span className={styles.fieldLabel}>Новый расчёт — в массовых процентах</span>
           <FormScheme
             transformation={t}
-            percent={display === "percent"}
             ins={ends.ins}
             outs={ends.outs}
-            amounts={formAmounts}
-            onAmount={(inputId, v) =>
-              dispatch(
-                setDraftAmount({
-                  inputId,
-                  amount: { amount: v.amount === null ? "" : String(v.amount).replace(".", ","), unit: v.unit },
-                }),
-              )
-            }
             basisId={draft.basisId}
             onBasis={(id) => dispatch(setDraftBasis(id))}
             targets={draft.targets}
@@ -333,8 +304,7 @@ const SelectedView: FC<{ t: CustomNode; variant?: "panel" | "card"; readOnly?: b
 /** Все расчёты графа: раскрывающиеся группы по преобразованиям. */
 const ListView: FC = () => {
   const dispatch = useAppDispatch();
-  const nodes = useAppSelector((s) => s.graph.data.nodes);
-  const percent = useAppSelector((s) => s.materialBalance.display) === "percent";
+  const { nodes, edges } = useAppSelector((s) => s.graph.data);
   const focusNode = useFocusNode();
   const labelOf = useLabelOf();
   const list = useMemo(() => allCalcs(nodes), [nodes]);
@@ -378,13 +348,11 @@ const ListView: FC = () => {
         </div>
       ) : (
         <>
-          <div className={styles.cardTitleRow}>
-            <p className={styles.muted}>
-              Расчёты по преобразованиям: «преобразование → продукты, для которых
-              посчитано». Щелчок по продукту — его подробный расчёт.
-            </p>
-            <DisplaySwitch />
-          </div>
+          <p className={styles.muted}>
+            Расчёты по преобразованиям: «преобразование → продукты, для которых
+            посчитано», у продуктов — массовые проценты. Щелчок по продукту — его
+            подробный расчёт.
+          </p>
           {[...groups].map(([nodeId, g]) => {
             const expanded = open.has(nodeId);
             return (
@@ -415,8 +383,11 @@ const ListView: FC = () => {
                 </div>
                 {expanded &&
                   g.items.map((calc) => {
-                    const res = computeBalance(calc);
-                    const shares = percent ? percentShares(calc.record) : null;
+                    const rows = percentRows(
+                      calc.record,
+                      (ref) => balanceRoleOf(edges, calc.nodeIds[ref], nodeId),
+                      calc.shares,
+                    );
                     return (
                       <div key={calc.record.id} className={styles.item}>
                         <button
@@ -436,7 +407,7 @@ const ListView: FC = () => {
                         </button>
                         <div className={styles.itemProducts}>
                           {targetRefs(calc.record).map((r) => {
-                            const f = res.targets.find((x) => x.ref === r.ref);
+                            const row = rows.get(r.ref);
                             const id = calc.nodeIds[r.ref];
                             const name = labelOf(id) || r.name;
                             return (
@@ -448,13 +419,7 @@ const ListView: FC = () => {
                                 onClick={() => openCalc(nodeId, calc, id)}
                                 title={labelOf(id) ? "Подробный расчёт этого продукта" : "Этого продукта на графе уже нет"}
                               >
-                                {name} ·{" "}
-                                {shares
-                                  ? (() => {
-                                      const v = shares.get(r.ref);
-                                      return v ? formatPercent(v) : "нет данных";
-                                    })()
-                                  : formatMass(f?.mass ?? null, f?.unit ?? res.unit)}
+                                {name} · {row ? formatShare(row) : "нет данных"}
                               </button>
                             );
                           })}
