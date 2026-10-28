@@ -35,7 +35,7 @@ import styles from "./NodeCard.module.css";
  * Вкладки карточки. У преобразования — маршруты и материальный баланс, у
  * продукта — ГИСП.
  */
-type CardTab = "brief" | "tech" | "industry" | "routes" | "balance";
+type CardTab = "brief" | "tech" | "industry" | "sources" | "routes" | "balance";
 
 /** Почему карточка только для просмотра — вместо молча пропавших кнопок. */
 const LOCK_TEXT: Record<NonNullable<FlowPanelProps["lockReason"]>, string> = {
@@ -182,7 +182,13 @@ export const NodeCard: FC<NodeCardProps> = ({
     if (kind === "alt") return list;
 
     list.push({ id: "tech", label: "Технологическое описание" });
-    if (isProduct) list.push({ id: "industry", label: "Промышленное знание" });
+    if (isProduct) {
+      list.push({ id: "industry", label: "Промышленное знание" });
+      // Источники продукта — своей вкладкой: в «Кратком описании» два их
+      // списка (найденные для графа и база сервера) уводили описание и
+      // кнопку построения далеко вверх.
+      list.push({ id: "sources", label: "Источники" });
+    }
     else if (hasAggregatedDesc)
       list.push({ id: "routes", label: "Технологические маршруты" });
     if (kind === "transformation") list.push({ id: "balance", label: "Материальный баланс" });
@@ -515,17 +521,6 @@ export const NodeCard: FC<NodeCardProps> = ({
                 </button>
               )}
 
-              {isProduct && (
-                <NodeSourcesBlock
-                  groups={sourceGroups}
-                  product={sourcesCurrentProduct}
-                />
-              )}
-
-              {isProduct && sourcesCurrentProduct && (
-                <NodeBaseSourcesBlock product={sourcesCurrentProduct} />
-              )}
-
               {/* Ссылки на источники преобразования лежат прямо на узле. */}
               {!isProduct &&
                 Array.isArray(transformationSources) &&
@@ -545,6 +540,19 @@ export const NodeCard: FC<NodeCardProps> = ({
                     </ol>
                   </CollapsibleBlock>
                 )}
+            </>
+          )}
+
+          {/* ── Источники продукта: найденные для графа и база сервера ── */}
+          {activeTab === "sources" && isProduct && (
+            <>
+              <NodeSourcesBlock
+                groups={sourceGroups}
+                product={sourcesCurrentProduct}
+              />
+              {sourcesCurrentProduct && (
+                <NodeBaseSourcesBlock product={sourcesCurrentProduct} />
+              )}
             </>
           )}
 
