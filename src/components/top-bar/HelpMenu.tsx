@@ -4,13 +4,18 @@ import { useDismiss } from "../../hooks/useDismiss";
 import { BookIcon, HelpIcon } from "../icons";
 import styles from "./HelpMenu.module.css";
 
-/** Обозначения на полотне — те же цвета, что и на графе. line — связь, а не узел. */
-const LEGEND: { color: string; label: string; line?: boolean }[] = [
+/**
+ * Обозначения на полотне — те же цвета, что и на графе. line — связь, а не
+ * узел: "dash" — пунктир, "dots" — точки.
+ */
+const LEGEND: { color: string; label: string; line?: "dash" | "dots" }[] = [
   { color: "var(--c-product)", label: "Продукт" },
   { color: "var(--c-transform)", label: "Преобразование" },
   { color: "var(--c-alt)", label: "Альтернативный маршрут" },
   // Связь назад — рециклинг или продукт выше — пунктир (styles/Flow.module.css, .edge--recycle).
-  { color: "#0d9488", label: "Связь назад, к узлу выше", line: true },
+  { color: "#0d9488", label: "Связь назад, к узлу выше", line: "dash" },
+  // Побочный продукт преобразования — точки (styles/Flow.module.css, .edge--byproduct).
+  { color: "#b1b1b7", label: "Побочный продукт", line: "dots" },
 ];
 
 const SHORTCUTS = [
@@ -58,7 +63,13 @@ export const HelpMenu = () => {
             {LEGEND.map((item) => (
               <li key={item.label} className={styles.legendItem}>
                 <span
-                  className={item.line ? styles.swatchLine : styles.swatch}
+                  className={
+                    item.line === "dots"
+                      ? styles.swatchDots
+                      : item.line
+                        ? styles.swatchLine
+                        : styles.swatch
+                  }
                   style={
                     item.line ? { color: item.color } : { background: item.color }
                   }
