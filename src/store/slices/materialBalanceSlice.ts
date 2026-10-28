@@ -868,8 +868,9 @@ export const removeMaterialBalance =
 
 /**
  * Поправить проценты расчёта вручную: shares — все правки расчёта (ключ
- * строки → проценты), пусто — все как у модели. Другие проценты не
- * пересчитываются. Правка сохраняется с графом и пишется в его историю.
+ * строки → проценты от массы сырья, PercentBalance.edits), пусто — все как
+ * у модели. Другие проценты не пересчитываются. Правка сохраняется с графом
+ * и пишется в его историю.
  */
 export const setMaterialBalanceShares =
   (nodeId: string, recordId: number, shares: BalanceShares) =>
@@ -878,8 +879,10 @@ export const setMaterialBalanceShares =
     if (!node) return;
     const next = calcsOf(node).map((c) => {
       if (c.record.id !== recordId) return c;
-      const { shares: _old, ...rest } = c;
-      return Object.keys(shares).length ? { ...rest, shares } : rest;
+      const { shares: _old, sharesBasis: _basis, ...rest } = c;
+      return Object.keys(shares).length
+        ? { ...rest, shares, sharesBasis: "raw" as const }
+        : rest;
     });
     dispatch(updateNodeData({ nodeId, data: { materialBalances: next } }));
   };

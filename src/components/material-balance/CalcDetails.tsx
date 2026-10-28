@@ -287,6 +287,7 @@ export const CalcDetails: FC<Props> = ({
         nodeIds={calc.nodeIds}
         labelOf={labelOf}
         shares={calc.shares}
+        sharesBasis={calc.sharesBasis}
         onShares={readOnly ? undefined : onShares}
         onProduct={onProduct}
         onGo={onGo}

@@ -139,7 +139,7 @@ export const FormScheme: FC<FormProps> = ({
           )}
           {chosen.length > 0 && (
             <p className={styles.question}>
-              {`Какую долю ${chosen.map((n) => `«${label(n)}»`).join(", ")} даёт сырьё ${ins.map((n) => `«${label(n)}»`).join(", ")}? В массовых процентах: сырьё — 100 %, продукт — 100 %, побочные продукты и отходы — отдельно.`}
+              {`Какую долю ${chosen.map((n) => `«${label(n)}»`).join(", ")} даёт сырьё ${ins.map((n) => `«${label(n)}»`).join(", ")}? В массовых процентах: сырьё — 100 %, продукты, побочные продукты и отходы — в процентах от массы сырья.`}
             </p>
           )}
         </>
@@ -205,7 +205,7 @@ export const CalcScheme: FC<CalcProps> = ({
           </span>
           <span className={styles.flowMass}>{share(f)}</span>
           <span className={styles.flowNote}>
-            {row(f)?.kind === "reagent" ? "% от массы продукта" : "% от массы сырья"}
+            % от массы сырья
             {row(f)?.edited ? " · правка" : ""}
           </span>
         </div>

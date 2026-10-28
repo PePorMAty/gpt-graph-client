@@ -4,16 +4,22 @@ import {
   flowKind,
   FLOW_KIND_TEXT,
   formatPercent,
+  formatProductsPerRaw,
+  formatRatio,
+  formatRawPerProducts,
   formatShare,
   formatShareTotal,
+  isInputSide,
   parseShareInput,
   percentBalance,
   placeableFlow,
+  rawToProducts,
   shareInputValue,
   shareTotal,
   type BalanceEdgeRole,
   type BalanceShares,
   type FlowKind,
+  type MaterialBalanceCalc,
   type PercentRow,
 } from "../../utils/materialBalance";
 import type { BalanceFlow, BalanceRecord } from "../../store/api/material-balance-api";
@@ -123,7 +129,12 @@ interface Props {
   labelOf: (id: string | undefined) => string;
   /** Проценты, поправленные вручную (MaterialBalanceCalc.shares). */
   shares?: BalanceShares;
-  /** Сохранить правки процентов — все правки расчёта; нет — только смотреть. */
+  /** От чего считаны правки (MaterialBalanceCalc.sharesBasis). */
+  sharesBasis?: MaterialBalanceCalc["sharesBasis"];
+  /**
+   * Сохранить правки процентов — все правки расчёта, от массы сырья; нет —
+   * только смотреть.
+   */
   onShares?: (shares: BalanceShares) => void;
   /** Подробный расчёт продукта. */
   onProduct?: (nodeId: string) => void;
@@ -138,10 +149,10 @@ interface Props {
 }
 
 const TABLE_HELP =
-  "Массовые проценты по расчёту модели: сырьё вместе — 100 % (общая масса сырья), продукт — 100 % (масса продукта; несколько продуктов делят эти 100 %). Реагенты сверх графа, побочные продукты, отходы и потери в эти 100 % не входят — они ниже, отдельно, в процентах от массы продукта. Любой процент можно поправить вручную — щелчком по нему; другие проценты при этом не меняются. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне, «+» — поставить вещество на граф.";
+  "Массовые проценты по расчёту модели. База — общая масса сырья: сырьё вместе — 100 %. Продукты — в процентах от массы сырья: на 100 % сырья их бывает и не 100 %. Побочные продукты, отходы и потери — тоже от массы сырья; вместе с продуктами это все выходы («Итого выходов»). Реагенты сверх графа (кислород, вода) — от массы сырья, на входе. Ниже — соотношение сырья и продуктов. Любой процент можно поправить вручную — щелчком по нему; другие проценты при этом не меняются. Щелчок по продукту — его подробный расчёт, стрелка — узел на полотне, «+» — поставить вещество на граф.";
 
 const PERCENT_HELP =
-  "Массовые проценты (% масс.): доля массы вещества — не объёма и не молей. Сырьё: 100 % — общая масса всего сырья. Продукт: 100 % — масса продукта (несколько продуктов делят эти 100 %). Отдельно — в процентах от массы продукта.";
+  "Массовые проценты (% масс.): доля массы вещества — не объёма и не молей. Все проценты — от общей массы сырья: у сырья вместе это 100 %, у продуктов, побочных продуктов, отходов и реагентов — сколько их на эту массу.";
 
 /**
  * Процент строки. Можно править — щелчок открывает поле: Enter или уход из
@@ -230,17 +241,18 @@ const ShareCell: FC<{
 };
 
 /**
- * Таблица материального баланса в массовых процентах: сырьё — 100 %,
- * продукт — 100 %, прочее — отдельно, в процентах от массы продукта. Строки
- * сырья и продуктов расчёта ведут к узлам по обозначению, потоки сверх
- * графа — по названию. Любой процент правится вручную, сам по себе: «Итого»
- * показывает сумму как есть.
+ * Таблица материального баланса в массовых процентах от массы сырья: сырьё
+ * — 100 %, продукты и прочее — сколько их на эту массу; итоги выходов и
+ * входов и соотношение сырья и продуктов. Строки сырья и продуктов расчёта
+ * ведут к узлам по обозначению, потоки сверх графа — по названию. Любой
+ * процент правится вручную, сам по себе: «Итого» показывает сумму как есть.
  */
 export const BalanceTable: FC<Props> = ({
   record,
   nodeIds,
   labelOf,
   shares,
+  sharesBasis,
   onShares,
   onProduct,
   onGo,
@@ -248,7 +260,7 @@ export const BalanceTable: FC<Props> = ({
   onPlaceFlow,
   roleOf,
 }) => {
-  const pb = percentBalance(record, roleOf, shares);
+  const pb = percentBalance(record, roleOf, shares, sharesBasis);
   const nodeOf = (r: PercentRow) => {
     if (!r.ref) return findNode?.(r.name);
     const id = nodeIds[r.ref];
@@ -256,9 +268,11 @@ export const BalanceTable: FC<Props> = ({
   };
   const nameOf = (r: PercentRow) => (r.ref ? labelOf(nodeIds[r.ref]) : "") || r.name;
   const edited = [...pb.raw, ...pb.products, ...pb.separate].filter((r) => r.edited).length;
+  // Поверх правок, уже переведённых на массу сырья: правки прежней версии
+  // сохранятся вместе с новой — тоже от массы сырья.
   const setShare = onShares
     ? (key: string) => (value: number | undefined) => {
-        const next = { ...shares };
+        const next = { ...pb.edits };
         if (value === undefined) delete next[key];
         else next[key] = value;
         onShares(next);
@@ -307,19 +321,28 @@ export const BalanceTable: FC<Props> = ({
     );
   };
 
-  /** «Итого»: сумма как есть — после правок она может уйти от 100 %. */
-  const total = (title: string, rows: PercentRow[]) => {
-    if (rows.length < 2 && !rows.some((r) => r.edited)) return null;
+  /**
+   * «Итого»: сумма как есть. У сырья ждём 100 % — ушла после правок,
+   * выделена; у продуктов и выходов 100 % быть не обязано (always — строка и
+   * при одной позиции).
+   */
+  const total = (
+    title: string,
+    rows: PercentRow[],
+    opts: { expect100?: boolean; always?: boolean; hint?: string } = {},
+  ) => {
+    const { expect100 = true, always = false, hint } = opts;
+    if (!always && rows.length < 2 && !rows.some((r) => r.edited)) return null;
     const t = shareTotal(rows);
     if (!t) return null;
-    const off = Math.abs(t.percent - 100) >= 0.05;
+    const off = expect100 && Math.abs(t.percent - 100) >= 0.05;
     return (
       <tr className={styles.totalRow}>
-        <td>{title}</td>
+        <td title={hint}>{title}</td>
         <td className={styles.roleCol} />
         <td
           className={`${styles.numCol} ${off ? styles.totalOff : ""}`}
-          title={off ? "Сумма не 100 %: проценты правятся каждый сам по себе — поправьте остальные" : undefined}
+          title={off ? "Сумма не 100 %: проценты правятся каждый сам по себе — поправьте остальные" : hint}
         >
           {formatShareTotal(t)}
         </td>
@@ -335,6 +358,12 @@ export const BalanceTable: FC<Props> = ({
       </td>
     </tr>
   );
+  const reagents = pb.separate.filter(isInputSide);
+  const outputsExtra = pb.separate.filter((r) => !isInputSide(r));
+  const ratio = rawToProducts(pb);
+  const ratioHint = ratio
+    ? `На 1 т сырья — ${formatProductsPerRaw(ratio)} т продуктов; на 1 т продуктов — ${formatRawPerProducts(ratio)} т сырья`
+    : undefined;
 
   return (
     <section className={styles.cardBlock}>
@@ -362,20 +391,45 @@ export const BalanceTable: FC<Props> = ({
             {side("Сырьё", "100 % = общая масса сырья")}
             {pb.raw.map(line)}
             {total("Итого сырьё", pb.raw)}
-            {many
-              ? side("Продукты", "100 % = общая масса продуктов")
-              : side("Продукт", "100 % = масса продукта")}
+            {side(many ? "Продукты" : "Продукт", "в % от массы сырья")}
             {pb.products.map(line)}
-            {total(many ? "Итого продукты" : "Итого продукт", pb.products)}
+            {total(many ? "Итого продукты" : "Итого продукт", pb.products, { expect100: false })}
             {pb.separate.length > 0 && (
               <>
-                {side("Отдельно", `в % от массы ${many ? "продуктов" : "продукта"}`)}
+                {side("Отдельно", "в % от массы сырья")}
                 {pb.separate.map(line)}
               </>
+            )}
+            {outputsExtra.length > 0 &&
+              total("Итого выходов", [...pb.products, ...outputsExtra], {
+                expect100: false,
+                always: true,
+                hint: "Продукты вместе с побочными продуктами, отходами и потерями — в % от массы сырья",
+              })}
+            {reagents.length > 0 &&
+              total("Итого входов", [...pb.raw, ...reagents], {
+                expect100: false,
+                always: true,
+                hint: "Сырьё вместе с реагентами сверх графа — в % от массы сырья: столько же должно выйти",
+              })}
+            {ratio && (
+              <tr className={styles.totalRow}>
+                <td title={ratioHint}>Соотношение сырьё : продукты</td>
+                <td className={styles.roleCol} />
+                <td className={styles.numCol} title={ratioHint}>
+                  {formatRatio(ratio)}
+                </td>
+                <td />
+              </tr>
             )}
           </tbody>
         </table>
       </div>
+      {ratio && (
+        <p className={styles.note}>
+          На 1 т продуктов — {formatRawPerProducts(ratio)} т сырья.
+        </p>
+      )}
       {pb.empty && (
         <p className={styles.note}>
           Масс в расчёте нет — модель долей не дала.
@@ -391,7 +445,15 @@ export const BalanceTable: FC<Props> = ({
       )}
       {pb.partialProducts && (
         <p className={styles.note}>
-          У части продуктов массы в расчёте нет — доли посчитаны от продуктов с массой.
+          У части продуктов массы в расчёте нет — «Итого продукты» и соотношение
+          с сырьём посчитаны без них.
+        </p>
+      )}
+      {pb.noRawMass && (
+        <p className={styles.note}>
+          Масс сырья в расчёте нет — доли продуктов от сырья посчитать не из
+          чего.
+          {onShares ? " Проценты можно вписать вручную." : ""}
         </p>
       )}
       {pb.separate.length === 0 && (
