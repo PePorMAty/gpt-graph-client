@@ -12,6 +12,13 @@ import { okpd2Url, tnvedTitle } from "./gisp";
 import { CODE_LABEL, type CodeKind } from "./codeOverrides";
 import styles from "./Industry.module.css";
 
+/**
+ * Откуда код по номеру CAS и чего он стоит — подсказкой везде, где его
+ * показывают. Источник указываем по условию лицензии CC BY 4.0.
+ */
+export const ECICS_TITLE =
+  "Код ТН ВЭД по номеру CAS — из ECICS, таможенного реестра химических веществ ЕС (© Европейский союз, CC BY 4.0). Общие с ТН ВЭД ЕАЭС первые шесть знаков; справочно, юридической силы не имеет.";
+
 /** Код, который карточка показывает без правки: из реестра или по названию. */
 export interface RegistryCode {
   code: string;
@@ -23,6 +30,8 @@ export interface RegistryCode {
   refinedFrom?: string | null;
   /** Позиция найдена в классификаторе по названию вещества, не в реестре. */
   byName?: boolean;
+  /** Позиция ТН ВЭД по номеру CAS — из таможенного реестра ЕС (ECICS). */
+  byCas?: boolean;
   /** ТН ВЭД: цепочка названий сверху вниз (см. tnvedTitle). */
   path?: string | null;
 }
@@ -251,7 +260,7 @@ export const CodeLine: FC<Props> = ({
             )}
             {registry && registry.code !== override.code && (
               <span className={styles.codeExtra}>
-                {registry.byName ? "по классификатору" : "в реестре"} — {registry.code}
+                {registry.byName ? "по классификатору" : registry.byCas ? "по номеру CAS (ECICS)" : "в реестре"} — {registry.code}
               </span>
             )}
           </>
@@ -273,6 +282,11 @@ export const CodeLine: FC<Props> = ({
                 title="У записей реестра кода нет — позиция найдена в классификаторе по названию вещества"
               >
                 по классификатору
+              </span>
+            )}
+            {registry?.byCas && (
+              <span className={styles.codeExtra} title={ECICS_TITLE}>
+                по номеру CAS, таможенная база ЕС (ECICS)
               </span>
             )}
           </>
