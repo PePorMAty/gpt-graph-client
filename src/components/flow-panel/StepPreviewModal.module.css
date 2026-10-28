@@ -375,6 +375,11 @@
   cursor: pointer;
 }
 
+/* Раскрываемый продукт: в шаге всегда, снять нельзя. */
+.productCheck:disabled {
+  cursor: default;
+}
+
 .productIcon {
   flex: none;
   display: flex;

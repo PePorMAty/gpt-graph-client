@@ -87,6 +87,12 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   // Куда попадёт свой продукт: вниз строим — он выход, вверх — вход (сырьё).
   const customSide: "input" | "output" =
     direction === "up" ? "input" : "output";
+  // Раскрываемый продукт — на своей стороне шага: вход шага «вниз», выход
+  // шага «вверх». Он уже на полотне и в шаге всегда, поэтому без галочки, —
+  // но в списке нужен: «Входные данные (1): Формальдегид» читалось так, будто
+  // смолы делают из одного формальдегида.
+  const anchorSide: "input" | "output" =
+    direction === "up" ? "output" : "input";
   const anchorNorm = useMemo(
     () => normalizeProductName(anchorProductName),
     [anchorProductName],
@@ -230,6 +236,22 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     side: "input" | "output" | "byproduct",
   ) => (
     <ul className={styles.productList}>
+      {anchorSide === side && (
+        <li className={styles.productItem}>
+          <input
+            type="checkbox"
+            className={styles.productCheck}
+            checked
+            disabled
+            title="Продукт, от которого строится шаг, — в шаге всегда"
+          />
+          <span className={styles.productIcon}>
+            <FlaskIcon size={17} />
+          </span>
+          <span className={styles.productName}>{anchorProductName}</span>
+          <span className={styles.badgeExisting}>раскрываемый</span>
+        </li>
+      )}
       {items.map(({ product: p, origIdx }) => (
         <li key={origIdx} className={styles.productItem}>
           <input
@@ -263,9 +285,11 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
 
   const notes = step.transformation.notes ?? [];
   const showInputs =
+    anchorSide === "input" ||
     visibleInputs.length > 0 ||
     (customSide === "input" && customProducts.length > 0);
   const showOutputs =
+    anchorSide === "output" ||
     visibleOutputs.length > 0 ||
     (customSide === "output" && customProducts.length > 0);
 
@@ -342,6 +366,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             <div className={styles.blockBody}>
               <span className={styles.blockTitle}>
                 Входные данные ({visibleInputs.length +
+                  (anchorSide === "input" ? 1 : 0) +
                   (customSide === "input" ? customProducts.length : 0)})
               </span>
               {productList(visibleInputs, excludedInputs, toggleInput, "input")}
@@ -357,6 +382,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             <div className={styles.blockBody}>
               <span className={styles.blockTitle}>
                 Выходные данные ({visibleOutputs.length +
+                  (anchorSide === "output" ? 1 : 0) +
                   (customSide === "output" ? customProducts.length : 0)})
               </span>
               {productList(
