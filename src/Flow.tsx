@@ -181,6 +181,13 @@ const nodeTypes: NodeTypes = {
   transformation: TransformationNode,
 };
 
+/**
+ * Сколько курсор держится на узле (или вне узлов), прежде чем подсветка
+ * цепочки включится (погаснет). Меньше — подсветка мигает от узлов, через
+ * которые курсор проезжает; больше — кажется, что она запаздывает.
+ */
+const HOVER_CHAIN_DELAY_MS = 150;
+
 /** Стрелка связи рециклинга — цветом пунктира (styles/Flow.module.css). */
 const RECYCLE_ARROW = {
   type: MarkerType.ArrowClosed,
@@ -824,7 +831,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // вкладку «Объединение графов» (source === "loaded"). При наведении на узел
   // выделяются он сам, все предки и потомки + рёбра между ними; остальное
   // затемняется.
+  //
+  // Затемняет не каждый узел по отдельности, а класс полотна (chain-hover):
+  // узлы и связи цепочки помечены, остальные гаснут через CSS. Иначе каждое
+  // наведение пересобирало все узлы и связи, и на графе в сотни узлов курсор,
+  // который просто ведут через граф, тормозил его на каждом пересечённом узле.
   const [hoveredChainId, setHoveredChainId] = useState<string | null>(null);
+  // Подсветка — когда курсор задержался на узле (и гаснет так же, с
+  // задержкой): узлы, через которые курсор только проехал, её не включают, а
+  // переход на соседний узел не мигает затемнением.
+  const hoverTimerRef = useRef<number | null>(null);
+  // Полотно двигают (протяжка, колесо): узлы проезжают под курсором — это не
+  // наведение.
+  const movingRef = useRef(false);
+  const flowWrapRef = useRef<HTMLDivElement>(null);
   const nodeTypeById = useMemo(() => {
     const m = new Map<string, string | undefined>();
     for (const n of data.nodes) m.set(n.id, n.type);
@@ -1028,7 +1048,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     );
   }, []);
 
-  const flowNodes = useMemo(
+  // Узлы для полотна без подсветки цепочки: от наведения они не зависят, и
+  // React Flow по тем же объектам не перерисовывает узлы заново.
+  const baseFlowNodes = useMemo(
     () =>
       // Приоритет проекций: фокус-режим > «только продукты» > полный граф.
       // Выключенные альтернативы отсекаются последними — от проекции это не
@@ -1037,7 +1059,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         .filter((n) => showAlternatives || n.data?.chainVariant !== "alt")
         .map((n) => {
         const isAlt = n.data?.chainVariant === "alt";
-        const isDimmed = chainSet ? !chainSet.has(n.id) : false;
         const isFocusCenter = n.id === focusState?.focusId;
 
         // Режим баланса: вне выбранного преобразования и открытого расчёта
@@ -1048,7 +1069,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         const cls = [
           n.id === highlightedId ? "node--highlight" : "",
           isAlt ? "node--alt" : "",
-          isDimmed ? "node--dimmed" : "",
           isFocusCenter ? "node--focus" : "",
           balanceMuted ? "node--balance-muted" : "",
         ]
@@ -1129,7 +1149,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       focusView,
       focusState,
       highlightedId,
-      chainSet,
       sourcesPool,
       showAlternatives,
       industryData,
@@ -1140,11 +1159,25 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     ],
   );
 
-  const flowEdges = useMemo(() => {
+  // Цепочка под курсором: новые объекты — только у её узлов, остальные те
+  // же, что в baseFlowNodes.
+  const flowNodes = useMemo(
+    () =>
+      chainSet
+        ? baseFlowNodes.map((n) =>
+            chainSet.has(n.id)
+              ? { ...n, className: [n.className, "node--chain"].filter(Boolean).join(" ") }
+              : n,
+          )
+        : baseFlowNodes,
+    [baseFlowNodes, chainSet],
+  );
+
+  const baseFlowEdges = useMemo(() => {
     const base = focusView?.edges ?? productsView?.edges ?? data.edges;
     // Скрытые альтернативы уносят с собой и свои рёбра — иначе связь
     // повисала бы в пустоте.
-    const visibleIds = new Set(flowNodes.map((n) => n.id));
+    const visibleIds = new Set(baseFlowNodes.map((n) => n.id));
     const baseEdges = showAlternatives
       ? base
       : base.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
@@ -1180,25 +1213,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         : e;
     const styled = (e: (typeof baseEdges)[number]) =>
       recycleStyled(byproductStyled(e));
-    if (!chainSet && !lit) return baseEdges.map(styled);
+    if (!lit) return baseEdges.map(styled);
     return baseEdges.map((raw) => {
       const e = styled(raw);
-      const existing = e.className ?? "";
       const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
-      const extra = [
-        chainSet && !(chainSet.has(e.source) && chainSet.has(e.target))
-          ? "edge--dimmed"
-          : "",
-        !lit || tone === "plain"
-          ? ""
-          : tone
-            ? `edge--balance-${tone}`
-            : "edge--balance-muted",
-      ].filter(Boolean);
-      if (!extra.length) return e;
-      return { ...e, className: [existing, ...extra].filter(Boolean).join(" ") };
+      if (tone === "plain") return e;
+      const extra = tone ? `edge--balance-${tone}` : "edge--balance-muted";
+      return { ...e, className: [e.className, extra].filter(Boolean).join(" ") };
     });
-  }, [data.edges, productsView, focusView, chainSet, flowNodes, showAlternatives, balance, nodeTypeById]);
+  }, [data.edges, productsView, focusView, baseFlowNodes, showAlternatives, balance, nodeTypeById]);
+
+  // Связи цепочки под курсором — так же, как её узлы.
+  const flowEdges = useMemo(
+    () =>
+      chainSet
+        ? baseFlowEdges.map((e) =>
+            chainSet.has(e.source) && chainSet.has(e.target)
+              ? { ...e, className: [e.className, "edge--chain"].filter(Boolean).join(" ") }
+              : e,
+          )
+        : baseFlowEdges,
+    [baseFlowEdges, chainSet],
+  );
 
   // Просьба извне вписать граф в экран (открытие графа из библиотеки,
   // объединение). Узлы к моменту события ещё не измерены React Flow, а по
@@ -1361,13 +1397,48 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     [focusOnNode, selectedNodeId, readOnly, dispatch, openBalancePanel],
   );
 
-  // Hover-подсветка цепочки (только для загруженных графов;
-  // useMemo сам зануляет chainSet при source !== "loaded").
-  const onNodeMouseEnter = useCallback((_: unknown, node: Node) => {
-    setHoveredChainId(node.id);
+  // Hover-подсветка цепочки (только для загруженных графов; в фокусе и
+  // балансе useMemo сам зануляет chainSet). Узел — через HOVER_CHAIN_DELAY_MS,
+  // см. hoverTimerRef.
+  const hoverChainLater = useCallback((id: string | null) => {
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null;
+      setHoveredChainId(id);
+    }, HOVER_CHAIN_DELAY_MS);
   }, []);
+  const onNodeMouseEnter = useCallback(
+    (_: unknown, node: Node) => {
+      if (source !== "loaded" || movingRef.current) return;
+      hoverChainLater(node.id);
+    },
+    [source, hoverChainLater],
+  );
   const onNodeMouseLeave = useCallback(() => {
+    if (movingRef.current) return;
+    hoverChainLater(null);
+  }, [hoverChainLater]);
+  useEffect(
+    () => () => {
+      if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    },
+    [],
+  );
+
+  // Пока полотно двигают, узлы и связи не ловят указатель (data-moving, см.
+  // Flow.module.css): браузер не ищет узел под курсором на каждом кадре и не
+  // пересчитывает :hover у проезжающих узлов. Атрибут ставим прямо на
+  // обёртку — перерисовывать ради него весь Flow незачем.
+  const onMoveStart = useCallback(() => {
+    movingRef.current = true;
+    flowWrapRef.current?.setAttribute("data-moving", "");
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = null;
     setHoveredChainId(null);
+  }, []);
+  const onMoveEnd = useCallback(() => {
+    movingRef.current = false;
+    flowWrapRef.current?.removeAttribute("data-moving");
   }, []);
 
   // Выделенные узлы (групповое выделение через Shift+рамку / Ctrl+клик).
@@ -3384,8 +3455,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       />
 
       <ReactFlow
+        ref={flowWrapRef}
+        className={chainSet ? "chain-hover" : undefined}
         nodes={flowNodes}
         edges={flowEdges}
+        onMoveStart={onMoveStart}
+        onMoveEnd={onMoveEnd}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={canEditNodes ? handleConnect : undefined}
@@ -3442,7 +3517,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       {/* Мини-карта — своя, а не штатная: она следит за камерой и показывает
           окрестность кадра, иначе на больших графах узлы неразличимы.
           Живёт вне <ReactFlow>, чтобы её клики не доходили до полотна. */}
-      {data.nodes.length > 0 && <CanvasMinimap nodes={flowNodes} />}
+      {data.nodes.length > 0 && <CanvasMinimap nodes={baseFlowNodes} />}
       <SaveGraphModal
         isOpen={showSaveGraphModal}
         onClose={() => setShowSaveGraphModal(false)}
