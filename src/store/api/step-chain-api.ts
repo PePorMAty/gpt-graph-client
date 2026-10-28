@@ -18,6 +18,7 @@ import {
 } from "../../utils/enrichSourcesFromNodes";
 import { getAncestorProductLabels } from "../../utils/graphReachability";
 import { identifyStepProducts } from "../../utils/resolveProductIds";
+import { buildStepChainContext } from "../../utils/stepChainContext";
 import { serverReason } from "./serverReason";
 
 export const fetchChainStep = createAsyncThunk<
@@ -224,13 +225,13 @@ export const fetchStepSourcesV2 = createAsyncThunk<
         enrichSourcesFromNodes(poolSources, graph.data.nodes),
       );
       if (poolSources.length && !blocked && withText) {
-        const node = graph.data.nodes.find((n) => n.id === args.nodeId);
-        const nodeData = (node?.data ?? {}) as Record<string, unknown>;
-        const descField =
-          args.direction === "up" ? "upDescription" : "downDescription";
-        const existingChain = String(
-          nodeData[descField] ?? nodeData.description ?? "",
-        ).trim();
+        // Цепочка вокруг продукта, а не его описание (см. stepChainContext).
+        const existingChain = buildStepChainContext(
+          args.nodeId,
+          graph.data.nodes,
+          graph.data.edges,
+          args.direction,
+        );
         thunkApi.dispatch(
           aggregateStepSources({
             nodeId: args.nodeId,

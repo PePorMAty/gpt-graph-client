@@ -150,11 +150,16 @@ export async function identifyStepProducts<
   T extends {
     inputProducts: { name: string; productId?: string }[];
     outputProducts: { name: string; productId?: string }[];
+    byproducts?: { name: string; productId?: string }[];
   },
 >(step: T): Promise<T> {
   if (!step) return step;
 
-  const products = [...(step.inputProducts ?? []), ...(step.outputProducts ?? [])];
+  const products = [
+    ...(step.inputProducts ?? []),
+    ...(step.outputProducts ?? []),
+    ...(step.byproducts ?? []),
+  ];
   const names = [
     ...new Set(
       products
@@ -178,5 +183,6 @@ export async function identifyStepProducts<
     ...step,
     inputProducts: fill(step.inputProducts ?? []),
     outputProducts: fill(step.outputProducts ?? []),
+    ...(step.byproducts ? { byproducts: fill(step.byproducts) } : {}),
   };
 }

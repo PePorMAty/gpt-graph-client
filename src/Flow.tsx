@@ -124,7 +124,11 @@ import {
 import { previewStepOutcome } from "./utils/stepToFlow";
 import { getAncestorProductLabels } from "./utils/graphReachability";
 import { isRecycleEdge, recycleArrowAt } from "./utils/recycleEdge";
-import { orientByProduction, orientByTFlow } from "./utils/edgeFlow";
+import {
+  isByproductEdge,
+  orientByProduction,
+  orientByTFlow,
+} from "./utils/edgeFlow";
 import { alternativeRouteText } from "./utils/transformationRoutesView";
 import { NodeContextMenu } from "./components/node-context-menu";
 import { showToast } from "./components/toast/toastStore";
@@ -157,6 +161,7 @@ import {
   type DirectProductNeighbor,
 } from "./utils/getDirectProductNeighbors";
 import { getLinkedProducts } from "./utils/getLinkedProducts";
+import { buildStepChainContext } from "./utils/stepChainContext";
 import { fetchTransformationsForNeighbors } from "./store/api/transformation-between-api";
 import type { ChainLink } from "./store/types";
 import type { ChainProductNode } from "./utils/chainToFlow";
@@ -1152,9 +1157,23 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         ...(at === "end" ? { markerEnd: RECYCLE_ARROW } : { markerStart: RECYCLE_ARROW }),
       };
     };
-    if (!chainSet && !lit) return baseEdges.map(recycleStyled);
+    // Побочный продукт — точками, тоже по смыслу связи, а не по классу:
+    // класс мог не дожить до файла графа. Побочный продукт-предок остаётся
+    // пунктиром рециклинга.
+    const byproductStyled = (e: (typeof baseEdges)[number]) =>
+      isByproductEdge(e) &&
+      !isRecycleEdge(e) &&
+      !(e.className ?? "").includes("edge--byproduct")
+        ? {
+            ...e,
+            className: [e.className, "edge--byproduct"].filter(Boolean).join(" "),
+          }
+        : e;
+    const styled = (e: (typeof baseEdges)[number]) =>
+      recycleStyled(byproductStyled(e));
+    if (!chainSet && !lit) return baseEdges.map(styled);
     return baseEdges.map((raw) => {
-      const e = recycleStyled(raw);
+      const e = styled(raw);
       const existing = e.className ?? "";
       const tone = balance?.edges.get(balanceEdgeKey(e.source, e.target));
       const extra = [
@@ -2449,13 +2468,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // одного technology_description».
       const poolSources = enrichSourcesFromNodes(rawSources, data.nodes);
 
-      const descField =
-        direction === "up" ? "upDescription" : "downDescription";
-      const existingChain = String(
-        selectedNode?.data?.[descField] ||
-          selectedNode?.data?.description ||
-          "",
-      ).trim();
+      // Цепочка вокруг продукта, а не его описание: описание модель
+      // принимала за цепочку и называла им раскрываемый продукт.
+      const existingChain = buildStepChainContext(
+        selectedNodeId,
+        data.nodes,
+        data.edges,
+        direction,
+      );
 
       dispatch(
         aggregateStepSources({
@@ -2477,6 +2497,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       selectedNode,
       sourcesPool,
       data.nodes,
+      data.edges,
     ],
   );
 
