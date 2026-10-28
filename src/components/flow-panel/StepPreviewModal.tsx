@@ -7,6 +7,7 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   BookIcon,
+  BranchIcon,
   CloseIcon,
   FlaskIcon,
   GearIcon,
@@ -105,9 +106,19 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
         .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
     [step.outputProducts, anchorNorm],
   );
+  const visibleByproducts = useMemo(
+    () =>
+      (step.byproducts ?? [])
+        .map((p, idx) => ({ product: p, origIdx: idx }))
+        .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
+    [step.byproducts, anchorNorm],
+  );
 
   const [excludedInputs, setExcludedInputs] = useState<Set<number>>(new Set());
   const [excludedOutputs, setExcludedOutputs] = useState<Set<number>>(new Set());
+  const [excludedByproducts, setExcludedByproducts] = useState<Set<number>>(
+    new Set(),
+  );
 
   // Продукты, добавленные пользователем вручную (модель их не предлагала).
   const [customProducts, setCustomProducts] = useState<StepProduct[]>([]);
@@ -130,6 +141,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     const clash =
       step.inputProducts.some((p) => normalizeProductName(p.name) === norm) ||
       step.outputProducts.some((p) => normalizeProductName(p.name) === norm) ||
+      (step.byproducts ?? []).some((p) => normalizeProductName(p.name) === norm) ||
       customProducts.some((p) => normalizeProductName(p.name) === norm);
     if (clash) {
       setFormError("Такой продукт уже есть в шаге");
@@ -179,6 +191,15 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     });
   };
 
+  const toggleByproduct = (origIdx: number) => {
+    setExcludedByproducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(origIdx)) next.delete(origIdx);
+      else next.add(origIdx);
+      return next;
+    });
+  };
+
   const handleAccept = () => {
     const filteredStep: StepChainApiStep = {
       ...step,
@@ -190,6 +211,13 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
         ...step.outputProducts.filter((_, i) => !excludedOutputs.has(i)),
         ...(customSide === "output" ? customProducts : []),
       ],
+      ...(step.byproducts
+        ? {
+            byproducts: step.byproducts.filter(
+              (_, i) => !excludedByproducts.has(i),
+            ),
+          }
+        : {}),
     };
     onAccept(filteredStep);
   };
@@ -199,7 +227,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     items: { product: StepProduct; origIdx: number }[],
     excluded: Set<number>,
     toggle: (i: number) => void,
-    side: "input" | "output",
+    side: "input" | "output" | "byproduct",
   ) => (
     <ul className={styles.productList}>
       {items.map(({ product: p, origIdx }) => (
@@ -245,6 +273,10 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     ? `«${outcome.loops.join("», «")}»`
     : "";
   const loopsStand = `${(outcome?.loops.length ?? 0) > 1 ? "стоят" : "стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${anchorProductName}»`;
+  const byproductReturnNames = outcome?.byproductReturns.length
+    ? `«${outcome.byproductReturns.join("», «")}»`
+    : "";
+  const byproductReturnsStand = `${(outcome?.byproductReturns.length ?? 0) > 1 ? "стоят" : "стоит"} в цепочке ${direction === "up" ? "ниже" : "выше"} «${anchorProductName}»`;
   const body = (
     <>
         {/* Чем кончится принятие: шаг уже есть на графе, ведёт назад по
@@ -269,6 +301,20 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             пунктиром, и цепочка от неё дальше не пойдёт.
           </div>
         ) : null}
+
+        {/* Побочный продукт, который уже стоит выше (фенол поликонденсации в
+            расплаве): вернётся к предку связью рециклинга. Петлёй шага это
+            не делает — шаг выбран по выходам. */}
+        {!outcome?.onGraph && !outcome?.deadEnd && byproductReturnNames && (
+          <div className={styles.recycle} role="status">
+            {(outcome?.byproductReturns.length ?? 0) > 1
+              ? "Побочные продукты"
+              : "Побочный продукт"}{" "}
+            {byproductReturnNames} уже {byproductReturnsStand}{" "}
+            — связь к {(outcome?.byproductReturns.length ?? 0) > 1 ? "ним" : "нему"}{" "}
+            ляжет пунктиром (возврат в цепочку).
+          </div>
+        )}
 
         {/* Сам шаг: что за процесс получился. */}
         <section className={styles.card}>
@@ -318,6 +364,27 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
                 excludedOutputs,
                 toggleOutput,
                 "output",
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Побочные продукты того же преобразования. На полотне — тоже
+            выходы, но цепочка от них сама дальше не пойдёт. */}
+        {visibleByproducts.length > 0 && (
+          <section className={styles.block}>
+            <span className={styles.blockIcon}>
+              <BranchIcon size={18} />
+            </span>
+            <div className={styles.blockBody}>
+              <span className={styles.blockTitle}>
+                Побочные продукты ({visibleByproducts.length})
+              </span>
+              {productList(
+                visibleByproducts,
+                excludedByproducts,
+                toggleByproduct,
+                "byproduct",
               )}
             </div>
           </section>

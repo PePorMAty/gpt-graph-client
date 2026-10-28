@@ -43,6 +43,11 @@ export interface StepOutcome {
    * рециклинга; тупик — их связь не рисуется.
    */
   loops: string[];
+  /**
+   * Побочные продукты, которые стоят в цепочке выше: вернутся к ним связью
+   * рециклинга. Петлёй шага не считаются.
+   */
+  byproductReturns: string[];
   /** Принятие ничего не добавит на полотно. */
   deadEnd: boolean;
 }
@@ -77,6 +82,7 @@ export function previewStepOutcome(
   return {
     onGraph: stepRecord.alreadyOnGraph?.transformation,
     loops: stepRecord.cycleProductNames ?? [],
+    byproductReturns: stepRecord.byproductRecycleNames ?? [],
     deadEnd: !!stepRecord.isDeadEnd,
   };
 }
@@ -114,14 +120,20 @@ export function stepToFlow(
   const anchorLabel = anchorNode?.data?.label || "";
   const anchorNorm = normalizeProductName(anchorLabel);
 
+  // Побочные продукты — после выходов: при совпадении названий выход важнее,
+  // и следующий шаг по умолчанию идёт от выхода, а не от побочного.
   const allProducts: Array<{
     product: (typeof step.inputProducts)[0];
-    role: "input" | "output";
+    role: "input" | "output" | "byproduct";
   }> = [
     ...step.inputProducts.map((p) => ({ product: p, role: "input" as const })),
     ...step.outputProducts.map((p) => ({
       product: p,
       role: "output" as const,
+    })),
+    ...(step.byproducts ?? []).map((p) => ({
+      product: p,
+      role: "byproduct" as const,
     })),
   ];
 
@@ -159,11 +171,17 @@ export function stepToFlow(
   // у шага «вверх» — попутный продукт (пиролиз даёт и этилен, и пропилен).
   // Такие стоят на стороне якоря. Если модель перепутала роли и на дальней
   // стороне не осталось ничего, кладём всё туда, как раньше.
+  //
+  // Побочный продукт всегда выходит из преобразования: у шага «вниз» он на
+  // дальней стороне рядом с выходами, у шага «вверх» — рядом с якорем. В
+  // перекладку при перепутанных ролях его не берём: сырьём он не станет.
   const sides = uniqueProducts.map(({ role }) =>
     role === "input" ? ("in" as const) : ("out" as const),
   );
-  const farSideEmpty = !sides.some((f) => f === foundFlow);
-  const classified = uniqueProducts.map(({ product }, i) => {
+  const farSideEmpty = !uniqueProducts.some(
+    ({ role }, i) => role !== "byproduct" && sides[i] === foundFlow,
+  );
+  const classified = uniqueProducts.map(({ product, role }, i) => {
     // Идентификатор сильнее названия: продукт шага может называться иначе, чем
     // тот же продукт на полотне («Кумол» из шага и «ИПБ» на полотне).
     // Идентификатор продукту шага проставляет справочник (identifyStepProducts)
@@ -185,8 +203,13 @@ export function stepToFlow(
             idSource,
           )
         : null);
-    const flow: TFlow = farSideEmpty ? foundFlow : sides[i];
-    return { product, existingNodeId, flow };
+    const isByproduct = role === "byproduct";
+    const flow: TFlow = isByproduct
+      ? "out"
+      : farSideEmpty
+        ? foundFlow
+        : sides[i];
+    return { product, existingNodeId, flow, isByproduct };
   });
 
   // --- 2б) то же преобразование уже на полотне? ---
@@ -210,7 +233,10 @@ export function stepToFlow(
     const stepIO: ProcessIO = { ins: new Set(), outs: new Set() };
     const sideOf = (flow: TFlow) => (flow === "in" ? stepIO.ins : stepIO.outs);
     sideOf(anchorFlow).add(anchorNodeId);
+    // Побочные продукты процесс не определяют: тот же процесс, построенный
+    // раньше без них, узнаётся, и они ложатся к нему новыми связями.
     for (const c of classified) {
+      if (c.isByproduct) continue;
       sideOf(c.flow).add(
         c.existingNodeId ?? `new::${normalizeProductName(c.product.name)}`,
       );
@@ -245,7 +271,12 @@ export function stepToFlow(
   // бисфенол А, из которого его и сделали. Обычная связь замкнула бы круг;
   // рисуем её связью рециклинга (recycle, см. recycleEdge.ts) — пунктиром,
   // и цепочка от неё дальше не идёт.
+  //
+  // Побочный продукт-предок — тоже связь рециклинга (фенол поликонденсации в
+  // расплаве возвращается к фенолу в начале цепочки), но не петля шага: шаг
+  // выбран по выходам, и тупиком или «дрейфом к предку» его это не делает.
   const cycleProductNames: string[] = [];
+  const byproductRecycleNames: string[] = [];
   const recycleProducts: typeof classified = [];
   const renderProducts: typeof classified = [];
   for (const c of classified) {
@@ -259,7 +290,9 @@ export function stepToFlow(
       c.flow === foundFlow &&
       wouldCreateCycle(c.existingNodeId, anchorNodeId, existingEdges)
     ) {
-      cycleProductNames.push(c.product.name);
+      (c.isByproduct ? byproductRecycleNames : cycleProductNames).push(
+        c.product.name,
+      );
       recycleProducts.push(c);
       continue;
     }
@@ -273,7 +306,7 @@ export function stepToFlow(
   if (
     reusedTrNode &&
     linked.has(anchorNodeId) &&
-    cycleProductNames.length === 0 &&
+    recycleProducts.length === 0 &&
     renderProducts.every((r) => r.existingNodeId && linked.has(r.existingNodeId))
   ) {
     const trLabel = reusedTrNode.data?.label;
@@ -440,11 +473,13 @@ export function stepToFlow(
   const startX = trX - rowWidth / 2;
   const nearNodes: CustomNode[] = [];
 
-  [...far, ...near].forEach(({ product, existingNodeId, flow }, idx) => {
+  [...far, ...near].forEach(({ product, existingNodeId, flow, isByproduct }, idx) => {
     const isFar = flow === foundFlow;
     const x = startX + idx * spacingX;
     // Ребро продукта стороны якоря идёт к преобразованию, как ребро якоря;
     // дальней — от преобразования. Смысл в tFlow, хэндлы — в конце.
+    // Побочный продукт помечен на связи, а не на узле: тот же продукт в
+    // другом шаге может быть основным.
     const link = (pid: string) => {
       const edgeId = isFar
         ? `step::${sessionKey}::e::${trFlowId}::${pid}`
@@ -454,10 +489,14 @@ export function stepToFlow(
         source: isFar ? trFlowId : pid,
         target: isFar ? pid : trFlowId,
         type: "straight",
-        data: { tFlow: flow },
+        ...(isByproduct ? { className: "edge--byproduct" } : {}),
+        data: { tFlow: flow, ...(isByproduct ? { byproduct: true } : {}) },
       });
       addedEdgeIds.push(edgeId);
     };
+    // Цепочка от побочного продукта сама не идёт и источники якоря ему не
+    // передаются — как второму сырью (см. sideProductNodeIds в StepRecord).
+    const isSide = !isFar || isByproduct;
 
     if (existingNodeId) {
       // Существующий продукт (законное схождение) — только ребро, без узла.
@@ -467,7 +506,7 @@ export function stepToFlow(
       // 2026-10-05) — раньше он цеплялся к верху, как сырьё.
       if (linked.has(existingNodeId)) return;
       mergedProductNodeIds.push(existingNodeId);
-      if (!isFar) sideProductNodeIds.push(existingNodeId);
+      if (isSide) sideProductNodeIds.push(existingNodeId);
       link(existingNodeId);
     } else {
       // Новый продукт — узел + ребро
@@ -517,7 +556,7 @@ export function stepToFlow(
       };
       (isFar ? nodes : nearNodes).push(node);
       newProductNodeIds.push(pFlowId);
-      if (!isFar) sideProductNodeIds.push(pFlowId);
+      if (isSide) sideProductNodeIds.push(pFlowId);
       link(pFlowId);
     }
   });
@@ -533,7 +572,11 @@ export function stepToFlow(
       target: pid,
       type: "straight",
       className: "edge--recycle",
-      data: { tFlow: foundFlow, recycle: true },
+      data: {
+        tFlow: foundFlow,
+        recycle: true,
+        ...(r.isByproduct ? { byproduct: true } : {}),
+      },
     });
     addedEdgeIds.push(edgeId);
   }
@@ -569,6 +612,7 @@ export function stepToFlow(
     ...(recycleProducts.length
       ? { recycleProductNames: recycleProducts.map((r) => r.product.name) }
       : {}),
+    ...(byproductRecycleNames.length ? { byproductRecycleNames } : {}),
     isDeadEnd: false,
     ...(reusedTrNode ? { transformationReused: true } : {}),
   };

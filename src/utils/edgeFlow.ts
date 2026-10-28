@@ -23,6 +23,11 @@ export function tFlowOf(edge: Edge): TFlow | undefined {
   return flow === "in" || flow === "out" ? flow : undefined;
 }
 
+/** Связь преобразования с его побочным продуктом (см. stepToFlow). */
+export function isByproductEdge(edge: Edge): boolean {
+  return (edge.data as { byproduct?: unknown } | undefined)?.byproduct === true;
+}
+
 export function withTFlow<E extends Edge>(edge: E, flow: TFlow): E {
   return { ...edge, data: { ...(edge.data ?? {}), tFlow: flow } };
 }
