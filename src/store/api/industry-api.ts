@@ -232,6 +232,11 @@ export interface IdentifyResponse {
   success: boolean;
   /** false — справочник на сервере не прочитан. */
   ready: boolean;
+  /**
+   * Версия справочника: сменилась — ответы могли измениться. Старый сервер
+   * её не присылает.
+   */
+  version?: string | null;
   results: Record<string, ProductIdentity | null>;
 }
 

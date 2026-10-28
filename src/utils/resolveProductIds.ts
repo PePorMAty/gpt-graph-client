@@ -9,8 +9,8 @@
 // записываем, после чего «ИПБ» и «Кумол» схлопываются сами.
 //
 // Проставляем тем, у кого идентификатора нет, и сверяем заново взятые из
-// справочника же. Заданный человеком или взятый из другого источника трогать
-// нельзя — он может быть точнее.
+// справочника же — когда справочник сменил версию. Заданный человеком или
+// взятый из другого источника трогать нельзя — он может быть точнее.
 
 import { identifyProducts } from "../store/api/industry-api";
 import type { CustomNode } from "../types";
@@ -21,19 +21,36 @@ import {
 } from "./productIdentity";
 
 /**
+ * Версия справочника на сервере. undefined — ещё не узнавали в этом сеансе;
+ * null — сервер её не сообщает (старый сервер): тогда об узлах с
+ * идентификатором справочник не спрашиваем вовсе.
+ */
+let dictVersion: string | null | undefined;
+
+/**
  * Стоит ли спросить справочник об этом узле.
  *
- * Узел без идентификатора — ясно. Но и узел с идентификатором ИЗ СПРАВОЧНИКА
- * тоже: это не данные узла, а запомненный ответ справочника, а справочник
- * меняется. Когда «Известняк» и «Карбонат кальция» развели по разным записям,
- * узел «Карбонат кальция», сохранённый раньше, так и носил бы «Известняк» — и
- * при объединении не сошёлся бы с новым узлом «Карбонат кальция»: у обоих есть
- * идентификатор, они разные, а это запрет на слияние.
+ * Узел, которого справочник этой версии уже видел (productIdVersion — текущая
+ * версия), — нет: ответ был бы тем же. Это и узлы с идентификатором из
+ * справочника, и узлы без него — справочник их не знает (на графе «ГК Титан»
+ * таких 152 из 279). Раньше обо всех спрашивали при каждом открытии графа.
  *
+ * Сменилась версия — спросить снова: идентификатор из справочника — не
+ * данные узла, а запомненный его ответ. Когда «Известняк» и «Карбонат
+ * кальция» развели по разным записям, узел «Карбонат кальция», сохранённый
+ * раньше, так и носил бы «Известняк» — и при объединении не сошёлся бы с
+ * новым узлом.
+ *
+ * Версии сервер не сообщает (старый сервер) — как раньше: без идентификатора
+ * спрашиваем всегда, с идентификатором из справочника — уже не сверяем.
  * Заданный человеком и взятый из CAS или ТН ВЭД — не трогаем.
  */
 function refreshable(data: CustomNode["data"] | undefined): boolean {
-  return !readProductId(data) || readProductIdSource(data) === "dictionary";
+  const checked =
+    typeof dictVersion === "string" && data?.productIdVersion === dictVersion;
+  if (!readProductId(data)) return !checked;
+  if (readProductIdSource(data) !== "dictionary") return false;
+  return typeof dictVersion === "string" && !checked;
 }
 
 /**
@@ -49,7 +66,8 @@ const answers = new Map<string, string | null>();
 const CHUNK = 500;
 
 /**
- * Спросить справочник о названиях, которых ещё не спрашивали.
+ * Спросить справочник о названиях, которых ещё не спрашивали. Пустой список —
+ * только узнать версию справочника (если ещё не знаем).
  *
  * Сервер недоступен — не беда: возвращаем что есть. Объединение графов и
  * сборка шага должны работать и без справочника, просто схлопывая по
@@ -57,12 +75,13 @@ const CHUNK = 500;
  */
 async function ask(names: string[]): Promise<void> {
   const pending = names.filter((n) => !answers.has(n));
-  if (!pending.length) return;
+  if (!pending.length && dictVersion !== undefined) return;
 
-  for (let i = 0; i < pending.length; i += CHUNK) {
+  for (let i = 0; i < Math.max(pending.length, 1); i += CHUNK) {
     const chunk = pending.slice(i, i + CHUNK);
     try {
       const data = await identifyProducts(chunk);
+      dictVersion = typeof data?.version === "string" ? data.version : null;
       if (!data?.ready) {
         // Справочника на сервере нет — помечаем спрошенное как неизвестное,
         // чтобы не долбиться в него на каждое объединение.
@@ -80,8 +99,15 @@ async function ask(names: string[]): Promise<void> {
   }
 }
 
+/** Подпись продукта без пробелов по краям; не продукт — пусто. */
+const productLabel = (n: CustomNode) =>
+  n.type === "product" && typeof n.data?.label === "string"
+    ? n.data.label.trim()
+    : "";
+
 /**
- * Проставить идентификаторы продуктам — и сверить взятые из справочника.
+ * Проставить идентификаторы продуктам — и сверить взятые из справочника
+ * прежней версии.
  *
  * Возвращает новый список узлов — исходный не трогает. Если менять нечего,
  * возвращает тот же массив: объединение графов сравнивает списки по ссылке, и
@@ -90,40 +116,58 @@ async function ask(names: string[]): Promise<void> {
  * Справочник только ЗАМЕНЯЕТ свой прежний ответ, но не стирает его. Не знает
  * он теперь этого названия, лежит сервер или справочника на нём нет — узел
  * остаётся с тем, что было: пропавший из-за сбоя идентификатор развёл бы
- * узлы, которые до сих пор сходились.
+ * узлы, которые до сих пор сходились. Сверенный узел получает текущую версию
+ * справочника — в следующий раз о нём не спросят.
  */
 export async function resolveProductIds(
   nodes: CustomNode[],
 ): Promise<CustomNode[]> {
-  const names: string[] = [];
-  const seen = new Set<string>();
-  for (const n of nodes) {
-    if (n.type !== "product") continue;
-    if (!refreshable(n.data)) continue;
-    const label = typeof n.data?.label === "string" ? n.data.label.trim() : "";
-    if (!label || seen.has(label)) continue;
-    seen.add(label);
-    names.push(label);
-  }
-  if (!names.length) return nodes;
+  if (!nodes.some(productLabel)) return nodes;
+  // Версия справочника — до выбора, о ком спрашивать: от неё зависит, кто уже
+  // сверен. Пустой запрос, раз за сеанс; не ответил — спросим обо всех, как
+  // раньше.
+  if (dictVersion === undefined) await ask([]);
+  const need = [
+    ...new Set(
+      nodes
+        .filter((n) => productLabel(n) && refreshable(n.data))
+        .map(productLabel),
+    ),
+  ];
+  if (!need.length) return nodes;
+  await ask(need);
 
-  await ask(names);
-
+  const version = typeof dictVersion === "string" ? dictVersion : undefined;
   let changed = false;
   const next = nodes.map((n) => {
-    if (n.type !== "product") return n;
-    if (!refreshable(n.data)) return n;
-    const label = typeof n.data?.label === "string" ? n.data.label.trim() : "";
-    const id = label ? answers.get(label) : null;
-    if (!id) return n;
+    const label = productLabel(n);
+    if (!label || !refreshable(n.data)) return n;
+    const id = answers.get(label);
+    if (id === undefined) return n; // не дозвались — спросим в другой раз
+    if (!id) {
+      // Справочник этого названия не знает. Прежний его ответ, если был,
+      // оставляем; отмечаем сверенным — иначе спрашивали бы каждый раз.
+      if (!version) return n;
+      changed = true;
+      return { ...n, data: { ...n.data, productIdVersion: version } };
+    }
     const current = readProductId(n.data);
-    if (current && normalizeProductId(current) === normalizeProductId(id)) {
+    if (
+      current &&
+      normalizeProductId(current) === normalizeProductId(id) &&
+      n.data?.productIdVersion === version
+    ) {
       return n;
     }
     changed = true;
     return {
       ...n,
-      data: { ...n.data, productId: id, productIdSource: "dictionary" as const },
+      data: {
+        ...n.data,
+        productId: id,
+        productIdSource: "dictionary" as const,
+        ...(version ? { productIdVersion: version } : {}),
+      },
     };
   });
 

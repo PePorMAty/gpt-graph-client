@@ -9,6 +9,8 @@ import {
   isSyncableEntry,
   putBookmark,
   putMaterialBalances,
+  putProductIds,
+  type StoredProductId,
 } from "../api/graph-extras-api";
 import { showToast } from "../../components/toast/toastStore";
 
@@ -123,8 +125,8 @@ function syncBookmark(promise: Promise<void>) {
 }
 
 /**
- * Синхронизация закладок, истории и расчётов баланса сохранённого графа с
- * сервером.
+ * Синхронизация закладок, истории, расчётов баланса и идентификаторов
+ * продуктов сохранённого графа с сервером.
  *
  * Локальное состояние остаётся ведущим — интерфейс обновляется сразу, а запрос
  * уходит следом. Пока полотно не сохранено (нет openedGraphId), синхронизировать
@@ -208,6 +210,39 @@ export const graphExtrasMiddleware: Middleware =
         const calcs = p?.data?.materialBalances;
         if (p?.nodeId && Array.isArray(calcs)) {
           queueBalances(graphId, p.nodeId, calcs);
+        }
+        break;
+      }
+
+      case "graph/setProductIds": {
+        // Справочник проставил идентификаторы (или отметил «спрошен») — на
+        // сервер рядом с графом: в файл они попадают только с сохранением, и
+        // без этого при каждом открытии справочник спрашивали обо всех
+        // продуктах заново. Пишем то, что легло в узлы, с названием узла:
+        // переименованный и не сохранённый граф чужой идентификатор не возьмёт.
+        const after = store.getState() as RootState;
+        const ids: Record<string, StoredProductId> = {};
+        for (const nodeId of Object.keys((payload as object) ?? {})) {
+          const d = after.graph.data.nodes.find((n) => n.id === nodeId)?.data;
+          if (!d) continue;
+          const productId = typeof d.productId === "string" ? d.productId : "";
+          // Заданный человеком или из CAS — в файле графа, не здесь.
+          if (productId && d.productIdSource !== "dictionary") continue;
+          const version =
+            typeof d.productIdVersion === "string" ? d.productIdVersion : undefined;
+          if (!productId && !version) continue;
+          ids[nodeId] = {
+            ...(productId
+              ? { productId, productIdSource: "dictionary" as const }
+              : {}),
+            ...(version ? { productIdVersion: version } : {}),
+            productIdLabel: String(d.label ?? "").trim(),
+          };
+        }
+        if (Object.keys(ids).length) {
+          putProductIds(graphId, ids).catch((e) =>
+            console.warn("Не удалось записать идентификаторы продуктов на сервере", e),
+          );
         }
         break;
       }

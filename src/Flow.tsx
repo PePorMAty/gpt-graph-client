@@ -42,7 +42,7 @@ import {
   clearGraphError,
 } from "./store/slices/gptSlice";
 import { setOpenedGraph } from "./store/slices/savedGraphSlice";
-import { openGraphExtras } from "./store/graphExtras";
+import { openGraphExtras, whenProductIdsRestored } from "./store/graphExtras";
 import { checkIndustry, industryKey } from "./store/slices/industrySlice";
 import { checkLocalSources } from "./store/slices/localSourcesSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
@@ -440,6 +440,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     let cancelled = false;
 
     (async () => {
+      // Открыт сохранённый граф — сначала идентификаторы, записанные рядом с
+      // ним: спрашивать справочник о продуктах, у которых они есть, незачем.
+      await whenProductIdsRestored();
+      if (cancelled) return;
       const nodes = nodesRef.current;
       const next = await resolveProductIds(nodes);
       // Тот же массив — справочнику нечего ни добавить, ни поправить.
@@ -447,12 +451,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       // Берём только изменившиеся узлы: resolveProductIds отображает список
       // один в один, и несовпадение ссылки — это и есть «сюда проставили»
-      // (или обновили устаревший ответ справочника).
-      const byNodeId: Record<string, string> = {};
+      // (или обновили устаревший ответ справочника, или отметили «спрошен»).
+      const byNodeId: Record<string, { productId?: string; productIdVersion?: string }> = {};
       next.forEach((n, i) => {
         if (n === nodes[i]) return;
         const id = readProductId(n.data);
-        if (id) byNodeId[n.id] = id;
+        const version = n.data?.productIdVersion;
+        if (!id && !version) return;
+        byNodeId[n.id] = {
+          ...(id ? { productId: id } : {}),
+          ...(version ? { productIdVersion: version } : {}),
+        };
       });
       if (Object.keys(byNodeId).length) dispatch(setProductIds(byNodeId));
     })();
