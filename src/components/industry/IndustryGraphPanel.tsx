@@ -7,7 +7,7 @@ import type {
   IndustryProductInfo,
 } from "../../store/api/industry-api";
 import { plural } from "../../utils/plural";
-import { GISP_REGISTRY_URL, okpd2Url } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url, tnvedUrl } from "./gisp";
 import type { CodeOverrides } from "./codeOverrides";
 import {
   STATUS_FILTERS,
@@ -713,12 +713,15 @@ export const IndustryGraphPanel: FC<Props> = ({
                   {tnvedCategory && (
                     <div className={styles.cardMeta}>
                       <span className={styles.codeLabel}>ТН ВЭД</span>
-                      <span
+                      <a
                         className={styles.codeValue}
+                        href={tnvedUrl(tnvedCategory.code)}
+                        target="_blank"
+                        rel="noreferrer noopener"
                         title="Позиция в классификаторе по названию вещества"
                       >
                         {tnvedCategory.code}
-                      </span>
+                      </a>
                       <span className={styles.codeName}>{tnvedCategory.name}</span>
                     </div>
                   )}

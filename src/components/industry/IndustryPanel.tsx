@@ -9,7 +9,7 @@ import type {
   IndustryProducer,
   IndustryProductInfo,
 } from "../../store/api/industry-api";
-import { GISP_REGISTRY_URL, okpd2Url, tnvedTitle } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url, tnvedTitle, tnvedUrl } from "./gisp";
 import {
   STATUS_FILTERS,
   matchesStatus,
@@ -121,7 +121,15 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
           {p.tnved && (
             <div className={styles.code}>
               <span className={styles.codeLabel}>ТН ВЭД</span>
-              <span className={styles.codeValue}>{p.tnved}</span>
+              <a
+                className={styles.codeValue}
+                href={tnvedUrl(p.tnved)}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="Открыть код в классификаторе"
+              >
+                {p.tnved}
+              </a>
               {p.tnvedName && (
                 <span
                   className={styles.codeName}
@@ -329,7 +337,15 @@ export const IndustryPanel: FC<Props> = ({
         {info.tnvedCategory && (
           <div className={styles.categoryNote}>
             <span className={styles.categoryLabel}>В ТН ВЭД это</span>
-            <span className={styles.codeValue}>{info.tnvedCategory.code}</span>
+            <a
+              className={styles.codeValue}
+              href={tnvedUrl(info.tnvedCategory.code)}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="Открыть позицию в классификаторе"
+            >
+              {info.tnvedCategory.code}
+            </a>
             <span className={styles.codeName}>{info.tnvedCategory.name}</span>
           </div>
         )}

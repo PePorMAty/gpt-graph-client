@@ -8,7 +8,7 @@ import {
 import type { CodeOverride } from "../../types";
 import { plural } from "../../utils/plural";
 import { PencilIcon } from "../icons";
-import { okpd2Url, tnvedTitle } from "./gisp";
+import { okpd2Url, tnvedTitle, tnvedUrl } from "./gisp";
 import { CODE_LABEL, type CodeKind } from "./codeOverrides";
 import styles from "./Industry.module.css";
 
@@ -50,21 +50,18 @@ const FORMAT_HINT: Record<CodeKind, string> = {
   tnved: "Код ТН ВЭД — от 4 до 10 цифр: 2933710000.",
 };
 
-/** Код ссылкой на классификатор (у ОКПД2) или просто текстом. */
-const CodeValue: FC<{ kind: CodeKind; code: string }> = ({ kind, code }) =>
-  kind === "okpd2" ? (
-    <a
-      className={styles.codeValue}
-      href={okpd2Url(code)}
-      target="_blank"
-      rel="noreferrer noopener"
-      title="Открыть код в классификаторе"
-    >
-      {code}
-    </a>
-  ) : (
-    <span className={styles.codeValue}>{code}</span>
-  );
+/** Код ссылкой на классификатор — и ОКПД2, и ТН ВЭД. */
+const CodeValue: FC<{ kind: CodeKind; code: string }> = ({ kind, code }) => (
+  <a
+    className={styles.codeValue}
+    href={kind === "okpd2" ? okpd2Url(code) : tnvedUrl(code)}
+    target="_blank"
+    rel="noreferrer noopener"
+    title="Открыть код в классификаторе"
+  >
+    {code}
+  </a>
+);
 
 /** Поле правки кода: проверка формата и названия по классификатору. */
 const CodeEditor: FC<{

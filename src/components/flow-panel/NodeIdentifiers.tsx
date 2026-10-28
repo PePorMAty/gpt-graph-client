@@ -7,7 +7,7 @@ import {
   readProductId,
   readProductIdSource,
 } from "../../utils/productIdentity";
-import { okpd2Url, tnvedTitle } from "../industry/gisp";
+import { okpd2Url, tnvedTitle, tnvedUrl } from "../industry/gisp";
 import { readCodeOverrides } from "../industry/codeOverrides";
 import styles from "./NodeCard.module.css";
 
@@ -28,9 +28,9 @@ interface Props {
  * должно быть видно, почему. Поэтому всё, что узел знает про себя, собрано
  * здесь и открывается наведением на строку «ID».
  *
- * Код ОКПД2 — ссылка на классификатор. Там же видно то, чего мы показать не
- * можем: снятые коды помечены изменением, которым их исключили, а наш файл
- * плоский, без статусов.
+ * Коды ОКПД2 и ТН ВЭД — ссылки на классификатор. Там же видно то, чего мы
+ * показать не можем: снятые коды помечены изменением, которым их исключили,
+ * у ТН ВЭД — вся цепочка уровней; а наши файлы плоские, без статусов.
  */
 /**
  * Сколько ждать перед закрытием, когда мышь ушла с надписи.
@@ -198,7 +198,14 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ТН ВЭД</span>
               <span className={styles.idPopValue}>
-                {own.tnved.code}
+                <a
+                  className={styles.idPopLink}
+                  href={tnvedUrl(own.tnved.code)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {own.tnved.code}
+                </a>
                 <span className={styles.idPopNote}>
                   {tnvedTitle(own.tnved.name, own.tnved.path) ??
                     "нет в классификаторе"}
@@ -212,7 +219,14 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ТН ВЭД</span>
               <span className={styles.idPopValue}>
-                {tnved}
+                <a
+                  className={styles.idPopLink}
+                  href={tnvedUrl(tnved)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {tnved}
+                </a>
                 {industry?.tnvedName && (
                   <span className={styles.idPopNote}>
                     {tnvedTitle(industry.tnvedName, industry.tnvedPath)}
@@ -226,7 +240,14 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ТН ВЭД</span>
               <span className={styles.idPopValue}>
-                {tnvedByName.code}
+                <a
+                  className={styles.idPopLink}
+                  href={tnvedUrl(tnvedByName.code)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {tnvedByName.code}
+                </a>
                 <span className={styles.idPopNote}>{tnvedByName.name}</span>
                 <span className={styles.idPopNote}>
                   по классификатору, по названию вещества
