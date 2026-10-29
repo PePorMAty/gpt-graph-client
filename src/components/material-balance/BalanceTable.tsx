@@ -9,6 +9,7 @@ import {
   formatRawPerProducts,
   formatShare,
   formatShareTotal,
+  balanceGap,
   isInputSide,
   parseShareInput,
   percentBalance,
@@ -361,6 +362,7 @@ export const BalanceTable: FC<Props> = ({
   const reagents = pb.separate.filter(isInputSide);
   const outputsExtra = pb.separate.filter((r) => !isInputSide(r));
   const ratio = rawToProducts(pb);
+  const gap = balanceGap(pb);
   const ratioHint = ratio
     ? `На 1 т сырья — ${formatProductsPerRaw(ratio)} т продуктов; на 1 т продуктов — ${formatRawPerProducts(ratio)} т сырья`
     : undefined;
@@ -368,6 +370,15 @@ export const BalanceTable: FC<Props> = ({
   return (
     <section className={styles.cardBlock}>
       <CardTitle icon={<TableIcon size={16} />} title="Таблица материального баланса" help={TABLE_HELP} />
+      {gap && (
+        <p className={styles.warn}>
+          Баланс не сходится: выходы — {formatShareTotal({ percent: gap.outputs, approx: true })} от массы
+          сырья при входах {formatShareTotal({ percent: gap.inputs, approx: true })}. Вещество не берётся
+          ниоткуда и не пропадает — в расчёте ошибка (часто: поток из справочника «на тонну продукции» с водой
+          или растворителем). Проценты здесь неточны: сверьте их с расчётом по преобразованиям или сделайте
+          новый расчёт.
+        </p>
+      )}
       <div className={styles.tableCard}>
         <table className={styles.balanceTable}>
           <thead>

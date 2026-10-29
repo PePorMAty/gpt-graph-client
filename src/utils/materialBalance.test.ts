@@ -12,6 +12,7 @@ import type {
   BalanceRef,
 } from "../store/api/material-balance-api";
 import {
+  balanceGap,
   balanceMismatches,
   formatRatio,
   formatRawPerProducts,
@@ -252,5 +253,33 @@ describe("противоречивый расчёт", () => {
 
   it("сходящийся расчёт — без предупреждения", () => {
     expect(balanceMismatches(acn())).toEqual([]);
+  });
+});
+
+describe("баланс не сходится", () => {
+  it("сходящийся расчёт — без предупреждения", () => {
+    // Входы 100 + 70 (кислород), выходы 60 + 10 + 90 + 5 = 165 — в пределах 10 %.
+    expect(balanceGap(percentBalance(acn()))).toBeNull();
+  });
+
+  it("выходы ≈160 % при входах 100 % — предупреждение", () => {
+    // Алкилирование фенола 2026-10-29: 1000 + 1426 кг на входе, 2278 кг
+    // алкилфенола и 1057 + 321 кг остатков на выходе.
+    const refs: BalanceRef[] = [
+      { ref: "P1", name: "Фенол", role: "basis" },
+      { ref: "P3", name: "Тримеры пропилена", role: "input" },
+      { ref: "P2", name: "Алкилфенол", role: "target" },
+    ];
+    const r = record(refs, { P1: 1000, P3: 1426, P2: 2278 }, [
+      flow("Кубовый остаток", "out", 1057),
+      flow("Фенольно-водная фракция", "out", 321),
+    ]);
+    const gap = balanceGap(percentBalance(r));
+    expect(gap && Math.round(gap.outputs)).toBe(151);
+    expect(gap && Math.round(gap.inputs)).toBe(100);
+  });
+
+  it("выходов сверх продуктов нет — сверять нечего", () => {
+    expect(balanceGap(percentBalance(record(REFS, { P1: 640, P2: 600, P3: 360 })))).toBeNull();
   });
 });

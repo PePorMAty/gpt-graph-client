@@ -778,6 +778,29 @@ export function shareTotal(rows: PercentRow[]): { percent: number; approx: boole
   };
 }
 
+/**
+ * Выходы не сходятся со входами больше чем на 10 %: вещество взялось ниоткуда
+ * или пропало. Расчёт алкилирования фенола 2026-10-29: «Итого выходов ≈160 %»
+ * — кубовый остаток и фенольно-водная фракция взяты из ИТС с водой, а модель
+ * поставила «Рассчитан». Сверяем, только когда у расчёта есть выходы сверх
+ * продуктов: без побочных и отходов выходы и должны быть меньше входов.
+ * Возвращает итоги в % от массы сырья или null.
+ */
+export function balanceGap(pb: {
+  raw: PercentRow[];
+  products: PercentRow[];
+  separate: PercentRow[];
+}): { inputs: number; outputs: number } | null {
+  const extra = pb.separate.filter((r) => !isInputSide(r));
+  if (!extra.length) return null;
+  const inputs = shareTotal([...pb.raw, ...pb.separate.filter(isInputSide)]);
+  const outputs = shareTotal([...pb.products, ...extra]);
+  if (!inputs || !outputs || !(inputs.percent > 0)) return null;
+  return Math.abs(outputs.percent - inputs.percent) / inputs.percent > 0.1
+    ? { inputs: inputs.percent, outputs: outputs.percent }
+    : null;
+}
+
 /** «100 %», «≈89,6 %», «99,25 %» — «Итого» группы. */
 export function formatShareTotal(t: { percent: number; approx: boolean }): string {
   if (Math.abs(t.percent - 100) < 0.05) return "100 %";

@@ -149,6 +149,9 @@ function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>
     r.mismatched?.length
       ? `в двух таблицах расходились массы ${r.mismatched.map((n) => `«${n}»`).join(", ")}`
       : null,
+    r.unbalanced
+      ? `выход отличался от входа на ${r.unbalanced.gapPct > 0 ? "+" : ""}${r.unbalanced.gapPct} % (${r.unbalanced.input} на входе, ${r.unbalanced.output} на выходе)`
+      : null,
   ]
     .filter(Boolean)
     .join(", ");
