@@ -8,10 +8,15 @@
 // ветки). Ответы модели сохраняются в папку --out: chain-*.json. SAVE=название
 // — сохранить граф в библиотеку (нужен --allow-writes).
 //
-// REPLAY=папка прошлого прогона — переиграть его без модели: обобщение,
-// разбор и техописание отвечают сохранёнными chain-*.json по очереди, а
-// баланс сервер отдаёт готовым («В базе есть готовый расчёт»). Так можно
-// поправить сценарий или посмотреть результат в интерфейсе бесплатно.
+// REPLAY=папка прошлого прогона — переиграть его без модели: поиск
+// источников, обобщение, разбор и техописание отвечают сохранёнными
+// chain-*.json по очереди, а баланс сервер отдаёт готовым («В базе есть
+// готовый расчёт»). Так можно поправить сценарий или посмотреть результат в
+// интерфейсе бесплатно. С --live-model сохранённые ответы идут, пока есть, а
+// остальное — к модели: например, шаги прошлого прогона и новые балансы.
+//
+// Тупик (у продукта нет продолжения: ошибка построения шага) заканчивает
+// цепочку — баланс и сохранение идут по построенному.
 //
 // Параметры: PRODUCT (Фенол), STEPS (3), BALANCES (2), SAVE, REPLAY.
 
@@ -25,6 +30,7 @@ function replay(dir) {
   const files = fs.readdirSync(dir).filter((f) => /^chain-\d+-.*\.json$/.test(f)).sort();
   const pick = (suffix) => files.filter((f) => f.endsWith(suffix)).map((f) => path.join(dir, f));
   return {
+    "/api/graphs/gpt/step/sources": pick("-step-sources.json"),
     "/api/graphs/gpt/step/aggregate": pick("-step-aggregate.json"),
     "/api/graphs/gpt/step/build": pick("-step-build.json"),
     "/api/graphs/gpt/fill-card": pick("-gpt-fill-card.json"),
@@ -34,6 +40,9 @@ function replay(dir) {
 module.exports = {
   description: "Живая модель: цепочка вниз (PRODUCT, STEPS), баланс и техописание у BALANCES преобразований",
   canned: (env) => (env.REPLAY ? replay(path.resolve(env.REPLAY)) : {}),
+  // REPLAY с --live-model: сохранённые ответы — пока есть, дальше — живая
+  // модель (шаги из прошлого прогона бесплатно, баланс и техописание — заново).
+  cannedInLive: (env) => !!env.REPLAY,
   async run({ page, origin, env, lib, log, check, shot }) {
     const steps = Number(env.STEPS || 3);
     const balances = Number(env.BALANCES || 2);
@@ -67,7 +76,9 @@ module.exports = {
     const chain = [];
     for (let k = 1; k <= steps && product; k++) {
       const t0 = Date.now();
-      const text = await lib.stepDownToPreview(page, product, {
+      let text;
+      try {
+        text = await lib.stepDownToPreview(page, product, {
         timeout: 15 * 60 * 1000,
         log,
         onSources: async () => {
@@ -78,7 +89,18 @@ module.exports = {
           });
           log(`  источники: ${list}`);
         },
-      });
+        });
+      } catch (e) {
+        if (!e.deadEnd) throw e;
+        // Тупик — у продукта нет продолжения вниз: цепочка закончилась, а
+        // баланс и сохранение построенного всё равно нужны.
+        await shot(`step${k}-dead-end`);
+        log(`шаг ${k} от «${product}» за ${Math.round((Date.now() - t0) / 1000)} с: тупик — ${e.message}`);
+        chain.deadEnd = { step: k, product, reason: e.message };
+        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "Закрыть карточку" }).click().catch(() => {});
+        break;
+      }
       const p = lib.parsePreview(text);
       await shot(`step${k}-preview`);
       const fmt = (l) => l.map((x) => `${x.name}${x.tag ? ` (${x.tag})` : ""}`).join(", ") || "—";
@@ -150,7 +172,9 @@ module.exports = {
       text = await cardText();
       c.balanceText = text;
       await shot(`balance-${c.step}`);
-      const done = /Соотношение сырьё : продукты|сырьё — 100/i.test(text);
+      // Только у готового расчёта: в форме нового расчёта тоже есть «сырьё —
+      // 100 %» (в подсказке), а «Итого сырьё» и соотношения — нет.
+      const done = /Соотношение сырьё : продукты|Итого сырьё/i.test(text) && !/не рассчитан:/.test(text);
       check(`баланс «${c.transformation}» посчитан`, done, done ? "" : text.slice(text.indexOf("Материальный баланс"), 400).replace(/\s+/g, " "));
       await page.getByRole("button", { name: "Закрыть карточку" }).click().catch(() => {});
     }
@@ -169,7 +193,7 @@ module.exports = {
     picked.forEach((c, i) => {
       // Заголовки таблицы — заглавными (text-transform), innerText отдаёт их так же.
       const mb = (c.balanceText || "").replace(/\s+/g, " ");
-      const from = mb.search(/сырьё — 100/i);
+      const from = mb.search(/сырьё — 100 % = общая масса сырья/i);
       const table = from >= 0 ? mb.slice(from, from + 1500) : mb.slice(0, 300);
       const desc = findKey(cards[i]?.body, "material_balance");
       log(`\n=== «${c.transformation}»\n  баланс (расчёт): ${table}\n  техописание, «Материальный баланс (на тонну продукта)»: ${typeof desc === "string" ? desc : JSON.stringify(desc)}`);

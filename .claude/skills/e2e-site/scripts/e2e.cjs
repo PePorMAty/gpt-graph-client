@@ -132,6 +132,7 @@ function classify(method, p) {
 
 const stats = { read: 0, model: { canned: 0, live: 0, blocked: [] }, write: { sent: 0, blocked: [] }, bad: [], branch: 0 };
 let canned = {}; // путь → файл подставного ответа текущего сценария
+let cannedInLive = false; // подставные ответы и при --live-model, пока есть
 
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: "application/json", body: typeof body === "string" ? body : JSON.stringify(body) });
@@ -266,8 +267,8 @@ async function handleApi(route) {
   const kind = classify(req.method(), url.pathname);
   const label = `${req.method()} ${url.pathname}`;
   try {
-    if (kind === "model" && !opts.liveModel) {
-      const cached = await cachedBalance(req, url);
+    if (kind === "model" && (!opts.liveModel || cannedInLive)) {
+      const cached = opts.liveModel ? null : await cachedBalance(req, url);
       if (cached) {
         stats.read++;
         return json(route, 200, cached);
@@ -282,6 +283,8 @@ async function handleApi(route) {
         // body}), — отдаём его тело.
         return json(route, 200, body && "url" in body && "body" in body ? body.body : body);
       }
+    }
+    if (kind === "model" && !opts.liveModel) {
       stats.model.blocked.push(label);
       return json(route, 503, { success: false, error: "e2e: вызов модели заблокирован (нужен --live-model)" });
     }
@@ -367,6 +370,7 @@ function serveStatic(route) {
         ([k, v]) => [k, Array.isArray(v) ? [...v] : v],
       ),
     );
+    cannedInLive = typeof scenario.cannedInLive === "function" ? !!scenario.cannedInLive(process.env) : false;
     console.log(`\n=== ${name}: ${scenario.description}`);
     const ctx = {
       page,

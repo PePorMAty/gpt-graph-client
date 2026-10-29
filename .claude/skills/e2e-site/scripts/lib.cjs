@@ -149,7 +149,22 @@ async function stepDownToPreview(page, product, { timeout = 180000, onSources, l
     await sleep(1000);
   }
   await page.getByRole("button", { name: "Построить шаг", exact: true }).last().click();
-  await page.getByText(/^Входные данные \(\d+\)$/).first().waitFor({ timeout });
+  // Превью — или ошибка построения: у конечного продукта (готовое ПАВ)
+  // продолжения нет, и ждать превью до таймаута незачем.
+  const preview = page.getByText(/^Входные данные \(\d+\)$/).first();
+  const t1 = Date.now();
+  for (;;) {
+    if (await preview.count()) break;
+    const m = (await wizardText(page)).match(/(?:^|\n)\s*Ошибка: ([^\n]+)/);
+    if (m && !/Построение\.\.\./.test(await wizardText(page))) {
+      const e = new Error(`шаг не построен: ${m[1].trim()}`);
+      e.deadEnd = true;
+      e.aggregate = (await wizardText(page)).match(/Вероятно, это конечный продукт[^\n]*/)?.[0] ?? null;
+      throw e;
+    }
+    if (Date.now() - t1 > timeout) throw new Error("превью шага не появилось");
+    await sleep(1500);
+  }
   await sleep(500);
   return wizardText(page);
 }
