@@ -326,6 +326,12 @@ function serveStatic(route) {
     `Сайт: ${origin}${opts.site === "local" ? ` (API → ${opts.api})` : ""}; модель: ${opts.liveModel ? "ЖИВАЯ" : "заблокирована/подставная"}; запись: ${opts.allowWrites ? "РАЗРЕШЕНА" : "заблокирована"}` +
       (opts.serverRepo ? `; обобщение и разбор шага — по ветке ${opts.serverRepo}` : ""),
   );
+  if (opts.site === "prod") {
+    // deploy-site.sh кладёт рядом со сборкой ветку и коммит; нет файла —
+    // nginx отдаёт index.html, значит сайт выложен до этой пометки.
+    const v = await fetch(`${PROD_ORIGIN}/version.txt`).then((r) => r.text()).catch(() => "");
+    console.log(`На сайте: ${/^\s*</.test(v) || !v.trim() ? "ветка не помечена (выложено до version.txt)" : v.trim().replace(/\n/g, " — ")}`);
+  }
 
   const { chromium } = require("playwright");
   const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;

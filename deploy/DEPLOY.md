@@ -12,16 +12,18 @@
 Сборка на GitHub Pages (`pepormaty.github.io/gpt-graph-client`) работает
 по-прежнему: она собирается без `VITE_BASE` и живёт под `/gpt-graph-client/`.
 
-## Выкладка — только из `develop`
+## Выкладка — из `develop`
 
 ```
 git -C ~/gpt-graph-client pull -q && bash ~/gpt-graph-client/deploy/deploy-site.sh
 ```
 
-`pull` — чтобы и сам скрипт был свежим. Скрипт берёт **только** `develop` с GitHub и собирает его в отдельной папке
-`~/site-develop` (вторая рабочая папка того же репозитория). Рабочая копия
+`pull` — чтобы и сам скрипт был свежим. Без аргумента скрипт берёт
+`develop` с GitHub и собирает его в отдельной папке `~/site-develop`
+(вторая рабочая папка того же репозитория). Рабочая копия
 `~/gpt-graph-client` может стоять на любой ветке — скрипт её не трогает,
-поэтому собрать на сайт «не ту ветку» нельзя.
+поэтому случайно собрать на сайт «не ту ветку» нельзя: другую ветку
+выкладывают, только назвав её явно (ниже).
 
 Порядок работы: доделали в своей ветке → слили в `develop` на GitHub →
 запустили скрипт. В конце он печатает, какой коммит выложен, и проверяет,
@@ -29,6 +31,21 @@ git -C ~/gpt-graph-client pull -q && bash ~/gpt-graph-client/deploy/deploy-site.
 
 Если в страницах остались незаполненные заглушки `{{…}}`, скрипт сайт не
 выкладывает и пишет, в каких файлах они.
+
+### Другая ветка — проверить на домене до слияния
+
+Скрипт соберёт и другую ветку, если назвать её явно. Свежий скрипт лежит
+в самой ветке, поэтому рабочую копию сначала переключают на неё:
+
+```
+git -C ~/gpt-graph-client fetch -q origin claude/combined-testing
+git -C ~/gpt-graph-client checkout -q claude/combined-testing && git -C ~/gpt-graph-client pull -q
+bash ~/gpt-graph-client/deploy/deploy-site.sh claude/combined-testing
+```
+
+GitHub Pages остаётся на `develop`. Что сейчас на домене — в
+`https://sorangptgraph.xyz/version.txt` (ветка и коммит; его же печатает
+`e2e-site --site=prod`). Вернуть `develop` — скрипт без аргумента.
 
 Откат на прежнюю версию (скрипт хранит её рядом):
 

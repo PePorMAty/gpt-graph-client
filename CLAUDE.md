@@ -16,7 +16,9 @@ Redux Toolkit, `@xyflow/react` (React Flow 12).
   новую работу начинай от неё, чтобы ветки не расходились.
 - Выкладка (делает владелец): GitHub Pages собирается workflow'ом при пуше в
   `develop`; свой домен https://sorangptgraph.xyz — `deploy/deploy-site.sh`
-  (см. `deploy/DEPLOY.md`).
+  (см. `deploy/DEPLOY.md`). Для проверки до слияния владелец может выложить
+  на домен и рабочую ветку (`deploy-site.sh <ветка>`); что сейчас на домене —
+  `https://sorangptgraph.xyz/version.txt`.
 
 ## Команды
 - `npm run typecheck`, `npm run lint`, `npm run build` (сборка включает typecheck).
