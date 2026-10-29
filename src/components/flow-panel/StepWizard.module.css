@@ -568,16 +568,6 @@
   white-space: nowrap;
 }
 
-.sourceSaved {
-  flex: none;
-  padding: 2px var(--s-2);
-  font-size: var(--fs-xs);
-  color: var(--c-brand-strong);
-  background: var(--c-brand-soft);
-  border-radius: var(--r-xs);
-  white-space: nowrap;
-}
-
 .sourceIconPdf {
   color: var(--c-danger);
 }

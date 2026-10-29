@@ -20,8 +20,6 @@ export interface GraphSourceRow {
   tag: string;
   /** Раздел документа из базы сервера. */
   local: boolean;
-  /** Найден моделью раньше и взят из базы сервера. */
-  saved: boolean;
   /** Источники унаследованы от этого продукта-предка (иначе null). */
   inheritedFrom: string | null;
 }
@@ -36,13 +34,9 @@ function hostOf(url: string): string {
 }
 
 /** Подпись и происхождение источника для строки списка. */
-function describe(s: Pick<SourceItem, "url" | "origin" | "page" | "docTitle" | "pages" | "savedAt">) {
+function describe(s: Pick<SourceItem, "url" | "origin" | "page" | "docTitle" | "pages">) {
   const local = isLocalSource(s);
-  return {
-    tag: local ? localSourceTag(s) : hostOf(s.url),
-    local,
-    saved: !!s.savedAt,
-  };
+  return { tag: local ? localSourceTag(s) : hostOf(s.url), local };
 }
 
 export interface GraphSourcesSummary {

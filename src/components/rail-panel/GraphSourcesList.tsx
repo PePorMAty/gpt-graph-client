@@ -51,14 +51,6 @@ const SourceItem: FC<{ row: GraphSourceRow }> = ({ row }) => (
       >
         {row.title}
       </a>
-      {row.saved && !row.local && (
-        <span
-          className={`${styles.psRole} ${styles.psRole_web}`}
-          title="Найден моделью раньше и взят из базы источников"
-        >
-          из базы
-        </span>
-      )}
     </div>
     <div className={styles.psMeta}>
       {row.local ? (

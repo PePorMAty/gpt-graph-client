@@ -8,7 +8,7 @@ interface BaseSourcesState {
   /** Для какого продукта и направления ответ — чтобы не показать чужой. */
   key: string;
   status: "loading" | "done" | "failed";
-  /** PDF первыми, затем найденное моделью раньше. */
+  /** Разделы документов, загруженных людьми. */
   sources: TechnologySource[];
 }
 
@@ -16,8 +16,8 @@ interface BaseSourcesState {
  * Источники продукта в базе сервера — для мастера построения шага.
  *
  * Спрашиваем, когда выбрано направление, и заново — когда база изменилась
- * (загрузили PDF, модель что-то нашла). Сервер без базы источников (ещё не
- * обновлён) отвечает ошибкой — тогда мастер работает, как раньше.
+ * (загрузили или удалили PDF). Сервер без базы источников (ещё не обновлён)
+ * отвечает ошибкой — тогда мастер работает, как раньше.
  */
 export function useBaseSources(
   productName: string,
@@ -35,8 +35,8 @@ export function useBaseSources(
     if (!key || !direction) return;
     let cancelled = false;
     fetchBaseSources(productName, direction)
-      .then(({ local, web }) => {
-        if (!cancelled) setState({ key, status: "done", sources: [...local, ...web] });
+      .then((local) => {
+        if (!cancelled) setState({ key, status: "done", sources: local });
       })
       .catch(() => {
         if (!cancelled) setState({ key, status: "failed", sources: [] });

@@ -80,15 +80,17 @@ async function wizardText(page) {
 /**
  * Шаг «вниз» от продукта на источниках из базы: карточка → «Построить шаг» →
  * вниз → источники из базы → обобщение → построение → превью. Возвращает
- * текст превью. Модель здесь вызывается дважды (обобщение и построение) —
+ * текст превью. onSources — проверить список источников, пока он на экране. Модель здесь вызывается дважды (обобщение и построение) —
  * в сценарии нужны подставные ответы или --live-model.
  */
-async function stepDownToPreview(page, product, { timeout = 180000 } = {}) {
+async function stepDownToPreview(page, product, { timeout = 180000, onSources } = {}) {
   await page.locator(".react-flow__node-product", { hasText: product }).first().click();
   await sleep(800);
   await page.getByRole("button", { name: "Построить шаг", exact: true }).first().click();
   await page.getByRole("button", { name: /^Построить вниз/ }).click();
   await page.getByRole("button", { name: "К источникам из базы" }).click();
+  await page.getByRole("button", { name: /Обобщить источники/ }).waitFor({ timeout });
+  if (onSources) await onSources();
   await page.getByRole("button", { name: /Обобщить источники/ }).click();
   const t0 = Date.now();
   for (;;) {

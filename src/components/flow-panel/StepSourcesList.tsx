@@ -2,11 +2,7 @@ import { useMemo, useState, type FC } from "react";
 
 import type { TechnologySource } from "../../store/types";
 import { sourceHref } from "../../store/api/local-sources-api";
-import {
-  isLocalSource,
-  isSavedSource,
-  localSourceTag,
-} from "../../utils/sourceOrigin";
+import { isLocalSource, localSourceTag } from "../../utils/sourceOrigin";
 import { AddSourceForm } from "./AddSourceForm";
 import {
   ChevronDownIcon,
@@ -41,18 +37,13 @@ function domainOf(url: string): string {
   }
 }
 
-function savedTitle(s: TechnologySource): string {
-  const d = s.savedAt ? new Date(s.savedAt) : null;
-  const when = d && !Number.isNaN(d.getTime()) ? ` ${d.toLocaleDateString("ru-RU")}` : "";
-  return `Найден моделью раньше${when} и сохранён в базе сервера — повторно искать не пришлось`;
-}
-
 /**
  * Список найденных источников с отбором для обобщения.
  *
- * Источники из базы сервера помечены: разделы документов — «ИТС 18 · стр.
- * 14–42» (они стоят первыми и первыми идут в обобщение), найденные моделью
- * раньше — «из базы».
+ * Разделы документов из базы сервера помечены «ИТС 18 · стр. 14–42»: они
+ * стоят первыми и первыми идут в обобщение. Найденное моделью — с доменом;
+ * в базу оно не попадает (с 2026-10-29), и метки «из базы» у веб-источников
+ * больше нет.
  *
  * Оценки качества здесь нет намеренно: поиск её не возвращает, и рисовать
  * «Высокая» / «Средняя» значило бы выдумать её на глазах у человека, который
@@ -165,11 +156,6 @@ export const StepSourcesList: FC<Props> = ({
                         title="Раздел документа из базы источников на сервере"
                       >
                         {localSourceTag(s)}
-                      </span>
-                    )}
-                    {!local && isSavedSource(s) && (
-                      <span className={styles.sourceSaved} title={savedTitle(s)}>
-                        из базы
                       </span>
                     )}
                     {domain && <span className={styles.sourceDomain}>{domain}</span>}

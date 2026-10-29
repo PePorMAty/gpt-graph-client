@@ -9,7 +9,7 @@ import {
 } from "../../store/api/local-sources-api";
 import { uploadLocalDocuments, watchDecoding } from "../../store/slices/localSourcesSlice";
 import { plural } from "../../utils/plural";
-import { BookIcon, FilePdfIcon, FlaskIcon, LinkIcon } from "../icons";
+import { BookIcon, FilePdfIcon, FlaskIcon } from "../icons";
 import industry from "../industry/Industry.module.css";
 import { LocalDocumentsSection } from "./LocalDocumentsSection";
 import { LocalProductsList } from "./LocalProductsList";
@@ -147,7 +147,6 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
 
   const docCount = docs?.length ?? 0;
   const sections = (docs ?? []).reduce((n, d) => n + (d.sections?.total ?? 0), 0);
-  const web = (products ?? []).reduce((n, p) => n + p.web.up + p.web.down, 0);
   const productCount = products?.length ?? 0;
 
   const details: PanelDetailsSlot = {
@@ -169,12 +168,6 @@ export const LocalSourcesPanel = ({ productNames }: { productNames: string[] }) 
             <FlaskIcon size={13} />
             {productCount} {plural(productCount, "продукт", "продукта", "продуктов")}
           </span>
-          {web > 0 && (
-            <span className={industry.chip} title="Источники, которые модель находила в интернете">
-              <LinkIcon size={13} />
-              {web} из интернета
-            </span>
-          )}
         </div>
 
         <div className={`${industry.segmented} ${styles.baseViews}`}>

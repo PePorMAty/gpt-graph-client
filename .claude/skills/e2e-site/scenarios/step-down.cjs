@@ -11,7 +11,16 @@ module.exports = {
   async run({ page, origin, lib, check, shot, log }) {
     await lib.openApp(page, origin);
     await lib.newManualGraph(page, "Фенол");
-    const preview = await lib.stepDownToPreview(page, "Фенол");
+    // Источники шага — только разделы документов базы: найденное моделью
+    // раньше («из базы», синие) с 2026-10-29 не предлагается.
+    const preview = await lib.stepDownToPreview(page, "Фенол", {
+      onSources: async () => {
+        const blue = await page.getByText("из базы", { exact: true }).count();
+        const docs = await page.getByText(/ИТС \d+/).count();
+        await shot("sources");
+        check("источники шага — разделы документов, без синих «из базы»", blue === 0 && docs > 0, `разделов документов: ${docs}, синих: ${blue}`);
+      },
+    });
     await shot("preview");
     const inputs = (preview.match(/Входные данные \(\d+\)[\s\S]*?(?=Выходные данные)/) || [""])[0].replace(/\s+/g, " ");
     const outputs = (preview.match(/Выходные данные \(\d+\)[\s\S]*?(?=Побочные продукты|Примечания|Добавить свой)/) || [""])[0].replace(/\s+/g, " ");

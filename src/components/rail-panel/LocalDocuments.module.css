@@ -638,11 +638,6 @@
   background: var(--c-brand-soft);
 }
 
-.psRole_web {
-  color: var(--c-warning);
-  background: var(--c-warning-soft);
-}
-
 /* Строкой текста, а не гибким рядом: длинный адрес в ряду уезжал на новую
    строку целиком, оставляя значок одного. */
 .psMeta {

@@ -48,7 +48,7 @@ const SectionList = ({ items }: { items: TechnologySource[] }) => (
 /**
  * Блок «Источники в базе» карточки продукта: что лежит на сервере по этому
  * продукту — разделы документов, где его производят («вверх») и где он
- * сырьё («вниз»), и сколько источников модель находила для него раньше.
+ * сырьё («вниз»).
  *
  * Как у опознания: сколько их, сервер сказал заранее (значок на узле), а
  * сами разделы спрашиваем, только когда открыта карточка. Ничего нет —
@@ -58,8 +58,6 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
   const counts = useAppSelector((s) => selectLocalSourceCounts(s, product));
   const version = useAppSelector((s) => s.localSources.version);
   const local = counts?.local ?? 0;
-  const savedUp = counts?.web.up ?? 0;
-  const savedDown = counts?.web.down ?? 0;
   const [sections, setSections] = useState<{
     up: TechnologySource[];
     down: TechnologySource[];
@@ -70,7 +68,7 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
     let cancelled = false;
     Promise.all([fetchBaseSources(product, "up"), fetchBaseSources(product, "down")])
       .then(([up, down]) => {
-        if (!cancelled) setSections({ up: up.local, down: down.local });
+        if (!cancelled) setSections({ up, down });
       })
       .catch(() => {
         if (!cancelled) setSections({ up: [], down: [] });
@@ -80,19 +78,12 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
     };
   }, [product, local, version]);
 
-  if (local === 0 && savedUp === 0 && savedDown === 0) return null;
-
-  const saved = [
-    savedDown > 0 && `вниз — ${savedDown}`,
-    savedUp > 0 && `вверх — ${savedUp}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  if (local === 0) return null;
 
   return (
     <CollapsibleBlock
       title="Источники в базе"
-      count={local + savedUp + savedDown}
+      count={local}
       icon={<FilePdfIcon size={17} />}
     >
       <p className={styles.baseNote}>
@@ -100,8 +91,7 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
         встанут в список источников первыми.
       </p>
 
-      {local > 0 &&
-        (sections === null ? (
+      {sections === null ? (
           <div className={styles.blockEmpty}>Загружаем разделы…</div>
         ) : (
           <>
@@ -122,13 +112,7 @@ export const NodeBaseSourcesBlock = ({ product }: { product: string }) => {
               </>
             )}
           </>
-        ))}
-
-      {saved && (
-        <p className={styles.baseNote}>
-          Найдено моделью раньше и сохранено: {saved}.
-        </p>
-      )}
+        )}
     </CollapsibleBlock>
   );
 };
