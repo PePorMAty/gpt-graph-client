@@ -9,6 +9,7 @@ import {
 } from "../../utils/productIdentity";
 import { okpd2Url, tnvedTitle, tnvedUrl } from "../industry/gisp";
 import { readCodeOverrides } from "../industry/codeOverrides";
+import { ECICS_TITLE } from "../industry/CodeLine";
 import styles from "./NodeCard.module.css";
 
 interface Props {
@@ -81,10 +82,12 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   const own = readCodeOverrides(data);
   const okpd2 = own.okpd2 ? null : industry?.found ? industry.okpd2 : null;
   const tnved = own.tnved ? null : industry?.found ? industry.tnved : null;
-  // Кода из реестра нет (или нет записи) — позиция по названию вещества из
+  // Кода из реестра нет (или нет записи) — позиция по номеру CAS из
+  // таможенного реестра ЕС (ECICS), иначе по названию вещества из
   // классификатора, с пометкой: это справка, а не код заявителя.
+  const tnvedByCas = !tnved && !own.tnved ? (industry?.tnvedCas ?? null) : null;
   const tnvedByName =
-    !tnved && !own.tnved ? (industry?.tnvedCategory ?? null) : null;
+    !tnved && !own.tnved && !tnvedByCas ? (industry?.tnvedCategory ?? null) : null;
   // CAS — факт справочника, а не реестра: он есть и у вещества, которого в
   // ГИСП нет вовсе. Потому и не прячется за found, в отличие от кодов.
   const cas = industry?.cas ?? null;
@@ -232,6 +235,28 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                     {tnvedTitle(industry.tnvedName, industry.tnvedPath)}
                   </span>
                 )}
+              </span>
+            </div>
+          )}
+
+          {tnvedByCas && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ТН ВЭД</span>
+              <span className={styles.idPopValue} title={ECICS_TITLE}>
+                <a
+                  className={styles.idPopLink}
+                  href={tnvedUrl(tnvedByCas.code)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {tnvedByCas.code}
+                </a>
+                <span className={styles.idPopNote}>
+                  {tnvedTitle(tnvedByCas.name, tnvedByCas.path)}
+                </span>
+                <span className={styles.idPopNote}>
+                  по номеру CAS, таможенная база ЕС (ECICS), справочно
+                </span>
               </span>
             </div>
           )}
