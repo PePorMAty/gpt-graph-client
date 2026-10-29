@@ -33,9 +33,20 @@ module.exports = {
     const c = await lib.nodeNear(page);
     await page.mouse.move(1500, 930);
     await lib.sleep(500);
+    // Сколько узлов и связей меняют класс при наведении: точный признак, в
+    // отличие от времени. Подсветка должна трогать цепочку, а не весь граф.
+    await page.evaluate(() => {
+      window.__e2eChanged = new Set();
+      window.__e2eMo = new MutationObserver((l) => l.forEach((m) => window.__e2eChanged.add(m.target)));
+      window.__e2eMo.observe(document.querySelector(".react-flow__viewport"), { attributes: true, subtree: true, attributeFilter: ["class"] });
+    });
     const hover = await lib.measure(page, async () => {
       await page.mouse.move(c.x, c.y);
       await lib.sleep(700);
+    });
+    const changed = await page.evaluate(() => {
+      window.__e2eMo.disconnect();
+      return [...window.__e2eChanged].filter((el) => el.closest?.(".react-flow__node, .react-flow__edge")).length;
     });
     // По тому, что видно, а не по именам классов: яркие — цепочка, бледные — остальное.
     const lit = await page.evaluate(() => {
@@ -51,7 +62,8 @@ module.exports = {
     log(`наведение: цепочка ${lit.chain} узлов, бледных ${lit.faded}; длинные задачи [${hover.longTasks}] мс`);
     check("подсветка цепочки включается", lit.chain > 0 && lit.faded > 0, `${lit.chain} в цепочке, ${lit.faded} бледных`);
     check("подсветка гаснет, когда курсор ушёл", fadedAfter === 0, `бледных после ухода: ${fadedAfter}`);
-    check("наведение дешёвое", hoverSum < 200, `длинные задачи в сумме ${hoverSum} мс`);
+    const total = g.nodes + g.edges;
+    check("наведение перерисовывает цепочку, а не весь граф", changed < total / 4, `сменили класс ${changed} из ${total} узлов и связей; длинные задачи ${hoverSum} мс`);
 
     // 3) Перетаскивание полотна.
     const box = await page.locator(".react-flow__pane").first().boundingBox();
