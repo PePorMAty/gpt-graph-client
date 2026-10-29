@@ -146,6 +146,9 @@ function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>
       ? `${r.failed} ${plural(r.failed, "источник не загрузился", "источника не загрузились", "источников не загрузились")}`
       : null,
     r.missing.length ? `не было данных для ${r.missing.map((n) => `«${n}»`).join(", ")}` : null,
+    r.mismatched?.length
+      ? `в двух таблицах расходились массы ${r.mismatched.map((n) => `«${n}»`).join(", ")}`
+      : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -164,7 +167,7 @@ function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>
   const replaced = r.failed ? " Незагрузившиеся модель заменяла вторым запросом." : "";
   return r.used
     ? ` В первом ответе ${why}.${searched}${replaced} Показан второй ответ модели.`
-    : ` В первом ответе ${why}.${searched} Второй ответ модели оказался не полнее — показан первый.`;
+    : ` В первом ответе ${why}.${searched} Второй ответ модели оказался не лучше — показан первый.`;
 }
 
 function tookText(ms: number | null | undefined): string {

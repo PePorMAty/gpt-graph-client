@@ -193,6 +193,8 @@ export interface BalanceRecord extends BalanceSummary {
     retry?: {
       failed: number;
       missing: string[];
+      /** Вещества, чьи массы в двух таблицах ответа расходились (сервер с 2026-10-29). */
+      mismatched?: string[];
       used: boolean;
       search?: { sources: number; confirmed: number; error?: string };
     };
