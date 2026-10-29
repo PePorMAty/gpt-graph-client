@@ -97,6 +97,27 @@ module.exports = {
         await shot(`step${k}-dead-end`);
         log(`шаг ${k} от «${product}» за ${Math.round((Date.now() - t0) / 1000)} с: тупик — ${e.message}`);
         chain.deadEnd = { step: k, product, reason: e.message };
+        // Тупик — ещё не конечный продукт: «Проверить, что из него делают»
+        // (запрос к модели с поиском; без --live-model он заблокирован).
+        const check = page.getByRole("button", { name: "Проверить, что из него делают" });
+        if (await check.count()) {
+          await check.first().click();
+          const t1 = Date.now();
+          let verdict = "";
+          while (Date.now() - t1 < 8 * 60 * 1000) {
+            const w = await lib.wizardText(page);
+            const m = w.match(/(Переработка есть[^\n]*|Похоже, конечный продукт[^\n]*|Ни переработки, ни применения[^\n]*|Проверка не удалась[^\n]*)/);
+            if (m) {
+              const from = w.indexOf(m[1]);
+              verdict = w.slice(from, from + 900).replace(/\n+/g, " | ");
+              break;
+            }
+            await lib.sleep(3000);
+          }
+          await shot(`step${k}-end-use`);
+          log(`  что делают из «${product}» (${Math.round((Date.now() - t1) / 1000)} с): ${verdict || "ответа нет"}`);
+          chain.deadEnd.endUse = verdict;
+        }
         await page.keyboard.press("Escape");
         await page.getByRole("button", { name: "Закрыть карточку" }).click().catch(() => {});
         break;

@@ -1,6 +1,7 @@
 // src/components/flow-panel/types.ts
 import type {
   BuildDirection,
+  DroppedSource,
   ProductCard,
   StepChainApiStep,
   StepChainStatus,
@@ -120,6 +121,8 @@ export interface DirectionTabProps {
   stepSourcesOrigin?: string | null;
   /** Источники закончились — повторный поиск не дал новых сверх уже найденных. */
   stepSourcesExhausted?: boolean;
+  /** Найденное моделью, что сервер отбросил проверкой (последний поиск). */
+  stepSourcesDropped?: DroppedSource[];
   /** Маркер с build родителя: продукту нужен свежий поиск источников.
    *  Причины — см. InitialGraphStateI.needsFreshSources в store/types.ts. */
   stepNeedsFreshSources?: {

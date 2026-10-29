@@ -37,6 +37,14 @@ import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { readableReason } from "../../store/middleware/failureText";
 import { isOwnBaseSource } from "../../utils/sourceOrigin";
+import { EndUseCheck } from "./EndUseCheck";
+import { plural } from "../../utils/plural";
+
+/**
+ * Разбор шага не нашёл продолжения: в источниках нет переработки продукта
+ * (сервер, code no_new_product; старый сервер писал «без нового продукта»).
+ */
+const NO_CONTINUATION = /Продолжения не нашлось|без нового продукта/;
 
 type StepByStepContentProps = Pick<
   DirectionTabProps,
@@ -52,7 +60,9 @@ type StepByStepContentProps = Pick<
   | "stepSourcesError"
   | "stepSourcesOrigin"
   | "stepSourcesExhausted"
+  | "stepSourcesDropped"
   | "stepNeedsFreshSources"
+  | "onMergeBaseSources"
   | "onForceStepPreview"
   | "stepAggregatedText"
   | "stepAggregateStatus"
@@ -94,6 +104,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   stepSourcesError,
   stepSourcesOrigin,
   stepSourcesExhausted = false,
+  stepSourcesDropped = [],
   stepNeedsFreshSources = null,
   stepAggregatedText,
   stepAggregateStatus = "idle",
@@ -112,6 +123,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onCancelStepSources,
   onAggregateStepSources,
   onAddManualSource,
+  onMergeBaseSources,
   onBuildStep,
   onClearStepState,
   onForceStepPreview,
@@ -137,6 +149,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       stepNeedsFreshSources?.reason === "exists") &&
     stepSourcesExhausted;
   const isBorrowedSources = !!stepSourcesOrigin;
+  // Что сервер отбросил из найденного моделью: выдуманные и несуществующие
+  // страницы, заглушки «источников нет». Без строки человек видел бы просто
+  // «нашлось 2 из 5» и не знал почему.
+  const droppedNote =
+    stepSourcesDropped.length > 0 ? (
+      <div className={styles.warningText} title={stepSourcesDropped.map((d) => `${d.title || d.url}: ${d.reason}`).join("\n")}>
+        Сервер проверил найденное и отбросил {stepSourcesDropped.length}{" "}
+        {plural(stepSourcesDropped.length, "источник", "источника", "источников")}:{" "}
+        {[...new Set(stepSourcesDropped.map((d) => d.reason.replace(/:.*$/, "")))].join("; ")}.
+      </div>
+    ) : null;
   // Взятое из базы сервера для этого продукта — его собственное, даже если
   // остальной список взят у предка.
   const ownBaseCount = stepSources.filter((s) =>
@@ -155,12 +178,16 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   // Основной вариант ведёт только назад по цепочке — к продуктам, которые уже
   // стоят выше (см. stepLoopsBack): это обратная переработка, шаг ляжет со
   // связью рециклинга. Предупреждаем заранее, строить не мешаем.
+  // «X → X» — не рециклинг, а тупик: в источниках нет переработки продукта
+  // (обобщение по заглушке «источников нет»). Его разбирает EndUseCheck.
   const aggregateLoopsBack = useMemo(
     () =>
       stepLineage?.length
-        ? stepLoopsBack(stepAggregatedText ?? "", direction, stepLineage)
+        ? stepLoopsBack(stepAggregatedText ?? "", direction, stepLineage).filter(
+            (n) => n.trim().toLowerCase() !== productName.trim().toLowerCase(),
+          )
         : [],
-    [stepAggregatedText, direction, stepLineage],
+    [stepAggregatedText, direction, stepLineage, productName],
   );
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
@@ -616,6 +643,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               строить шаг в другом направлении.
             </div>
           )}
+          {droppedNote}
+          {stepSourcesExhausted && !isTerminalRecycle && direction === "down" && (
+            <EndUseCheck productName={productName} onUseSources={onMergeBaseSources} />
+          )}
           <div className={styles.maxItemsRow}>
             <label className={styles.formLabel}>Количество источников:</label>
             <input
@@ -717,6 +748,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             </button>
           </div>
 
+          {droppedNote}
           <StepSourcesList
             sources={stepSources}
             excluded={excludedUrls}
@@ -1006,6 +1038,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             <div className={wiz.error}>
               Ошибка: {readableReason(stepBuildError)}
             </div>
+          )}
+          {stepBuildError && direction === "down" && NO_CONTINUATION.test(stepBuildError) && (
+            <EndUseCheck productName={productName} onUseSources={onMergeBaseSources} />
           )}
 
           <div className={wiz.footer}>

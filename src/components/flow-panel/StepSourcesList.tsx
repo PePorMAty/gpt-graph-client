@@ -159,6 +159,14 @@ export const StepSourcesList: FC<Props> = ({
                       </span>
                     )}
                     {domain && <span className={styles.sourceDomain}>{domain}</span>}
+                    {s.server_check?.status === "unchecked" && (
+                      <span
+                        className={styles.sourceUnchecked}
+                        title={`Сервер не смог проверить страницу: ${s.server_check.reason ?? "сайт не пустил"}. Источник может быть настоящим (закрытые журналы), но содержимое не подтверждено.`}
+                      >
+                        не проверен
+                      </span>
+                    )}
                     <button
                       type="button"
                       className={`${styles.sourceMore} ${open ? styles.sourceMoreOpen : ""}`}

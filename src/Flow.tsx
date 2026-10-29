@@ -3014,6 +3014,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
         stepSourcesExhausted: sliceState?.stepSourcesExhausted ?? false,
+        stepSourcesDropped: sliceState?.stepSourcesDropped ?? [],
 
         stepAggregatedText: sliceState?.stepAggregatedText ?? null,
         stepAggregateStatus: sliceState?.stepAggregateStatus ?? "idle",

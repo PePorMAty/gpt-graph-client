@@ -568,6 +568,17 @@
   white-space: nowrap;
 }
 
+/* Найденное моделью, что сервер не смог загрузить и сверить (403, капча). */
+.sourceUnchecked {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--c-warning, var(--c-text-muted));
+  background: var(--c-warning-soft, var(--c-surface-hover));
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+
 .sourceIconPdf {
   color: var(--c-danger);
 }

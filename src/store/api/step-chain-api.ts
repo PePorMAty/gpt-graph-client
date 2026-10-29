@@ -4,6 +4,7 @@ import axios from "axios";
 import type { RootState } from "../store";
 import type {
   BuildDirection,
+  DroppedSource,
   SourcesSearchResponse,
   StepChainApiResponse,
   StepChainApiStep,
@@ -141,6 +142,8 @@ export const fetchStepSourcesV2 = createAsyncThunk<
     product: string;
     maxItems: number;
     exhausted: boolean;
+    /** Отброшенное проверкой сервера; старый сервер поля не шлёт. */
+    dropped: DroppedSource[];
   },
   {
     nodeId: string;
@@ -254,6 +257,7 @@ export const fetchStepSourcesV2 = createAsyncThunk<
       product: res.data.product,
       maxItems: res.data.maxItems,
       exhausted,
+      dropped: res.data.dropped_sources ?? [],
     };
   } catch (e: unknown) {
     // Отмена пользователем — не ошибка: пробрасываем, чтобы RTK пометил экшен

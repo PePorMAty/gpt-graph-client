@@ -6,7 +6,7 @@ import {
   buildStep,
   fetchStepSourcesV2,
 } from "../api/step-chain-api";
-import type { BuildDirection, TechnologySource } from "../types";
+import type { BuildDirection, DroppedSource, TechnologySource } from "../types";
 import type { TechChain } from "../../utils/chainToFlow";
 
 /** Составной ключ для per-direction состояния источников */
@@ -40,6 +40,8 @@ type NodeSourcesState = {
   stepSourcesError: string | null;
   /** Источники закончились (повторный поиск не дал новых сверх уже найденных). */
   stepSourcesExhausted: boolean;
+  /** Найденное моделью, что сервер отбросил проверкой (последний поиск). */
+  stepSourcesDropped: DroppedSource[];
 
   stepAggregateStatus: Status;
   stepAggregateError: string | null;
@@ -77,6 +79,7 @@ const makeNodeState = (): NodeSourcesState => ({
   stepSourcesStatus: "idle",
   stepSourcesError: null,
   stepSourcesExhausted: false,
+  stepSourcesDropped: [],
 
   stepAggregateStatus: "idle",
   stepAggregateError: null,
@@ -236,15 +239,17 @@ const sourcesSlice = createSlice({
         state.byNodeId[key].stepSourcesStatus = "loading";
         state.byNodeId[key].stepSourcesError = null;
         state.byNodeId[key].stepSourcesExhausted = false;
+        state.byNodeId[key].stepSourcesDropped = [];
       })
       .addCase(fetchStepSourcesV2.fulfilled, (state, action) => {
-        const { nodeId, direction, product, maxItems, exhausted, sources } =
+        const { nodeId, direction, product, maxItems, exhausted, sources, dropped } =
           action.payload;
         const key = sourcesKey(nodeId, direction);
         state.byNodeId[key] = state.byNodeId[key] ?? makeNodeState();
         state.byNodeId[key].stepSourcesStatus = "succeeded";
         state.byNodeId[key].stepSourcesError = null;
         state.byNodeId[key].stepSourcesExhausted = !!exhausted;
+        state.byNodeId[key].stepSourcesDropped = dropped ?? [];
         // Резервное хранилище по nodeId — страховка от рассинхрона ключа пула.
         state.byNodeId[key].sources = sources ?? [];
         if (product) state.byNodeId[key].product = product;

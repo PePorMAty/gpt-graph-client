@@ -133,6 +133,12 @@ async function stepDownToPreview(page, product, { timeout = 180000, onSources, l
   for (;;) {
     const t = await wizardText(page);
     if ((await summarize.count()) && (await summarize.first().isEnabled()) && !/Ищем/.test(t)) break;
+    if (/закончились — поиск не дал/.test(t) && !/Ищем/.test(t) && !(await summarize.count())) {
+      // Источников нет вовсе: у продукта нет продолжения в найденном.
+      const e = new Error("источники не найдены — поиск не дал результатов");
+      e.deadEnd = true;
+      throw e;
+    }
     if (/не удалось|ошибк|заблокирован/i.test(t) && !/Ищем/.test(t) && Date.now() - t0 > 5000)
       throw new Error(`источники не получены: ${t.slice(0, 300)}`);
     if (Date.now() - t0 > timeout) throw new Error("источники не нашлись");
