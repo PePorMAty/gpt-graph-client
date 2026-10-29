@@ -11,6 +11,9 @@ Redux Toolkit, `@xyflow/react` (React Flow 12).
 - `develop` — то, что на сайте; `mvp` — ступень перед ним. Эти ветки не
   трогать и не пушить в них: работа идёт в своей ветке, владелец сам
   сливает её по цепочке ветка → `mvp` → `develop`.
+- Общая рабочая ветка — `claude/combined-testing` (в ней слиты
+  `claude/cloud-product-testing-cg98tm` и `claude/beautiful-hamilton-4whfax`);
+  новую работу начинай от неё, чтобы ветки не расходились.
 - Выкладка (делает владелец): GitHub Pages собирается workflow'ом при пуше в
   `develop`; свой домен https://sorangptgraph.xyz — `deploy/deploy-site.sh`
   (см. `deploy/DEPLOY.md`).
