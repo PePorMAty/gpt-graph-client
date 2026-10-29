@@ -12,6 +12,7 @@ import type {
   BalanceRef,
 } from "../store/api/material-balance-api";
 import {
+  balanceMismatches,
   formatRatio,
   formatRawPerProducts,
   formatShare,
@@ -20,6 +21,7 @@ import {
   parseShareInput,
   percentBalance,
   rawToProducts,
+  recipeMass,
   shareTotal,
 } from "./materialBalance";
 
@@ -205,5 +207,50 @@ describe("поле правки процента", () => {
     ["10001", null],
   ])("«%s» → %s", (text, want) => {
     expect(parseShareInput(text)).toBe(want);
+  });
+});
+
+// Расчёт капролактама 2026-10-29 (сохранён до правки сервера): в
+// «Результатах» водород 1410 «кг» (тысячи м³), аммиак — норма на тонну
+// продукта, серная кислота и олеум — «Часть от 1632»; в потоках — пересчёт
+// на базис.
+describe("противоречивый расчёт", () => {
+  const refs: BalanceRef[] = [
+    { ref: "P1", name: "Фенол", role: "basis" },
+    { ref: "P3", name: "Водород", role: "input" },
+    { ref: "P4", name: "Аммиак", role: "input" },
+    { ref: "P5", name: "Серная кислота", role: "input" },
+    { ref: "P6", name: "Олеум", role: "input" },
+    { ref: "P2", name: "Капролактам", role: "target" },
+  ];
+  const capro = () => {
+    const r = record(refs, { P1: 1000, P3: 1410, P4: 948, P5: 1632, P6: 1632, P2: 1080 }, [
+      flow("Фенол", "in", 1000),
+      flow("Водород", "in", 134),
+      flow("Аммиак (P4)", "in", 1023),
+      flow("Серная кислота/Олеум", "in", 1763),
+      flow("Капролактам", "out", 1080),
+    ]);
+    const text: Record<string, string> = { P3: "≈1410*", P4: "≈948", P5: "Часть от 1632", P6: "Часть от 1632" };
+    for (const p of r.products) p.massText = text[p.ref ?? ""] ?? String(p.massKg?.min ?? "");
+    for (const f of r.flows) f.massText = String(f.massKg?.min ?? "");
+    return r;
+  };
+
+  it("«Часть от 1632» — не масса вещества: каждому не достаётся всё число", () => {
+    expect(recipeMass(capro(), "P5")).toBeNull();
+    expect(recipeMass(capro(), "P6")).toBeNull();
+    expect(recipeMass(capro(), "P2")?.min).toBe(1080);
+  });
+
+  it("разные массы в двух таблицах — видно, какие", () => {
+    expect(balanceMismatches(capro())).toEqual([
+      { name: "Водород", products: "≈1410*", flows: "134" },
+      { name: "Аммиак", products: "≈948", flows: "1023" },
+    ]);
+  });
+
+  it("сходящийся расчёт — без предупреждения", () => {
+    expect(balanceMismatches(acn())).toEqual([]);
   });
 });

@@ -16,6 +16,7 @@ import {
   STATUS_TEXT,
   STATUS_TONE,
   statusReason,
+  balanceMismatches,
   type BalanceShares,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
@@ -224,6 +225,7 @@ export const CalcDetails: FC<Props> = ({
   const record = readableRecord(calc.record);
   const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
   const reason = statusReason(record);
+  const mismatched = balanceMismatches(record);
   const coefs = coefficientItems(record);
   const tName = labelOf(nodeId) || record.transformation;
   const transitions = record.steps?.length
@@ -254,6 +256,17 @@ export const CalcDetails: FC<Props> = ({
             <InfoIcon size={16} className={styles.reasonIcon} />
             <span>
               <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
+            </span>
+          </p>
+        )}
+        {mismatched.length > 0 && (
+          <p className={styles.reason}>
+            <InfoIcon size={16} className={styles.reasonIcon} />
+            <span>
+              <b>Расчёт противоречив:</b> в двух таблицах ответа модели разные массы —{" "}
+              {mismatched.map((m) => `${m.name}: ${m.products} и ${m.flows} кг`).join("; ")}.
+              Проценты ниже взяты из первой таблицы и могут быть неверны. Сверьте их с
+              «Расчётом по преобразованиям» или сделайте новый расчёт.
             </span>
           </p>
         )}

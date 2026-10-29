@@ -342,6 +342,53 @@ export function flowRef(record: BalanceRecord, flowName: string): string | null 
   );
 }
 
+/**
+ * «Часть от 1632», «в составе 1763»: у вещества нет своей массы — число
+ * общее на несколько. Сервер с 2026-10-29 так и разбирает; расчёты,
+ * сохранённые раньше, несут это число как массу каждого (серная кислота и
+ * олеум получали по 1632 кг) — поправляем здесь.
+ */
+const SHARED_MASS = /(^|\s)(часть|доля)\s+(от|из)\s|в\s+составе|входит\s+в|включ[её]н\S*\s+в|совместн/i;
+
+/** Масса строки «Результатов по продуктам», если она у вещества своя. */
+function ownMass(p: { massKg: BalanceAmount | null; massText: string }): BalanceAmount | null {
+  return SHARED_MASS.test(p.massText) ? null : p.massKg;
+}
+
+/** Допуск расхождения масс одного вещества в двух таблицах расчёта. */
+const MISMATCH_TOLERANCE = 0.05;
+
+export interface BalanceMismatch {
+  name: string;
+  /** Масса в «Результатах по продуктам» — как её написала модель. */
+  products: string;
+  /** Масса во внешних потоках «Общего баланса участка». */
+  flows: string;
+}
+
+/**
+ * Вещества, у которых две таблицы расчёта расходятся: проценты берутся из
+ * «Результатов по продуктам», а сходящийся баланс модель сводит в потоках.
+ * Расчёт капролактама 2026-10-29: водород 1410 кг (тысячи м³, прочитанные
+ * как кг) против 134 — сырьё на сайте вышло «≈127 %». Сервер в таком
+ * случае переспрашивает модель; что не исправилось (и старые расчёты) —
+ * показываем человеку.
+ */
+export function balanceMismatches(record: BalanceRecord): BalanceMismatch[] {
+  const out: BalanceMismatch[] = [];
+  for (const p of record.products) {
+    const a = ownMass(p);
+    if (!a || !p.ref) continue;
+    const flow = record.flows.find((f) => f.massKg && flowRef(record, f.name) === p.ref);
+    const b = flow?.massKg;
+    if (!b) continue;
+    if (b.max < a.min * (1 - MISMATCH_TOLERANCE) || b.min > a.max * (1 + MISMATCH_TOLERANCE)) {
+      out.push({ name: p.name, products: p.massText, flows: flow.massText });
+    }
+  }
+  return out;
+}
+
 /** Количество опорного сырья, с которым считала модель, в кг. */
 function basisKg(record: BalanceRecord): number {
   const kg = record.basisAmount?.kg;
@@ -355,7 +402,8 @@ function basisKg(record: BalanceRecord): number {
  */
 export function recipeMass(record: BalanceRecord, ref: string): BalanceAmount | null {
   const row = record.products.find((p) => p.ref === ref);
-  if (row?.massKg) return row.massKg;
+  const own = row ? ownMass(row) : null;
+  if (own) return own;
   const r = record.refs.find((x) => x.ref === ref);
   if (r?.role === "basis") {
     const kg = basisKg(record);
