@@ -49,6 +49,7 @@ for (const a of process.argv.slice(2)) {
   if (k === "--list") opts.list = true;
   else if (k === "--site") opts.site = v;
   else if (k === "--api") opts.api = v.replace(/\/+$/, "");
+  else if (k === "--server-repo") opts.serverRepo = path.resolve(v);
   else if (k === "--live-model") opts.liveModel = true;
   else if (k === "--allow-writes") opts.allowWrites = true;
   else if (k === "--rebuild") opts.build = "always";
@@ -129,20 +130,21 @@ function classify(method, p) {
   return "read";
 }
 
-const stats = { read: 0, model: { canned: 0, live: 0, blocked: [] }, write: { sent: 0, blocked: [] }, bad: [] };
+const stats = { read: 0, model: { canned: 0, live: 0, blocked: [] }, write: { sent: 0, blocked: [] }, bad: [], branch: 0 };
 let canned = {}; // путь → файл подставного ответа текущего сценария
 
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: "application/json", body: typeof body === "string" ? body : JSON.stringify(body) });
 
-async function forward(req, url) {
+async function forward(req, url, override) {
   const headers = { ...req.headers() };
   for (const h of ["host", "origin", "referer", "content-length"]) delete headers[h];
-  const body = ["GET", "HEAD"].includes(req.method()) ? undefined : req.postDataBuffer();
+  const body = ["GET", "HEAD"].includes(req.method()) ? undefined : override ?? req.postDataBuffer();
   let lastErr;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const r = await fetch(opts.api + url.pathname + url.search, { method: req.method(), headers, body });
+      const target = opts.site === "prod" ? PROD_ORIGIN : opts.api;
+      const r = await fetch(target + url.pathname + url.search, { method: req.method(), headers, body });
       return { status: r.status, type: r.headers.get("content-type"), body: Buffer.from(await r.arrayBuffer()) };
     } catch (e) {
       lastErr = e;
@@ -152,6 +154,112 @@ async function forward(req, url) {
   throw lastErr;
 }
 
+// ---------- ветка сервера поверх боевого API (--server-repo) ----------
+//
+// Боевой сервер часто старее ветки. С --server-repo обобщение шага идёт с
+// промптами ветки (как из окна «Редактировать промпт обобщения»), а ответ
+// разбора шага боевого сервера проходит ещё раз через build.js ветки — с
+// подменённой моделью, которая «отвечает» тем, что разобрал боевой сервер.
+// Так видны страховки ветки (побочные продукты, второе сырьё) до выкладки.
+// База источников и остальное — боевые.
+let branch = null;
+function serverBranch() {
+  if (branch) return branch;
+  const repo = opts.serverRepo;
+  const { stepAggregateDefaults } = require(path.join(repo, "routes/step/utils/prompts.js"));
+  const utilsPath = require.resolve(path.join(repo, "routes/sources/utils"));
+  const real = require(utilsPath);
+  let replies = [];
+  require.cache[utilsPath].exports = {
+    ...real,
+    callOpenAIResponsesRaw: async () => ({ status: "completed", text: JSON.stringify(replies.shift() ?? {}) }),
+    extractOutputText: (r) => r.text,
+  };
+  const router = require(path.join(repo, "routes/step/build.js"));
+  const handle = router.stack.find((l) => l.route?.path === "/gpt/step/build").route.stack[0].handle;
+  const runBuild = (body, modelReplies) =>
+    new Promise((resolve) => {
+      replies = modelReplies;
+      let out = "";
+      const res = {
+        statusCode: 200,
+        writableEnded: false,
+        status(c) { this.statusCode = c; return this; },
+        setHeader() {}, flushHeaders() {}, on() {},
+        write(x) { out += x; },
+        end(x) { out += x || ""; this.writableEnded = true; resolve({ status: this.statusCode, body: out.trim() }); },
+        json(o) { resolve({ status: this.statusCode, body: JSON.stringify(o) }); },
+      };
+      handle({ body, on() {} }, res);
+    });
+  branch = { stepAggregateDefaults, runBuild };
+  return branch;
+}
+
+/** Ответ по ветке сервера или null — запрос не про неё. */
+async function viaBranch(req, url) {
+  const p = url.pathname;
+  const { stepAggregateDefaults, runBuild } = serverBranch();
+  if (req.method() === "GET" && p.endsWith("/gpt/step/aggregate/prompt")) {
+    const direction = url.searchParams.get("direction") === "up" ? "up" : "down";
+    return { status: 200, body: JSON.stringify({ success: true, direction, ...stepAggregateDefaults(direction) }) };
+  }
+  if (req.method() === "POST" && p.endsWith("/gpt/step/aggregate")) {
+    const body = JSON.parse(req.postData() || "{}");
+    const d = stepAggregateDefaults(body.direction === "up" ? "up" : "down");
+    body.customSystemPrompt = body.customSystemPrompt || d.system;
+    body.customUserPrompt = body.customUserPrompt || d.template;
+    const r = await forward(req, url, JSON.stringify(body));
+    return { status: r.status, body: r.body.toString() };
+  }
+  if (req.method() === "POST" && p.endsWith("/gpt/step/build")) {
+    const body = JSON.parse(req.postData() || "{}");
+    const r = await forward(req, url);
+    let prod;
+    try {
+      prod = JSON.parse(r.body.toString().trim());
+    } catch {
+      prod = null;
+    }
+    if (!prod?.success || !prod.step) return { status: r.status, body: r.body.toString() };
+    const strip = (x) => ({ name: x.name, description: x.description || "", industry: x.industry || "", mainPurpose: x.mainPurpose || "" });
+    const t = prod.step.transformation;
+    const local = await runBuild(body, [
+      {
+        transformation: { name: t.name, description: t.description || "", industry: t.industry || "", mainPurpose: t.mainPurpose || "", notes: t.notes || [] },
+        inputProducts: prod.step.inputProducts.map(strip),
+        outputProducts: prod.step.outputProducts.map(strip),
+        byproducts: (prod.step.byproducts || []).map(strip),
+      },
+      { insufficient: prod.insufficientProducts || [] },
+    ]);
+    return local;
+  }
+  return null;
+}
+
+/**
+ * «Рассчитать» баланс без модели: готовый расчёт из базы сервера, если он
+ * есть, — как его отдал бы сам сервер (fromCache). Ищем через /ready: это
+ * чтение, и нового расчёта (запроса к модели) оно не начнёт; POST начал бы,
+ * не найдя готового.
+ */
+async function cachedBalance(req, url) {
+  if (req.method() !== "POST" || url.pathname !== "/api/graphs/material-balance") return null;
+  const b = JSON.parse(req.postData() || "{}");
+  if (b.force || b.knownData || b.system || b.template || !b.transformation) return null;
+  const outputs = (b.outputs || []).filter((n) => !Array.isArray(b.targets) || b.targets.includes(n.id));
+  const item = { transformation: b.transformation, inputs: b.inputs || [], outputs };
+  const ready = new URL("/api/graphs/material-balance/ready", url);
+  const r = await forward(
+    { method: () => "POST", headers: () => ({ "content-type": "application/json" }) },
+    ready,
+    JSON.stringify({ items: [item] }),
+  );
+  const found = JSON.parse(r.body.toString() || "{}")?.results?.[b.transformation.id];
+  return found ? { success: true, fromCache: true, ...found } : null;
+}
+
 async function handleApi(route) {
   const req = route.request();
   const url = new URL(req.url());
@@ -159,10 +267,20 @@ async function handleApi(route) {
   const label = `${req.method()} ${url.pathname}`;
   try {
     if (kind === "model" && !opts.liveModel) {
-      const file = canned[url.pathname];
+      const cached = await cachedBalance(req, url);
+      if (cached) {
+        stats.read++;
+        return json(route, 200, cached);
+      }
+      // Список файлов — ответы по очереди: шаг за шагом цепочки.
+      const entry = canned[url.pathname];
+      const file = Array.isArray(entry) ? entry.shift() : entry;
       if (file) {
         stats.model.canned++;
-        return json(route, 200, fs.readFileSync(path.join(SKILL, file), "utf8"));
+        const body = JSON.parse(fs.readFileSync(path.resolve(SKILL, file), "utf8"));
+        // Ответ, сохранённый сценарием живого прогона ({url, status, request,
+        // body}), — отдаём его тело.
+        return json(route, 200, body && "url" in body && "body" in body ? body.body : body);
       }
       stats.model.blocked.push(label);
       return json(route, 503, { success: false, error: "e2e: вызов модели заблокирован (нужен --live-model)" });
@@ -174,6 +292,14 @@ async function handleApi(route) {
     if (kind === "model") stats.model.live++;
     else if (kind === "write") stats.write.sent++;
     else stats.read++;
+    if (opts.serverRepo) {
+      const b = await viaBranch(req, url);
+      if (b) {
+        stats.branch++;
+        if (b.status >= 400) stats.bad.push(`${label} → ${b.status}`);
+        return json(route, b.status, b.body);
+      }
+    }
     if (opts.site === "prod") return route.continue();
     const r = await forward(req, url);
     if (r.status >= 400) stats.bad.push(`${label} → ${r.status}`);
@@ -197,7 +323,8 @@ function serveStatic(route) {
   fs.mkdirSync(opts.out, { recursive: true });
   const origin = opts.site === "local" ? LOCAL_ORIGIN : PROD_ORIGIN;
   console.log(
-    `Сайт: ${origin}${opts.site === "local" ? ` (API → ${opts.api})` : ""}; модель: ${opts.liveModel ? "ЖИВАЯ" : "заблокирована/подставная"}; запись: ${opts.allowWrites ? "РАЗРЕШЕНА" : "заблокирована"}`,
+    `Сайт: ${origin}${opts.site === "local" ? ` (API → ${opts.api})` : ""}; модель: ${opts.liveModel ? "ЖИВАЯ" : "заблокирована/подставная"}; запись: ${opts.allowWrites ? "РАЗРЕШЕНА" : "заблокирована"}` +
+      (opts.serverRepo ? `; обобщение и разбор шага — по ветке ${opts.serverRepo}` : ""),
   );
 
   const { chromium } = require("playwright");
@@ -227,7 +354,13 @@ function serveStatic(route) {
   let crashed = false;
   for (const name of opts.scenarios) {
     const scenario = require(path.join(SCENARIOS, `${name}.cjs`));
-    canned = scenario.canned || {};
+    // canned — карта или функция от переменных окружения (переиграть
+    // сохранённый прогон); списки копируем: они расходуются.
+    canned = Object.fromEntries(
+      Object.entries((typeof scenario.canned === "function" ? scenario.canned(process.env) : scenario.canned) || {}).map(
+        ([k, v]) => [k, Array.isArray(v) ? [...v] : v],
+      ),
+    );
     console.log(`\n=== ${name}: ${scenario.description}`);
     const ctx = {
       page,
@@ -267,7 +400,8 @@ function serveStatic(route) {
   console.log("\n=== Итог");
   console.log(`Проверки: ${results.length - failed.length}/${results.length} прошли${failed.length ? `; провалы: ${failed.map((f) => `${f.name}: ${f.title}`).join("; ")}` : ""}`);
   console.log(
-    `API: чтение ${stats.read}; модель — подставных ${stats.model.canned}, живых ${stats.model.live}, заблокировано ${stats.model.blocked.length}; запись — отправлено ${stats.write.sent}, заблокировано ${stats.write.blocked.length}`,
+    `API: чтение ${stats.read}; модель — подставных ${stats.model.canned}, живых ${stats.model.live}, заблокировано ${stats.model.blocked.length}; запись — отправлено ${stats.write.sent}, заблокировано ${stats.write.blocked.length}` +
+      (opts.serverRepo ? `; по ветке сервера ${stats.branch}` : ""),
   );
   const uniq = (a) => [...new Set(a)];
   if (stats.model.blocked.length) console.log(`  заблокированные вызовы модели: ${uniq(stats.model.blocked).join(", ")}`);

@@ -77,26 +77,74 @@ async function wizardText(page) {
   return b > 0 ? s.slice(0, b) : s;
 }
 
+/** Узел по точному названию: «Фенол» — не «Фенолоформальдегидные смолы». */
+function nodeByLabel(page, label, type = "product") {
+  return page
+    .locator(`.react-flow__node-${type}`)
+    .filter({ has: page.getByText(label, { exact: true }) })
+    .first();
+}
+
+/** Вписать граф в экран — узлы после шага могли уйти за край. */
+async function fitView(page) {
+  await page.getByRole("button", { name: "Вписать граф в экран" }).first().click().catch(() => {});
+  await sleep(800);
+}
+
 /**
- * Шаг «вниз» от продукта на источниках из базы: карточка → «Построить шаг» →
- * вниз → источники из базы → обобщение → построение → превью. Возвращает
- * текст превью. onSources — проверить список источников, пока он на экране. Модель здесь вызывается дважды (обобщение и построение) —
- * в сценарии нужны подставные ответы или --live-model.
+ * Шаг «вниз» от продукта: карточка → «Построить шаг» → вниз → источники
+ * (из базы, а если в базе нет — поиск через модель) → обобщение →
+ * построение → превью. Возвращает текст превью. Модель здесь вызывается
+ * дважды-трижды (поиск, обобщение, построение) — в сценарии нужны подставные
+ * ответы или --live-model. onSources — посмотреть список источников, пока он
+ * на экране; log — куда писать, что выбрал мастер.
  */
-async function stepDownToPreview(page, product, { timeout = 180000, onSources } = {}) {
-  await page.locator(".react-flow__node-product", { hasText: product }).first().click();
+async function stepDownToPreview(page, product, { timeout = 180000, onSources, log = () => {} } = {}) {
+  await fitView(page);
+  await nodeByLabel(page, product).click();
   await sleep(800);
   await page.getByRole("button", { name: "Построить шаг", exact: true }).first().click();
-  await page.getByRole("button", { name: /^Построить вниз/ }).click();
-  await page.getByRole("button", { name: "К источникам из базы" }).click();
-  await page.getByRole("button", { name: /Обобщить источники/ }).waitFor({ timeout });
-  if (onSources) await onSources();
-  await page.getByRole("button", { name: /Обобщить источники/ }).click();
+  // Первая кнопка мастера: из базы, поиск через модель или к уже собранным.
+  const down = page.getByRole("button", { name: /^Построить вниз/ });
+  const start = page.getByRole("button", { name: /^\s*(К источникам из базы|Найти источники|К источникам)\s*$/ });
+  const summarize = page.getByRole("button", { name: /Обобщить источники/ });
   const t0 = Date.now();
+  // Направление мастер спрашивает не всегда: продукт, которому шаг передал
+  // источники предка, открывается сразу на источниках («взяты у …»).
+  while (!(await down.count()) && !(await start.count()) && !(await summarize.count())) {
+    if (Date.now() - t0 > 60000) throw new Error("мастер не открылся");
+    await sleep(500);
+  }
+  if (await down.count()) await down.click();
+  while (!(await start.count()) && !(await summarize.count())) {
+    if (Date.now() - t0 > 60000) throw new Error("мастер не предложил источники");
+    await sleep(500);
+  }
+  const borrowed = await page.getByText(/^Источники взяты у «/).count();
+  if (borrowed) log(`«${product}»: ${(await page.getByText(/^Источники взяты у «/).first().innerText()).trim()}`);
+  if (await start.count()) {
+    const how = (await start.first().innerText()).trim();
+    log(`«${product}»: ${how}`);
+    await start.first().click();
+  } else {
+    log(`«${product}»: источники уже собраны`);
+  }
+  // Источники готовы: «Обобщить» доступна и поиск не идёт.
+  for (;;) {
+    const t = await wizardText(page);
+    if ((await summarize.count()) && (await summarize.first().isEnabled()) && !/Ищем/.test(t)) break;
+    if (/не удалось|ошибк|заблокирован/i.test(t) && !/Ищем/.test(t) && Date.now() - t0 > 5000)
+      throw new Error(`источники не получены: ${t.slice(0, 300)}`);
+    if (Date.now() - t0 > timeout) throw new Error("источники не нашлись");
+    await sleep(2000);
+  }
+  if (onSources) await onSources();
+  await summarize.first().click();
   for (;;) {
     const t = await wizardText(page);
     if (/Новый производственный шаг|Что производят/.test(t) && !/Обобщаем/.test(t)) break;
-    if (/ошибк|не удалось|заблокирован/i.test(t) && Date.now() - t0 > 3000) throw new Error(`обобщение не удалось: ${t.slice(0, 300)}`);
+    if (/ошибк|не удалось|заблокирован/i.test(t) && Date.now() - t0 > 3000 && !/Обобщаем/.test(t))
+      throw new Error(`обобщение не удалось: ${t.slice(0, 300)}`);
     if (Date.now() - t0 > timeout) throw new Error("обобщение не закончилось");
     await sleep(1000);
   }
@@ -104,6 +152,34 @@ async function stepDownToPreview(page, product, { timeout = 180000, onSources } 
   await page.getByText(/^Входные данные \(\d+\)$/).first().waitFor({ timeout });
   await sleep(500);
   return wizardText(page);
+}
+
+/**
+ * Превью шага разобранным: преобразование, входы, выходы, побочные — у
+ * каждого продукта пометка («новый», «в графе: …», «раскрываемый»).
+ */
+function parsePreview(text) {
+  const lines = String(text).split("\n").map((l) => l.trim()).filter(Boolean);
+  const at = (re) => lines.findIndex((l) => re.test(l));
+  const trIdx = at(/^Производственный шаг #\d+/);
+  const block = (re) => {
+    const i = at(re);
+    if (i < 0) return [];
+    const out = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j];
+      if (/^(Входные данные|Выходные данные|Побочные продукты|Примечания|Добавить свой продукт)/.test(l)) break;
+      if (/^(новый|раскрываемый|в графе)/.test(l) && out.length) out[out.length - 1].tag = l;
+      else out.push({ name: l, tag: "" });
+    }
+    return out;
+  };
+  return {
+    transformation: trIdx >= 0 ? lines[trIdx + 1] : null,
+    inputs: block(/^Входные данные \(/),
+    outputs: block(/^Выходные данные \(/),
+    byproducts: block(/^Побочные продукты \(/),
+  };
 }
 
 /** Прямоугольники узлов на экране и их попарные наложения. */
@@ -190,6 +266,9 @@ module.exports = {
   newManualGraph,
   wizardText,
   stepDownToPreview,
+  parsePreview,
+  nodeByLabel,
+  fitView,
   nodeBoxes,
   overlaps,
   nodeNear,
