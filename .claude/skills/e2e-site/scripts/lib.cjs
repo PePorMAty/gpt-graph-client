@@ -154,6 +154,14 @@ async function stepDownToPreview(page, product, { timeout = 180000, onSources, l
     if (Date.now() - t0 > timeout) throw new Error("обобщение не закончилось");
     await sleep(1000);
   }
+  // Обобщение не нашло, что получают из продукта (поиск принёс источники не
+  // о нём): «Построить шаг» заблокирована — это тупик, а не повод ждать.
+  const empty = (await wizardText(page)).match(/Обобщение не нашло в источниках[^\n]*?пусто/);
+  if (empty) {
+    const e = new Error(empty[0]);
+    e.deadEnd = true;
+    throw e;
+  }
   await page.getByRole("button", { name: "Построить шаг", exact: true }).last().click();
   // Превью — или ошибка построения: у конечного продукта (готовое ПАВ)
   // продолжения нет, и ждать превью до таймаута незачем.

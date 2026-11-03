@@ -1024,7 +1024,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
             <div className={styles.warningText}>
               {direction === "up"
                 ? `Обобщение не нашло в источниках, из чего получают «${productName}»: «Из чего производят» пусто. По такому тексту шаг не строим — сырьё пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново — или впишите сырьё в текст выше.`
-                : `Обобщение не нашло в источниках, что получают из «${productName}»: «Что производят» пусто. По такому тексту шаг не строим — продукты пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново — или впишите продукты в текст выше.`}
+                : `Обобщение не нашло в источниках, что получают из «${productName}»: «Что производят» пусто. По такому тексту шаг не строим — продукты пришлось бы придумывать. Вернитесь к источникам, доберите их через модель и обобщите заново, впишите продукты в текст выше — или проверьте ниже, что из него делают.`}
             </div>
           )}
 
@@ -1039,9 +1039,13 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
               Ошибка: {readableReason(stepBuildError)}
             </div>
           )}
-          {stepBuildError && direction === "down" && NO_CONTINUATION.test(stepBuildError) && (
-            <EndUseCheck productName={productName} onUseSources={onMergeBaseSources} />
-          )}
+          {/* Тупик вниз — построение не нашло продолжения или обобщение не
+              нашло, что получают из продукта (так бывает, когда поиск принёс
+              источники не о нём): проверить, конечный ли это продукт. */}
+          {direction === "down" &&
+            (aggregateFoundNothing || (stepBuildError && NO_CONTINUATION.test(stepBuildError))) && (
+              <EndUseCheck productName={productName} onUseSources={onMergeBaseSources} />
+            )}
 
           <div className={wiz.footer}>
             <span className={wiz.footerLeft}>
