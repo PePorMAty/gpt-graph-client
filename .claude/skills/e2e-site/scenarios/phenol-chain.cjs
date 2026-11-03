@@ -19,7 +19,9 @@
 // нашло, что из него получают, или построение не дало нового продукта)
 // заканчивает цепочку — баланс и сохранение идут по построенному.
 //
-// Параметры: PRODUCT (Фенол), STEPS (3), BALANCES (2), SAVE, REPLAY.
+// Параметры: PRODUCT (Фенол), STEPS (3), BALANCES (2), SAVE, REPLAY,
+// DIRECTION (down; up — цепочка вверх: каждый следующий шаг — от нового сырья
+// предыдущего).
 
 const fs = require("fs");
 const path = require("path");
@@ -39,14 +41,15 @@ function replay(dir) {
 }
 
 module.exports = {
-  description: "Живая модель: цепочка вниз (PRODUCT, STEPS), баланс и техописание у BALANCES преобразований",
+  description: "Живая модель: цепочка вниз или вверх (PRODUCT, STEPS, DIRECTION), баланс и техописание у BALANCES преобразований",
   canned: (env) => (env.REPLAY ? replay(path.resolve(env.REPLAY)) : {}),
   // REPLAY с --live-model: сохранённые ответы — пока есть, дальше — живая
   // модель (шаги из прошлого прогона бесплатно, баланс и техописание — заново).
   cannedInLive: (env) => !!env.REPLAY,
   async run({ page, origin, env, lib, log, check, shot }) {
     const steps = Number(env.STEPS || 3);
-    const balances = Number(env.BALANCES || 2);
+    const balances = Number(env.BALANCES ?? 2);
+    const direction = env.DIRECTION === "up" ? "up" : "down";
     const out = path.dirname(await shot("start"));
 
     // Ответы модели — в файлы: их и сравниваем.
@@ -80,6 +83,7 @@ module.exports = {
       let text;
       try {
         text = await lib.stepDownToPreview(page, product, {
+        direction,
         timeout: 15 * 60 * 1000,
         log,
         onSources: async () => {
@@ -134,8 +138,11 @@ module.exports = {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Закрыть карточку" }).click().catch(() => {});
       chain.push({ step: k, from: product, ...p });
-      // Дальше — от нового продукта шага (основной путь).
-      const next = p.outputs.find((x) => x.tag === "новый") || p.outputs[0];
+      // Дальше — от нового продукта шага (основной путь); вверх — от нового сырья.
+      const next =
+        direction === "up"
+          ? p.inputs.find((x) => x.tag === "новый")
+          : p.outputs.find((x) => x.tag === "новый") || p.outputs[0];
       product = next?.name ?? null;
     }
     await lib.fitView(page);

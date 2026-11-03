@@ -92,20 +92,20 @@ async function fitView(page) {
 }
 
 /**
- * Шаг «вниз» от продукта: карточка → «Построить шаг» → вниз → источники
- * (из базы, а если в базе нет — поиск через модель) → обобщение →
- * построение → превью. Возвращает текст превью. Модель здесь вызывается
- * дважды-трижды (поиск, обобщение, построение) — в сценарии нужны подставные
- * ответы или --live-model. onSources — посмотреть список источников, пока он
- * на экране; log — куда писать, что выбрал мастер.
+ * Шаг от продукта: карточка → «Построить шаг» → вниз (или вверх, direction:
+ * "up") → источники (из базы, а если в базе нет — поиск через модель) →
+ * обобщение → построение → превью. Возвращает текст превью. Модель здесь
+ * вызывается дважды-трижды (поиск, обобщение, построение) — в сценарии нужны
+ * подставные ответы или --live-model. onSources — посмотреть список
+ * источников, пока он на экране; log — куда писать, что выбрал мастер.
  */
-async function stepDownToPreview(page, product, { timeout = 180000, onSources, log = () => {} } = {}) {
+async function stepDownToPreview(page, product, { timeout = 180000, onSources, log = () => {}, direction = "down" } = {}) {
   await fitView(page);
   await nodeByLabel(page, product).click();
   await sleep(800);
   await page.getByRole("button", { name: "Построить шаг", exact: true }).first().click();
   // Первая кнопка мастера: из базы, поиск через модель или к уже собранным.
-  const down = page.getByRole("button", { name: /^Построить вниз/ });
+  const down = page.getByRole("button", { name: direction === "up" ? /^Построить вверх/ : /^Построить вниз/ });
   const start = page.getByRole("button", { name: /^\s*(К источникам из базы|Найти источники|К источникам)\s*$/ });
   const summarize = page.getByRole("button", { name: /Обобщить источники/ });
   const t0 = Date.now();
