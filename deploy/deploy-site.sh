@@ -36,6 +36,16 @@ API_URL="https://sorangptgraph.xyz/api"
 
 step() { printf '\n── %s\n' "$*"; }
 
+# Сборка кладётся в папку nginx на сервере сайта. На своём компьютере (Git
+# Bash, Cygwin) скрипт собрал бы сайт за пару минут и упал бы только на
+# последнем шаге, ничего не выложив, — поэтому проверяем сразу.
+if [ ! -d "$(dirname "$DEST")" ]; then
+  echo "Нет папки $(dirname "$DEST") — похоже, это не сервер сайта, и выложить отсюда нельзя."
+  echo "Зайдите на сервер (ssh) и запустите скрипт там:"
+  echo "  bash ~/gpt-graph-client/deploy/deploy-site.sh${1:+ $1}"
+  exit 1
+fi
+
 step "Забираю $BRANCH с GitHub"
 git -C "$REPO" fetch --quiet origin "$BRANCH"
 

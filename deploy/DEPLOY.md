@@ -14,6 +14,10 @@
 
 ## Выкладка — из `develop`
 
+Все команды — **на сервере сайта** (`ssh`), не на своём компьютере: сборка
+кладётся в `/var/www/sorangptgraph`, которую отдаёт nginx. Запущенный не там
+скрипт сразу скажет об этом и ничего не соберёт.
+
 ```
 git -C ~/gpt-graph-client pull -q && bash ~/gpt-graph-client/deploy/deploy-site.sh
 ```
