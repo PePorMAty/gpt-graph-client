@@ -27,6 +27,12 @@ export interface LocalDocument {
   structure: "outline" | "links" | "headings" | "pages" | null;
   /** Модель, которой разбираются разделы. */
   model: string | null;
+  /**
+   * В базе есть издание новее того же справочника — разделы этого не
+   * отдаются (черновик «ИТС 18—202_» при «ИТС 18—2023»). Старый сервер
+   * поля не знает.
+   */
+  supersededBy?: { id: number; title: string } | null;
   /** Разделы-источники и ход их разбора моделью. */
   sections: { total: number; done: number; failed: number; pending: number };
 }
@@ -76,8 +82,6 @@ export interface LocalProduct {
   up: number;
   /** Разделов «вниз»: где он сырьё. */
   down: number;
-  /** Сохранённых источников из интернета. */
-  web: { up: number; down: number };
   /** Каким узлам текущего графа отвечает. */
   onGraph: string[];
 }
@@ -106,17 +110,18 @@ export interface LocalProductSection {
 export interface LocalProductSources {
   up: LocalProductSection[];
   down: LocalProductSection[];
-  web: { up: TechnologySource[]; down: TechnologySource[] };
 }
 
 /**
- * Сколько источников у продукта: разделов документов (всего и по
- * направлениям) и сохранённых веб-источников.
+ * Сколько разделов документов у продукта — всего и по направлениям.
+ *
+ * Найденное моделью в интернете в базе больше не хранится (2026-10-29):
+ * поле web сервер ещё отдаёт, но клиент его не читает — и старый сервер,
+ * где там что-то есть, синих источников «из базы» уже не покажет.
  */
 export interface LocalSourceCounts {
   local: number;
   localDir?: { up: number; down: number };
-  web: { up: number; down: number };
 }
 
 export interface UploadResult {
@@ -283,16 +288,20 @@ export async function lookupLocalSources(
   return data.products ?? {};
 }
 
-/** Источники продукта из базы: разделы документов и найденные моделью раньше. */
+/**
+ * Источники продукта из базы — разделы документов, загруженных людьми.
+ * Найденное моделью раньше (web) не берём, даже если старый сервер его
+ * отдаёт: в базе его больше не храним.
+ */
 export async function fetchBaseSources(
   product: string,
   direction: "up" | "down",
-): Promise<{ local: TechnologySource[]; web: TechnologySource[] }> {
+): Promise<TechnologySource[]> {
   const { data } = await axios.post(`${base()}/local-sources/for-product`, {
     product,
     direction,
   });
-  return { local: data.local ?? [], web: data.web ?? [] };
+  return data.local ?? [];
 }
 
 /**
@@ -310,15 +319,11 @@ export async function listLocalProducts(
   }
 }
 
-/** Все источники продукта базы: разделы вверх и вниз, найденное в интернете. */
+/** Все источники продукта базы: разделы вверх и вниз. */
 export async function fetchLocalProductSources(keys: string[]): Promise<LocalProductSources> {
   try {
     const { data } = await axios.post(`${base()}/local-sources/product-sources`, { keys });
-    return {
-      up: data.up ?? [],
-      down: data.down ?? [],
-      web: { up: data.web?.up ?? [], down: data.web?.down ?? [] },
-    };
+    return { up: data.up ?? [], down: data.down ?? [] };
   } catch (e) {
     throw new Error(reason(e, "Не удалось получить источники продукта"));
   }

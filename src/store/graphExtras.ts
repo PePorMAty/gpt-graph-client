@@ -1,7 +1,8 @@
 // src/store/graphExtras.ts
 //
-// Закладки, история и расчёты баланса сохранённого графа: подтянуть при
-// открытии, выгрузить при первом сохранении, очистить по кнопке.
+// Закладки, история, расчёты баланса и идентификаторы продуктов сохранённого
+// графа: подтянуть при открытии, выгрузить при первом сохранении, очистить по
+// кнопке.
 //
 // Обычные правки уходят на сервер сами — этим заведует graphExtrasMiddleware.
 // Здесь только три момента, когда синхронизация не выводится из одного
@@ -17,11 +18,12 @@ import {
   fetchBookmarks,
   fetchHistory,
   fetchMaterialBalances,
+  fetchProductIds,
   isSyncableEntry,
   putBookmark,
 } from "./api/graph-extras-api";
 import { setBookmarks } from "./slices/bookmarksSlice";
-import { restoreMaterialBalances } from "./slices/gptSlice";
+import { restoreMaterialBalances, restoreProductIds } from "./slices/gptSlice";
 import { pullReadyBalances } from "./slices/materialBalanceSlice";
 import { clearHistory, restoreHistory } from "./slices/historySlice";
 import { showToast } from "../components/toast/toastStore";
@@ -50,6 +52,14 @@ function mergeById(...lists: HistoryEntry[][]): HistoryEntry[] {
 }
 
 /**
+ * Идентификаторы продуктов открытого графа, записанные рядом с ним, уже в
+ * узлах (или их нет). Опознание продуктов (Flow.tsx) ждёт этого: иначе оно
+ * успевало спросить справочник обо всех продуктах, пока сайдкар ещё ехал.
+ */
+let productIdsRestored: Promise<void> = Promise.resolve();
+export const whenProductIdsRestored = (): Promise<void> => productIdsRestored;
+
+/**
  * Открыт сохранённый граф — поднять его закладки, историю и расчёты
  * материального баланса с сервера. Расчёты — те, что изменились после
  * сохранения графа: пришли позже или их убрали (см. graphExtrasMiddleware).
@@ -68,6 +78,21 @@ export const openGraphExtras = createAsyncThunk<
   string,
   { state: RootState }
 >("graphExtras/open", async (graphId, { dispatch, getState }) => {
+  // Первым делом, до любого await: эффект опознания на полотне должен застать
+  // это обещание.
+  productIdsRestored = fetchProductIds(graphId)
+    .then((ids) => {
+      if (
+        getState().savedGraphs.openedGraphId === graphId &&
+        Object.keys(ids).length
+      ) {
+        dispatch(restoreProductIds(ids));
+      }
+    })
+    .catch((e) => {
+      console.warn("Не удалось загрузить идентификаторы продуктов графа", e);
+    });
+
   const [bookmarks, history, balances] = await Promise.allSettled([
     fetchBookmarks(graphId),
     fetchHistory(graphId),

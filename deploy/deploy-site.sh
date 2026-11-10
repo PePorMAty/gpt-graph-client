@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 #
-# Выложить сайт https://sorangptgraph.xyz из ветки develop — и только из неё.
+# Выложить сайт https://sorangptgraph.xyz из ветки develop.
 #
 #   bash ~/gpt-graph-client/deploy/deploy-site.sh
 #
 # Рабочая копия ~/gpt-graph-client может стоять на любой ветке: скрипт её не
 # трогает. Сборка идёт в отдельной папке ~/site-develop — это вторая рабочая
-# папка того же репозитория (git worktree), и в ней всегда свежий develop с
-# GitHub. Ветка зашита в скрипт: собрать им что-то, кроме develop, нельзя.
+# папка того же репозитория (git worktree), и в ней всегда свежая ветка с
+# GitHub, а не то, что лежит в рабочей копии.
+#
+# Другую ветку — только названной явно, для проверки на домене до слияния:
+#
+#   bash ~/gpt-graph-client/deploy/deploy-site.sh claude/combined-testing
+#
+# GitHub Pages при этом остаётся на develop. Вернуть сайт на develop — тот же
+# скрипт без аргумента.
 #
 # По шагам:
-#   1) забрать develop с GitHub и поставить его в ~/site-develop;
+#   1) забрать ветку с GitHub и поставить её в ~/site-develop;
 #   2) собрать: приложение по корню домена, API — https://sorangptgraph.xyz/api;
 #   3) проверить, что в страницах нет незаполненных заглушек {{…}};
 #   4) положить сборку в /var/www/sorangptgraph (оттуда её отдаёт nginx), а
@@ -21,13 +28,23 @@
 
 set -euo pipefail
 
-BRANCH="develop"
+BRANCH="${1:-develop}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$HOME/site-develop"
 DEST="/var/www/sorangptgraph"
 API_URL="https://sorangptgraph.xyz/api"
 
 step() { printf '\n── %s\n' "$*"; }
+
+# Сборка кладётся в папку nginx на сервере сайта. На своём компьютере (Git
+# Bash, Cygwin) скрипт собрал бы сайт за пару минут и упал бы только на
+# последнем шаге, ничего не выложив, — поэтому проверяем сразу.
+if [ ! -d "$(dirname "$DEST")" ]; then
+  echo "Нет папки $(dirname "$DEST") — похоже, это не сервер сайта, и выложить отсюда нельзя."
+  echo "Зайдите на сервер (ssh) и запустите скрипт там:"
+  echo "  bash ~/gpt-graph-client/deploy/deploy-site.sh${1:+ $1}"
+  exit 1
+fi
 
 step "Забираю $BRANCH с GitHub"
 git -C "$REPO" fetch --quiet origin "$BRANCH"
@@ -42,7 +59,10 @@ fi
 # Всё, что не из репозитория, — прочь, кроме зависимостей: их ставить долго.
 git -C "$SRC" clean --quiet -fdx -e node_modules
 COMMIT="$(git -C "$SRC" log -1 --format='%h %ad %s' --date=short)"
-echo "Выкладываю: $COMMIT"
+echo "Выкладываю ($BRANCH): $COMMIT"
+if [ "$BRANCH" != "develop" ]; then
+  echo "Внимание: на сайт идёт НЕ develop. Вернуть develop — этот же скрипт без аргумента."
+fi
 
 # Зависимости ставим, только если поменялся package-lock.json.
 LOCK_HASH="$(sha256sum "$SRC/package-lock.json" | cut -d' ' -f1)"
@@ -72,6 +92,9 @@ fi
 step "Кладу сборку в $DEST"
 rm -rf "$DEST.new"
 cp -a "$SRC/dist" "$DEST.new"
+# Какая ветка и коммит на сайте — видно снаружи (/version.txt): проверкам
+# в браузере из облака нужно знать, что именно они тестируют.
+printf '%s\n%s\n' "$BRANCH" "$COMMIT" > "$DEST.new/version.txt"
 chmod -R a+rX "$DEST.new"
 if [ -d "$DEST" ]; then
   rm -rf "$DEST.old"
@@ -80,7 +103,7 @@ fi
 mv "$DEST.new" "$DEST"
 
 step "Готово"
-echo "На сайте: $COMMIT"
+echo "На сайте ($BRANCH): $COMMIT"
 # Проверяем через nginx этой же машины (127.0.0.1): запрос с сервера на свой
 # же внешний адрес у многих хостингов не проходит — curl показал бы 000,
 # хотя снаружи сайт открывается.

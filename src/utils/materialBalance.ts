@@ -6,8 +6,8 @@
 // Расчёт — преобразование целиком: всё его сырьё и выбранные продукты.
 // Модель считает на 1 т одного сырья (опорного) и даёт массы остального
 // сырья и каждого продукта. Человек видит только проценты массы: сырьё —
-// 100 %, продукт — 100 %, прочее — отдельно (percentBalance). Проценты
-// правятся вручную, каждый сам по себе: правка одного ничего не
+// 100 %, продукты и прочее — в процентах от массы сырья (percentBalance).
+// Проценты правятся вручную, каждый сам по себе: правка одного ничего не
 // пересчитывает (MaterialBalanceCalc.shares).
 //
 // Прежние расчёты — пара «сырьё → продукт» на 1 т сырья — тот же вид с одним
@@ -52,6 +52,12 @@ export interface MaterialBalanceCalc {
   addedAt: string;
   /** Проценты, поправленные вручную; нет — все как посчитала модель. */
   shares?: BalanceShares;
+  /**
+   * От чего считаны проценты правок продуктов и «Отдельно»: "raw" — от массы
+   * сырья (с 2026-10-28). Нет — правки прежней версии, от массы продуктов;
+   * percentBalance переводит их на массу сырья.
+   */
+  sharesBasis?: "raw";
 }
 
 export const STATUS_TEXT: Record<BalanceStatus, string> = {
@@ -336,6 +342,53 @@ export function flowRef(record: BalanceRecord, flowName: string): string | null 
   );
 }
 
+/**
+ * «Часть от 1632», «в составе 1763»: у вещества нет своей массы — число
+ * общее на несколько. Сервер с 2026-10-29 так и разбирает; расчёты,
+ * сохранённые раньше, несут это число как массу каждого (серная кислота и
+ * олеум получали по 1632 кг) — поправляем здесь.
+ */
+const SHARED_MASS = /(^|\s)(часть|доля)\s+(от|из)\s|в\s+составе|входит\s+в|включ[её]н\S*\s+в|совместн/i;
+
+/** Масса строки «Результатов по продуктам», если она у вещества своя. */
+function ownMass(p: { massKg: BalanceAmount | null; massText: string }): BalanceAmount | null {
+  return SHARED_MASS.test(p.massText) ? null : p.massKg;
+}
+
+/** Допуск расхождения масс одного вещества в двух таблицах расчёта. */
+const MISMATCH_TOLERANCE = 0.05;
+
+export interface BalanceMismatch {
+  name: string;
+  /** Масса в «Результатах по продуктам» — как её написала модель. */
+  products: string;
+  /** Масса во внешних потоках «Общего баланса участка». */
+  flows: string;
+}
+
+/**
+ * Вещества, у которых две таблицы расчёта расходятся: проценты берутся из
+ * «Результатов по продуктам», а сходящийся баланс модель сводит в потоках.
+ * Расчёт капролактама 2026-10-29: водород 1410 кг (тысячи м³, прочитанные
+ * как кг) против 134 — сырьё на сайте вышло «≈127 %». Сервер в таком
+ * случае переспрашивает модель; что не исправилось (и старые расчёты) —
+ * показываем человеку.
+ */
+export function balanceMismatches(record: BalanceRecord): BalanceMismatch[] {
+  const out: BalanceMismatch[] = [];
+  for (const p of record.products) {
+    const a = ownMass(p);
+    if (!a || !p.ref) continue;
+    const flow = record.flows.find((f) => f.massKg && flowRef(record, f.name) === p.ref);
+    const b = flow?.massKg;
+    if (!b) continue;
+    if (b.max < a.min * (1 - MISMATCH_TOLERANCE) || b.min > a.max * (1 + MISMATCH_TOLERANCE)) {
+      out.push({ name: p.name, products: p.massText, flows: flow.massText });
+    }
+  }
+  return out;
+}
+
 /** Количество опорного сырья, с которым считала модель, в кг. */
 function basisKg(record: BalanceRecord): number {
   const kg = record.basisAmount?.kg;
@@ -349,7 +402,8 @@ function basisKg(record: BalanceRecord): number {
  */
 export function recipeMass(record: BalanceRecord, ref: string): BalanceAmount | null {
   const row = record.products.find((p) => p.ref === ref);
-  if (row?.massKg) return row.massKg;
+  const own = row ? ownMass(row) : null;
+  if (own) return own;
   const r = record.refs.find((x) => x.ref === ref);
   if (r?.role === "basis") {
     const kg = basisKg(record);
@@ -397,6 +451,9 @@ const NUMBER = new Intl.NumberFormat("ru-RU", { maximumSignificantDigits: 3 });
 const EXACT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
 
 const AMOUNT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 6 });
+
+/** Соотношение сырья и продуктов: «0,85», «1,18». */
+const RATIO = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const BASIS_UNITS = ["кг", "т", "тыс. т"];
 
@@ -447,8 +504,8 @@ export interface PercentRow {
   /** Масса по расчёту модели, кг; модель не дала — null. */
   mass: BalanceAmount | null;
   /**
-   * Доля по расчёту модели: у сырья — от всего сырья, у продукта — от всех
-   * продуктов расчёта, у прочего — от массы продуктов. Нет массы — null.
+   * Доля по расчёту модели — от общей массы сырья: у сырья вместе это 100 %,
+   * у продуктов и прочего — сколько их на эту массу. Нет массы — null.
    */
   model: BalanceAmount | null;
   /** Доля в таблице и на узле: поправленная вручную, иначе — модели. */
@@ -466,21 +523,34 @@ export const flowShareKey = (index: number) => `flow:${index}`;
 export interface PercentBalance {
   /** Сырьё расчёта (с графа): доли между собой, вместе — 100 %. */
   raw: PercentRow[];
-  /** Продукты расчёта: доли между собой, вместе — 100 %. */
+  /**
+   * Продукты расчёта — в процентах от массы сырья: на 100 % сырья их бывает
+   * и не 100 % (остальное — побочные продукты, отходы, потери).
+   */
   products: PercentRow[];
   /**
-   * Отдельно, вне этих 100 %: реагенты сверх графа (кислород, вода),
-   * невыбранные выходы, побочные продукты, отходы, потери — в процентах от
-   * массы продуктов («на 100 % продукта — 120 % воды»).
+   * Отдельно — тоже от массы сырья: реагенты сверх графа (кислород, вода) —
+   * на входе; невыбранные выходы, побочные продукты, отходы, потери — на
+   * выходе, вместе с продуктами («Итого выходов»).
    */
   separate: PercentRow[];
   /** Не у всего сырья есть масса: доли модели — от сырья с массой. */
   partialRaw: boolean;
-  /** Не у всех продуктов есть масса: доли модели — от продуктов с массой. */
+  /** Не у всех продуктов есть масса: «Итого продукты» неполное. */
   partialProducts: boolean;
+  /** Массы продуктов есть, а сырья — нет: доли от сырья посчитать не из чего. */
+  noRawMass: boolean;
   /** Масс в расчёте нет — модель не дала ни одной доли, их можно только вписать. */
   empty: boolean;
+  /**
+   * Правки на массе сырья (MaterialBalanceCalc.sharesBasis "raw"): правки
+   * прежней версии уже переведены. Новую правку кладут поверх них.
+   */
+  edits: BalanceShares;
 }
+
+/** Строки «Отдельно» на входе: реагенты сверх графа. */
+export const isInputSide = (r: Pick<PercentRow, "kind">) => r.kind === "reagent";
 
 const midOf = (a: BalanceAmount) => (a.min + a.max) / 2;
 const isRange = (a: BalanceAmount | null) => !!a && (a.approx || a.min !== a.max);
@@ -505,11 +575,29 @@ function shareOf(rows: PercentRow[], total: number, approx: boolean) {
 const massSum = (rows: PercentRow[]) => rows.reduce((s, r) => s + (r.mass ? midOf(r.mass) : 0), 0);
 
 /**
+ * Доли от массы сырья: у каждой строки с массой — масса / масса сырья;
+ * «≈», если оценкой была её масса или хоть одна масса сырья.
+ */
+function fractionOf(rows: PercentRow[], rawTotal: number, rawApprox: boolean) {
+  for (const r of rows) {
+    if (r.mass) {
+      r.model = {
+        min: r.mass.min / rawTotal,
+        max: r.mass.max / rawTotal,
+        approx: r.mass.approx || isRange(r.mass) || rawApprox,
+      };
+    }
+  }
+}
+
+/**
  * Материальный баланс в массовых процентах — как его считает заказчик
- * (2026-10-19): сырьё графа вместе — 100 % («64 % пропилена + 36 %
- * аммиака»), продукт — 100 % (несколько продуктов делят эти 100 %), а
- * отходы, побочные продукты, примеси и реагенты сверх графа в эти 100 % не
- * входят — они отдельно, в процентах от массы продукта.
+ * (2026-10-28): база — общая масса сырья графа, 100 % («64 % пропилена +
+ * 36 % аммиака»). Продукты — в процентах от неё: на 100 % сырья их бывает и
+ * не 100 % («акрилонитрил — 60 %»). Побочные продукты, отходы, потери —
+ * тоже от массы сырья, и вместе с продуктами это все выходы; реагенты сверх
+ * графа (кислород, вода) — от массы сырья на входе. Раньше (2026-10-19)
+ * продукт был 100 % сам по себе, а прочее — в процентах от массы продукта.
  *
  * Доли модели — по массам её расчёта. Сумма — по серединам диапазонов; доля
  * — оценка («≈»), если оценкой была хоть одна масса суммы: от неё зависит
@@ -517,7 +605,9 @@ const massSum = (rows: PercentRow[]) => rows.reduce((s, r) => s + (r.mass ? midO
  *
  * Поправленные вручную (edits) встают вместо долей модели как есть: правка
  * одной строки другие не меняет (2026-10-26), сумма может уйти от 100 % —
- * это видно в «Итого» (shareTotal).
+ * это видно в «Итого» (shareTotal). Правки прежней версии (editsBasis не
+ * "raw") у продуктов и «Отдельно» были от массы продуктов — переводятся на
+ * массу сырья по массам модели; масс нет — остаются как есть.
  */
 export function percentBalance(
   record: BalanceRecord,
@@ -525,10 +615,12 @@ export function percentBalance(
   roleOf?: (ref: string) => BalanceEdgeRole | undefined,
   /** Проценты, поправленные вручную (MaterialBalanceCalc.shares). */
   edits?: BalanceShares,
+  /** От чего считаны правки (MaterialBalanceCalc.sharesBasis). */
+  editsBasis?: MaterialBalanceCalc["sharesBasis"],
 ): PercentBalance {
   const extra = record.flows
     .map((f, i) => ({ f, key: flowShareKey(i) }))
-    .filter(({ f }) => !flowRef(record, f.name));
+    .filter(({ f }) => !flowRef(record, f.name) && !isSummaryFlow(f));
   const row = (
     key: string,
     ref: string | null,
@@ -565,17 +657,29 @@ export function percentBalance(
     ...extra.filter(({ f }) => flowKind(f) !== "reagent").map(byFlow),
   ];
   const rawTotal = massSum(raw);
-  if (rawTotal > 0) shareOf(raw, rawTotal, raw.some((r) => isRange(r.mass)));
   const productTotal = massSum(products);
-  if (productTotal > 0) {
-    const approx = products.some((r) => isRange(r.mass));
-    shareOf(products, productTotal, approx);
-    shareOf(separate, productTotal, approx);
+  if (rawTotal > 0) {
+    const rawApprox = raw.some((r) => isRange(r.mass));
+    shareOf(raw, rawTotal, rawApprox);
+    fractionOf(products, rawTotal, rawApprox);
+    fractionOf(separate, rawTotal, rawApprox);
   }
+
+  // Правки прежней версии: у продуктов и «Отдельно» — от массы продуктов.
+  // Та же масса от сырья — в productTotal / rawTotal раз меньше.
+  const rawKeys = new Set(raw.map((r) => r.key));
+  const legacy = !!edits && editsBasis !== "raw";
+  const factor = legacy && rawTotal > 0 && productTotal > 0 ? productTotal / rawTotal : 1;
+  const onRaw: BalanceShares = {};
+  for (const [key, v] of Object.entries(edits ?? {})) {
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    onRaw[key] = rawKeys.has(key) ? v : Math.round(v * factor * 100) / 100;
+  }
+
   const all = [...raw, ...products, ...separate];
   for (const r of all) {
-    const v = edits?.[r.key];
-    if (typeof v === "number" && Number.isFinite(v)) {
+    const v = onRaw[r.key];
+    if (v !== undefined) {
       r.share = { min: v / 100, max: v / 100, approx: false };
       r.edited = true;
     } else {
@@ -587,8 +691,10 @@ export function percentBalance(
     products,
     separate,
     partialRaw: rawTotal > 0 && raw.some((r) => !r.mass),
-    partialProducts: productTotal > 0 && products.some((r) => !r.mass),
+    partialProducts: rawTotal > 0 && productTotal > 0 && products.some((r) => !r.mass),
+    noRawMass: rawTotal === 0 && productTotal > 0,
     empty: !all.some((r) => r.model),
+    edits: onRaw,
   };
 }
 
@@ -597,9 +703,43 @@ export function percentRows(
   record: BalanceRecord,
   roleOf?: (ref: string) => BalanceEdgeRole | undefined,
   edits?: BalanceShares,
+  editsBasis?: MaterialBalanceCalc["sharesBasis"],
 ): Map<string, PercentRow> {
-  const pb = percentBalance(record, roleOf, edits);
+  const pb = percentBalance(record, roleOf, edits, editsBasis);
   return new Map([...pb.raw, ...pb.products, ...pb.separate].map((r) => [r.key, r]));
+}
+
+/**
+ * Соотношение сырья и продуктов по процентам таблицы (с правками): сколько
+ * продуктов на единицу сырья и сколько сырья на единицу продуктов. Долей нет
+ * или продуктов ноль — null.
+ */
+export function rawToProducts(
+  pb: Pick<PercentBalance, "raw" | "products">,
+): { productsPerRaw: number; rawPerProducts: number; approx: boolean } | null {
+  const raw = shareTotal(pb.raw);
+  const products = shareTotal(pb.products);
+  if (!raw || !products || raw.percent <= 0 || products.percent <= 0) return null;
+  return {
+    productsPerRaw: products.percent / raw.percent,
+    rawPerProducts: raw.percent / products.percent,
+    approx: raw.approx || products.approx,
+  };
+}
+
+/** «1 : 0,85» — сырьё к продуктам, сырьё за единицу. */
+export function formatRatio(r: { productsPerRaw: number; approx: boolean }): string {
+  return `${r.approx ? "≈" : ""}1 : ${RATIO.format(r.productsPerRaw)}`;
+}
+
+/** «0,85» — сколько продуктов на единицу сырья. */
+export function formatProductsPerRaw(r: { productsPerRaw: number; approx: boolean }): string {
+  return `${r.approx ? "≈" : ""}${RATIO.format(r.productsPerRaw)}`;
+}
+
+/** «1,18» — сколько сырья на единицу продуктов. */
+export function formatRawPerProducts(r: { rawPerProducts: number; approx: boolean }): string {
+  return `${r.approx ? "≈" : ""}${RATIO.format(r.rawPerProducts)}`;
 }
 
 /** Доля строки: вписанная — как вписали, модели — как у модели («≈64 %»). */
@@ -636,6 +776,29 @@ export function shareTotal(rows: PercentRow[]): { percent: number; approx: boole
     percent: withShare.reduce((s, r) => s + midOf(r.share!) * 100, 0),
     approx: withShare.some((r) => isRange(r.share)),
   };
+}
+
+/**
+ * Выходы не сходятся со входами больше чем на 10 %: вещество взялось ниоткуда
+ * или пропало. Расчёт алкилирования фенола 2026-10-29: «Итого выходов ≈160 %»
+ * — кубовый остаток и фенольно-водная фракция взяты из ИТС с водой, а модель
+ * поставила «Рассчитан». Сверяем, только когда у расчёта есть выходы сверх
+ * продуктов: без побочных и отходов выходы и должны быть меньше входов.
+ * Возвращает итоги в % от массы сырья или null.
+ */
+export function balanceGap(pb: {
+  raw: PercentRow[];
+  products: PercentRow[];
+  separate: PercentRow[];
+}): { inputs: number; outputs: number } | null {
+  const extra = pb.separate.filter((r) => !isInputSide(r));
+  if (!extra.length) return null;
+  const inputs = shareTotal([...pb.raw, ...pb.separate.filter(isInputSide)]);
+  const outputs = shareTotal([...pb.products, ...extra]);
+  if (!inputs || !outputs || !(inputs.percent > 0)) return null;
+  return Math.abs(outputs.percent - inputs.percent) / inputs.percent > 0.1
+    ? { inputs: inputs.percent, outputs: outputs.percent }
+    : null;
 }
 
 /** «100 %», «≈89,6 %», «99,25 %» — «Итого» группы. */
@@ -704,7 +867,7 @@ export interface BalanceLayer {
   /** Узлы, которые остаются яркими; остальные приглушаются. Пусто — никого. */
   lit: Set<string>;
   /**
-   * Подписи на продуктах. Сверху — «продукт · 100 %»: в верх узла входит
+   * Подписи на продуктах. Сверху — «продукт · 60 %»: в верх узла входит
    * связь от преобразования, которое его дало. Снизу — «сырьё · 64 %»: от
    * низа связь уходит к следующему преобразованию. Продукт одного расчёта,
    * ставший сырьём следующего, несёт обе.
@@ -758,7 +921,7 @@ export interface BalanceDraftView {
  * Режим «Материальный баланс» на полотне.
  *
  * На узлах — все посчитанные расчёты графа в массовых процентах: у сырья
- * снизу «сырьё · 64 %», у продуктов сверху «продукт · 100 %», их связи с
+ * снизу «сырьё · 64 %», у продуктов сверху «продукт · 60 %», их связи с
  * преобразованием подсвечены. Поправленные вручную проценты — как в
  * таблице. Продукт, ставший сырьём следующего расчёта, несёт обе подписи.
  *
@@ -807,7 +970,7 @@ export function balanceLayer(args: {
   const paint = (nodeId: string, calc: MaterialBalanceCalc, focus: boolean, productId?: string | null) => {
     const flows = calcFlows(calc);
     const roleOf = (ref: string) => balanceRoleOf(args.edges, calc.nodeIds[ref], nodeId);
-    const rows = percentRows(calc.record, roleOf, calc.shares);
+    const rows = percentRows(calc.record, roleOf, calc.shares, calc.sharesBasis);
     /** «сырьё · 64 %»; доли нет — null. */
     const pill = (word: string, key: string): BalancePillData | null => {
       const r = rows.get(key);
@@ -1035,6 +1198,19 @@ export const FLOW_KIND_TEXT: Record<FlowKind, string> = {
  * реагенты (воздух, вода, катализатор), выходы — отходы (выбросы, стоки,
  * шлам) или побочные продукты.
  */
+/**
+ * Строка итогов «Общего баланса участка», а не поток: «Всего на входе»,
+ * «Накопление», «Невязка», «Вывод о балансе». У таких модель не пишет
+ * направления; в таблице им не место — «Итого выходов» сложило бы их с
+ * продуктами.
+ */
+export function isSummaryFlow(f: Pick<BalanceFlow, "name" | "direction">): boolean {
+  if (f.direction === "in" || f.direction === "out") return false;
+  return /^(всего|итого|сумм|накоплен|невязк|вывод|баланс|расхожден|разниц|погрешн)/.test(
+    normalizeProductName(f.name),
+  );
+}
+
 export function flowKind(f: Pick<BalanceFlow, "name" | "direction">): FlowKind {
   const n = normalizeProductName(f.name);
   if (/потер/.test(n)) return "loss";

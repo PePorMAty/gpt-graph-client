@@ -16,6 +16,7 @@ import {
   STATUS_TEXT,
   STATUS_TONE,
   statusReason,
+  balanceMismatches,
   type BalanceShares,
   type MaterialBalanceCalc,
 } from "../../utils/materialBalance";
@@ -145,6 +146,12 @@ function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>
       ? `${r.failed} ${plural(r.failed, "источник не загрузился", "источника не загрузились", "источников не загрузились")}`
       : null,
     r.missing.length ? `не было данных для ${r.missing.map((n) => `«${n}»`).join(", ")}` : null,
+    r.mismatched?.length
+      ? `в двух таблицах расходились массы ${r.mismatched.map((n) => `«${n}»`).join(", ")}`
+      : null,
+    r.unbalanced
+      ? `выход отличался от входа на ${r.unbalanced.gapPct > 0 ? "+" : ""}${r.unbalanced.gapPct} % (${r.unbalanced.input} на входе, ${r.unbalanced.output} на выходе)`
+      : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -163,7 +170,7 @@ function retryText(c: NonNullable<MaterialBalanceCalc["record"]["sourceChecks"]>
   const replaced = r.failed ? " Незагрузившиеся модель заменяла вторым запросом." : "";
   return r.used
     ? ` В первом ответе ${why}.${searched}${replaced} Показан второй ответ модели.`
-    : ` В первом ответе ${why}.${searched} Второй ответ модели оказался не полнее — показан первый.`;
+    : ` В первом ответе ${why}.${searched} Второй ответ модели оказался не лучше — показан первый.`;
 }
 
 function tookText(ms: number | null | undefined): string {
@@ -224,6 +231,7 @@ export const CalcDetails: FC<Props> = ({
   const record = readableRecord(calc.record);
   const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
   const reason = statusReason(record);
+  const mismatched = balanceMismatches(record);
   const coefs = coefficientItems(record);
   const tName = labelOf(nodeId) || record.transformation;
   const transitions = record.steps?.length
@@ -257,6 +265,17 @@ export const CalcDetails: FC<Props> = ({
             </span>
           </p>
         )}
+        {mismatched.length > 0 && (
+          <p className={styles.reason}>
+            <InfoIcon size={16} className={styles.reasonIcon} />
+            <span>
+              <b>Расчёт противоречив:</b> в двух таблицах ответа модели разные массы —{" "}
+              {mismatched.map((m) => `${m.name}: ${m.products} и ${m.flows} кг`).join("; ")}.
+              Проценты ниже взяты из первой таблицы и могут быть неверны. Сверьте их с
+              «Расчётом по преобразованиям» или сделайте новый расчёт.
+            </span>
+          </p>
+        )}
         {record.searchOff && (
           <p className={styles.reason}>
             <InfoIcon size={16} className={styles.reasonIcon} />
@@ -287,6 +306,7 @@ export const CalcDetails: FC<Props> = ({
         nodeIds={calc.nodeIds}
         labelOf={labelOf}
         shares={calc.shares}
+        sharesBasis={calc.sharesBasis}
         onShares={readOnly ? undefined : onShares}
         onProduct={onProduct}
         onGo={onGo}

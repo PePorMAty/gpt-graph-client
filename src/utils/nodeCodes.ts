@@ -3,7 +3,8 @@
 // Коды продукта — CAS, ОКПД2, ТН ВЭД — и поиск узлов по ним.
 //
 // Коды те же, что видны в карточке (NodeIdentifiers, вкладка «Промышленное
-// знание»): заданный вручную главнее кода реестра, код реестра — главнее
+// знание»): заданный вручную главнее кода реестра, код реестра — главнее кода
+// ТН ВЭД по номеру CAS из таможенного реестра ЕС (ECICS), а тот — главнее
 // подобранного по названию в классификаторе. Поиск по коду находит узел,
 // только если этот код человек и увидит, открыв карточку: иначе находка
 // выглядела бы необъяснимой.
@@ -15,7 +16,7 @@ import { readCodeOverrides } from "../components/industry/codeOverrides";
 export type NodeCodeKind = "cas" | "okpd2" | "tnved";
 
 /** Откуда код: так же его подписывает карточка. */
-export type NodeCodeSource = "manual" | "registry" | "classifier" | "dictionary";
+export type NodeCodeSource = "manual" | "registry" | "customs" | "classifier" | "dictionary";
 
 export interface NodeCode {
   kind: NodeCodeKind;
@@ -32,6 +33,7 @@ export const NODE_CODE_LABEL: Record<NodeCodeKind, string> = {
 export const NODE_CODE_SOURCE_LABEL: Record<NodeCodeSource, string> = {
   manual: "задан вручную",
   registry: "из реестра",
+  customs: "по номеру CAS (ECICS)",
   classifier: "по классификатору",
   dictionary: "справочник",
 };
@@ -63,6 +65,7 @@ export function nodeCodes(
 
   if (own.tnved) add("tnved", own.tnved.code, "manual");
   else if (info?.found && info.tnved) add("tnved", info.tnved, "registry");
+  else if (info?.tnvedCas) add("tnved", info.tnvedCas.code, "customs");
   else add("tnved", info?.tnvedCategory?.code, "classifier");
 
   return out;

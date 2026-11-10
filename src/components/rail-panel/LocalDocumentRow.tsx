@@ -231,6 +231,15 @@ export const LocalDocumentRow = ({
           {doc.title}
         </a>
         <span className={styles.docMeta}>{meta}</span>
+        {/* Два издания одного справочника: источниками идут разделы нового,
+            а одинаковые разделы двух изданий модель считала бы двумя
+            подтверждениями. Старое можно удалить. */}
+        {doc.supersededBy && (
+          <span className={styles.docWarn}>
+            Не используется: есть издание новее — {doc.supersededBy.title}. Этот документ
+            можно удалить.
+          </span>
+        )}
         <DecodeStatus doc={doc} busy={busy} onRedecode={redecode} />
         {error && <span className={styles.docWarn}>{error}</span>}
 

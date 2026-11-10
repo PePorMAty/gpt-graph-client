@@ -841,7 +841,7 @@ const PanelBuildViewInner: FC<{
     lastDirection.set(productName, value);
   };
 
-  // ── Источники из базы сервера: разделы документов и найденное моделью раньше ──
+  // ── Источники из базы сервера: разделы документов, загруженных людьми ──
   // У альтернативы своих источников нет — она строится из описания.
   const base = useBaseSources(productName, tab.isAlternativeNode ? null : dir);
   // Что из базы ещё не в списке — и сколько записей списка базе надо
@@ -868,7 +868,6 @@ const PanelBuildViewInner: FC<{
     return { newBase: fresh, pending: todo };
   }, [base.sources, tab.stepSources, productName]);
   const newLocal = newBase.filter((s) => isLocalSource(s)).length;
-  const newSaved = newBase.length - newLocal;
   // Источники уже в работе — новое из базы (скажем, раздел документа,
   // загруженного с тех пор) просто дописываем в список: экран мастера от
   // этого не меняется.
@@ -885,14 +884,10 @@ const PanelBuildViewInner: FC<{
   const baseChecking =
     dir !== null && !hasSources && !tab.isAlternativeNode && base.status === "loading";
   const baseDocs = [...new Set(newBase.filter((x) => isLocalSource(x)).map((x) => x.docTitle).filter(Boolean))];
-  const baseText = [
-    newLocal > 0 &&
-      `${newLocal} ${plural(newLocal, "раздел", "раздела", "разделов")} документов${baseDocs.length ? ` (${baseDocs.slice(0, 2).join(", ")}${baseDocs.length > 2 ? "…" : ""})` : ""}`,
-    newSaved > 0 &&
-      `${newSaved} ${plural(newSaved, "источник", "источника", "источников")}, найденных моделью раньше`,
-  ]
-    .filter(Boolean)
-    .join(" и ");
+  const baseText =
+    newLocal > 0
+      ? `${newLocal} ${plural(newLocal, "раздел", "раздела", "разделов")} документов${baseDocs.length ? ` (${baseDocs.slice(0, 2).join(", ")}${baseDocs.length > 2 ? "…" : ""})` : ""}`
+      : "";
 
   // Настройки поиска общие со вторым экраном: что задали здесь, с тем и
   // пойдёт «Добрать через модель».

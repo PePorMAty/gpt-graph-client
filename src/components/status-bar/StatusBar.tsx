@@ -11,6 +11,7 @@ import { useAppSelector } from "../../store/hooks";
 import type { CustomNode } from "../../types";
 import { computeViewportStats } from "../../utils/viewportStats";
 import { graphSignature } from "../../utils/graphSignature";
+import { plural } from "../../utils/plural";
 import {
   ChainLengthIcon,
   FitViewIcon,
@@ -112,11 +113,13 @@ export const StatusBar = ({ readOnly = false }: StatusBarProps) => {
         </span>
         <span
           className={styles.stat}
-          title="Самая длинная цепочка в видимой области, в продуктах"
+          title="Самая длинная цепочка в видимой области, в шагах: шаг — переход от продукта к продукту через преобразование"
         >
           <ChainLengthIcon size={15} className={styles.statIcon} />
           Длина цепочек:{" "}
-          <b className={styles.statValue}>{stats.chainLength} шагов</b>
+          <b className={styles.statValue}>
+            {stats.chainSteps} {plural(stats.chainSteps, "шаг", "шага", "шагов")}
+          </b>
         </span>
         <span
           className={styles.stat}

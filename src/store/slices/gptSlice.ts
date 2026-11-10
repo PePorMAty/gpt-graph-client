@@ -506,10 +506,20 @@ const gptSlice = createSlice({
       const renamed =
         typeof data.label === "string" && data.label !== node.data?.label;
       const derived = node.data?.productIdSource === "dictionary";
+      // Отметка «справочник спрошен» у узла без идентификатора — тоже про
+      // прежнее имя.
+      if (renamed && !node.data?.productId && node.data?.productIdVersion) {
+        const { productIdVersion, ...rest } = node.data;
+        void productIdVersion;
+        node.data = { ...rest, ...data };
+        return;
+      }
       if (renamed && derived) {
-        const { productId, productIdSource, ...rest } = node.data ?? {};
+        const { productId, productIdSource, productIdVersion, ...rest } =
+          node.data ?? {};
         void productId;
         void productIdSource;
+        void productIdVersion;
         node.data = { ...rest, ...data };
         return;
       }
@@ -1014,12 +1024,14 @@ const gptSlice = createSlice({
      */
     setProductIds: (
       state,
-      action: PayloadAction<Record<string, string>>,
+      action: PayloadAction<
+        Record<string, { productId?: string; productIdVersion?: string }>
+      >,
     ) => {
       const byNodeId = action.payload;
       for (const node of state.data.nodes) {
-        const id = byNodeId[node.id];
-        if (!id) continue;
+        const answer = byNodeId[node.id];
+        if (!answer) continue;
         // Прежний ответ справочника заменяем — он мог устареть (см.
         // resolveProductIds). Заданное иначе не трогаем: пока справочник
         // отвечал, человек мог вписать идентификатор руками.
@@ -1030,7 +1042,69 @@ const gptSlice = createSlice({
         ) {
           continue;
         }
-        node.data = { ...node.data, productId: id, productIdSource: "dictionary" };
+        node.data = {
+          ...node.data,
+          // Без идентификатора — только отметка «справочник этой версии
+          // спрошен» (он названия не знает или ответ не изменился).
+          ...(answer.productId
+            ? { productId: answer.productId, productIdSource: "dictionary" as const }
+            : {}),
+          ...(answer.productIdVersion
+            ? { productIdVersion: answer.productIdVersion }
+            : {}),
+        };
+      }
+    },
+
+    /**
+     * Открыт сохранённый граф — положить в узлы идентификаторы, записанные
+     * рядом с ним после сохранения (graph-files/:id/product-ids): иначе при
+     * каждом открытии справочник спрашивали обо всех продуктах заново.
+     *
+     * Записанное для другого названия не берём: узел переименовали, а граф
+     * не сохранили — в файле прежнее название. Заданный иначе, чем
+     * справочником, идентификатор узла главнее записанного.
+     */
+    restoreProductIds: (
+      state,
+      action: PayloadAction<
+        Record<
+          string,
+          {
+            productId?: string;
+            productIdSource?: "manual" | "tnved" | "cas" | "dictionary";
+            productIdVersion?: string;
+            productIdLabel?: string;
+          }
+        >
+      >,
+    ) => {
+      const stored = action.payload;
+      for (const node of state.data.nodes) {
+        if (node.type !== "product") continue;
+        const entry = stored[node.id];
+        if (!entry || (!entry.productId && !entry.productIdVersion)) continue;
+        const label = String(node.data?.label ?? "").trim();
+        if (entry.productIdLabel && entry.productIdLabel !== label) continue;
+        const own =
+          typeof node.data?.productId === "string" &&
+          node.data.productId.trim() &&
+          node.data.productIdSource !== "dictionary";
+        if (own) continue;
+        node.data = {
+          ...node.data,
+          // Записи без идентификатора — «справочник этой версии названия не
+          // знает»: только отметка версии.
+          ...(entry.productId
+            ? {
+                productId: entry.productId,
+                productIdSource: entry.productIdSource ?? "dictionary",
+              }
+            : {}),
+          ...(entry.productIdVersion
+            ? { productIdVersion: entry.productIdVersion }
+            : {}),
+        };
       }
     },
 
@@ -2182,6 +2256,7 @@ export const {
   loadGraphFromFile,
   mergeGraphFromFile,
   setProductIds,
+  restoreProductIds,
   setProducerForPid,
   popQueueHead,
   initStepChainSession,

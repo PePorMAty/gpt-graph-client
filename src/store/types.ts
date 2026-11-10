@@ -254,6 +254,12 @@ export type TechnologySource = {
    */
   isManual?: boolean;
   /**
+   * Проверка сервером найденного моделью (с 2026-10-29): ok — страница
+   * загрузилась и она о том; unchecked — сайт не пустил сервер (403, капча),
+   * reason — почему. Нет поля — источник не проверялся.
+   */
+  server_check?: { status: "ok" | "unchecked"; reason?: string };
+  /**
    * Откуда источник: "local" — PDF из локальной базы сервера (загружен
    * заказчиком), "web" — найден моделью в интернете. Нет поля — найден
    * моделью (источники, сохранённые до локальной базы).
@@ -303,7 +309,12 @@ export type SourcesSearchResponse = {
   sources: TechnologySource[];
   /** true — поиск не дал источников сверх уже известных (источники закончились). */
   exhausted?: boolean;
+  /** Что сервер отбросил проверкой: заглушки, несуществующие и чужие страницы. */
+  dropped_sources?: DroppedSource[];
 };
+
+/** Найденное моделью, отброшенное проверкой сервера, — с причиной. */
+export type DroppedSource = { title: string; url: string; reason: string };
 /* 
 export type ProductCard = {
   technology_name: string;

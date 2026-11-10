@@ -9,7 +9,7 @@ import type {
   IndustryProducer,
   IndustryProductInfo,
 } from "../../store/api/industry-api";
-import { GISP_REGISTRY_URL, okpd2Url, tnvedTitle } from "./gisp";
+import { GISP_REGISTRY_URL, okpd2Url, tnvedTitle, tnvedUrl } from "./gisp";
 import {
   STATUS_FILTERS,
   matchesStatus,
@@ -23,7 +23,7 @@ import {
   ChevronRightIcon,
 } from "../icons";
 import { plural } from "../../utils/plural";
-import { CodeLine } from "./CodeLine";
+import { CodeLine, ECICS_TITLE } from "./CodeLine";
 import {
   readCodeOverrides,
   withCodeOverride,
@@ -121,7 +121,15 @@ const ProducerRow: FC<{ p: IndustryProducer }> = ({ p }) => {
           {p.tnved && (
             <div className={styles.code}>
               <span className={styles.codeLabel}>ТН ВЭД</span>
-              <span className={styles.codeValue}>{p.tnved}</span>
+              <a
+                className={styles.codeValue}
+                href={tnvedUrl(p.tnved)}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="Открыть код в классификаторе"
+              >
+                {p.tnved}
+              </a>
               {p.tnvedName && (
                 <span
                   className={styles.codeName}
@@ -325,13 +333,43 @@ export const IndustryPanel: FC<Props> = ({
             </span>
           </div>
         )}
-        {/* Позиция ТН ВЭД по названию вещества — тоже классификатор. */}
-        {info.tnvedCategory && (
+        {/* Позиция ТН ВЭД: по номеру CAS из таможенного реестра ЕС, иначе
+            по названию вещества — тоже классификатор. */}
+        {info.tnvedCas ? (
           <div className={styles.categoryNote}>
             <span className={styles.categoryLabel}>В ТН ВЭД это</span>
-            <span className={styles.codeValue}>{info.tnvedCategory.code}</span>
-            <span className={styles.codeName}>{info.tnvedCategory.name}</span>
+            <a
+              className={styles.codeValue}
+              href={tnvedUrl(info.tnvedCas.code)}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="Открыть позицию в классификаторе"
+            >
+              {info.tnvedCas.code}
+            </a>
+            <span className={styles.codeName}>
+              {tnvedTitle(info.tnvedCas.name, info.tnvedCas.path)}
+            </span>
+            <span className={styles.categoryHint} title={ECICS_TITLE}>
+              По номеру CAS, таможенная база ЕС (ECICS), справочно.
+            </span>
           </div>
+        ) : (
+          info.tnvedCategory && (
+            <div className={styles.categoryNote}>
+              <span className={styles.categoryLabel}>В ТН ВЭД это</span>
+              <a
+                className={styles.codeValue}
+                href={tnvedUrl(info.tnvedCategory.code)}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="Открыть позицию в классификаторе"
+              >
+                {info.tnvedCategory.code}
+              </a>
+              <span className={styles.codeName}>{info.tnvedCategory.name}</span>
+            </div>
+          )
         )}
 
         {/* Записи нет, а коды продукту нужны: их задают вручную, категория
@@ -351,7 +389,7 @@ export const IndustryPanel: FC<Props> = ({
               kind="tnved"
               registry={null}
               override={overrides.tnved}
-              suggestion={info.tnvedCategory?.code}
+              suggestion={info.tnvedCas?.code ?? info.tnvedCategory?.code}
               editable={editable}
               onChange={(v) => setOverride("tnved", v)}
             />
@@ -426,8 +464,9 @@ export const IndustryPanel: FC<Props> = ({
       )}
 
       {/* ТН ВЭД: самый частый код записей реестра, а нет его — позиция по
-          названию вещества из классификатора, с пометкой. */}
-      {(info.tnved || info.tnvedCategory || overrides.tnved || editable) && (
+          номеру CAS из таможенного реестра ЕС, иначе по названию вещества из
+          классификатора, с пометкой. */}
+      {(info.tnved || info.tnvedCas || info.tnvedCategory || overrides.tnved || editable) && (
         <CodeLine
           kind="tnved"
           registry={
@@ -437,13 +476,20 @@ export const IndustryPanel: FC<Props> = ({
                   name: info.tnvedName ?? null,
                   path: info.tnvedPath ?? null,
                 }
-              : info.tnvedCategory
+              : info.tnvedCas
                 ? {
-                    code: info.tnvedCategory.code,
-                    name: info.tnvedCategory.name,
-                    byName: true,
+                    code: info.tnvedCas.code,
+                    name: info.tnvedCas.name,
+                    path: info.tnvedCas.path ?? null,
+                    byCas: true,
                   }
-                : null
+                : info.tnvedCategory
+                  ? {
+                      code: info.tnvedCategory.code,
+                      name: info.tnvedCategory.name,
+                      byName: true,
+                    }
+                  : null
           }
           override={overrides.tnved}
           variants={info.tnvedCodes}

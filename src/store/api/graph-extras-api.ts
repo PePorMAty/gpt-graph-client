@@ -1,9 +1,11 @@
 // src/store/api/graph-extras-api.ts
 //
-// Закладки, история и расчёты материального баланса сохранённого графа. На
-// сервере это отдельные ресурсы рядом с файлом графа, а не часть его
-// содержимого: закладку ставят на лету, расчёт приходит через минуты, и они
-// должны пережить перезагрузку вкладки, даже если сам граф ещё не сохраняли.
+// Закладки, история, расчёты материального баланса и идентификаторы
+// продуктов сохранённого графа. На сервере это отдельные ресурсы рядом с
+// файлом графа, а не часть его содержимого: закладку ставят на лету, расчёт
+// приходит через минуты, идентификаторы проставляются сами при открытии, и
+// они должны пережить перезагрузку вкладки, даже если сам граф ещё не
+// сохраняли.
 //
 // Всё здесь работает только для графа, у которого есть id на сервере
 // (savedGraphs.openedGraphId). Пока полотно не сохранено, закладки и история
@@ -149,5 +151,47 @@ export async function putMaterialBalances(
   await axios.put(
     `${base()}/graph-files/${encodeURIComponent(graphId)}/material-balances/${encodeURIComponent(nodeId)}`,
     { calcs },
+  );
+}
+
+/* ================= ИДЕНТИФИКАТОРЫ ПРОДУКТОВ ================= */
+
+/**
+ * Идентификатор продукта, записанный рядом с графом: что проставил
+ * справочник, какой его версии и для какого названия узла. Без productId —
+ * «справочник этой версии такого названия не знает».
+ */
+export interface StoredProductId {
+  productId?: string;
+  productIdSource?: "manual" | "tnved" | "cas" | "dictionary";
+  productIdVersion?: string;
+  productIdLabel?: string;
+}
+
+/**
+ * Идентификаторы, проставленные после сохранения графа: без них при каждом
+ * открытии справочник спрашивали обо всех продуктах заново. Старый сервер
+ * ресурса не знает — пусто.
+ */
+export async function fetchProductIds(
+  graphId: string,
+): Promise<Record<string, StoredProductId>> {
+  const { data } = await axios.get(
+    `${base()}/graph-files/${encodeURIComponent(graphId)}/product-ids`,
+  );
+  const items = data?.data;
+  return items && typeof items === "object" && !Array.isArray(items)
+    ? items
+    : {};
+}
+
+/** Дописать идентификаторы узлов пачкой; null — убрать запись узла. */
+export async function putProductIds(
+  graphId: string,
+  ids: Record<string, StoredProductId | null>,
+): Promise<void> {
+  await axios.put(
+    `${base()}/graph-files/${encodeURIComponent(graphId)}/product-ids`,
+    { ids },
   );
 }

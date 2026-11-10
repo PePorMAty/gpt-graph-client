@@ -9,8 +9,12 @@ export interface ViewportStats {
   nodes: number;
   /** Связи, у которых оба конца видимы. */
   edges: number;
-  /** Длина самой длинной цепочки в видимой области, в шагах-продуктах. */
-  chainLength: number;
+  /**
+   * Самая длинная цепочка в видимой области, в шагах: шаг — переход от
+   * продукта к продукту через преобразование. Фенол → капролактам →
+   * полиамид-6 — 2 шага (продуктов в ней 3: это «уровни» в библиотеке).
+   */
+  chainSteps: number;
   /** Видимые продукты, найденные в реестре ГИСП. */
   confirmed: number;
 }
@@ -144,7 +148,7 @@ export function computeViewportStats(
   confirmedNames?: ReadonlySet<string>,
 ): ViewportStats {
   if (!nodes.length || !view.width || !view.height) {
-    return { nodes: 0, edges: 0, chainLength: 0, confirmed: 0 };
+    return { nodes: 0, edges: 0, chainSteps: 0, confirmed: 0 };
   }
 
   const visible = nodes.filter((n) => isVisible(n, view));
@@ -165,7 +169,7 @@ export function computeViewportStats(
   return {
     nodes: visible.length,
     edges: visibleEdges,
-    chainLength: longestProductChain(visibleIds, nodes, edges),
+    chainSteps: Math.max(0, longestProductChain(visibleIds, nodes, edges) - 1),
     confirmed,
   };
 }
