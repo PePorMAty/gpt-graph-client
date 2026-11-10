@@ -8,9 +8,16 @@ import {
 import type { CodeOverride } from "../../types";
 import { plural } from "../../utils/plural";
 import { PencilIcon } from "../icons";
-import { okpd2Url, tnvedTitle } from "./gisp";
+import { okpd2Url, tnvedTitle, tnvedUrl } from "./gisp";
 import { CODE_LABEL, type CodeKind } from "./codeOverrides";
 import styles from "./Industry.module.css";
+
+/**
+ * Откуда код по номеру CAS и чего он стоит — подсказкой везде, где его
+ * показывают. Источник указываем по условию лицензии CC BY 4.0.
+ */
+export const ECICS_TITLE =
+  "Код ТН ВЭД по номеру CAS — из ECICS, таможенного реестра химических веществ ЕС (© Европейский союз, CC BY 4.0). Общие с ТН ВЭД ЕАЭС первые шесть знаков; справочно, юридической силы не имеет.";
 
 /** Код, который карточка показывает без правки: из реестра или по названию. */
 export interface RegistryCode {
@@ -23,6 +30,8 @@ export interface RegistryCode {
   refinedFrom?: string | null;
   /** Позиция найдена в классификаторе по названию вещества, не в реестре. */
   byName?: boolean;
+  /** Позиция ТН ВЭД по номеру CAS — из таможенного реестра ЕС (ECICS). */
+  byCas?: boolean;
   /** ТН ВЭД: цепочка названий сверху вниз (см. tnvedTitle). */
   path?: string | null;
 }
@@ -50,21 +59,18 @@ const FORMAT_HINT: Record<CodeKind, string> = {
   tnved: "Код ТН ВЭД — от 4 до 10 цифр: 2933710000.",
 };
 
-/** Код ссылкой на классификатор (у ОКПД2) или просто текстом. */
-const CodeValue: FC<{ kind: CodeKind; code: string }> = ({ kind, code }) =>
-  kind === "okpd2" ? (
-    <a
-      className={styles.codeValue}
-      href={okpd2Url(code)}
-      target="_blank"
-      rel="noreferrer noopener"
-      title="Открыть код в классификаторе"
-    >
-      {code}
-    </a>
-  ) : (
-    <span className={styles.codeValue}>{code}</span>
-  );
+/** Код ссылкой на классификатор — и ОКПД2, и ТН ВЭД. */
+const CodeValue: FC<{ kind: CodeKind; code: string }> = ({ kind, code }) => (
+  <a
+    className={styles.codeValue}
+    href={kind === "okpd2" ? okpd2Url(code) : tnvedUrl(code)}
+    target="_blank"
+    rel="noreferrer noopener"
+    title="Открыть код в классификаторе"
+  >
+    {code}
+  </a>
+);
 
 /** Поле правки кода: проверка формата и названия по классификатору. */
 const CodeEditor: FC<{
@@ -251,7 +257,7 @@ export const CodeLine: FC<Props> = ({
             )}
             {registry && registry.code !== override.code && (
               <span className={styles.codeExtra}>
-                {registry.byName ? "по классификатору" : "в реестре"} — {registry.code}
+                {registry.byName ? "по классификатору" : registry.byCas ? "по номеру CAS (ECICS)" : "в реестре"} — {registry.code}
               </span>
             )}
           </>
@@ -273,6 +279,11 @@ export const CodeLine: FC<Props> = ({
                 title="У записей реестра кода нет — позиция найдена в классификаторе по названию вещества"
               >
                 по классификатору
+              </span>
+            )}
+            {registry?.byCas && (
+              <span className={styles.codeExtra} title={ECICS_TITLE}>
+                по номеру CAS, таможенная база ЕС (ECICS)
               </span>
             )}
           </>

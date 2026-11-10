@@ -7,8 +7,7 @@ import {
   type LocalProductSection,
   type LocalProductSources,
 } from "../../store/api/local-sources-api";
-import type { TechnologySource } from "../../store/types";
-import { LOCAL_ROLE_TEXT, sourceLinkText } from "../../utils/sourceOrigin";
+import { LOCAL_ROLE_TEXT } from "../../utils/sourceOrigin";
 import { plural } from "../../utils/plural";
 import { Pagination } from "../ui/Pagination";
 import { usePaged } from "../ui/usePaged";
@@ -18,7 +17,6 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   FilePdfIcon,
-  LinkIcon,
   SearchIcon,
 } from "../icons";
 import industry from "../industry/Industry.module.css";
@@ -50,11 +48,6 @@ const DIRECTIONS = [
     none: "В базе нет разделов, где он сырьё.",
   },
 ];
-
-function formatDate(iso?: string): string {
-  const d = iso ? new Date(iso) : null;
-  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString("ru-RU") : "";
-}
 
 const SectionItem: FC<{ s: LocalProductSection }> = ({ s }) => (
   <li className={styles.psItem}>
@@ -88,39 +81,8 @@ const SectionItem: FC<{ s: LocalProductSection }> = ({ s }) => (
   </li>
 );
 
-const WebItem: FC<{ s: TechnologySource; label: string }> = ({ s, label }) => {
-  const found = formatDate(s.savedAt);
-  // Искали под другим именем продукта графа («ИПБ» у «Кумола»).
-  const asked = s.product && s.product.toLowerCase() !== label.toLowerCase() ? s.product : null;
-  return (
-    <li className={styles.psItem}>
-      <div className={styles.psHead}>
-        <a className={styles.psTitle} href={s.url} target="_blank" rel="noreferrer">
-          {s.title || sourceLinkText(s.url)}
-        </a>
-        <span className={`${styles.psRole} ${styles.psRole_web}`}>из интернета</span>
-      </div>
-      <div className={styles.psMeta}>
-        <LinkIcon size={12} className={styles.psMetaIcon} />
-        {sourceLinkText(s.url)}
-        {found && ` · найдено ${found}`}
-        {asked && ` для «${asked}»`}
-      </div>
-      {s.technology_description && (
-        <details className={styles.psDetails}>
-          <summary>Что в источнике</summary>
-          <p>{s.technology_description}</p>
-        </details>
-      )}
-    </li>
-  );
-};
-
-/** Источники раскрытого продукта: вверх и вниз, разделы и найденное в сети. */
-const ProductSources: FC<{ product: LocalProduct; loaded?: Loaded }> = ({
-  product,
-  loaded,
-}) => {
+/** Источники раскрытого продукта: разделы вверх и вниз. */
+const ProductSources: FC<{ loaded?: Loaded }> = ({ loaded }) => {
   if (!loaded?.data) {
     return (
       <div className={styles.psNote}>
@@ -133,8 +95,7 @@ const ProductSources: FC<{ product: LocalProduct; loaded?: Loaded }> = ({
     <div className={styles.psBody}>
       {DIRECTIONS.map(({ dir, Icon, title, none }) => {
         const sections = data[dir];
-        const web = data.web[dir];
-        const n = sections.length + web.length;
+        const n = sections.length;
         return (
           <div key={dir} className={styles.psGroup}>
             <div className={styles.psGroupHead}>
@@ -146,9 +107,6 @@ const ProductSources: FC<{ product: LocalProduct; loaded?: Loaded }> = ({
               <ul className={styles.psList}>
                 {sections.map((s) => (
                   <SectionItem key={`s${s.sectionId}`} s={s} />
-                ))}
-                {web.map((s) => (
-                  <WebItem key={`w${s.url}`} s={s} label={product.label} />
                 ))}
               </ul>
             ) : (
@@ -383,8 +341,7 @@ export const LocalProductsList: FC<Props> = ({
       <ul ref={listRef} className={`${industry.groups} ${industry.cardsScroll}`}>
         {paged.slice.map((p) => {
           const expanded = isOpen(p.id);
-          const up = p.up + p.web.up;
-          const down = p.down + p.web.down;
+          const { up, down } = p;
           // На графе продукт может называться иначе («Кумол» — «ИПБ»).
           const alias = p.onGraph.filter((n) => n.toLowerCase() !== p.label.toLowerCase());
           return (
@@ -417,9 +374,7 @@ export const LocalProductsList: FC<Props> = ({
                   className={`${industry.groupCount} ${styles.dirCounts}`}
                   title={
                     `Вверх — как его получают: ${p.up} ${plural(p.up, "раздел", "раздела", "разделов")}` +
-                    (p.web.up ? `, из интернета ${p.web.up}` : "") +
-                    `\nВниз — что из него получают: ${p.down} ${plural(p.down, "раздел", "раздела", "разделов")}` +
-                    (p.web.down ? `, из интернета ${p.web.down}` : "")
+                    `\nВниз — что из него получают: ${p.down} ${plural(p.down, "раздел", "раздела", "разделов")}`
                   }
                 >
                   <span className={up ? undefined : styles.dirZero}>
@@ -432,7 +387,7 @@ export const LocalProductsList: FC<Props> = ({
               </button>
               {expanded && (
                 <div className={industry.groupBody}>
-                  <ProductSources product={p} loaded={loaded[p.id]} />
+                  <ProductSources loaded={loaded[p.id]} />
                 </div>
               )}
             </li>

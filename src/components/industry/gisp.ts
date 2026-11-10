@@ -20,6 +20,20 @@ export const GISP_REGISTRY_URL = "https://gisp.gov.ru/pp719v2/pub/prod/";
 export const okpd2Url = (code: string) =>
   `https://classifikators.ru/okpd/${encodeURIComponent(String(code ?? "").trim())}`;
 
+/**
+ * Страница кода ТН ВЭД в том же классификаторе — как у ОКПД2: там вся
+ * цепочка уровней и соседние позиции, которых у нас не видно.
+ *
+ * Адрес — цифры кода: «2933 71 000 0» → /tnved/2933710000. Страницы есть у
+ * групп (2, 4, 6 цифр) и у полных десятизначных кодов; у промежуточных
+ * (7–9 цифр) их нет — ведём на шестизначную группу.
+ */
+export const tnvedUrl = (code: string) => {
+  const digits = String(code ?? "").replace(/\D/g, "");
+  const page = digits.length > 6 && digits.length < 10 ? digits.slice(0, 6) : digits;
+  return `https://classifikators.ru/tnved/${page}`;
+};
+
 /** «Прочие», «прочая», «другие»… — имя, которое без уровня над ним пусто. */
 const GENERIC_TNVED = /^(прочи[еийхм]|прочая|прочее|други[ех]|остальные)$/i;
 

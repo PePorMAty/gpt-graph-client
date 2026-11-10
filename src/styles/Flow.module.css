@@ -282,16 +282,31 @@
   box-shadow: 0 0 22px rgba(37, 99, 235, 0.45);
 }
 
-/* Подсветка ближайших соседей по hover (только для объединённых графов):
-   узел под курсором и его прямые входящие/исходящие остаются как есть,
-   всё остальное затемняется. */
-:global(.react-flow__node.node--dimmed) {
+/* Подсветка цепочки по hover (только для загруженных графов): узел под
+   курсором, его предки и потомки (node--chain, edge--chain) остаются как
+   есть, всё остальное затемняется. Затемнение держит класс полотна, а не
+   каждого узла: так наведение меняет классы у одной цепочки, а не у сотен
+   узлов (Flow.tsx, hoveredChainId). Без плавного перехода: анимация
+   прозрачности у сотен узлов и связей разом стоила браузеру ~0,1–0,2 с на
+   каждое наведение. */
+:global(.react-flow.chain-hover .react-flow__node:not(.node--chain)) {
   opacity: 0.15;
-  transition: opacity 120ms ease;
 }
-:global(.react-flow__edge.edge--dimmed path) {
+:global(.react-flow.chain-hover .react-flow__edge:not(.edge--chain) path) {
   stroke-opacity: 0.08;
-  transition: stroke-opacity 120ms ease;
+}
+
+/* Пока полотно двигают, узлы и связи не ловят указатель: на большом графе
+   поиск узла под курсором и смена :hover на каждом кадре заметно тормозили
+   протяжку (Flow.tsx, onMoveStart). Протяжку с полотна браузер не принимает
+   за выделение текста — на каждом движении он тоже искал, что выделить. */
+:global(.react-flow[data-moving] .react-flow__node),
+:global(.react-flow[data-moving] .react-flow__edge),
+:global(.react-flow[data-moving] .react-flow__handle) {
+  pointer-events: none;
+}
+:global(.react-flow__pane) {
+  user-select: none;
 }
 
 /* Режим «Материальный баланс»: узлы вне посчитанных пар и выбранного

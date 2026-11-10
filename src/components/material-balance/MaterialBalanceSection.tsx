@@ -58,7 +58,7 @@ const elapsed = (ms: number) => {
 const busy = (status: string | undefined) => status === "running" || status === "starting";
 
 const HINT =
-  "Выберите преобразование на полотне — посчитаем его материальный баланс в массовых процентах: сырьё — 100 %, продукт — 100 %, побочные продукты и отходы — отдельно.";
+  "Выберите преобразование на полотне — посчитаем его материальный баланс в массовых процентах: сырьё — 100 %, продукты, побочные продукты и отходы — в процентах от массы сырья.";
 
 /** Подпись узла по id — по текущему графу. */
 function useLabelOf() {
@@ -387,6 +387,7 @@ const ListView: FC = () => {
                       calc.record,
                       (ref) => balanceRoleOf(edges, calc.nodeIds[ref], nodeId),
                       calc.shares,
+                      calc.sharesBasis,
                     );
                     return (
                       <div key={calc.record.id} className={styles.item}>

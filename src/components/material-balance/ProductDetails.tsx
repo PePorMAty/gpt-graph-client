@@ -48,7 +48,7 @@ export const ProductDetails: FC<Props> = ({
 }) => {
   const record = readableRecord(calc.record);
   const flows = calcFlows({ ...calc, record });
-  const rows = percentRows(record, roleOf, calc.shares);
+  const rows = percentRows(record, roleOf, calc.shares, calc.sharesBasis);
   const target = flows.targets.find((f) => f.nodeId === productId);
   if (!target) return null;
   const name = labelOf(target.nodeId) || target.name;
@@ -105,11 +105,7 @@ export const ProductDetails: FC<Props> = ({
           <tbody>
             <tr>
               <td>
-                {share?.kind === "target"
-                  ? flows.targets.length > 1
-                    ? "Доля в массе продуктов"
-                    : "Доля в массе продукта"
-                  : "От массы продукта"}
+                От массы сырья
               </td>
               <td>
                 {share ? formatShare(share) : "нет данных"}

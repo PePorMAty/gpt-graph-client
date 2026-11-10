@@ -1,7 +1,8 @@
 // src/utils/sourceOrigin.ts
 //
-// Откуда источник: раздел документа из базы сервера, найденный моделью раньше
-// и сохранённый в базе — или только что найденный поиском.
+// Откуда источник: раздел документа из базы сервера или найденный моделью.
+// До 2026-10-29 найденное моделью тоже хранилось в базе и бралось оттуда
+// (savedAt) — такие записи остались в сохранённых графах.
 
 import type { TechnologySource } from "../store/types";
 import { normalizeProductName } from "./normalizeProductName";
@@ -20,7 +21,11 @@ export function isLocalSource(s: Pick<TechnologySource, "url" | "origin">): bool
   return s.origin === "local" || isLocalSourceUrl(s.url);
 }
 
-/** Найден моделью раньше (в этом или другом графе) и взят из базы сервера. */
+/**
+ * Взят из базы сервера, когда найденное моделью ещё хранилось там (до
+ * 2026-10-29). Сейчас база такого не отдаёт; признак нужен только записям в
+ * сохранённых графах — они остаются своими для продукта (isOwnBaseSource).
+ */
 export function isSavedSource(s: Pick<TechnologySource, "savedAt">): boolean {
   return !!s.savedAt;
 }

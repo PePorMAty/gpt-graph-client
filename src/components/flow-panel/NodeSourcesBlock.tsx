@@ -29,8 +29,6 @@ interface Row {
   inheritedFrom: string | null;
   /** Раздел документа из базы: вместо домена — «ИТС 18 · стр. 14–42». */
   pdfLabel: string | null;
-  /** Найден моделью раньше, взят из базы сервера. */
-  saved: boolean;
 }
 
 /** Домен вместо полного URL: в узкой колонке адрес целиком не читается. */
@@ -62,7 +60,6 @@ export const NodeSourcesBlock = ({ groups, product }: NodeSourcesBlockProps) => 
           url: s.url,
           inheritedFrom: g.inheritedFrom,
           pdfLabel: isLocalSource(s) ? localSourceTag(s) : null,
-          saved: !!s.savedAt,
         });
       }
     }
@@ -138,11 +135,6 @@ export const NodeSourcesBlock = ({ groups, product }: NodeSourcesBlockProps) => 
                       {row.inheritedFrom && (
                         <span className={styles.inherited}>
                           от «{row.inheritedFrom}»
-                        </span>
-                      )}
-                      {row.saved && !row.pdfLabel && (
-                        <span className={styles.inherited}>
-                          найден раньше, из базы
                         </span>
                       )}
                     </td>

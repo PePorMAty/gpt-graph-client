@@ -657,14 +657,18 @@ export function nudgeStepPlaceholders(
     ...newNodes,
   ];
   const moved: Array<{ id: string; position: { x: number; y: number } }> = [];
+  // Отодвинутые заготовки — для дальних такое же препятствие, как новый шаг:
+  // иначе ближняя уезжала ровно на место следующей («Капролактам» ложился на
+  // «Алкилфенолы»), а та оставалась стоять, потому что шаг её не задевал.
+  const shoved: CustomNode[] = [];
   // Ближние к шагу — первыми: дальние потом обходят уже отодвинутых.
   const byDistance = [...placeholders].sort(
     (a, b) => Math.abs(a.position.x - centerX) - Math.abs(b.position.x - centerX),
   );
   for (const p of byDistance) {
-    // Не задевает новый шаг — остаётся где стоит (даже если стояла тесно
-    // и раньше: это не наша забота).
-    if (!overlapsAny(p.position, newNodes)) {
+    // Не задевает ни новый шаг, ни отодвинутых соседей — остаётся где стоит
+    // (даже если стояла тесно и раньше: это не наша забота).
+    if (!overlapsAny(p.position, [...newNodes, ...shoved])) {
       solid.push(p);
       continue;
     }
@@ -672,6 +676,7 @@ export function nudgeStepPlaceholders(
     const position = pushAsideX(p.position, solid, dir, spacingX);
     moved.push({ id: p.id, position });
     solid.push({ ...p, position });
+    shoved.push({ ...p, position });
   }
   return moved;
 }
