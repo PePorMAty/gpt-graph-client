@@ -266,7 +266,7 @@ export interface FlowPanelProps {
    * продукты» или «Фокус». Без подсказки пропавшие «Построить шаг» и
    * «Получить описание» выглядели поломкой.
    */
-  lockReason?: "shared" | "productsOnly" | "focus" | null;
+  lockReason?: "shared" | "productsOnly" | null;
   /** Выключить режим, из-за которого карточка только для просмотра. */
   onUnlock?: () => void;
 }

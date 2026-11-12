@@ -550,6 +550,32 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Живой ref для обработчиков, подписанных один раз (highlight-node, клики).
   const focusStateRef = useRef(focusState);
   focusStateRef.current = focusState;
+
+  // Узлы, добавленные в «Фокусе» меню правой кнопки: пока они ни с чем не
+  // связаны, в окрестность не попадают — эффект перестройки держит их на
+  // экране до выхода из режима, чтобы было что связывать.
+  const focusExtraIdsRef = useRef(new Set<string>());
+
+  /**
+   * Точка экрана → место в полном графе. В «Фокусе» на экране своя
+   * раскладка окрестности, и её координаты в полном графе ничего не значат:
+   * новый узел встаёт относительно соседа (anchorId; без него — центра) так
+   * же, как стоит относительно него на экране.
+   */
+  const toGraphPosition = useCallback(
+    (screen: { x: number; y: number }, anchorId?: string) => {
+      const at = screenToFlowPosition(screen);
+      const fs = focusStateRef.current;
+      const view = focusViewRef.current;
+      if (!fs || !view) return at;
+      const id = anchorId ?? fs.focusId;
+      const shown = view.nodes.find((n) => n.id === id);
+      const real = data.nodes.find((n) => n.id === id);
+      if (!shown || !real) return at;
+      return { x: at.x - shown.position.x + real.position.x, y: at.y - shown.position.y + real.position.y };
+    },
+    [screenToFlowPosition, data.nodes],
+  );
   // Последний узел, с которым взаимодействовал пользователь (клик, контекстное
   // меню, выбор в поиске, навигация в фокус-режиме). В отличие от
   // selectedNodeId переживает закрытие карточки (closePanel его зануляет) —
@@ -614,6 +640,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       focusAnimRef.current = null;
       setFocusView(null);
       focusFitKeyRef.current = null;
+      focusExtraIdsRef.current.clear();
       return;
     }
     // Альтернатив в фокус-режиме нет: окрестность — сама цепочка, а
@@ -656,7 +683,25 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         focusLayoutSpacing(sub.nodes, sub.edges),
       );
       if (cancelled) return;
-      const centered = centerTreeOnRoot(laid.nodes, focusState.focusId);
+      const laidOut = centerTreeOnRoot(laid.nodes, focusState.focusId);
+      // Добавленные в «Фокусе» и ещё не связанные узлы (focusExtraIdsRef) —
+      // относительно центра там же, где стоят в полном графе. Связали —
+      // окрестность берёт их сама.
+      const root = laidOut.find((n) => n.id === focusState.focusId);
+      const rootReal = chainNodes.find((n) => n.id === focusState.focusId);
+      const extras =
+        root && rootReal
+          ? chainNodes
+              .filter((n) => focusExtraIdsRef.current.has(n.id) && !laidOut.some((c) => c.id === n.id))
+              .map((n) => ({
+                ...n,
+                position: {
+                  x: n.position.x - rootReal.position.x + root.position.x,
+                  y: n.position.y - rootReal.position.y + root.position.y,
+                },
+              }))
+          : [];
+      const centered = extras.length ? [...laidOut, ...extras] : laidOut;
       const inSub = new Set(centered.map((n) => n.id));
       const next: FocusSubgraphResult = {
         nodes: centered,
@@ -687,7 +732,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // новых нод подгонял бы камеру под старую раскладку. Двигаем только при
       // смене фокуса/охвата/глубины, а не на каждое фоновое обновление данных.
       const fitKey = `${focusState.focusId}::${focusScope}::${focusDepth}`;
-      const cameraMoves = focusFitKeyRef.current !== fitKey;
+      // Правка в самом «Фокусе» добавила узлы (построили шаг, добавили узел) —
+      // их тоже надо увидеть: камера стояла на центре, и новый шаг оказывался
+      // за краем экрана. Правка карточки или удаление камеру не двигают.
+      const prevIds = new Set((prev?.nodes ?? []).map((n) => n.id));
+      const grew = !!prev && next.nodes.some((n) => !prevIds.has(n.id));
+      const cameraMoves = focusFitKeyRef.current !== fitKey || grew;
       focusFitKeyRef.current = fitKey;
 
       // Первый показ окрестности (вход в режим) или запрет анимаций в системе —
@@ -803,9 +853,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   );
   // Единый флаг «только чтение»: шар-ссылка ИЛИ включённый режим просмотра
   const readOnly = sharedView;
-  // Структурные правки заблокированы: просмотр, «только продукты» или
-  // фокус-режим (последние два — проекции, store в них не редактируется).
-  const structureLocked = readOnly || productsOnly || focusOn;
+  // Структурные правки заблокированы: просмотр или «только продукты» (там
+  // рёбра синтетические, в store их нет). «Фокус» — тоже проекция, но его
+  // узлы и рёбра — настоящие из store: правки идут в полный граф, и
+  // окрестность перестраивается сама (эффект перестройки следит за data).
+  const structureLocked = readOnly || productsOnly;
   /**
    * Правки самих узлов при фильтре «Только продукты» разрешены.
    *
@@ -820,9 +872,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
    * преобразований на этом полотне нет. Такая связь заводит заглушку, см.
    * handleConnect.
    *
-   * Фокус-режим остаётся просмотровым: там своя раскладка окрестности.
+   * В «Фокусе» — так же (с 2026-11-12, по просьбе владельца): своя там
+   * только раскладка окрестности, а новые узлы встают в полный граф
+   * относительно соседа — см. toGraphPosition.
    */
-  const canEditNodes = !readOnly && !focusOn;
+  const canEditNodes = !readOnly;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Всплывающая подсказка о сохранении
@@ -1564,28 +1618,33 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // правая кнопка не занята меню: там ею удобно доводить выделение.
   const onPaneContextMenu = useCallback(
     (event: React.MouseEvent | MouseEvent) => {
-      if (readOnly || focusOn || canvasModeRef.current === "marquee") return;
+      if (readOnly || canvasModeRef.current === "marquee") return;
       event.preventDefault();
       setContextMenu(null);
       setEdgeMenu(null);
       setPaneMenu({ x: event.clientX, y: event.clientY });
     },
-    [readOnly, focusOn],
+    [readOnly],
   );
 
   // Узел появляется там, где вызвали меню, а не в центре экрана.
   const handleAddNodeAt = useCallback(
     (type: "product" | "transformation") => {
       if (!paneMenu) return;
+      const id = crypto.randomUUID();
+      // Ни с чем не связанный узел в окрестность фокуса не попал бы —
+      // держим его на экране до выхода из режима, чтобы было что связывать.
+      if (focusStateRef.current) focusExtraIdsRef.current.add(id);
       dispatch(
         addNode({
           type,
-          position: screenToFlowPosition({ x: paneMenu.x, y: paneMenu.y }),
+          id,
+          position: toGraphPosition({ x: paneMenu.x, y: paneMenu.y }),
         }),
       );
       setPaneMenu(null);
     },
-    [paneMenu, dispatch, screenToFlowPosition],
+    [paneMenu, dispatch, toGraphPosition],
   );
 
   /** Поставить или снять закладку на узле. */
@@ -2254,14 +2313,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     (type: "product" | "transformation", label: string) => {
       if (!connectMenu) return;
       const id = crypto.randomUUID();
-      const at = screenToFlowPosition({ x: connectMenu.x, y: connectMenu.y });
+      const at = toGraphPosition({ x: connectMenu.x, y: connectMenu.y }, connectMenu.fromId);
       // Узел встаёт серединой в точку, где отпустили связь.
       dispatch(
         addNode({ type, id, ...(label ? { label } : {}), position: { x: at.x - 100, y: at.y - 25 } }),
       );
       connectFromMenu(id, true);
     },
-    [connectMenu, dispatch, screenToFlowPosition, connectFromMenu],
+    [connectMenu, dispatch, toGraphPosition, connectFromMenu],
   );
 
   const onReconnectStart = useCallback(() => {
@@ -3463,12 +3522,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onSave={() => setShowSaveGraphModal(true)}
         canSave={data.nodes.length > 0}
         onClear={() => setShowClearConfirm(true)}
-        canClear={data.nodes.length > 0}
+        // В «Фокусе» граф правят, поэтому «Сохранить» есть; «Разложить» и
+        // «Очистить» — про полный граф, которого на экране нет.
+        canClear={data.nodes.length > 0 && !focusOn}
         onRelayout={handleRelayout}
-        canRelayout={data.nodes.length > 0}
+        canRelayout={data.nodes.length > 0 && !focusOn}
         relayouting={isApplyingLayout}
         saveFlash={saveFlash}
-        readOnly={readOnly || focusOn}
+        readOnly={readOnly}
       />
 
       <ReactFlow
@@ -3481,7 +3542,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={canEditNodes ? handleConnect : undefined}
-        onConnectEnd={canEditNodes && !focusOn ? onConnectEnd : undefined}
+        onConnectEnd={canEditNodes ? onConnectEnd : undefined}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
@@ -3653,15 +3714,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         linkedProducts={linkedProducts}
         onFocusLinkedProduct={handleFocusLinkedProduct}
         readOnly={structureLocked}
-        lockReason={readOnly ? "shared" : productsOnly ? "productsOnly" : focusOn ? "focus" : null}
+        lockReason={readOnly ? "shared" : productsOnly ? "productsOnly" : null}
         onUnlock={
           readOnly
             ? undefined
             : productsOnly
               ? () => setProductsOnly(false)
-              : focusOn
-                ? exitFocusMode
-                : undefined
+              : undefined
         }
         nodeId={selectedNodeId}
         sourceGroups={sourceGroups}
