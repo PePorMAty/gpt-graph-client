@@ -231,6 +231,10 @@ export const CalcDetails: FC<Props> = ({
   const record = readableRecord(calc.record);
   const nameOf = (ref: string) => labelOf(calc.nodeIds[ref]) || record.refs.find((r) => r.ref === ref)?.name || ref;
   const reason = statusReason(record);
+  // Модель отказалась считать: выбор преобразования или количество сырья
+  // неверны. Тогда в примечаниях — что исправить, а таблица пуста по сути
+  // («Уксусная кислота 100 %» у отказа сбивало с толку, 2026-11-16).
+  const refused = record.status === "invalid_selection" || record.status === "invalid_basis";
   const mismatched = balanceMismatches(record);
   const coefs = coefficientItems(record);
   const tName = labelOf(nodeId) || record.transformation;
@@ -258,12 +262,19 @@ export const CalcDetails: FC<Props> = ({
           <div className={styles.meta}>Характер результата: {record.nature}</div>
         )}
         {reason && (
-          <p className={styles.reason}>
+          // div, не p: внутри — Markdown, а он рисует блок.
+          <div className={styles.reason}>
             <InfoIcon size={16} className={styles.reasonIcon} />
             <span>
-              <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b> {reason}
+              <b>Почему «{STATUS_TEXT[record.status].toLowerCase()}»:</b>{" "}
+              {refused && record.sections.notes.trim() ? (
+                // Отказ: все примечания — в них и причина, и что исправить.
+                <Markdown text={record.sections.notes} />
+              ) : (
+                <Markdown text={reason} inline />
+              )}
             </span>
-          </p>
+          </div>
         )}
         {mismatched.length > 0 && (
           <p className={styles.reason}>
@@ -301,19 +312,30 @@ export const CalcDetails: FC<Props> = ({
         Расчёт для преобразования: <b>{tName}</b>
       </div>
 
-      <BalanceTable
-        record={record}
-        nodeIds={calc.nodeIds}
-        labelOf={labelOf}
-        shares={calc.shares}
-        sharesBasis={calc.sharesBasis}
-        onShares={readOnly ? undefined : onShares}
-        onProduct={onProduct}
-        onGo={onGo}
-        findNode={findNode}
-        onPlaceFlow={readOnly ? undefined : onPlaceFlow}
-        roleOf={roleOf}
-      />
+      {refused ? (
+        <p className={styles.note}>
+          Расчёт не выполнен: модель считает, что{" "}
+          {record.status === "invalid_basis"
+            ? "не задано, от какого количества сырья считать"
+            : "это преобразование на графе выбрано неверно — например, из такого сырья получают другой продукт"}
+          . Исправьте шаг на графе (название продукта, сырьё) или перестройте его и посчитайте
+          заново — «Новый расчёт».
+        </p>
+      ) : (
+        <BalanceTable
+          record={record}
+          nodeIds={calc.nodeIds}
+          labelOf={labelOf}
+          shares={calc.shares}
+          sharesBasis={calc.sharesBasis}
+          onShares={readOnly ? undefined : onShares}
+          onProduct={onProduct}
+          onGo={onGo}
+          findNode={findNode}
+          onPlaceFlow={readOnly ? undefined : onPlaceFlow}
+          roleOf={roleOf}
+        />
+      )}
 
       {(coefs.length > 0 || record.coefficients.length > 0) && (
         <details className={`${styles.cardBlock} ${styles.fold}`} open>
@@ -370,10 +392,12 @@ export const CalcDetails: FC<Props> = ({
         </section>
       )}
 
-      <section className={styles.cardBlock}>
-        <CardTitle icon={<NoteIcon size={16} />} title="Примечания" />
-        <Markdown text={record.sections.notes} />
-      </section>
+      {!refused && (
+        <section className={styles.cardBlock}>
+          <CardTitle icon={<NoteIcon size={16} />} title="Примечания" />
+          <Markdown text={record.sections.notes} />
+        </section>
+      )}
 
       <section className={styles.section}>
         <p className={styles.muted}>
