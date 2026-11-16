@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState, type FC } from "react";
 import type { StepChainApiStep, StepProduct } from "../../store/types";
 import { normalizeProductName } from "../../utils/normalizeProductName";
+import { identifyStepProducts } from "../../utils/resolveProductIds";
+import { applyStepFix } from "../../utils/stepCheck";
+import { StepCheckNotice } from "../step-check/StepCheckNotice";
+import { useStepCheck } from "../step-check/useStepCheck";
 import { StepWizardSteps } from "./StepWizardSteps";
 import type { StepOutcome } from "./types";
 import {
@@ -98,26 +102,49 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     [anchorProductName],
   );
 
+  // Проверка шага моделью: реально ли из этого сырья получают эти продукты.
+  // Нашла ошибку в названиях — «Исправить» переименовывает продукты прямо в
+  // превью, до того как шаг ляжет на граф. Исправленный шаг помечен id
+  // построения: новый шаг («Повторить запрос») начинает с чистого листа.
+  const check = useStepCheck(step, anchorProductName, direction);
+  const [fixed, setFixed] = useState<{ forId: string; step: StepChainApiStep } | null>(null);
+  const [applying, setApplying] = useState(false);
+  const shown = fixed?.forId === step.transformation.id ? fixed.step : step;
+  const applyFix = async () => {
+    if (check.state?.status !== "done") return;
+    setApplying(true);
+    let next = applyStepFix(step, check.state.result);
+    // Новые названия — новые продукты: справочник даст им идентификаторы, и
+    // продукт, который уже стоит на полотне под другим именем, не задвоится.
+    try {
+      next = await identifyStepProducts(next);
+    } catch {
+      // справочник недоступен — шаг ляжет без идентификаторов, как раньше
+    }
+    setFixed({ forId: step.transformation.id, step: next });
+    setApplying(false);
+  };
+
   const visibleInputs = useMemo(
     () =>
-      step.inputProducts
+      shown.inputProducts
         .map((p, idx) => ({ product: p, origIdx: idx }))
         .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
-    [step.inputProducts, anchorNorm],
+    [shown.inputProducts, anchorNorm],
   );
   const visibleOutputs = useMemo(
     () =>
-      step.outputProducts
+      shown.outputProducts
         .map((p, idx) => ({ product: p, origIdx: idx }))
         .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
-    [step.outputProducts, anchorNorm],
+    [shown.outputProducts, anchorNorm],
   );
   const visibleByproducts = useMemo(
     () =>
-      (step.byproducts ?? [])
+      (shown.byproducts ?? [])
         .map((p, idx) => ({ product: p, origIdx: idx }))
         .filter(({ product }) => normalizeProductName(product.name) !== anchorNorm),
-    [step.byproducts, anchorNorm],
+    [shown.byproducts, anchorNorm],
   );
 
   const [excludedInputs, setExcludedInputs] = useState<Set<number>>(new Set());
@@ -145,9 +172,9 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
       return;
     }
     const clash =
-      step.inputProducts.some((p) => normalizeProductName(p.name) === norm) ||
-      step.outputProducts.some((p) => normalizeProductName(p.name) === norm) ||
-      (step.byproducts ?? []).some((p) => normalizeProductName(p.name) === norm) ||
+      shown.inputProducts.some((p) => normalizeProductName(p.name) === norm) ||
+      shown.outputProducts.some((p) => normalizeProductName(p.name) === norm) ||
+      (shown.byproducts ?? []).some((p) => normalizeProductName(p.name) === norm) ||
       customProducts.some((p) => normalizeProductName(p.name) === norm);
     if (clash) {
       setFormError("Такой продукт уже есть в шаге");
@@ -208,18 +235,18 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
 
   const handleAccept = () => {
     const filteredStep: StepChainApiStep = {
-      ...step,
+      ...shown,
       inputProducts: [
-        ...step.inputProducts.filter((_, i) => !excludedInputs.has(i)),
+        ...shown.inputProducts.filter((_, i) => !excludedInputs.has(i)),
         ...(customSide === "input" ? customProducts : []),
       ],
       outputProducts: [
-        ...step.outputProducts.filter((_, i) => !excludedOutputs.has(i)),
+        ...shown.outputProducts.filter((_, i) => !excludedOutputs.has(i)),
         ...(customSide === "output" ? customProducts : []),
       ],
-      ...(step.byproducts
+      ...(shown.byproducts
         ? {
-            byproducts: step.byproducts.filter(
+            byproducts: shown.byproducts.filter(
               (_, i) => !excludedByproducts.has(i),
             ),
           }
@@ -283,7 +310,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     </ul>
   );
 
-  const notes = step.transformation.notes ?? [];
+  const notes = shown.transformation.notes ?? [];
   const showInputs =
     anchorSide === "input" ||
     visibleInputs.length > 0 ||
@@ -340,6 +367,26 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           </div>
         )}
 
+        {/* Проверка моделью — над шагом: ошибку в названиях видно до того,
+            как человек начнёт разбирать продукты. */}
+        {check.state && (
+          <StepCheckNotice
+            state={check.state}
+            transformationName={step.transformation.name}
+            applied={shown !== step}
+            applying={applying}
+            onApply={applyFix}
+            applyLabel="Исправить шаг"
+            onRetry={check.retry}
+            wrongHint={
+              <div>
+                Можно вернуться к обобщению и поправить его, повторить запрос или
+                всё же добавить шаг.
+              </div>
+            }
+          />
+        )}
+
         {/* Сам шаг: что за процесс получился. */}
         <section className={styles.card}>
           <span className={styles.cardIcon}>
@@ -349,10 +396,10 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
             <span className={styles.cardCap}>
               Производственный шаг #{stepNumber}
             </span>
-            <div className={styles.cardName}>{step.transformation.name}</div>
-            {step.transformation.description && (
+            <div className={styles.cardName}>{shown.transformation.name}</div>
+            {shown.transformation.description && (
               <p className={styles.cardDesc}>
-                {step.transformation.description}
+                {shown.transformation.description}
               </p>
             )}
           </div>

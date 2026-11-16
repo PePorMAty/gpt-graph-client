@@ -7,6 +7,7 @@ module.exports = {
   canned: {
     "/api/graphs/gpt/step/aggregate": "fixtures/phenol-down-aggregate.json",
     "/api/graphs/gpt/step/build": "fixtures/phenol-down-build.json",
+    "/api/graphs/gpt/step/check": "fixtures/step-check-ok.json",
   },
   async run({ page, origin, lib, check, shot, log }) {
     await lib.openApp(page, origin);
@@ -28,6 +29,8 @@ module.exports = {
     check("в превью виден раскрываемый продукт", /Фенол раскрываемый/.test(inputs), inputs);
     check("второе сырьё в превью", /Формальдегид/.test(inputs));
     check("продукт шага в превью", /Фенолоформальдегидные смолы/.test(outputs));
+    await page.getByText("Проверка: шаг верен.").waitFor({ timeout: 10000 }).catch(() => {});
+    check("проверка шага моделью: «шаг верен»", /Проверка: шаг верен\./.test(await lib.wizardText(page)));
 
     await page.getByRole("button", { name: /Добавить шаг/ }).click();
     await lib.sleep(2500);

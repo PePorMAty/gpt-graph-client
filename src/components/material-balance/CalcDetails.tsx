@@ -30,6 +30,7 @@ import { sourceHref } from "../../store/api/local-sources-api";
 import { plural } from "../../utils/plural";
 import { ChevronDownIcon, InfoIcon, NoteIcon, SigmaIcon } from "../icons";
 import { BalanceTable, CardTitle } from "./BalanceTable";
+import { BalanceStepFix } from "./BalanceStepFix";
 import md from "../markdown-editor/MarkdownEditor.module.css";
 import styles from "./MaterialBalance.module.css";
 
@@ -313,14 +314,28 @@ export const CalcDetails: FC<Props> = ({
       </div>
 
       {refused ? (
-        <p className={styles.note}>
-          Расчёт не выполнен: модель считает, что{" "}
-          {record.status === "invalid_basis"
-            ? "не задано, от какого количества сырья считать"
-            : "это преобразование на графе выбрано неверно — например, из такого сырья получают другой продукт"}
-          . Исправьте шаг на графе (название продукта, сырьё) или перестройте его и посчитайте
-          заново — «Новый расчёт».
-        </p>
+        <>
+          <p className={styles.note}>
+            Расчёт не выполнен: модель считает, что{" "}
+            {record.status === "invalid_basis"
+              ? "не задано, от какого количества сырья считать"
+              : "это преобразование на графе выбрано неверно — например, из такого сырья получают другой продукт"}
+            .{" "}
+            {record.status === "invalid_selection" && !readOnly
+              ? "«Исправить шаг» — модель проверит шаг по этому замечанию и предложит, какие узлы переименовать; или исправьте шаг на графе сами (название продукта, сырьё) и посчитайте заново — «Новый расчёт»."
+              : "Исправьте шаг на графе (название продукта, сырьё) или перестройте его и посчитайте заново — «Новый расчёт»."}
+          </p>
+          {record.status === "invalid_selection" && !readOnly && record.sections.notes.trim() && (
+            <BalanceStepFix
+              key={record.id}
+              nodeId={nodeId}
+              notes={record.sections.notes}
+              refs={record.refs}
+              nameOf={nameOf}
+              onNewRequest={onNewRequest}
+            />
+          )}
+        </>
       ) : (
         <BalanceTable
           record={record}

@@ -8,6 +8,7 @@ module.exports = {
   canned: {
     "/api/graphs/gpt/step/aggregate": "fixtures/phenol-down-aggregate.json",
     "/api/graphs/gpt/step/build": "fixtures/phenol-down-build.json",
+    "/api/graphs/gpt/step/check": "fixtures/step-check-ok.json",
   },
   async run({ page, origin, lib, check, shot }) {
     await lib.openApp(page, origin);
