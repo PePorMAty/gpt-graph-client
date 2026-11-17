@@ -27,6 +27,7 @@ import {
   type ProductCodesResponse,
 } from "../../store/api/product-codes-api";
 import { plural } from "../../utils/plural";
+import { contextSummary, type ProductContext } from "../../utils/productContext";
 import { showToast } from "../toast/toastStore";
 import { BarcodeIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FlaskIcon, InfoIcon, PencilIcon } from "../icons";
 import css from "./ProductCodes.module.css";
@@ -40,6 +41,8 @@ export interface CodesProduct {
   /** По графу: во что продукт идёт и из чего его делают. */
   usedFor?: string[];
   madeFrom?: string[];
+  /** Контекст из графа: описание, процессы рядом, путь до изделия. */
+  context?: ProductContext;
 }
 
 interface Props {
@@ -160,6 +163,7 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
               current: product.current,
               ...(product.usedFor?.length ? { usedFor: product.usedFor } : {}),
               ...(product.madeFrom?.length ? { madeFrom: product.madeFrom } : {}),
+              ...(product.context ? { context: product.context } : {}),
               ...(Object.keys(prompts).length ? { prompts } : {}),
             },
             controller.signal,
@@ -257,15 +261,17 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
                   </li>
                 ))}
               </ul>
-              {products.some((p) => p.usedFor?.length) && (
+              {products.some((p) => p.context) && (
                 <p className={css.muted}>
-                  Модель увидит и то, во что продукт идёт по графу (
+                  Кроме названия модель увидит, что о продукте известно по
+                  графу (
                   {products
-                    .filter((p) => p.usedFor?.length)
+                    .filter((p) => p.context)
                     .slice(0, 3)
-                    .map((p) => `${p.label} → ${p.usedFor!.join(", ")}`)
+                    .map((p) => `${p.label}: ${contextSummary(p.context ?? null)}`)
                     .join("; ")}
-                  ): код детали зависит от изделия.
+                  ): по одному названию не понять, гранулы это или волокно и
+                  для какого изделия деталь.
                 </p>
               )}
             </section>

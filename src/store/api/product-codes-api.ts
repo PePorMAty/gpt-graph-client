@@ -8,6 +8,7 @@
 import axios from "axios";
 
 import { getAiRequestFields } from "../../hooks/useAiConfig";
+import type { ProductContext } from "../../utils/productContext";
 
 export type ProductCodeKind = "okpd2" | "tnved";
 
@@ -75,6 +76,8 @@ export async function determineProductCodes(
     usedFor?: string[];
     /** Из чего его делают по графу. */
     madeFrom?: string[];
+    /** Контекст из графа (src/utils/productContext.ts); старый сервер его не читает. */
+    context?: ProductContext;
     current?: Partial<Record<ProductCodeKind, string>>;
     prompts?: Partial<Record<ProductCodeKind, string>>;
   },

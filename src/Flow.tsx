@@ -92,6 +92,7 @@ import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
 import { CodesPickBar } from "./components/product-codes/CodesPickBar";
 import { ProductCodesModal, type CodesProduct } from "./components/product-codes/ProductCodesModal";
 import { nodeCodes } from "./utils/nodeCodes";
+import { contextNeighbours, productContext } from "./utils/productContext";
 import styles from "./styles/Flow.module.css";
 import type { CustomNode } from "./types";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -175,7 +176,6 @@ import {
   setBalanceMode,
 } from "./store/slices/materialBalanceSlice";
 import {
-  balanceEnds,
   balanceLayer as computeBalanceLayer,
   edgeKey as balanceEdgeKey,
 } from "./utils/materialBalance";
@@ -1280,10 +1280,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     if (!codesPick?.length) return [];
     const byId = new Map(data.nodes.map((n) => [n.id, n]));
     const labelOf = (id: string) => String(byId.get(id)?.data?.label ?? "").trim();
-    const isT = (id: string) => {
-      const n = byId.get(id);
-      return n?.type === "transformation" && n.data?.chainVariant !== "alt";
-    };
     return codesPick.flatMap((id) => {
       const n = byId.get(id);
       const label = labelOf(id);
@@ -1293,27 +1289,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         okpd2: codes.find((c) => c.kind === "okpd2")?.code,
         tnved: codes.find((c) => c.kind === "tnved")?.code,
       };
-      const usedFor = new Set<string>();
-      const madeFrom = new Set<string>();
-      const linked = new Set(
-        data.edges.flatMap((e) =>
-          e.source === id && isT(e.target) ? [e.target] : e.target === id && isT(e.source) ? [e.source] : [],
-        ),
-      );
-      for (const t of linked) {
-        const ends = balanceEnds(t, data.nodes, data.edges);
-        if (ends.ins.some((x) => x.id === id)) ends.outs.forEach((x) => x.id !== id && usedFor.add(labelOf(x.id)));
-        if (ends.outs.some((x) => x.id === id)) ends.ins.forEach((x) => x.id !== id && madeFrom.add(labelOf(x.id)));
-      }
-      const list = (s: Set<string>) => [...s].filter(Boolean).slice(0, 6);
+      // Контекст из графа: описание, процессы рядом с техописанием, путь
+      // вниз до изделия (src/utils/productContext.ts); usedFor/madeFrom —
+      // для старого сервера и для строки в окне.
+      const context = productContext(id, data.nodes, data.edges);
+      const { usedFor, madeFrom } = contextNeighbours(context, label);
       return [
         {
           id,
           label,
           ...(n.data?.description ? { description: String(n.data.description) } : {}),
           current,
-          usedFor: list(usedFor),
-          madeFrom: list(madeFrom),
+          usedFor,
+          madeFrom,
+          ...(context ? { context } : {}),
         },
       ];
     });
