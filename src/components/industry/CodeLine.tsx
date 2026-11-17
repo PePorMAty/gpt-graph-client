@@ -5,11 +5,12 @@ import {
   type DescribedCode,
   type IndustryCodeVariant,
 } from "../../store/api/industry-api";
+import type { ModelCode } from "../../store/api/product-codes-api";
 import type { CodeOverride } from "../../types";
 import { plural } from "../../utils/plural";
 import { PencilIcon } from "../icons";
 import { okpd2Url, tnvedTitle, tnvedUrl } from "./gisp";
-import { CODE_LABEL, type CodeKind } from "./codeOverrides";
+import { CODE_LABEL, formatModelWhen, type CodeKind } from "./codeOverrides";
 import styles from "./Industry.module.css";
 
 /**
@@ -40,6 +41,11 @@ interface Props {
   kind: CodeKind;
   registry: RegistryCode | null;
   override?: CodeOverride;
+  /**
+   * Код, определённый моделью по классификатору («Определение кодов»):
+   * показывается вместо кода реестра, но уступает заданному вручную.
+   */
+  model?: ModelCode;
   /** Коды всех записей реестра, первым — выбранный. */
   variants?: IndustryCodeVariant[];
   /** Чем заполнить поле, когда кода нет вовсе: категория классификатора. */
@@ -188,10 +194,13 @@ const CodeEditor: FC<{
  * и вписать свой: код из реестра бывает категорией или вовсе чужим. Заданный
  * вручную код показывается вместо кода реестра, а тот остаётся рядом.
  */
+const sameCode = (a: string, b: string) => a.replace(/\D/g, "") === b.replace(/\D/g, "");
+
 export const CodeLine: FC<Props> = ({
   kind,
   registry,
   override,
+  model,
   variants = [],
   suggestion,
   editable,
@@ -200,19 +209,24 @@ export const CodeLine: FC<Props> = ({
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const shown = override?.code ?? registry?.code ?? null;
+  const modelShown = model ? (model.display ?? model.code) : null;
+  const shown = override?.code ?? modelShown ?? registry?.code ?? null;
   // У ТН ВЭД имя позиции читается только с уровнями над ним: «прочие».
   const titled = (n: string | null, path?: string | null) =>
     kind === "tnved" ? tnvedTitle(n, path) : n;
   const name = override
     ? titled(override.name, override.path)
-    : titled(registry?.name ?? null, registry?.path);
-  const fullPath = override ? override.path : registry?.path;
+    : model
+      ? titled(model.name, model.path)
+      : titled(registry?.name ?? null, registry?.path);
+  const fullPath = override ? override.path : model ? model.path : registry?.path;
   const others = Math.max(0, variants.length - 1);
+  // Чем станет код, если ручной убрать: определённый моделью, иначе реестра.
+  const fallback = model ? model.code : registry?.code;
 
-  // Тот же код, что дал реестр, — правки нет: вернуть код реестра.
+  // Тот же код, что и без правки, — правки нет: вернуть прежний.
   const emit = (value: CodeOverride | null) =>
-    onChange(value && registry && value.code === registry.code ? null : value);
+    onChange(value && fallback && sameCode(value.code, fallback) ? null : value);
 
   const save = (value: CodeOverride | null) => {
     emit(value);
@@ -255,7 +269,24 @@ export const CodeLine: FC<Props> = ({
             {override.name === null && (
               <span className={styles.codeExtra}>нет в классификаторе</span>
             )}
-            {registry && registry.code !== override.code && (
+            {model && !sameCode(model.code, override.code) && (
+              <span className={styles.codeExtra}>моделью — {modelShown}</span>
+            )}
+            {!model && registry && registry.code !== override.code && (
+              <span className={styles.codeExtra}>
+                {registry.byName ? "по классификатору" : registry.byCas ? "по номеру CAS (ECICS)" : "в реестре"} — {registry.code}
+              </span>
+            )}
+          </>
+        ) : model ? (
+          <>
+            <span
+              className={styles.codeModel}
+              title={`Код определила модель${model.model ? ` ${model.model}` : ""} по файлу классификатора${model.at ? ` ${formatModelWhen(model.at)}` : ""}${model.customPrompt ? ", своим промптом" : ""}. Он сохранён на сервере и приходит сам — для этого продукта на любом графе. Поправить — «Изменить».`}
+            >
+              определён моделью
+            </span>
+            {registry && !sameCode(registry.code, model.code) && (
               <span className={styles.codeExtra}>
                 {registry.byName ? "по классификатору" : registry.byCas ? "по номеру CAS (ECICS)" : "в реестре"} — {registry.code}
               </span>
@@ -318,7 +349,7 @@ export const CodeLine: FC<Props> = ({
                 className={styles.linkBtn}
                 onClick={() => emit(null)}
               >
-                {registry ? "Вернуть код реестра" : "Убрать"}
+                {model ? "Вернуть код модели" : registry ? "Вернуть код реестра" : "Убрать"}
               </button>
             )}
           </span>

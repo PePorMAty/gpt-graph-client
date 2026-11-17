@@ -27,6 +27,7 @@ import { CodeLine, ECICS_TITLE } from "./CodeLine";
 import {
   readCodeOverrides,
   withCodeOverride,
+  formatModelWhen,
   type CodeKind,
 } from "./codeOverrides";
 import styles from "./Industry.module.css";
@@ -200,6 +201,19 @@ export const IndustryPanel: FC<Props> = ({
     () => (name ? results[industryKey(name)] : undefined),
     [results, name],
   );
+  // Коды, определённые моделью по классификатору («Определение кодов»), —
+  // главнее кодов реестра; когда и кем определены — строкой под кодами.
+  const modelCodes = info?.modelCodes;
+  const modelWhen = [modelCodes?.okpd2?.at, modelCodes?.tnved?.at].filter(Boolean).sort().pop();
+  const modelNote =
+    modelCodes && (modelCodes.okpd2 || modelCodes.tnved) ? (
+      <p className={styles.modelNote}>
+        Коды «определён моделью» найдены по файлам классификаторов
+        {modelWhen ? ` ${formatModelWhen(modelWhen)}` : ""} и сохранены: для этого
+        продукта они приходят сами, на любом графе. Определить заново —
+        кнопка «Определение кодов» справа от полотна.
+      </p>
+    ) : null;
 
   /**
    * Сколько записей под каждым отбором.
@@ -315,7 +329,9 @@ export const IndustryPanel: FC<Props> = ({
             существует всегда, запись появляется, только когда завод заявил
             продукцию. Без этой строки человек шёл на сайт ОКПД2, находил там
             вещество и переставал верить карточке. */}
-        {info.category && (
+        {/* Код определён моделью — он ниже, в «Кодах продукта»: справка по
+            названию его только повторяла бы (или спорила бы с ним). */}
+        {info.category && !modelCodes?.okpd2 && (
           <div className={styles.categoryNote}>
             <span className={styles.categoryLabel}>В классификаторе ОКПД2 это</span>
             <a
@@ -335,7 +351,7 @@ export const IndustryPanel: FC<Props> = ({
         )}
         {/* Позиция ТН ВЭД: по номеру CAS из таможенного реестра ЕС, иначе
             по названию вещества — тоже классификатор. */}
-        {info.tnvedCas ? (
+        {modelCodes?.tnved ? null : info.tnvedCas ? (
           <div className={styles.categoryNote}>
             <span className={styles.categoryLabel}>В ТН ВЭД это</span>
             <a
@@ -374,13 +390,14 @@ export const IndustryPanel: FC<Props> = ({
 
         {/* Записи нет, а коды продукту нужны: их задают вручную, категория
             классификатора подставляется в поле. */}
-        {(editable || overrides.okpd2 || overrides.tnved) && (
+        {(editable || overrides.okpd2 || overrides.tnved || modelCodes) && (
           <div className={styles.ownCodes}>
             <span className={styles.ownCodesTitle}>Коды продукта</span>
             <CodeLine
               kind="okpd2"
               registry={null}
               override={overrides.okpd2}
+              model={modelCodes?.okpd2}
               suggestion={info.category?.code}
               editable={editable}
               onChange={(v) => setOverride("okpd2", v)}
@@ -389,10 +406,12 @@ export const IndustryPanel: FC<Props> = ({
               kind="tnved"
               registry={null}
               override={overrides.tnved}
+              model={modelCodes?.tnved}
               suggestion={info.tnvedCas?.code ?? info.tnvedCategory?.code}
               editable={editable}
               onChange={(v) => setOverride("tnved", v)}
             />
+            {modelNote}
           </div>
         )}
       </div>
@@ -442,9 +461,10 @@ export const IndustryPanel: FC<Props> = ({
           классификатора длиннее, чем помещается в плитку, а без него код
           бесполезен. Код можно поправить: выбрать другой из кодов записей
           или вписать свой (CodeLine). */}
-      {(info.okpd2 || overrides.okpd2 || editable) && (
+      {(info.okpd2 || overrides.okpd2 || modelCodes?.okpd2 || editable) && (
         <CodeLine
           kind="okpd2"
+          model={modelCodes?.okpd2}
           registry={
             info.okpd2
               ? {
@@ -466,9 +486,10 @@ export const IndustryPanel: FC<Props> = ({
       {/* ТН ВЭД: самый частый код записей реестра, а нет его — позиция по
           номеру CAS из таможенного реестра ЕС, иначе по названию вещества из
           классификатора, с пометкой. */}
-      {(info.tnved || info.tnvedCas || info.tnvedCategory || overrides.tnved || editable) && (
+      {(info.tnved || info.tnvedCas || info.tnvedCategory || overrides.tnved || modelCodes?.tnved || editable) && (
         <CodeLine
           kind="tnved"
+          model={modelCodes?.tnved}
           registry={
             info.tnved
               ? {
@@ -502,7 +523,9 @@ export const IndustryPanel: FC<Props> = ({
           покрывает и половины записей. Так бывает, когда название общее —
           «Плёнки» без материала собирают записи о любых плёнках, и код в
           карточке относится к чужому продукту. */}
-      {!overrides.okpd2 && isHeterogeneous(info) && (
+      {modelNote}
+
+      {!overrides.okpd2 && !modelCodes?.okpd2 && isHeterogeneous(info) && (
         <p className={styles.formulationNote}>
           Записи под этим названием разнородные: у них{" "}
           {info.okpd2Codes?.length ?? 0}{" "}

@@ -1,10 +1,11 @@
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
 import type { RootState } from "../store";
 import {
   lookupIndustry,
   type IndustryProductInfo,
 } from "../api/industry-api";
+import type { ModelCodes } from "../api/product-codes-api";
 
 /**
  * Ключ продукта в таблице результатов.
@@ -87,7 +88,10 @@ export const checkIndustry = createAsyncThunk<
       // Раскладываем ответ по нормализованным ключам: сервер отвечает теми же
       // написаниями, что прислали, а в сторе ключ один на все варианты.
       for (const [name, info] of Object.entries(data.results ?? {})) {
-        results[industryKey(name)] = info;
+        // Коды, определённые моделью, — в сведения продукта: их читают там
+        // же, где коды реестра (карточка, поиск по коду).
+        const model = data.modelCodes?.[name];
+        results[industryKey(name)] = model ? { ...info, modelCodes: model } : info;
       }
 
       ready = data.ready !== false;
@@ -116,6 +120,15 @@ const industrySlice = createSlice({
       state.status = "idle";
       state.error = null;
     },
+    /**
+     * Коды продукта, только что определённые моделью: в карточку сразу, не
+     * дожидаясь новой проверки. Сведений о продукте ещё нет — их принесёт
+     * проверка вместе с сохранёнными кодами.
+     */
+    setModelCodes(state, action: PayloadAction<{ name: string; codes: ModelCodes }>) {
+      const info = state.results[industryKey(action.payload.name)];
+      if (info) info.modelCodes = { ...info.modelCodes, ...action.payload.codes };
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -140,5 +153,5 @@ const industrySlice = createSlice({
   },
 });
 
-export const { clearIndustry } = industrySlice.actions;
+export const { clearIndustry, setModelCodes } = industrySlice.actions;
 export default industrySlice.reducer;

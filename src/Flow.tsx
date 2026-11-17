@@ -89,6 +89,9 @@ import {
   type CanvasMode,
 } from "./components/canvas-tools/CanvasTools";
 import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
+import { CodesPickBar } from "./components/product-codes/CodesPickBar";
+import { ProductCodesModal, type CodesProduct } from "./components/product-codes/ProductCodesModal";
+import { nodeCodes } from "./utils/nodeCodes";
 import styles from "./styles/Flow.module.css";
 import type { CustomNode } from "./types";
 import type { BuildDirection, TechnologySource } from "./store/types";
@@ -814,6 +817,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   const edgeReconnectSuccessful = useRef<boolean>(true);
 
+  // «Определение кодов»: выбор продуктов на полотне (null — режим выключен)
+  // и окно запроса. Щелчок по продукту в режиме выбирает его, карточку не
+  // открывает (onNodeClick читает режим через ref — обработчик не
+  // пересоздаётся).
+  const [codesPick, setCodesPick] = useState<string[] | null>(null);
+  const [codesModal, setCodesModal] = useState(false);
+  const codesPickRef = useRef<string[] | null>(null);
+  codesPickRef.current = codesPick;
+
   // Состояния для панели
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(false);
@@ -1243,17 +1255,46 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // Цепочка под курсором: новые объекты — только у её узлов, остальные те
   // же, что в baseFlowNodes.
+  // Выбранные для «Определения кодов» — так же: новые объекты только у них.
+  const codesPickSet = useMemo(() => (codesPick?.length ? new Set(codesPick) : null), [codesPick]);
   const flowNodes = useMemo(
     () =>
-      chainSet
-        ? baseFlowNodes.map((n) =>
-            chainSet.has(n.id)
-              ? { ...n, className: [n.className, "node--chain"].filter(Boolean).join(" ") }
-              : n,
-          )
+      chainSet || codesPickSet
+        ? baseFlowNodes.map((n) => {
+            const extra = [
+              chainSet?.has(n.id) ? "node--chain" : "",
+              codesPickSet?.has(n.id) ? "node--code-pick" : "",
+            ].filter(Boolean);
+            return extra.length ? { ...n, className: [n.className, ...extra].filter(Boolean).join(" ") } : n;
+          })
         : baseFlowNodes,
-    [baseFlowNodes, chainSet],
+    [baseFlowNodes, chainSet, codesPickSet],
   );
+
+  // Выбранные продукты для окна: название, описание и коды, что сейчас в
+  // карточке (подсказка серверу, в какой подгруппе искать).
+  const codesPicked = useMemo<CodesProduct[]>(() => {
+    if (!codesPick?.length) return [];
+    const byId = new Map(data.nodes.map((n) => [n.id, n]));
+    return codesPick.flatMap((id) => {
+      const n = byId.get(id);
+      const label = String(n?.data?.label ?? "").trim();
+      if (!n || !label) return [];
+      const codes = nodeCodes(n.data, industryResults[industryKey(label)]);
+      const current = {
+        okpd2: codes.find((c) => c.kind === "okpd2")?.code,
+        tnved: codes.find((c) => c.kind === "tnved")?.code,
+      };
+      return [
+        {
+          id,
+          label,
+          ...(n.data?.description ? { description: String(n.data.description) } : {}),
+          current,
+        },
+      ];
+    });
+  }, [codesPick, data.nodes, industryResults]);
 
   const baseFlowEdges = useMemo(() => {
     const base = focusView?.edges ?? productsView?.edges ?? data.edges;
@@ -1437,6 +1478,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // При наборе группового выделения (зажат Shift/Ctrl/Cmd) не открываем
       // панель редактирования — пользователь выделяет несколько нод.
       if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+      // «Определение кодов»: щелчок по продукту выбирает его или снимает.
+      if (codesPickRef.current !== null) {
+        if (node.type === "product" && node.data?.chainVariant !== "alt") {
+          const id = node.id;
+          setCodesPick((prev) =>
+            prev === null ? prev : prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+          );
+        }
+        return;
+      }
       lastInteractedNodeIdRef.current = node.id;
       // Открыта вкладка «Материальный баланс» слева: щелчок по
       // преобразованию выбирает его для расчёта, карточка не открывается. По
@@ -3530,11 +3581,24 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         relayouting={isApplyingLayout}
         saveFlash={saveFlash}
         readOnly={readOnly}
+        onDetermineCodes={() => {
+          if (codesPick !== null) {
+            setCodesPick(null);
+            setCodesModal(false);
+            return;
+          }
+          // Открытая карточка продукта — уже выбран: чаще всего коды нужны ему.
+          const open = selectedNodeId ? data.nodes.find((n) => n.id === selectedNodeId) : undefined;
+          setCodesPick(open?.type === "product" ? [open.id] : []);
+          setContextMenu(null);
+        }}
+        codesActive={codesPick !== null}
+        canDetermineCodes={data.nodes.some((n) => n.type === "product")}
       />
 
       <ReactFlow
         ref={flowWrapRef}
-        className={chainSet ? "chain-hover" : undefined}
+        className={[chainSet ? "chain-hover" : "", codesPick !== null ? "codes-pick" : ""].filter(Boolean).join(" ") || undefined}
         nodes={flowNodes}
         edges={flowEdges}
         onMoveStart={onMoveStart}
@@ -3596,6 +3660,26 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           окрестность кадра, иначе на больших графах узлы неразличимы.
           Живёт вне <ReactFlow>, чтобы её клики не доходили до полотна. */}
       {data.nodes.length > 0 && <CanvasMinimap nodes={baseFlowNodes} />}
+      {codesPick !== null && !codesModal && (
+        <CodesPickBar
+          picked={codesPicked.map((p) => ({ id: p.id, label: p.label }))}
+          onRemove={(id) => setCodesPick((prev) => prev?.filter((x) => x !== id) ?? prev)}
+          onClear={() => setCodesPick([])}
+          onContinue={() => setCodesModal(true)}
+          onClose={() => setCodesPick(null)}
+        />
+      )}
+      {codesPick !== null && codesModal && (
+        <ProductCodesModal
+          products={codesPicked}
+          onRemove={(id) => setCodesPick((prev) => prev?.filter((x) => x !== id) ?? prev)}
+          onChangeSelection={() => setCodesModal(false)}
+          onClose={() => {
+            setCodesModal(false);
+            setCodesPick(null);
+          }}
+        />
+      )}
       <SaveGraphModal
         isOpen={showSaveGraphModal}
         onClose={() => setShowSaveGraphModal(false)}
