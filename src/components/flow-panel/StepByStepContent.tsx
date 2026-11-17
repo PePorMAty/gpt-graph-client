@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
 import { MarkdownEditor } from "../markdown-editor";
-import { getDefaultStepSourcesPrompt } from "../../prompts/sourcesPrompt";
+import { useStepSourcesPrompt } from "./useStepSourcesPrompt";
 import {
   joinStepAggregatePrompt,
   splitStepAggregatePrompt,
@@ -249,10 +249,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     setDomainsText,
   } = useStepSearchSettings();
 
-  const autoSrcPrompt = useMemo(
-    () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
-    [direction, productName, maxItems],
-  );
+  // Промпт поиска по умолчанию — с сервера, когда окно открыто (им сервер и
+  // ищет); пока грузится или сервер старее — своя копия.
+  const autoSrcPrompt = useStepSourcesPrompt(direction, productName, maxItems, srcPromptOpen);
   const displayedSrcPrompt = manualSrcPrompt ?? autoSrcPrompt;
   const isSrcPromptDirty = manualSrcPrompt !== null;
   const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";
