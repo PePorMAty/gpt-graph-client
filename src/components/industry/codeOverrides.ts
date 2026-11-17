@@ -71,3 +71,12 @@ export const CODE_LABEL: Record<CodeKind, string> = {
   okpd2: "ОКПД2",
   tnved: "ТН ВЭД",
 };
+
+/** Когда код определён моделью — «17 ноября 2026 г., 08:40»; нет даты — пусто. */
+export const formatModelWhen = (at?: string) => {
+  if (!at) return "";
+  const d = new Date(at);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};

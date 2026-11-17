@@ -8,6 +8,8 @@
 
 import axios from "axios";
 
+import type { ModelCodes } from "./product-codes-api";
+
 /** Насколько уверенно название продукта легло на запись реестра. */
 export type IndustryMatch =
   | "exact"
@@ -199,6 +201,12 @@ export interface IndustryProductInfo {
   viaFormulation?: boolean;
   /** Сколько записей отбор отбросил как «слово попало в чужое название». */
   rejected?: number;
+  /**
+   * Коды, определённые моделью по классификатору («Определение кодов») и
+   * сохранённые на сервере. Клиент кладёт их сюда из поля modelCodes ответа;
+   * в карточке они главнее кодов реестра, но не заданных вручную.
+   */
+  modelCodes?: ModelCodes;
   producers: IndustryProducer[];
 }
 
@@ -210,6 +218,8 @@ export interface IndustryLookupResponse {
   /** Дата, на которую актуальна выгрузка. */
   actualAt?: string | null;
   results: Record<string, IndustryProductInfo>;
+  /** Сохранённые коды моделью по названию; у старого сервера поля нет. */
+  modelCodes?: Record<string, ModelCodes>;
 }
 
 export interface IndustryStatus {

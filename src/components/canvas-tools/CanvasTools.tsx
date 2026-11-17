@@ -2,6 +2,7 @@ import type { FC } from "react";
 
 import {
   AutoLayoutIcon,
+  BarcodeIcon,
   CursorIcon,
   HandIcon,
   MarqueeIcon,
@@ -42,6 +43,11 @@ interface CanvasToolsProps {
   saveFlash?: boolean;
   /** Режим просмотра: доступен только выбор режима указателя. */
   readOnly?: boolean;
+  /** «Определение кодов»: включить (или выключить) выбор продуктов. */
+  onDetermineCodes?: () => void;
+  /** Выбор продуктов для определения кодов включён. */
+  codesActive?: boolean;
+  canDetermineCodes?: boolean;
 }
 
 /**
@@ -61,6 +67,9 @@ export const CanvasTools = ({
   relayouting = false,
   saveFlash = false,
   readOnly = false,
+  onDetermineCodes,
+  codesActive = false,
+  canDetermineCodes = false,
 }: CanvasToolsProps) => (
   <div className={styles.rail}>
     <div className={styles.group}>
@@ -106,6 +115,19 @@ export const CanvasTools = ({
         >
           <SaveIcon size={18} />
         </button>
+        {onDetermineCodes && (
+          <button
+            type="button"
+            className={`${styles.button} ${codesActive ? styles.buttonActive : ""}`}
+            onClick={onDetermineCodes}
+            disabled={!canDetermineCodes && !codesActive}
+            aria-pressed={codesActive}
+            aria-label="Определение кодов"
+            data-tooltip={codesActive ? "Выйти из выбора продуктов" : "Определение кодов"}
+          >
+            <BarcodeIcon size={18} />
+          </button>
+        )}
         <button
           type="button"
           className={`${styles.button} ${styles.buttonDanger}`}

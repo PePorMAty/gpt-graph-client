@@ -309,6 +309,38 @@ export function fetchStepAggregatePrompt(
   return request;
 }
 
+/**
+ * GET /graphs/gpt/step/sources/prompt — промпт поиска источников шага,
+ * которым сервер ищет сейчас (v4 или прежний — переключатель STEP_PROMPTS на
+ * сервере). Своя копия на клиенте отставала: после перехода сервера на v4 в
+ * окне оставался старый текст. Один запрос на направление, продукт и число
+ * источников; сервер старее (404) — ошибка, окно покажет свою копию.
+ */
+const sourcesPromptCache = new Map<string, Promise<string>>();
+
+export function fetchStepSourcesPrompt(
+  direction: BuildDirection,
+  productName: string,
+  maxItems: number,
+): Promise<string> {
+  const key = `${direction}|${productName}|${maxItems}`;
+  const cached = sourcesPromptCache.get(key);
+  if (cached) return cached;
+  const request = axios
+    .get(`${import.meta.env.VITE_API_URL}/graphs/gpt/step/sources/prompt`, {
+      params: { direction, productName, maxItems },
+    })
+    .then(({ data }) => {
+      if (typeof data?.prompt !== "string" || !data.prompt.trim()) {
+        throw new Error("Сервер не прислал промпт поиска");
+      }
+      return data.prompt as string;
+    });
+  sourcesPromptCache.set(key, request);
+  request.catch(() => sourcesPromptCache.delete(key));
+  return request;
+}
+
 export type StepAggregateApiResponse = {
   success: boolean;
   status?: "ready" | "needs-sources";

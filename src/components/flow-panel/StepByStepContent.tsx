@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
 import { MarkdownEditor } from "../markdown-editor";
-import { getDefaultStepSourcesPrompt } from "../../prompts/sourcesPrompt";
+import { useStepSourcesPrompt } from "./useStepSourcesPrompt";
 import {
   joinStepAggregatePrompt,
   splitStepAggregatePrompt,
@@ -26,6 +26,7 @@ import { parseDomainsInput } from "../../utils/parseDomains";
 import {
   stepFarSideEmpty,
   stepLoopsBack,
+  stepSufficiency,
 } from "../../utils/parseAlternatives";
 import {
   AI_MODELS,
@@ -189,6 +190,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
         : [],
     [stepAggregatedText, direction, stepLineage, productName],
   );
+  // «Достаточность данных» обобщения v4 — пометка «частично» в превью.
+  const aggregateSufficiency = useMemo(
+    () => stepSufficiency(stepAggregatedText ?? ""),
+    [stepAggregatedText],
+  );
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
   const showPreview =
@@ -249,10 +255,9 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     setDomainsText,
   } = useStepSearchSettings();
 
-  const autoSrcPrompt = useMemo(
-    () => getDefaultStepSourcesPrompt(direction, productName, maxItems),
-    [direction, productName, maxItems],
-  );
+  // Промпт поиска по умолчанию — с сервера, когда окно открыто (им сервер и
+  // ищет); пока грузится или сервер старее — своя копия.
+  const autoSrcPrompt = useStepSourcesPrompt(direction, productName, maxItems, srcPromptOpen);
   const displayedSrcPrompt = manualSrcPrompt ?? autoSrcPrompt;
   const isSrcPromptDirty = manualSrcPrompt !== null;
   const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";
@@ -1159,6 +1164,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           // полосу шагов даёт окно построения.
           inline
           outcome={pendingStepOutcome}
+          sufficiency={aggregateSufficiency}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.
