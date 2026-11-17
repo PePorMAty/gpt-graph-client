@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FC } from "react";
 import type { StepChainApiStep, StepProduct } from "../../store/types";
 import { normalizeProductName } from "../../utils/normalizeProductName";
+import type { StepSufficiency } from "../../utils/parseAlternatives";
 import { identifyStepProducts } from "../../utils/resolveProductIds";
 import { applyStepFix } from "../../utils/stepCheck";
 import { StepCheckNotice } from "../step-check/StepCheckNotice";
@@ -72,6 +73,12 @@ interface StepPreviewModalProps {
   inline?: boolean;
   /** Чем кончится «Добавить шаг» на текущем графе — предупредить заранее. */
   outcome?: StepOutcome | null;
+  /**
+   * «Достаточность данных» обобщения (v4): partial — источники называют
+   * только часть сырья или продуктов шага. Показывается пометкой «частично»:
+   * шаг строить можно, но список стоит проверить.
+   */
+  sufficiency?: StepSufficiency | null;
   onAccept: (filteredStep: StepChainApiStep) => void;
   onRetry: () => void;
   onReject: () => void;
@@ -84,6 +91,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   direction,
   inline = false,
   outcome = null,
+  sufficiency = null,
   onAccept,
   onRetry,
   onReject,
@@ -395,12 +403,26 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
           <div className={styles.cardText}>
             <span className={styles.cardCap}>
               Производственный шаг #{stepNumber}
+              {sufficiency === "partial" && (
+                <span
+                  className={styles.badgePartial}
+                  title="Обобщение отметило данные как неполные: источники подтверждают только часть сырья или продуктов этого шага. Проверьте списки ниже — добавьте недостающее или доберите источники."
+                >
+                  частично
+                </span>
+              )}
             </span>
             <div className={styles.cardName}>{shown.transformation.name}</div>
             {shown.transformation.description && (
               <p className={styles.cardDesc}>
                 {shown.transformation.description}
               </p>
+            )}
+            {sufficiency === "partial" && (
+              <span className={styles.partialHint}>
+                По источникам состав шага подтверждён не полностью — проверьте
+                сырьё и продукты.
+              </span>
             )}
           </div>
         </section>

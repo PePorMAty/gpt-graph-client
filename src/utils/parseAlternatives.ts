@@ -268,3 +268,16 @@ export function stepFarSideEmpty(
     .trim();
   return inner === "" || EMPTY_LIST_WORDS.test(inner);
 }
+
+export type StepSufficiency = "complete" | "partial" | "unresolved";
+
+/**
+ * «Достаточность данных» из примечаний обобщения (промпты v4): complete —
+ * источники называют весь состав шага, partial — только часть сырья или
+ * продуктов, unresolved — шага по источникам нет. У прежних промптов такой
+ * строки нет — null. Так же читает сервер (aggregate.js → sufficiencyOf).
+ */
+export function stepSufficiency(text: string): StepSufficiency | null {
+  const m = /Достаточность данных:?\**:?\s*\**\s*(complete|partial|unresolved)/i.exec(text || "");
+  return m ? (m[1].toLowerCase() as StepSufficiency) : null;
+}

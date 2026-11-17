@@ -26,6 +26,7 @@ import { parseDomainsInput } from "../../utils/parseDomains";
 import {
   stepFarSideEmpty,
   stepLoopsBack,
+  stepSufficiency,
 } from "../../utils/parseAlternatives";
 import {
   AI_MODELS,
@@ -188,6 +189,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           )
         : [],
     [stepAggregatedText, direction, stepLineage, productName],
+  );
+  // «Достаточность данных» обобщения v4 — пометка «частично» в превью.
+  const aggregateSufficiency = useMemo(
+    () => stepSufficiency(stepAggregatedText ?? ""),
+    [stepAggregatedText],
   );
   const hasSteps = stepChainStepCount > 0;
   const buildNeedsSources = stepChainStatus === "needs-sources";
@@ -1158,6 +1164,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           // полосу шагов даёт окно построения.
           inline
           outcome={pendingStepOutcome}
+          sufficiency={aggregateSufficiency}
           onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.

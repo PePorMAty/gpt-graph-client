@@ -3,7 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { alternativeKey, extractStepProducts, splitProductList, variantLoopsBack } from "./parseAlternatives";
+import {
+  alternativeKey,
+  extractStepProducts,
+  splitProductList,
+  stepSufficiency,
+  variantLoopsBack,
+} from "./parseAlternatives";
 
 describe("splitProductList", () => {
   it("запятая между цифрами — часть названия", () => {
@@ -35,5 +41,17 @@ describe("варианты шага с запятой в названии", () =
 
   it("возврат к «Нейлону 6,6» из родословной узнаётся как рециклинг", () => {
     expect(variantLoopsBack(variant, "down", ["Волокно нейлона 6,6", "Нейлон 6,6"])).toEqual(["Нейлон 6,6"]);
+  });
+});
+
+describe("stepSufficiency", () => {
+  it("читает «Достаточность данных» примечаний v4", () => {
+    expect(stepSufficiency("- **Достаточность данных:** partial — не использовать как полный шаг до проверки.")).toBe("partial");
+    expect(stepSufficiency("- **Достаточность данных:** complete")).toBe("complete");
+    expect(stepSufficiency("Достаточность данных: unresolved — преобразование не создавать")).toBe("unresolved");
+  });
+
+  it("у прежних промптов строки нет — null", () => {
+    expect(stepSufficiency("# Примечания\n- Основной путь выбран по числу блоков.")).toBeNull();
   });
 });
