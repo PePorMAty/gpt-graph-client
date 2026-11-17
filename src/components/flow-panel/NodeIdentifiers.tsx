@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FC } from "react";
 
 import { useAppSelector } from "../../store/hooks";
 import { industryKey } from "../../store/slices/industrySlice";
+import { mergeModelCodes } from "../../store/api/product-codes-api";
 import {
   PRODUCT_ID_SOURCE_LABELS,
   readProductId,
@@ -80,14 +81,22 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   // Код, заданный вручную во вкладке «Промышленное знание», главнее кода
   // реестра: человек поправил его сознательно.
   const own = readCodeOverrides(data);
-  const okpd2 = own.okpd2 ? null : industry?.found ? industry.okpd2 : null;
-  const tnved = own.tnved ? null : industry?.found ? industry.tnved : null;
+  // Определённый моделью по классификатору («Определение кодов») — следом за
+  // заданным вручную: его выбирали для этого продукта, а код реестра — чей
+  // нашёлся под похожим названием.
+  const byModel = mergeModelCodes(industry?.modelCodes, data?.modelCodes);
+  const model = {
+    okpd2: own.okpd2 ? undefined : byModel?.okpd2,
+    tnved: own.tnved ? undefined : byModel?.tnved,
+  };
+  const okpd2 = own.okpd2 || model.okpd2 ? null : industry?.found ? industry.okpd2 : null;
+  const tnved = own.tnved || model.tnved ? null : industry?.found ? industry.tnved : null;
   // Кода из реестра нет (или нет записи) — позиция по номеру CAS из
   // таможенного реестра ЕС (ECICS), иначе по названию вещества из
   // классификатора, с пометкой: это справка, а не код заявителя.
-  const tnvedByCas = !tnved && !own.tnved ? (industry?.tnvedCas ?? null) : null;
+  const tnvedByCas = !tnved && !own.tnved && !model.tnved ? (industry?.tnvedCas ?? null) : null;
   const tnvedByName =
-    !tnved && !own.tnved && !tnvedByCas ? (industry?.tnvedCategory ?? null) : null;
+    !tnved && !own.tnved && !model.tnved && !tnvedByCas ? (industry?.tnvedCategory ?? null) : null;
   // CAS — факт справочника, а не реестра: он есть и у вещества, которого в
   // ГИСП нет вовсе. Потому и не прячется за found, в отличие от кодов.
   const cas = industry?.cas ?? null;
@@ -162,6 +171,24 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
             </div>
           )}
 
+          {model.okpd2 && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ОКПД2</span>
+              <span className={styles.idPopValue}>
+                <a
+                  className={styles.idPopLink}
+                  href={okpd2Url(model.okpd2.code)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {model.okpd2.code}
+                </a>
+                <span className={styles.idPopNote}>{model.okpd2.name}</span>
+                <span className={styles.idPopNote}>определён моделью по классификатору</span>
+              </span>
+            </div>
+          )}
+
           {okpd2 && (
             <div className={styles.idPopRow}>
               <span className={styles.idPopLabel}>ОКПД2</span>
@@ -214,6 +241,26 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
                     "нет в классификаторе"}
                 </span>
                 <span className={styles.idPopNote}>задан вручную</span>
+              </span>
+            </div>
+          )}
+
+          {model.tnved && (
+            <div className={styles.idPopRow}>
+              <span className={styles.idPopLabel}>ТН ВЭД</span>
+              <span className={styles.idPopValue}>
+                <a
+                  className={styles.idPopLink}
+                  href={tnvedUrl(model.tnved.code)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {model.tnved.display ?? model.tnved.code}
+                </a>
+                <span className={styles.idPopNote}>
+                  {tnvedTitle(model.tnved.name, model.tnved.path)}
+                </span>
+                <span className={styles.idPopNote}>определён моделью по классификатору</span>
               </span>
             </div>
           )}

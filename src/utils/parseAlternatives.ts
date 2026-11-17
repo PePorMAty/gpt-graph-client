@@ -1,6 +1,33 @@
 // src/utils/parseAlternatives.ts
 import { normalizeProductName } from "./normalizeProductName";
 
+/**
+ * Список продуктов из строки обобщения «[А, Б]» — как на сервере
+ * (routes/step/utils/productList.js): по запятым и точкам с запятой, но не
+ * внутри скобок («Смола (эпоксидная, жидкая)») и не между цифрами — «Нейлон
+ * 6,6» и «1,2-дихлорэтан» одно название, а не два.
+ */
+export function splitProductList(raw: string): string[] {
+  const s = String(raw || "");
+  const items: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "(" || ch === "[") depth += 1;
+    if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+    const digitComma = ch === "," && /\d/.test(s[i - 1] ?? "") && /\d/.test(s[i + 1] ?? "");
+    if ((ch === ";" || (ch === "," && !digitComma)) && depth === 0) {
+      items.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  items.push(cur);
+  return items.map((x) => x.trim()).filter(Boolean);
+}
+
 export type ParsedAlternative = {
   title: string;
   firstStepName: string;
@@ -121,11 +148,8 @@ export function extractStepProducts(description: string): {
   outputs: string[];
 } {
   const parseList = (raw: string): string[] =>
-    raw
-      .replace(/^\s*\[/, "")
-      .replace(/\]\s*$/, "")
-      .split(/[;,]/)
-      .map((s) => normalizeProductName(s.trim()))
+    splitProductList(raw.replace(/^\s*\[/, "").replace(/\]\s*$/, ""))
+      .map((s) => normalizeProductName(s))
       .filter(Boolean);
   const outM = /\*\*Что производят:\*\*\s*(.+)/.exec(description || "");
   const inM = /\*\*Из чего производят:\*\*\s*(.+)/.exec(description || "");
@@ -184,13 +208,7 @@ function farSideNames(description: string, direction: "up" | "down"): string[] {
   const label = direction === "up" ? "Из чего производят" : "Что производят";
   const m = new RegExp(`\\*\\*${label}:\\*\\*([^\\n]*)`).exec(description || "");
   if (!m) return [];
-  return m[1]
-    .trim()
-    .replace(/^\[/, "")
-    .replace(/\]\.?$/, "")
-    .split(/[;,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return splitProductList(m[1].trim().replace(/^\[/, "").replace(/\]\.?$/, ""));
 }
 
 /**
@@ -249,4 +267,17 @@ export function stepFarSideEmpty(
     .replace(/\]\.?$/, "")
     .trim();
   return inner === "" || EMPTY_LIST_WORDS.test(inner);
+}
+
+export type StepSufficiency = "complete" | "partial" | "unresolved";
+
+/**
+ * «Достаточность данных» из примечаний обобщения (промпты v4): complete —
+ * источники называют весь состав шага, partial — только часть сырья или
+ * продуктов, unresolved — шага по источникам нет. У прежних промптов такой
+ * строки нет — null. Так же читает сервер (aggregate.js → sufficiencyOf).
+ */
+export function stepSufficiency(text: string): StepSufficiency | null {
+  const m = /Достаточность данных:?\**:?\s*\**\s*(complete|partial|unresolved)/i.exec(text || "");
+  return m ? (m[1].toLowerCase() as StepSufficiency) : null;
 }

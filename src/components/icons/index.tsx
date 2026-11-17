@@ -445,3 +445,11 @@ export const ArrowRightIcon: Icon = (p) => (
     <path d="M5 12h14M13 6l6 6-6 6" />
   </svg>
 );
+
+/** Штрихкод — определение кодов продукции (ОКПД2, ТН ВЭД). */
+export const BarcodeIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M4 6v12M7.5 6v12M10 6v12M13.5 6v12M16 6v12M20 6v12" />
+  </svg>
+);
+

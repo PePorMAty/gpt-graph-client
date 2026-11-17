@@ -142,6 +142,19 @@ function describe(
           };
         }
       }
+      // Коды, определённые моделью («Определение кодов»): какие легли на узел.
+      if ("modelCodes" in p.data) {
+        const after = (p.data.modelCodes ?? {}) as NonNullable<CustomNode["data"]["modelCodes"]>;
+        const parts = (["okpd2", "tnved"] as const)
+          .filter((k) => after[k])
+          .map((k) => `${CODE_LABEL[k]} — ${after[k]!.display ?? after[k]!.code}`);
+        return {
+          kind: "edit",
+          title: "Определены коды продукта моделью",
+          details: `«${labelOf(prevNodes, p.nodeId)}»: ${parts.length ? parts.join(", ") : "коды не определены"}`,
+          nodeIds: [p.nodeId],
+        };
+      }
       // Расчёты материального баланса: пришёл новый (посчитан или взят из
       // базы), убран или в нём поправили проценты вручную. Готовые расчёты,
       // подтянутые при открытии графа (silent), — не событие: их никто не

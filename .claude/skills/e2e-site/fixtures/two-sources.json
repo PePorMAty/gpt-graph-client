@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "sources": [
+    {
+      "title": "Бисфенол А из фенола и ацетона",
+      "url": "https://example.com/bpa",
+      "access_hint": "open html",
+      "technology_description": "Бисфенол А получают конденсацией фенола с ацетоном в присутствии кислотного катализатора.",
+      "inputs_outputs_hint": ["Фенол, Ацетон → Бисфенол А"],
+      "evidence_snippets": ["phenol and acetone are condensed to bisphenol A"],
+      "server_check": { "status": "ok" }
+    },
+    {
+      "title": "Фенолоформальдегидные смолы",
+      "url": "https://example.com/pf",
+      "access_hint": "open html",
+      "technology_description": "Фенолоформальдегидные смолы получают поликонденсацией фенола с формальдегидом.",
+      "inputs_outputs_hint": ["Фенол, Формальдегид → Фенолоформальдегидные смолы"],
+      "evidence_snippets": ["phenol reacts with formaldehyde"],
+      "server_check": { "status": "ok" }
+    }
+  ],
+  "dropped_sources": [],
+  "exhausted": false
+}

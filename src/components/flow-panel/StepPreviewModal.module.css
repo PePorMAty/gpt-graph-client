@@ -317,6 +317,25 @@
   color: var(--c-text-muted);
 }
 
+/* «Частично» — не ошибка, а справка: янтарная, как «не заполнен» у узла. */
+.badgePartial {
+  margin-left: var(--s-2);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.partialHint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: #92400e;
+}
+
 .cardName {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);

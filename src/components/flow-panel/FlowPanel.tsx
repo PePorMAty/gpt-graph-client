@@ -5,11 +5,9 @@ import { StepByStepContent } from "./StepByStepContent";
 import { MarkdownEditor } from "../markdown-editor";
 import { getDefaultChainSystemPrompt } from "../../prompts/chainPrompt";
 import { getDefaultAggregateFullPrompt, splitAggregatePrompt } from "../../prompts/aggregatePrompt";
-import {
-  getDefaultSourcesPrompt,
-  getDefaultStepSourcesPrompt,
-} from "../../prompts/sourcesPrompt";
+import { getDefaultSourcesPrompt } from "../../prompts/sourcesPrompt";
 import { AddSourceForm } from "./AddSourceForm";
+import { useStepSourcesPrompt } from "./useStepSourcesPrompt";
 import { SearchPromptEditor } from "./SearchPromptEditor";
 import { parseDomainsInput } from "../../utils/parseDomains";
 import { getAiRequestFields } from "../../hooks/useAiConfig";
@@ -892,11 +890,8 @@ const PanelBuildViewInner: FC<{
   // Настройки поиска общие со вторым экраном: что задали здесь, с тем и
   // пойдёт «Добрать через модель».
   const search = useStepSearchSettings();
-  const autoSrcPrompt = useMemo(
-    () =>
-      getDefaultStepSourcesPrompt(dir ?? "down", productName, search.maxItems),
-    [dir, productName, search.maxItems],
-  );
+  // С сервера, когда окно открыто: им сервер и ищет (useStepSourcesPrompt).
+  const autoSrcPrompt = useStepSourcesPrompt(dir ?? "down", productName, search.maxItems, search.open);
   const displayedSrcPrompt = search.manualPrompt ?? autoSrcPrompt;
   const isSrcPromptDirty = search.manualPrompt !== null;
   const isSrcPromptEmpty = displayedSrcPrompt.trim() === "";

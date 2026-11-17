@@ -41,13 +41,11 @@ type CardTab = "brief" | "tech" | "industry" | "sources" | "routes" | "balance";
 const LOCK_TEXT: Record<NonNullable<FlowPanelProps["lockReason"]>, string> = {
   productsOnly:
     "Включён режим «Только продукты»: граф в нём только для просмотра — построить шаг или получить описание нельзя.",
-  focus: "Включён «Фокус»: карточка только для просмотра — построить шаг или получить описание нельзя.",
   shared: "Граф открыт по ссылке — только для просмотра.",
 };
 
 const UNLOCK_TEXT: Record<NonNullable<FlowPanelProps["lockReason"]>, string> = {
   productsOnly: "Показать весь граф",
-  focus: "Выйти из фокуса",
   shared: "",
 };
 

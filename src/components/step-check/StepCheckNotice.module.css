@@ -1,0 +1,101 @@
+/* Итог проверки шага моделью — на превью шага и в отказе расчёта баланса. */
+
+.pending,
+.muted {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
+.spinner {
+  flex: none;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  border: 2px solid var(--c-border-strong);
+  border-top-color: var(--c-brand);
+  border-radius: 50%;
+  animation: checkSpin 0.8s linear infinite;
+}
+
+@keyframes checkSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+.ok,
+.warn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  overflow-wrap: anywhere;
+}
+
+.ok {
+  border: 1px solid var(--c-success-border);
+  background: var(--c-success-soft);
+}
+
+.warn {
+  border: 1px solid var(--c-warning-border);
+  background: var(--c-warning-soft);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+
+.icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.ok .icon {
+  color: var(--c-success);
+}
+
+.warn .icon {
+  color: var(--c-warning);
+}
+
+.changes {
+  margin: 0;
+  padding-left: var(--s-5);
+}
+
+.changes li + li {
+  margin-top: var(--s-1);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-brand);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
