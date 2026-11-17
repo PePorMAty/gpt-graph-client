@@ -474,6 +474,12 @@
   font-size: var(--fs-xs);
 }
 
+.note {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+}
+
 .error {
   font-size: var(--fs-sm);
   color: var(--c-danger);

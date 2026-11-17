@@ -11,7 +11,11 @@
 
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 
+import { useStore } from "react-redux";
+
 import { useAppDispatch } from "../../store/hooks";
+import type { RootState } from "../../store/store";
+import { updateNodeData } from "../../store/slices/gptSlice";
 import { checkIndustry, setModelCodes } from "../../store/slices/industrySlice";
 import {
   determineProductCodes,
@@ -19,6 +23,7 @@ import {
   ProductCodesUnsupported,
   type ProductCodeKind,
   type ProductCodeResult,
+  type ModelCodes,
   type ProductCodesResponse,
 } from "../../store/api/product-codes-api";
 import { plural } from "../../utils/plural";
@@ -32,6 +37,9 @@ export interface CodesProduct {
   description?: string;
   /** Коды, что сейчас в карточке: подсказка серверу, где искать. */
   current?: Partial<Record<ProductCodeKind, string>>;
+  /** По графу: во что продукт идёт и из чего его делают. */
+  usedFor?: string[];
+  madeFrom?: string[];
 }
 
 interface Props {
@@ -59,6 +67,8 @@ type Item =
 
 const CONCURRENCY = 2;
 
+const shorten = (t: string, max = 60) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t);
+
 /** Строка итога по одному виду кода. */
 const CodeRow: FC<{ kind: ProductCodeKind; r?: ProductCodeResult }> = ({ kind, r }) =>
   r ? (
@@ -71,8 +81,10 @@ const CodeRow: FC<{ kind: ProductCodeKind; r?: ProductCodeResult }> = ({ kind, r
           <span className={css.codeOk}>определён</span>
         </>
       ) : (
-        <span className={css.codeNone} title={r.reason}>
-          не определён{r.subgroup ? ` (подгруппа ${r.subgroup})` : ""}: {r.reason}
+        <span className={css.codeNone} title={r.subgroupName ?? r.reason}>
+          не определён{r.subgroup ? ` (подгруппа ${r.subgroup}${r.subgroupName ? ` «${shorten(r.subgroupName)}»` : ""})` : ""}:{" "}
+          {r.missing ?? r.reason}
+          {r.missing ? " — уточните название продукта" : ""}
         </span>
       )}
     </div>
@@ -80,6 +92,7 @@ const CodeRow: FC<{ kind: ProductCodeKind; r?: ProductCodeResult }> = ({ kind, r
 
 export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelection, onClose }) => {
   const dispatch = useAppDispatch();
+  const store = useStore<RootState>();
   const [kinds, setKinds] = useState<Set<ProductCodeKind>>(() => new Set(["okpd2", "tnved"]));
   const [defaults, setDefaults] = useState<Record<ProductCodeKind, string> | null | undefined>(undefined);
   const [custom, setCustom] = useState(customPrompts);
@@ -145,17 +158,38 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
               description: product.description,
               kinds: chosenKinds,
               current: product.current,
+              ...(product.usedFor?.length ? { usedFor: product.usedFor } : {}),
+              ...(product.madeFrom?.length ? { madeFrom: product.madeFrom } : {}),
               ...(Object.keys(prompts).length ? { prompts } : {}),
             },
             controller.signal,
           );
           total += result.requests;
+          // Коды — на сам узел: они сохраняются с графом, а у общих
+          // названий («Двигатель») только там и живут. Не нашлось — прежний
+          // код этого вида с узла снимаем: его переспросили.
+          const node = store.getState().graph.data.nodes.find((n) => n.id === product.id);
+          const next: ModelCodes = { ...(node?.data?.modelCodes ?? {}) };
+          for (const k of chosenKinds) {
+            const code = result.saved[k];
+            if (code) next[k] = code;
+            else delete next[k];
+          }
+          dispatch(
+            updateNodeData({
+              nodeId: product.id,
+              data: { modelCodes: next.okpd2 || next.tnved ? next : undefined },
+            }),
+          );
           if (Object.keys(result.saved).length) {
             found++;
-            // Сведения о продукте уже есть — коды в них сразу; ещё нет —
-            // проверка их принесёт: сервер отдаёт сохранённые коды с ней.
-            dispatch(setModelCodes({ name: product.label, codes: result.saved }));
-            void dispatch(checkIndustry([product.label]));
+            // Записаны по названию — в сведения о продукте сразу (их видят
+            // одноимённые узлы); сведений ещё нет — проверка их принесёт:
+            // сервер отдаёт сохранённые коды с ней.
+            if (result.shared !== false) {
+              dispatch(setModelCodes({ name: product.label, codes: result.saved }));
+              void dispatch(checkIndustry([product.label]));
+            }
           }
           setItems((prev) => ({ ...prev, [product.id]: { state: "done", result } }));
         } catch (e) {
@@ -223,6 +257,17 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
                   </li>
                 ))}
               </ul>
+              {products.some((p) => p.usedFor?.length) && (
+                <p className={css.muted}>
+                  Модель увидит и то, во что продукт идёт по графу (
+                  {products
+                    .filter((p) => p.usedFor?.length)
+                    .slice(0, 3)
+                    .map((p) => `${p.label} → ${p.usedFor!.join(", ")}`)
+                    .join("; ")}
+                  ): код детали зависит от изделия.
+                </p>
+              )}
             </section>
 
             <section className={css.section}>
@@ -360,12 +405,21 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
                               ? "определяем…"
                               : it.state === "error"
                                 ? ""
-                                : Object.keys(it.result.saved).length
-                                  ? "сохранено"
-                                  : "кодов не нашлось"}
+                                : !Object.keys(it.result.saved).length
+                                  ? "кодов не нашлось"
+                                  : it.result.shared === false
+                                    ? "сохранено на узле"
+                                    : "сохранено"}
                         </span>
                       </div>
                       {it?.state === "done" && chosenKinds.map((k) => <CodeRow key={k} kind={k} r={it.result[k]} />)}
+                      {it?.state === "done" && it.result.shared === false && (
+                        <span className={css.note}>
+                          Название общее: код зависит от изделия, поэтому записан только на этот узел и на
+                          одноимённые узлы других графов не перейдёт. Чтобы переходил — уточните название,
+                          например «{p.label} ({p.usedFor?.[0] ?? "Автомобиль"})».
+                        </span>
+                      )}
                       {it?.state === "error" && <span className={css.error}>Ошибка: {it.error}</span>}
                     </li>
                   );

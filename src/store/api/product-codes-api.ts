@@ -34,14 +34,29 @@ export type ModelCodes = Partial<Record<ProductCodeKind, ModelCode>>;
 /** Итог по одному виду кода. */
 export type ProductCodeResult =
   | ({ status: "found" } & ModelCode)
-  | { status: "none"; reason: string; subgroup?: string; subgroupName?: string | null };
+  | {
+      status: "none";
+      reason: string;
+      /** Какого признака товара не хватило модели («код зависит от рабочего объёма двигателя»). */
+      missing?: string;
+      subgroup?: string;
+      subgroupName?: string | null;
+    };
 
 export interface ProductCodesResponse {
   name: string;
   okpd2?: ProductCodeResult;
   tnved?: ProductCodeResult;
-  /** Что записано на сервере. */
+  /** Найденные коды. */
   saved: ModelCodes;
+  /**
+   * Записаны ли на сервере по названию. Общие названия («Двигатель») — нет:
+   * код зависит от изделия, он живёт только на узле. У старого сервера поля
+   * нет — значит, записаны.
+   */
+  shared?: boolean;
+  /** Виды, у которых прежний сохранённый код стёрт: при повторе не нашлось. */
+  cleared?: ProductCodeKind[];
   /** Запросов к модели на этот продукт. */
   requests: number;
 }
@@ -56,6 +71,10 @@ export async function determineProductCodes(
     name: string;
     description?: string;
     kinds: ProductCodeKind[];
+    /** Во что продукт идёт по графу. */
+    usedFor?: string[];
+    /** Из чего его делают по графу. */
+    madeFrom?: string[];
     current?: Partial<Record<ProductCodeKind, string>>;
     prompts?: Partial<Record<ProductCodeKind, string>>;
   },
@@ -86,4 +105,17 @@ export async function fetchCodePrompts(): Promise<Record<ProductCodeKind, string
   } catch {
     return null;
   }
+}
+
+/**
+ * Коды моделью для показа: определённые для самого узла главнее сохранённых
+ * на сервере по названию.
+ */
+export function mergeModelCodes(
+  shared: ModelCodes | undefined,
+  own: ModelCodes | undefined,
+): ModelCodes | undefined {
+  const okpd2 = own?.okpd2 ?? shared?.okpd2;
+  const tnved = own?.tnved ?? shared?.tnved;
+  return okpd2 || tnved ? { ...(okpd2 ? { okpd2 } : {}), ...(tnved ? { tnved } : {}) } : undefined;
 }

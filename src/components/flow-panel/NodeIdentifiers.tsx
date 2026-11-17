@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FC } from "react";
 
 import { useAppSelector } from "../../store/hooks";
 import { industryKey } from "../../store/slices/industrySlice";
+import { mergeModelCodes } from "../../store/api/product-codes-api";
 import {
   PRODUCT_ID_SOURCE_LABELS,
   readProductId,
@@ -83,9 +84,10 @@ export const NodeIdentifiers: FC<Props> = ({ nodeId, short, productName }) => {
   // Определённый моделью по классификатору («Определение кодов») — следом за
   // заданным вручную: его выбирали для этого продукта, а код реестра — чей
   // нашёлся под похожим названием.
+  const byModel = mergeModelCodes(industry?.modelCodes, data?.modelCodes);
   const model = {
-    okpd2: own.okpd2 ? undefined : industry?.modelCodes?.okpd2,
-    tnved: own.tnved ? undefined : industry?.modelCodes?.tnved,
+    okpd2: own.okpd2 ? undefined : byModel?.okpd2,
+    tnved: own.tnved ? undefined : byModel?.tnved,
   };
   const okpd2 = own.okpd2 || model.okpd2 ? null : industry?.found ? industry.okpd2 : null;
   const tnved = own.tnved || model.tnved ? null : industry?.found ? industry.tnved : null;

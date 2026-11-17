@@ -8,10 +8,12 @@
 // запроса (продукты идут по два сразу — очерёдность ответов не задана), а
 // боевой сервер, если ещё старее ветки, дополняется: промпты по умолчанию и
 // поле modelCodes в /industry/lookup — как их отдаёт новый сервер.
+// Фенол — как общее название (shared: false): код только на узле, по
+// названию сервер его не отдаёт; ТН ВЭД — «не определён» с причиной.
 const CODES = {
   Фенол: {
     okpd2: { code: "20.14.24.111", name: "Фенол", subgroup: "20.14" },
-    tnved: { code: "2907111000", display: "2907 11 100 0", name: "высокой степени чистоты", path: "Фенолы → фенол (гидроксибензол) и его соли → высокой степени чистоты", subgroup: "2907" },
+    tnved: null,
   },
   Формальдегид: {
     okpd2: { code: "20.14.61.110", name: "Формальдегид", subgroup: "20.14" },
@@ -34,16 +36,19 @@ module.exports = {
       const b = JSON.parse(route.request().postData() || "{}");
       asked.push(b);
       const codes = CODES[b.name] ?? {};
-      const out = { success: true, name: b.name, saved: {}, requests: 0 };
+      const shared = b.name !== "Фенол";
+      const out = { success: true, name: b.name, saved: {}, shared, cleared: [], requests: 0 };
       for (const k of b.kinds) {
         const c = codes[k];
         out.requests += 1;
         if (c) {
           out[k] = { status: "found", ...c };
           out.saved[k] = { ...c, model: "e2e", at };
-        } else out[k] = { status: "none", reason: "подставной ответ e2e: кода нет" };
+        } else {
+          out[k] = { status: "none", reason: "код зависит от степени чистоты", missing: "код зависит от степени чистоты", subgroup: "2907", subgroupName: "Фенолы; фенолоспирты" };
+        }
       }
-      saved[b.name] = { ...(saved[b.name] ?? {}), ...out.saved };
+      if (shared) saved[b.name] = { ...(saved[b.name] ?? {}), ...out.saved };
       await new Promise((ok) => setTimeout(ok, 600));
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(out) });
     });
@@ -107,11 +112,19 @@ module.exports = {
     await dialog.getByText(/^Готово: 2 из 2/).waitFor({ timeout: 20000 }).catch(() => {});
     text = await dialog.innerText();
     await shot("results");
-    check("коды по каждому продукту", /Готово: 2 из 2/.test(text) && /20\.14\.61\.110/.test(text) && /2907 11 100 0/.test(text), text.slice(0, 500).replace(/\s+/g, " "));
+    check("коды по каждому продукту", /Готово: 2 из 2/.test(text) && /20\.14\.61\.110/.test(text) && /20\.14\.24\.111/.test(text), text.slice(0, 500).replace(/\s+/g, " "));
+    check(
+      "«не определён» — с подгруппой и причиной; общее название — «сохранено на узле»",
+      /не определён \(подгруппа 2907 «Фенолы; фенолоспирты»\): код зависит от степени чистоты — уточните название продукта/.test(text) &&
+        /сохранено на узле/.test(text) &&
+        /Название общее/.test(text),
+      text.slice(0, 600).replace(/\s+/g, " "),
+    );
     const f = asked.find((b) => b.name === "Формальдегид") ?? {};
     check(
       "в запрос ушли виды кодов, свой промпт ОКПД2 и текущие коды",
-      asked.length === 2 && f.kinds?.join() === "okpd2,tnved" && /Свой текст e2e/.test(f.prompts?.okpd2 ?? "") && !f.prompts?.tnved && "current" in f,
+      asked.length === 2 && f.kinds?.join() === "okpd2,tnved" && /Свой текст e2e/.test(f.prompts?.okpd2 ?? "") && !f.prompts?.tnved && "current" in f &&
+        f.usedFor?.includes("Фенолоформальдегидные смолы"),
       JSON.stringify(f).slice(0, 300),
     );
     check("уведомление «Коды сохранены»", (await page.getByText("Коды сохранены в промышленном знании").count()) > 0);
@@ -128,6 +141,15 @@ module.exports = {
     const card = await tabs.locator("xpath=..").innerText();
     await shot("card");
     check("в карточке — коды «определён моделью»", /20\.14\.61\.110/.test(card) && /2912 11 000 0/.test(card) && /определён моделью/.test(card), card.slice(0, 600).replace(/\s+/g, " "));
+    await page.getByRole("button", { name: "Закрыть карточку" }).click().catch(() => {});
+    // Код общего названия — с самого узла: по названию сервер его не отдаёт.
+    await lib.nodeByLabel(page, "Фенол").click();
+    await lib.sleep(800);
+    await tabs.getByRole("button", { name: "Промышленное знание", exact: true }).click();
+    await page.getByText("20.14.24.111").first().waitFor({ timeout: 10000 }).catch(() => {});
+    const phenol = await tabs.locator("xpath=..").innerText();
+    await shot("card-node");
+    check("код, записанный на узел, — в карточке узла", /20\.14\.24\.111/.test(phenol) && /определён моделью/.test(phenol), phenol.slice(0, 500).replace(/\s+/g, " "));
     log(`запросов определения кодов: ${asked.length}`);
   },
 };

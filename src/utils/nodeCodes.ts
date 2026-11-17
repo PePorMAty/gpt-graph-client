@@ -11,6 +11,7 @@
 // выглядела бы необъяснимой.
 
 import type { IndustryProductInfo } from "../store/api/industry-api";
+import { mergeModelCodes } from "../store/api/product-codes-api";
 import type { CustomNodeData } from "../types";
 import { readCodeOverrides } from "../components/industry/codeOverrides";
 
@@ -59,7 +60,8 @@ export function nodeCodes(
 
   add("cas", info?.cas, "dictionary");
 
-  const model = info?.modelCodes;
+  // Определённые моделью для самого узла — главнее сохранённых по названию.
+  const model = mergeModelCodes(info?.modelCodes, data?.modelCodes);
 
   if (own.okpd2) add("okpd2", own.okpd2.code, "manual");
   else if (model?.okpd2) add("okpd2", model.okpd2.code, "model");

@@ -2,6 +2,7 @@ import { useMemo, useState, type FC } from "react";
 
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { checkIndustry, industryKey } from "../../store/slices/industrySlice";
+import { mergeModelCodes } from "../../store/api/product-codes-api";
 import { updateNodeData } from "../../store/slices/gptSlice";
 import type { CodeOverride } from "../../types";
 import type {
@@ -203,7 +204,10 @@ export const IndustryPanel: FC<Props> = ({
   );
   // Коды, определённые моделью по классификатору («Определение кодов»), —
   // главнее кодов реестра; когда и кем определены — строкой под кодами.
-  const modelCodes = info?.modelCodes;
+  const modelCodes = useMemo(
+    () => mergeModelCodes(info?.modelCodes, nodeData?.modelCodes),
+    [info, nodeData],
+  );
   const modelWhen = [modelCodes?.okpd2?.at, modelCodes?.tnved?.at].filter(Boolean).sort().pop();
   const modelNote =
     modelCodes && (modelCodes.okpd2 || modelCodes.tnved) ? (
