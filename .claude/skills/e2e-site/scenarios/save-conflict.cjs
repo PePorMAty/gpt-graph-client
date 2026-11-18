@@ -26,7 +26,7 @@ module.exports = {
     /** «Чужое» сохранение: тот же граф, версия — последняя на сервере. */
     const theirSave = async (id) => {
       const g = (await api("GET", `/api/graph-files/${encodeURIComponent(id)}`)).body;
-      const r = await api("PUT", `/api/graph-files/${encodeURIComponent(id)}`, {
+      const r = await api("PUT", `/api/graph-files/${encodeURIComponent(id)}?by=e2e`, {
         nodes: g.graph.nodes,
         edges: g.graph.edges,
         leaf_nodes: g.state.leaf_nodes,
@@ -41,6 +41,18 @@ module.exports = {
       await lib.sleep(1500);
     };
     const conflictShown = () => page.getByText("Граф изменили, пока вы работали").first().isVisible().catch(() => false);
+
+    // Сохранения самого приложения (не «чужие» из сценария): уходят сжатыми
+    // (Content-Type: application/gzip); сервер старее клиента их не понимает —
+    // клиент повторяет несжатым.
+    const saves = [];
+    page.on("response", (r) => {
+      const q = r.request();
+      // ?by=e2e — «чужие» сохранения самого сценария, их не считаем.
+      if (!/\/graph-files\/[^/?]+$/.test(q.url()) || !["POST", "PUT"].includes(q.method())) return;
+      const type = (q.headers()["content-type"] || "").split(";")[0];
+      saves.push({ type, kb: Math.round((q.postDataBuffer()?.length ?? 0) / 1024), status: r.status() });
+    });
 
     await lib.openApp(page, origin);
     const list = (await api("GET", "/api/graph-files")).body?.data ?? [];
@@ -77,6 +89,17 @@ module.exports = {
     await clickSave(/^Обновить «/);
     const final = (await api("GET", `/api/graph-files/${encodeURIComponent(copy.id)}`)).body;
     check("сохранение без конфликта проходит, версия растёт", !(await conflictShown()) && final?.meta?.version === vc + 1, `версия ${final?.meta?.version}, ожидали ${vc + 1}`);
+
+    // 4) Как ушли сохранения приложения: сжатыми; если сервер старее
+    // клиента — первое сжатое отклонено, дальше несжатые проходят.
+    log(`сохранения приложения: ${saves.map((s) => `${s.type} ${s.kb} КБ → ${s.status}`).join("; ")}`);
+    const ok = saves.filter((s) => s.status < 300);
+    check(
+      "сохранения уходят сжатыми (application/gzip) или, если сервер их не понял, несжатыми",
+      saves.length > 0 && saves[0].type === "application/gzip" && ok.length > 0 &&
+        (ok.every((s) => s.type === "application/gzip") || saves.slice(1).every((s) => s.type === "application/json")),
+      ok.every((s) => s.type === "application/gzip") ? "сервер понимает сжатые" : "сервер старее клиента — откат на несжатые",
+    );
 
     // Убрать копию за собой.
     await api("DELETE", `/api/graph-files/${encodeURIComponent(copy.id)}`);

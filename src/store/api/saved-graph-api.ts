@@ -4,11 +4,25 @@ import type {
   SavedGraphMeta,
   SaveGraphPayload,
 } from "../types";
+import { sendCompressed } from "./compressedBody";
+
+/** Граф на сервер — сжатым, если сервер это понимает (см. compressedBody.ts). */
+function sendGraph(method: "post" | "put", url: string, payload: SaveGraphPayload) {
+  return sendCompressed(payload, (body, contentType) =>
+    axios.request({
+      method,
+      url,
+      data: body,
+      headers: contentType ? { "Content-Type": contentType } : undefined,
+    }),
+  );
+}
 
 export async function saveGraph(payload: SaveGraphPayload) {
-  const { data } = await axios.post(
+  const { data } = await sendGraph(
+    "post",
     `${import.meta.env.VITE_API_URL}/graph-files/save`,
-    payload
+    payload,
   );
   return data;
 }
@@ -59,7 +73,8 @@ export async function updateSavedGraph(
   payload: SaveGraphPayload,
 ): Promise<SavedGraphMeta> {
   try {
-    const { data } = await axios.put(
+    const { data } = await sendGraph(
+      "put",
       `${import.meta.env.VITE_API_URL}/graph-files/${id}`,
       payload,
     );
