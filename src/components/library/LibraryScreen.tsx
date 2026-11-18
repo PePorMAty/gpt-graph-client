@@ -130,7 +130,9 @@ export const LibraryScreen = () => {
           sourcesSeqCounter: file.state.sources?.seqCounter,
         }),
       );
-      dispatch(setOpenedGraph({ id: meta.id, name: meta.name }));
+      // Версия — из самого файла: список мог устареть, если граф с тех пор
+      // сохраняли.
+      dispatch(setOpenedGraph({ id: meta.id, name: meta.name, version: file.meta.version ?? null }));
       // Закладки и история этого графа лежат на сервере — поднимаем их.
       dispatch(openGraphExtras(meta.id));
       dispatch(

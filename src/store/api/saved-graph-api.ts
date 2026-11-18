@@ -36,16 +36,50 @@ export async function deleteSavedGraph(id: string): Promise<void> {
   await axios.delete(`${import.meta.env.VITE_API_URL}/graph-files/${id}`);
 }
 
-// Обновить (перезаписать содержимое) уже сохранённый граф — тот же файл/id.
+/**
+ * Граф сохранил кто-то другой, пока его правили: версия, с которой его
+ * открыли, — не последняя. current — мета свежей версии (имя, когда).
+ */
+export class GraphConflictError extends Error {
+  current: SavedGraphMeta;
+  constructor(current: SavedGraphMeta) {
+    super("граф изменили, пока вы работали");
+    this.current = current;
+  }
+}
+
+/**
+ * Обновить (перезаписать содержимое) уже сохранённый граф — тот же файл/id.
+ * payload.version — версия, с которой граф открыли: сервер с версиями
+ * (с 2026-11-18) отвечает 409, если её уже перезаписали, — тогда
+ * GraphConflictError. Без версии — сохраняет как раньше.
+ */
 export async function updateSavedGraph(
   id: string,
   payload: SaveGraphPayload,
 ): Promise<SavedGraphMeta> {
-  const { data } = await axios.put(
-    `${import.meta.env.VITE_API_URL}/graph-files/${id}`,
-    payload,
-  );
-  return data.data;
+  try {
+    const { data } = await axios.put(
+      `${import.meta.env.VITE_API_URL}/graph-files/${id}`,
+      payload,
+    );
+    return data.data;
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 409 && e.response.data?.current) {
+      throw new GraphConflictError(e.response.data.current as SavedGraphMeta);
+    }
+    throw e;
+  }
+}
+
+/** Понятный текст ошибки сохранения: «Network Error» человеку ничего не говорит. */
+export function saveErrorText(e: unknown): string {
+  if (axios.isAxiosError(e)) {
+    if (!e.response) return "сервер не ответил — проверьте связь и сохраните ещё раз";
+    const msg = (e.response.data as { error?: string } | undefined)?.error;
+    return `сервер ответил ошибкой ${e.response.status}${msg ? ` (${msg})` : ""}`;
+  }
+  return e instanceof Error ? e.message : String(e);
 }
 
 // Переименовать сохранённый граф (меняется только имя, id стабилен).

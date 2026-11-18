@@ -8,6 +8,7 @@ import { LeftRail, type RailSection } from "./components/left-rail/LeftRail";
 import { RailPanel } from "./components/rail-panel/RailPanel";
 import { StatusBar } from "./components/status-bar/StatusBar";
 import { ShareGraphModal } from "./components/share-graph-modal";
+import { SaveConflictModal } from "./components/saved-graph/SaveConflictModal";
 import { LibraryScreen } from "./components/library/LibraryScreen";
 import { SharedGraphView } from "./components/shared-graph-view";
 import { GuidePage } from "./components/guide/GuidePage";
@@ -138,6 +139,9 @@ function Workspace() {
       {isGraphScreen && <StatusBar />}
 
       <ShareGraphModal isOpen={shareOpen} onClose={() => setShareOpen(false)} />
+      {/* Окно «Граф изменили, пока вы работали» — сохраняют и с полотна, и из
+          библиотеки, поэтому оно общее. */}
+      <SaveConflictModal />
     </div>
   );
 }

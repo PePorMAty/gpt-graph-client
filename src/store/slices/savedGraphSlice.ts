@@ -3,8 +3,10 @@ import type { SavedGraphFile, SavedGraphMeta, SaveGraphPayload } from "../types"
 import {
   deleteSavedGraph,
   fetchSavedGraphs,
+  GraphConflictError,
   loadSavedGraph,
   renameSavedGraph,
+  saveErrorText,
   updateGraphDescription,
   updateSavedGraph,
 } from "../api/saved-graph-api";
@@ -25,6 +27,18 @@ interface SavedGraphsState {
   openedGraphId: string | null;
   /** Имя открытого сохранённого графа — для подписи кнопки «Обновить «имя»». */
   openedGraphName: string | null;
+  /**
+   * Версия открытого графа — с ней граф открыли или последний раз сохранили.
+   * Уходит в «Обновить»: граф сохранил кто-то другой — сервер ответит 409.
+   * null — сервер без версий или граф ещё не сохраняли: без проверки.
+   */
+  openedGraphVersion: number | null;
+  /**
+   * «Обновить» получил 409: граф изменили, пока его правили. Пока не null,
+   * показано окно выбора (SaveConflictModal): открыть их версию или сохранить
+   * свою копией.
+   */
+  saveConflict: { id: string; current: SavedGraphMeta } | null;
   /** Время последнего сохранения полотна (ISO) — для строки состояния. */
   savedAt: string | null;
   /**
@@ -42,6 +56,8 @@ const initialState: SavedGraphsState = {
   error: null,
   openedGraphId: null,
   openedGraphName: null,
+  openedGraphVersion: null,
+  saveConflict: null,
   savedAt: null,
   savedSignature: null,
 };
@@ -81,17 +97,20 @@ export const deleteSavedGraphThunk = createAsyncThunk<
   }
 });
 
-// Обновить (перезаписать) уже сохранённый граф — тот же файл.
+// Обновить (перезаписать) уже сохранённый граф — тот же файл. Отказ —
+// строка с причиной или { conflict } (граф сохранил кто-то другой).
+export type UpdateGraphRejection = string | { conflict: SavedGraphMeta };
+
 export const updateSavedGraphThunk = createAsyncThunk<
   SavedGraphMeta,
-  { id: string; payload: SaveGraphPayload }
+  { id: string; payload: SaveGraphPayload },
+  { rejectValue: UpdateGraphRejection }
 >("savedGraphs/updateOne", async ({ id, payload }, { rejectWithValue }) => {
   try {
     return await updateSavedGraph(id, payload);
   } catch (e) {
-    return rejectWithValue(
-      e instanceof Error ? e.message : "Не удалось обновить граф",
-    );
+    if (e instanceof GraphConflictError) return rejectWithValue({ conflict: e.current });
+    return rejectWithValue(saveErrorText(e));
   }
 });
 
@@ -144,16 +163,25 @@ const savedGraphsSlice = createSlice({
     // Запомнить, какой сохранённый файл сейчас открыт на полотне (для «Обновить»).
     setOpenedGraph(
       state,
-      action: { payload: { id: string; name: string } },
+      action: { payload: { id: string; name: string; version?: number | null } },
     ) {
       state.openedGraphId = action.payload.id;
       state.openedGraphName = action.payload.name;
+      state.openedGraphVersion =
+        typeof action.payload.version === "number" ? action.payload.version : null;
+      state.saveConflict = null;
+    },
+    /** Закрыть окно конфликта сохранения (выбор сделан или отменён). */
+    clearSaveConflict(state) {
+      state.saveConflict = null;
     },
     // Сбросить привязку к сохранённому файлу (новый граф / загрузка из файла /
     // очистка полотна / частичное открытие подграфа).
     clearOpenedGraph(state) {
       state.openedGraphId = null;
       state.openedGraphName = null;
+      state.openedGraphVersion = null;
+      state.saveConflict = null;
       state.savedAt = null;
       state.savedSignature = null;
     },
@@ -219,6 +247,7 @@ const savedGraphsSlice = createSlice({
         if (state.openedGraphId === id) {
           state.openedGraphId = null;
           state.openedGraphName = null;
+          state.openedGraphVersion = null;
         }
       })
       .addCase(deleteSavedGraphThunk.rejected, (state, action) => {
@@ -232,12 +261,17 @@ const savedGraphsSlice = createSlice({
       .addCase(updateSavedGraphThunk.fulfilled, (state, action) => {
         const meta = action.payload;
         state.list = state.list.map((g) => (g.id === meta.id ? meta : g));
+        if (state.openedGraphId === meta.id && typeof meta.version === "number") {
+          state.openedGraphVersion = meta.version;
+        }
       })
       .addCase(updateSavedGraphThunk.rejected, (state, action) => {
-        state.error =
-          (action.payload as string) ||
-          action.error.message ||
-          "Не удалось обновить граф";
+        const reason = action.payload;
+        if (reason && typeof reason === "object") {
+          state.saveConflict = { id: action.meta.arg.id, current: reason.conflict };
+          return;
+        }
+        state.error = reason || action.error.message || "Не удалось обновить граф";
       })
 
       // ---- RENAME ----
@@ -274,6 +308,7 @@ const savedGraphsSlice = createSlice({
       .addCase(getGraphData.fulfilled, (state) => {
         state.openedGraphId = null;
         state.openedGraphName = null;
+        state.openedGraphVersion = null;
       });
   },
 });
@@ -282,6 +317,7 @@ export const {
   clearSelectedGraph,
   setOpenedGraph,
   clearOpenedGraph,
+  clearSaveConflict,
   markGraphSaved,
 } = savedGraphsSlice.actions;
 export default savedGraphsSlice.reducer;
