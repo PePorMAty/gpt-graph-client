@@ -185,16 +185,33 @@ export function alternativeKey(item: {
  * уникального ключа (alternativeKey). Основной вариант идёт первым, поэтому
  * альтернатива, совпадающая с ним по сути, тоже отбрасывается. Варианты с
  * неопределённым ключом не трогаем.
+ *
+ * Отбрасывается и вариант, который ничего не добавляет к уже взятому: его
+ * сырьё — то же или часть того, а продукты — часть тех же продуктов. Так
+ * модель повторяла основной шаг по другому источнику: «Окисление
+ * циклогексана → циклогексанол + циклогексанон» и альтернатива «Окисление до
+ * циклогексанона» из того же сырья (граф владельца 2026-11-17). Построенная,
+ * она ложилась вторым преобразованием к тем же узлам. Вариант с продуктом,
+ * которого у взятых нет, остаётся — даже из того же сырья.
  */
 export function dedupeAlternatives(
   parsed: ParsedAlternative[],
 ): ParsedAlternative[] {
   const seen = new Set<string>();
+  const kept: { inputs: string[]; outputs: string[] }[] = [];
   const result: ParsedAlternative[] = [];
+  const within = (part: string[], whole: string[]) => part.every((x) => whole.includes(x));
   for (const item of parsed) {
     const key = alternativeKey(item);
     if (key && seen.has(key)) continue;
+    const products = extractStepProducts(item.fullDescription || "");
+    const repeats =
+      products.inputs.length > 0 &&
+      products.outputs.length > 0 &&
+      kept.some((k) => within(products.inputs, k.inputs) && within(products.outputs, k.outputs));
+    if (repeats) continue;
     if (key) seen.add(key);
+    if (products.inputs.length && products.outputs.length) kept.push(products);
     result.push(item);
   }
   return result;

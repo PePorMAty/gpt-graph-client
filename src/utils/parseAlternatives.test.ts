@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   alternativeKey,
+  dedupeAlternatives,
   extractStepProducts,
   splitProductList,
   stepSufficiency,
@@ -53,5 +54,28 @@ describe("stepSufficiency", () => {
 
   it("у прежних промптов строки нет — null", () => {
     expect(stepSufficiency("# Примечания\n- Основной путь выбран по числу блоков.")).toBeNull();
+  });
+});
+
+describe("dedupeAlternatives: вариант, который ничего не добавляет к основному", () => {
+  const v = (title: string, out: string, inp: string) => ({
+    title,
+    firstStepName: title,
+    fullDescription: `- **Что производят:** [${out}]\n- **Из чего производят:** [${inp}]`,
+  });
+
+  it("окисление до циклогексанона — часть основного шага: отбрасывается (граф 2026-11-17)", () => {
+    const main = v("основной", "Циклогексанол, Циклогексанон", "Циклогексан, Кислород");
+    const sameSubset = v("Окисление до циклогексанона", "Циклогексанон", "Циклогексан, Кислород");
+    const fewerInputs = v("Окисление без кислорода в тексте", "Циклогексанон", "Циклогексан");
+    expect(dedupeAlternatives([main, sameSubset, fewerInputs]).map((x) => x.title)).toEqual(["основной"]);
+  });
+
+  it("новый продукт или другое сырьё — настоящая альтернатива, остаётся", () => {
+    const main = v("основной", "Циклогексанол, Циклогексанон", "Циклогексан, Кислород");
+    const newProduct = v("До адипиновой кислоты", "Адипиновая кислота", "Циклогексан, Кислород");
+    const otherFeed = v("Окисление азотной кислотой", "Циклогексанон", "Циклогексан, Азотная кислота");
+    const result = dedupeAlternatives([main, newProduct, otherFeed]).map((x) => x.title);
+    expect(result).toEqual(["основной", "До адипиновой кислоты", "Окисление азотной кислотой"]);
   });
 });
