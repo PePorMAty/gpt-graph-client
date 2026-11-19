@@ -447,6 +447,22 @@ export const ArrowRightIcon: Icon = (p) => (
 );
 
 /** Штрихкод — определение кодов продукции (ОКПД2, ТН ВЭД). */
+/** Чат с ИИ: облачко реплики с искрой. */
+export const ChatIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M21 12a8 8 0 0 1-11.5 7.2L4 20.5l1.3-4.6A8 8 0 1 1 21 12z" />
+    <path d="M12 8.5v2m0 3v2M8.5 12h2m3 0h2" />
+  </svg>
+);
+
+/** Отправить сообщение: стрелка-самолётик. */
+export const SendIcon: Icon = (p) => (
+  <svg {...base(p)}>
+    <path d="M4 12 20 4l-5 16-3.5-6.5L4 12z" />
+    <path d="m11.5 13.5 3-3" />
+  </svg>
+);
+
 export const BarcodeIcon: Icon = (p) => (
   <svg {...base(p)}>
     <path d="M4 6v12M7.5 6v12M10 6v12M13.5 6v12M16 6v12M20 6v12" />

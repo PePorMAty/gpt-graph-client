@@ -89,6 +89,8 @@ import {
   type CanvasMode,
 } from "./components/canvas-tools/CanvasTools";
 import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
+import { ChatPanel } from "./components/chat/ChatPanel";
+import { CHAT_OPEN_STEP, CHAT_SHOW_NODES } from "./components/chat/chatActions";
 import { CodesPickBar } from "./components/product-codes/CodesPickBar";
 import { ProductCodesModal, type CodesProduct } from "./components/product-codes/ProductCodesModal";
 import { nodeCodes } from "./utils/nodeCodes";
@@ -891,6 +893,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
    */
   const canEditNodes = !readOnly;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  // Чат с ИИ (PG-MIGRATION.md, этап 4) — панель справа от полотна.
+  const [chatOpen, setChatOpen] = useState(false);
+  const closeChat = useCallback(() => setChatOpen(false), []);
 
   // Всплывающая подсказка о сохранении
   const [isSavedToastVisible, setIsSavedToastVisible] = useState(false);
@@ -1427,6 +1432,43 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
     window.addEventListener("highlight-node", handler);
     return () => window.removeEventListener("highlight-node", handler);
+  }, [focusOnNode, fitView]);
+
+  // Предложения чата (components/chat/chatActions.ts). «Построить шаг»:
+  // выбрать узел и открыть карточку — мастер шага открывает сама карточка,
+  // забрав просьбу. «Показать на графе»: камера к узлам, первый подсвечен.
+  useEffect(() => {
+    const toNode = (id: string) => {
+      const fs = focusStateRef.current;
+      if (fs && fs.focusId !== id) focusOnNode(id);
+      else requestAnimationFrame(() => fitView({ nodes: [{ id }], padding: 0.6, maxZoom: 1.2, duration: 400 }));
+    };
+    const onStep = (e: Event) => {
+      const id = (e as CustomEvent<{ nodeId?: string }>).detail?.nodeId;
+      if (!id || !nodesRef.current.some((n) => n.id === id)) return;
+      saveChangesRef.current();
+      setSelectedNodeId(id);
+      setIsPanelOpen(true);
+      setCardShown((n) => n + 1);
+      setContextMenu(null);
+      toNode(id);
+    };
+    const onShow = (e: Event) => {
+      const ids = ((e as CustomEvent<{ ids?: string[] }>).detail?.ids ?? []).filter((id) =>
+        nodesRef.current.some((n) => n.id === id),
+      );
+      if (!ids.length) return;
+      if (focusStateRef.current) toNode(ids[0]);
+      else requestAnimationFrame(() => fitView({ nodes: ids.map((id) => ({ id })), padding: 0.35, maxZoom: 1.2, duration: 500 }));
+      setHighlightedId(ids[0]);
+      setTimeout(() => setHighlightedId(null), 3000);
+    };
+    window.addEventListener(CHAT_OPEN_STEP, onStep);
+    window.addEventListener(CHAT_SHOW_NODES, onShow);
+    return () => {
+      window.removeEventListener(CHAT_OPEN_STEP, onStep);
+      window.removeEventListener(CHAT_SHOW_NODES, onShow);
+    };
   }, [focusOnNode, fitView]);
 
   // Находим выбранный узел
@@ -3618,6 +3660,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }}
         codesActive={codesPick !== null}
         canDetermineCodes={data.nodes.some((n) => n.type === "product")}
+        onChat={sharedView ? undefined : () => setChatOpen((v) => !v)}
+        chatOpen={chatOpen}
       />
 
       <ReactFlow
@@ -3684,6 +3728,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           окрестность кадра, иначе на больших графах узлы неразличимы.
           Живёт вне <ReactFlow>, чтобы её клики не доходили до полотна. */}
       {data.nodes.length > 0 && <CanvasMinimap nodes={baseFlowNodes} />}
+      {chatOpen && !sharedView && (
+        <ChatPanel onClose={closeChat} selectedNodeId={selectedNodeId} readOnly={readOnly} />
+      )}
       {codesPick !== null && !codesModal && (
         <CodesPickBar
           picked={codesPicked.map((p) => ({ id: p.id, label: p.label }))}

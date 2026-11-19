@@ -3,6 +3,7 @@ import type { FC } from "react";
 import {
   AutoLayoutIcon,
   BarcodeIcon,
+  ChatIcon,
   CursorIcon,
   HandIcon,
   MarqueeIcon,
@@ -48,6 +49,9 @@ interface CanvasToolsProps {
   /** Выбор продуктов для определения кодов включён. */
   codesActive?: boolean;
   canDetermineCodes?: boolean;
+  /** Чат с ИИ: открыть или закрыть панель. */
+  onChat?: () => void;
+  chatOpen?: boolean;
 }
 
 /**
@@ -70,6 +74,8 @@ export const CanvasTools = ({
   onDetermineCodes,
   codesActive = false,
   canDetermineCodes = false,
+  onChat,
+  chatOpen = false,
 }: CanvasToolsProps) => (
   <div className={styles.rail}>
     <div className={styles.group}>
@@ -87,6 +93,21 @@ export const CanvasTools = ({
         </button>
       ))}
     </div>
+
+    {onChat && (
+      <div className={styles.group}>
+        <button
+          type="button"
+          className={`${styles.button} ${chatOpen ? styles.buttonActive : ""}`}
+          onClick={onChat}
+          aria-pressed={chatOpen}
+          aria-label="Чат с ИИ"
+          data-tooltip={chatOpen ? "Закрыть чат" : "Чат с ИИ"}
+        >
+          <ChatIcon size={18} />
+        </button>
+      </div>
+    )}
 
     {!readOnly && (
       <div className={styles.group}>

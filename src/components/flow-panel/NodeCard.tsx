@@ -29,6 +29,7 @@ import {
 } from "../icons";
 import { sourceHref } from "../../store/api/local-sources-api";
 import { sourceLinkText } from "../../utils/sourceOrigin";
+import { CHAT_OPEN_STEP, takePendingStep } from "../chat/chatActions";
 import styles from "./NodeCard.module.css";
 
 /**
@@ -146,10 +147,23 @@ export const NodeCard: FC<NodeCardProps> = ({
   // при переходе к другому преобразованию: так удобно пройти по цепочке.
   useEffect(() => {
     setTab((cur) => (cur === "balance" && kind === "transformation" ? cur : "brief"));
-    setBuildOpen(false);
+    // Чат предложил шаг от этого узла («Построить шаг» в карточке
+    // предложения) — сразу мастер шага, а не карточка.
+    setBuildOpen(!readOnly && !!nodeId && takePendingStep(nodeId) !== null);
     setDescEditing(false);
     setMenuOpen(false);
-  }, [nodeId, kind]);
+  }, [nodeId, kind, readOnly]);
+
+  // Та же просьба чата, когда карточка уже открыта на этом узле: узел не
+  // сменился, и эффект выше не повторится.
+  useEffect(() => {
+    const onRequest = (e: Event) => {
+      if (!nodeId || (e as CustomEvent<{ nodeId?: string }>).detail?.nodeId !== nodeId) return;
+      if (!readOnly && takePendingStep(nodeId)) setBuildOpen(true);
+    };
+    window.addEventListener(CHAT_OPEN_STEP, onRequest);
+    return () => window.removeEventListener(CHAT_OPEN_STEP, onRequest);
+  }, [nodeId, readOnly]);
 
   // Esc закрывает окно построения.
   useEffect(() => {

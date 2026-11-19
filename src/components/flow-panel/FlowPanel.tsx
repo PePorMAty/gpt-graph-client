@@ -28,6 +28,11 @@ import {
   PencilIcon,
 } from "../icons";
 
+import {
+  lastBuildDirection,
+  setLastBuildDirection,
+  takeForcedBuildDirection,
+} from "./buildDirection";
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { AiModelSelect } from "../ai-model-select";
@@ -733,14 +738,6 @@ function wizardStepOf(tab: DirectionTabProps): WizardStep {
   return 1;
 }
 
-/**
- * Направление, выбранное в мастере последним, — по продукту.
- *
- * Живёт вне компонента: мастер размонтируется вместе с окном, а вернуться
- * человек хочет туда, откуда ушёл.
- */
-const lastDirection = new Map<string, BuildDirection>();
-
 /** Идёт ли по направлению запрос: поиск, обобщение или построение. */
 function isBusy(tab: DirectionTabProps): boolean {
   return (
@@ -771,7 +768,10 @@ function resumeDirection(
   upTab: DirectionTabProps,
   downTab: DirectionTabProps,
 ): BuildDirection | null {
-  const remembered = lastDirection.get(productName) ?? null;
+  // Просьба чата («Построить шаг вниз от «Фенол»») — главнее остального.
+  const forced = takeForcedBuildDirection(productName);
+  if (forced) return forced;
+  const remembered = lastBuildDirection(productName);
   const upBusy = isBusy(upTab);
   const downBusy = isBusy(downTab);
   if (upBusy !== downBusy) return upBusy ? "up" : "down";
@@ -836,7 +836,7 @@ const PanelBuildViewInner: FC<{
   const chooseDirection = (value: BuildDirection) => {
     setDir(value);
     setBackTo(null);
-    lastDirection.set(productName, value);
+    setLastBuildDirection(productName, value);
   };
 
   // ── Источники из базы сервера: разделы документов, загруженных людьми ──
@@ -950,6 +950,7 @@ const PanelBuildViewInner: FC<{
                 type="button"
                 className={`${wiz.dir} ${dir === d.value ? wiz.dirOn : ""}`}
                 onClick={() => chooseDirection(d.value)}
+                aria-pressed={dir === d.value}
               >
                 <span className={wiz.dirIcon}>{d.icon}</span>
                 <span className={wiz.dirText}>

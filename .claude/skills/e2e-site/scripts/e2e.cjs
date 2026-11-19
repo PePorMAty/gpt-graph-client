@@ -276,6 +276,17 @@ async function handleApi(route) {
       // Список файлов — ответы по очереди: шаг за шагом цепочки.
       const entry = canned[url.pathname];
       const file = Array.isArray(entry) ? entry.shift() : entry;
+      // Ответ, который зависит от запроса (id узлов графа сценария, поток
+      // NDJSON чата), — функция сценария: (request) → { body, contentType? }.
+      if (typeof file === "function") {
+        stats.model.canned++;
+        const r = await file(req);
+        return route.fulfill({
+          status: r.status ?? 200,
+          contentType: r.contentType ?? "application/json",
+          body: typeof r.body === "string" ? r.body : JSON.stringify(r.body),
+        });
+      }
       if (file) {
         stats.model.canned++;
         const body = JSON.parse(fs.readFileSync(path.resolve(SKILL, file), "utf8"));
