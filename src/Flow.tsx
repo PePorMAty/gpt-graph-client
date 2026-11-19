@@ -3407,6 +3407,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const {
     openedGraphId,
     openedGraphName,
+    openedGraphVersion,
     defaultName: saveDefaultName,
     saveNew: saveGraphAsNew,
     updateOpened: updateOpenedGraph,
@@ -3441,6 +3442,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     }
   }, [updateOpenedGraph, flashSaveButton]);
 
+  // Граф сохранил кто-то другой: выбор — в окне конфликта (SaveConflictModal),
+  // окно сохранения под ним только мешает.
+  const saveConflict = useAppSelector((s) => s.savedGraphs.saveConflict);
+  useEffect(() => {
+    if (saveConflict) setShowSaveGraphModal(false);
+  }, [saveConflict]);
+
   // ─── Автосейв в sessionStorage ───
   // Каждое изменение графа (с debounce — drag генерирует десятки событий в
   // секунду) пишем в sessionStorage: перезагрузка/зависание вкладки не теряет
@@ -3473,6 +3481,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
                   openedGraph: {
                     id: openedGraphId,
                     name: openedGraphName ?? "",
+                    // Версия, с которой граф открыли: после перезагрузки
+                    // вкладки «Обновить» сверит её, как и до неё.
+                    version: openedGraphVersion,
                   },
                 }
               : {}),
@@ -3492,6 +3503,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     sourcesSeqCounter,
     openedGraphId,
     openedGraphName,
+    openedGraphVersion,
   ]);
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);

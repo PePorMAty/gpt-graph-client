@@ -174,7 +174,7 @@ export const SavedGraph = () => {
 
     // Полное открытие сохранённого графа — запоминаем его файл для «Обновить».
     if (pendingOpen) {
-      dispatch(setOpenedGraph(pendingOpen));
+      dispatch(setOpenedGraph({ ...pendingOpen, version: graph.meta.version ?? null }));
       // Закладки и история этого графа лежат на сервере — поднимаем их.
       dispatch(openGraphExtras(pendingOpen.id));
     }
@@ -290,6 +290,13 @@ export const SavedGraph = () => {
   const handleUpdateGraph = async () => {
     if (await updateOpened()) setShowSaveModal(false);
   };
+
+  // Граф сохранил кто-то другой: выбор — в окне конфликта, окно сохранения
+  // под ним только мешает.
+  const saveConflict = useAppSelector((s) => s.savedGraphs.saveConflict);
+  useEffect(() => {
+    if (saveConflict) setShowSaveModal(false);
+  }, [saveConflict]);
 
   // Переименовать сохранённый граф из списка.
   const handleRename = async (id: string, name?: string) => {

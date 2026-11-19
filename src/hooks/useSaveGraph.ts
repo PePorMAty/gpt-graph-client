@@ -7,7 +7,7 @@ import {
   setOpenedGraph,
   updateSavedGraphThunk,
 } from "../store/slices/savedGraphSlice";
-import { saveGraph } from "../store/api/saved-graph-api";
+import { saveErrorText, saveGraph } from "../store/api/saved-graph-api";
 import { pushGraphExtras } from "../store/graphExtras";
 import { buildSaveGraphPayload } from "../utils/buildSaveGraphPayload";
 import { graphSignature } from "../utils/graphSignature";
@@ -26,7 +26,7 @@ export function useSaveGraph() {
     sourcesPool,
     sourcesSeqCounter,
   } = useAppSelector((s) => s.graph);
-  const { openedGraphId, openedGraphName } = useAppSelector(
+  const { openedGraphId, openedGraphName, openedGraphVersion } = useAppSelector(
     (s) => s.savedGraphs,
   );
 
@@ -65,6 +65,9 @@ export function useSaveGraph() {
             setOpenedGraph({
               id: res.file,
               name: name || (originalPrompt ?? "graph"),
+              // Сервер с версиями отвечает версией нового графа (1): с ней
+              // «Обновить» сверит, не сохранил ли граф кто-то другой.
+              version: typeof res.data?.version === "number" ? res.data.version : null,
             }),
           );
           // До этого момента графа на сервере не было, и закладки с историей
@@ -82,7 +85,7 @@ export function useSaveGraph() {
         return true;
       } catch (e) {
         console.error(e);
-        showToast("error", "Ошибка сохранения графа");
+        showToast("error", `Ошибка сохранения графа: ${saveErrorText(e)}`);
         return false;
       }
     },
@@ -96,7 +99,12 @@ export function useSaveGraph() {
       await dispatch(
         updateSavedGraphThunk({
           id: openedGraphId,
-          payload: buildPayload(openedGraphName ?? undefined),
+          payload: {
+            ...buildPayload(openedGraphName ?? undefined),
+            // Версия, с которой граф открыли: сохранил кто-то другой — 409 и
+            // окно выбора (SaveConflictModal), а не молчаливая перезапись.
+            ...(openedGraphVersion != null ? { version: openedGraphVersion } : {}),
+          },
         }),
       ).unwrap();
       dispatch(
@@ -105,10 +113,12 @@ export function useSaveGraph() {
       showToast("success", `Граф «${openedGraphName}» обновлён`);
       return true;
     } catch (e) {
+      // Конфликт версий — не ошибка: слайс открыл окно выбора.
+      if (e && typeof e === "object" && "conflict" in e) return false;
       showToast(
         "error",
         "Не удалось обновить граф: " +
-          (e instanceof Error ? e.message : String(e)),
+          (typeof e === "string" ? e : e instanceof Error ? e.message : String(e)),
       );
       return false;
     }
@@ -119,11 +129,13 @@ export function useSaveGraph() {
     dispatch,
     openedGraphId,
     openedGraphName,
+    openedGraphVersion,
   ]);
 
   return {
     openedGraphId,
     openedGraphName,
+    openedGraphVersion,
     defaultName: originalPrompt ?? "graph",
     hasNodes: data.nodes.length > 0,
     buildPayload,

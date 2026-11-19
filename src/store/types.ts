@@ -158,6 +158,12 @@ export interface SavedGraphMeta {
    * нет: там показываем исходный промт.
    */
   description?: string | null;
+  /**
+   * Версия графа: растёт с каждым сохранением. Её шлют при перезаписи — если
+   * граф тем временем сохранил кто-то другой, сервер отвечает 409. У сервера
+   * старее 2026-11-18 поля нет — тогда сохраняем без проверки, как раньше.
+   */
+  version?: number;
 }
 
 export interface SaveGraphPayload {
@@ -169,6 +175,8 @@ export interface SaveGraphPayload {
   has_more: boolean;
   /** Пул источников + сквозные счётчики номеров бейджа (если в графе есть источники). */
   sources?: SavedSourcesBlock;
+  /** Версия, с которой граф открыли (см. SavedGraphMeta.version); нет — без проверки. */
+  version?: number;
 }
 
 export interface SavedGraphFile {
@@ -178,6 +186,8 @@ export interface SavedGraphFile {
     createdAt: string;
     /** Описание графа, см. SavedGraphMeta.description. */
     description?: string | null;
+    /** Версия графа, см. SavedGraphMeta.version. */
+    version?: number;
   };
   graph: {
     nodes: CustomNode[];
