@@ -107,6 +107,14 @@ module.exports = {
     await page.getByRole("button", { name: "Чат с ИИ" }).click();
     await panel.waitFor({ timeout: 10000 });
     check("разговор после перезагрузки на месте", await panel.getByText("Что делают из фенола?").isVisible());
+
+    // Новый несохранённый граф — новый разговор: чат прежнего черновика в нём
+    // не всплывает.
+    await lib.newManualGraph(page, "Бензол");
+    await lib.sleep(600);
+    if (!(await panel.count())) await page.getByRole("button", { name: "Чат с ИИ" }).click();
+    await panel.waitFor({ timeout: 10000 });
+    check("новый граф — пустой разговор", (await panel.getByText("Что делают из фенола?").count()) === 0);
     log(`запрос: ${lastRequest?.graph?.products?.length} продуктов, выбранный узел «${lastRequest?.graph?.selectedLabel}» ${lastRequest?.graph?.selected ? "с контекстом" : "без контекста (у узла нет описания и соседей)"}`);
   },
 };

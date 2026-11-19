@@ -31,6 +31,12 @@ export interface ChatGraphSlice {
 }
 
 const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
+/**
+ * Альтернатива шага (chainVariant "alt") — вариант, который человек ещё не
+ * принял, а не шаг графа: модель приняла бы «Бисфенол А» за преобразование
+ * из фенола. Контекст продукта и определение кодов их тоже пропускают.
+ */
+const onGraph = (n: CustomNode) => n.data?.chainVariant !== "alt";
 
 export function buildChatSlice(
   nodes: CustomNode[],
@@ -39,7 +45,7 @@ export function buildChatSlice(
 ): ChatGraphSlice {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const products = nodes
-    .filter((n) => n.type === "product" && labelOf(n))
+    .filter((n) => n.type === "product" && onGraph(n) && labelOf(n))
     .slice(0, CHAT_SLICE_LIMITS.products)
     .map((n) => ({ id: n.id, label: labelOf(n) }));
   const productLabel = (id: string) => {
@@ -48,7 +54,7 @@ export function buildChatSlice(
   };
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].slice(0, CHAT_SLICE_LIMITS.ends);
   const transformations = nodes
-    .filter((n) => n.type === "transformation" && labelOf(n))
+    .filter((n) => n.type === "transformation" && onGraph(n) && labelOf(n))
     .slice(0, CHAT_SLICE_LIMITS.transformations)
     .map((n) => ({
       id: n.id,

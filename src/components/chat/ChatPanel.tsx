@@ -1,10 +1,11 @@
 // Чат с ИИ в открытом графе (PG-MIGRATION.md, этап 4) — панель справа от
 // полотна, рядом с карточкой узла (та открывается слева).
 //
-// Что делает модель: смотрит базу (карточка продукта, поиск по ИТС) и
-// открытый граф, отвечает со ссылками и предлагает действия карточками.
-// Ничего не меняется без человека: «Построить шаг» открывает обычный мастер
-// шага у узла, «Показать на графе» — подводит камеру.
+// Что делает модель: смотрит базу (карточка продукта, поиск по ИТС, расчёты
+// баланса) и открытый граф, отвечает со ссылками и предлагает действия
+// карточками. Ничего не меняется без человека: кнопка карточки ведёт в то,
+// что на сайте уже есть — мастер шага у узла, окно кодов, вкладку карточки
+// узла; переименование и объединение — те же правки, что у человека.
 //
 // Граф читается из хранилища только при отправке (store.getState): панель не
 // подписана на узлы, и граф на сотни узлов из-за неё не перерисовывается.
@@ -18,19 +19,27 @@ import type { RootState } from "../../store/store";
 import { useAppSelector } from "../../store/hooks";
 import { getAiRequestFields, useAiConfig } from "../../hooks/useAiConfig";
 import { buildChatSlice } from "../../utils/chatSlice";
-import { ChatUnavailableError, streamChat, type ChatProposal } from "../../store/api/chat-api";
+import {
+  CHAT_PROPOSAL_KINDS,
+  ChatUnavailableError,
+  isKnownProposal,
+  streamChat,
+  type ChatProposal,
+} from "../../store/api/chat-api";
 import { plural } from "../../utils/plural";
 import { showToast } from "../toast/toastStore";
 import { ChatIcon, CloseIcon, SendIcon, TrashIcon } from "../icons";
 import {
   addRequestsToday,
+  conversationKey,
   historyFor,
+  isUnsavedKey,
   loadConversation,
   requestsToday,
   saveConversation,
   type ChatMessage,
 } from "./chatStore";
-import { requestStep, showNodes } from "./chatActions";
+import { requestCardTab, requestCodes, requestMerge, requestRename, requestStep, showNodes } from "./chatActions";
 import styles from "./ChatPanel.module.css";
 
 const EXAMPLES = [
@@ -41,6 +50,48 @@ const EXAMPLES = [
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const DIR = { up: "вверх", down: "вниз" } as const;
+const q = (s: string) => `«${s}»`;
+
+/**
+ * Как показать предложение. edits — меняет граф: в режиме чтения кнопка
+ * недоступна. keep — только открывает окно или камеру: карточка остаётся,
+ * к ней можно вернуться; сделанная правка из разговора уходит.
+ */
+function proposalView(p: ChatProposal): {
+  title: string;
+  note?: string;
+  action: string;
+  edits: boolean;
+  keep: boolean;
+} {
+  switch (p.kind) {
+    case "step":
+      return { title: `Шаг ${DIR[p.direction]} от ${q(p.label)}`, action: "Построить шаг", edits: true, keep: false };
+    case "show":
+      return { title: `Показать на графе: ${p.nodes.map((n) => q(n.label)).join(", ")}`, action: "Показать", edits: false, keep: true };
+    case "codes":
+      return {
+        title: `Коды ОКПД2 и ТН ВЭД: ${p.nodes.map((n) => q(n.label)).join(", ")}`,
+        action: "Открыть окно кодов",
+        edits: true,
+        keep: true,
+      };
+    case "balance":
+      return { title: `Материальный баланс: ${q(p.label)}`, action: "Открыть баланс", edits: false, keep: true };
+    case "tech":
+      return { title: `Технологическое описание: ${q(p.label)}`, action: "Открыть описание", edits: false, keep: true };
+    case "rename":
+      return { title: `Переименовать ${q(p.label)} → ${q(p.newLabel)}`, action: "Переименовать", edits: true, keep: false };
+    case "merge":
+      return {
+        title: `Объединить ${q(p.fromLabel)} с ${q(p.intoLabel)}`,
+        note: `Связи ${q(p.fromLabel)} перейдут к ${q(p.intoLabel)}, узел ${q(p.fromLabel)} исчезнет.`,
+        action: "Объединить",
+        edits: true,
+        keep: false,
+      };
+  }
+}
 
 interface ChatPanelProps {
   onClose: () => void;
@@ -52,6 +103,10 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   const store = useStore<RootState>();
   const graphId = useAppSelector((s) => s.savedGraphs.openedGraphId);
   const graphName = useAppSelector((s) => s.savedGraphs.openedGraphName) ?? "";
+  // Первый узел — имя черновика (chatStore.conversationKey); строка, а не
+  // массив узлов: перетаскивание панель не перерисовывает.
+  const firstNodeId = useAppSelector((s) => s.graph.data.nodes[0]?.id ?? null);
+  const key = conversationKey(graphId, firstNodeId);
   // Подпись выбранного узла — только строка: панель не перерисовывается от
   // перетаскивания узлов.
   const selectedLabel = useAppSelector((s) => {
@@ -61,7 +116,9 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   });
   const { config } = useAiConfig();
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadConversation(graphId));
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadConversation(key));
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<string[]>([]);
@@ -70,13 +127,26 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   const listRef = useRef<HTMLDivElement>(null);
 
   // Другой граф — свой разговор.
-  const loadedFor = useRef(graphId);
+  const loadedFor = useRef(key);
+  // Растёт, когда на панели другой разговор: ответ, пришедший к прежнему,
+  // в новый не дописывается.
+  const generation = useRef(0);
   useEffect(() => {
-    if (loadedFor.current === graphId) return;
-    loadedFor.current = graphId;
+    const prev = loadedFor.current;
+    if (prev === key) return;
+    loadedFor.current = key;
+    const stored = loadConversation(key);
+    // Черновик сохранили: тот же граф (первый узел прежний) получил номер —
+    // разговор переезжает с ним, и ответ, который ещё идёт, не обрывается.
+    if (!stored.length && isUnsavedKey(prev) && prev === conversationKey(null, firstNodeId)) {
+      saveConversation(key, messagesRef.current);
+      saveConversation(prev, []);
+      return;
+    }
+    generation.current++;
     abortRef.current?.abort();
-    setMessages(loadConversation(graphId));
-  }, [graphId]);
+    setMessages(stored);
+  }, [key, firstNodeId]);
 
   useEffect(() => {
     saveConversation(loadedFor.current, messages);
@@ -97,6 +167,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
       const { nodes, edges } = store.getState().graph.data;
       const graph = buildChatSlice(nodes, edges, { name: graphName, selectedNodeId });
       const before = messages;
+      const gen = generation.current;
       setMessages([...before, { id: newId(), role: "user", content: message }]);
       setInput("");
       setBusy(true);
@@ -106,7 +177,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
       let reply: ChatMessage;
       try {
         const done = await streamChat(
-          { message, history: historyFor(before), graph, ...getAiRequestFields() },
+          { message, history: historyFor(before), graph, proposals: CHAT_PROPOSAL_KINDS, ...getAiRequestFields() },
           (e) => {
             if (e.type === "tool") setLive((l) => [...l, e.summary]);
           },
@@ -135,7 +206,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
         };
       }
       if (abortRef.current === ctrl) abortRef.current = null;
-      setMessages((m) => [...m, reply]);
+      if (generation.current === gen) setMessages((m) => [...m, reply]);
       setLive([]);
       setBusy(false);
       setToday(requestsToday());
@@ -151,21 +222,38 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   const nodeExists = (id: string) => store.getState().graph.data.nodes.some((n) => n.id === id);
 
   const runProposal = (msgId: string, index: number, p: ChatProposal) => {
-    if (p.kind === "step") {
-      if (!nodeExists(p.nodeId)) {
-        showToast("error", `Узла «${p.label}» уже нет на графе`);
-        return;
+    // Предложение могло устареть: узел удалили или объединили после ответа.
+    const gone = (label: string) => showToast("error", `Узла «${label}» уже нет на графе`);
+    const present = (nodes: { id: string }[]) => nodes.map((n) => n.id).filter(nodeExists);
+    switch (p.kind) {
+      case "step":
+        if (!nodeExists(p.nodeId)) return gone(p.label);
+        requestStep(p.nodeId, p.label, p.direction);
+        break;
+      case "show":
+      case "codes": {
+        const ids = present(p.nodes);
+        if (!ids.length) return showToast("error", "Этих узлов уже нет на графе");
+        if (p.kind === "show") showNodes(ids);
+        else requestCodes(ids);
+        break;
       }
-      requestStep(p.nodeId, p.label, p.direction);
-      closeProposal(msgId, index);
-    } else {
-      const ids = p.nodes.map((n) => n.id).filter(nodeExists);
-      if (!ids.length) {
-        showToast("error", "Этих узлов уже нет на графе");
-        return;
-      }
-      showNodes(ids);
+      case "balance":
+      case "tech":
+        if (!nodeExists(p.nodeId)) return gone(p.label);
+        requestCardTab(p.nodeId, p.kind);
+        break;
+      case "rename":
+        if (!nodeExists(p.nodeId)) return gone(p.label);
+        requestRename(p.nodeId, p.newLabel);
+        break;
+      case "merge":
+        if (!nodeExists(p.fromId)) return gone(p.fromLabel);
+        if (!nodeExists(p.intoId)) return gone(p.intoLabel);
+        requestMerge(p.fromId, p.intoId);
+        break;
     }
+    if (!proposalView(p).keep) closeProposal(msgId, index);
   };
 
   const clear = () => {
@@ -205,8 +293,8 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
           <div className={styles.empty}>
             <p>
               Спросите о продуктах и технологиях — ИИ посмотрит базу справочников ИТС, графы библиотеки
-              и этот граф, ответит со ссылками и предложит шаги. Граф меняете вы: предложение открывает
-              обычный мастер шага.
+              и этот граф, ответит со ссылками и предложит действия: шаг, коды, баланс, переименование.
+              Граф меняете вы: у каждого предложения своя кнопка.
             </p>
             {selectedLabel &&
               EXAMPLES.map((q) => (
@@ -238,37 +326,33 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
               <div className={styles.markdown}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
               </div>
-              {m.proposals?.map((p, i) =>
-                m.closed?.includes(i) ? null : (
+              {m.proposals?.map((p, i) => {
+                // Индекс — номер в ответе (closed хранит номера), поэтому
+                // незнакомое предложение пропускается здесь, а не фильтром.
+                if (m.closed?.includes(i) || !isKnownProposal(p)) return null;
+                const v = proposalView(p);
+                const why = "why" in p ? p.why : undefined;
+                return (
                   <div key={i} className={styles.proposal}>
-                    {p.kind === "step" ? (
-                      <>
-                        <div className={styles.proposalTitle}>
-                          Шаг {DIR[p.direction]} от «{p.label}»
-                        </div>
-                        {p.why && <div className={styles.proposalWhy}>{p.why}</div>}
-                      </>
-                    ) : (
-                      <div className={styles.proposalTitle}>
-                        Показать на графе: {p.nodes.map((n) => `«${n.label}»`).join(", ")}
-                      </div>
-                    )}
+                    <div className={styles.proposalTitle}>{v.title}</div>
+                    {v.note && <div className={styles.proposalWhy}>{v.note}</div>}
+                    {why && <div className={styles.proposalWhy}>{why}</div>}
                     <div className={styles.proposalActions}>
                       <button
                         type="button"
                         className={styles.primary}
                         onClick={() => runProposal(m.id, i, p)}
-                        disabled={readOnly && p.kind === "step"}
+                        disabled={readOnly && v.edits}
                       >
-                        {p.kind === "step" ? "Построить шаг" : "Показать"}
+                        {v.action}
                       </button>
                       <button type="button" className={styles.secondary} onClick={() => closeProposal(m.id, i)}>
-                        {p.kind === "step" ? "Отклонить" : "Скрыть"}
+                        {v.keep ? "Скрыть" : "Отклонить"}
                       </button>
                     </div>
                   </div>
-                ),
-              )}
+                );
+              })}
               {!!m.requests && (
                 <div className={styles.meta}>
                   {m.requests} {plural(m.requests, "запрос", "запроса", "запросов")} к модели

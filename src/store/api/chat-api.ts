@@ -8,9 +8,52 @@
 
 import type { ChatGraphSlice } from "../../utils/chatSlice";
 
+type NodeRef = { id: string; label: string };
+
+/**
+ * Предложения модели — карточки с кнопкой; граф меняет человек. Каждое
+ * ведёт в то, что на сайте уже есть: мастер шага, окно кодов, вкладку
+ * карточки узла, переименование, объединение узлов.
+ */
 export type ChatProposal =
   | { kind: "step"; nodeId: string; label: string; direction: "up" | "down"; why?: string }
-  | { kind: "show"; nodes: { id: string; label: string }[] };
+  | { kind: "show"; nodes: NodeRef[] }
+  | { kind: "codes"; nodes: NodeRef[]; why?: string }
+  | { kind: "balance"; nodeId: string; label: string; why?: string }
+  | { kind: "tech"; nodeId: string; label: string; nodeKind?: string; why?: string }
+  | { kind: "rename"; nodeId: string; label: string; newLabel: string; nodeKind?: string; why?: string }
+  | { kind: "merge"; fromId: string; fromLabel: string; intoId: string; intoLabel: string; why?: string };
+
+/**
+ * Какие карточки клиент умеет показывать — уходят в запрос (proposals):
+ * модель видит только эти инструменты. Сервер первой версии поле не знает
+ * и предлагает шаг и показ.
+ */
+export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = ["step", "show", "codes", "balance", "tech", "rename", "merge"];
+
+const isStr = (v: unknown): v is string => typeof v === "string" && v !== "";
+const isRefs = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every((n) => isStr(n?.id) && isStr(n?.label));
+
+/** Знакомое ли предложение и все ли поля на месте: сервер бывает новее клиента. */
+export function isKnownProposal(p: unknown): p is ChatProposal {
+  const x = p as Record<string, unknown> | null;
+  switch (x?.kind) {
+    case "step":
+      return isStr(x.nodeId) && isStr(x.label) && (x.direction === "up" || x.direction === "down");
+    case "show":
+    case "codes":
+      return isRefs(x.nodes);
+    case "balance":
+    case "tech":
+      return isStr(x.nodeId) && isStr(x.label);
+    case "rename":
+      return isStr(x.nodeId) && isStr(x.label) && isStr(x.newLabel);
+    case "merge":
+      return isStr(x.fromId) && isStr(x.fromLabel) && isStr(x.intoId) && isStr(x.intoLabel);
+    default:
+      return false;
+  }
+}
 
 export interface ChatTool {
   name: string;
@@ -39,6 +82,7 @@ export interface ChatRequest {
   graph: ChatGraphSlice;
   provider?: string;
   model?: string;
+  proposals?: ChatProposal["kind"][];
 }
 
 /** Сервер старее клиента: чата у него ещё нет (404). */
@@ -108,5 +152,6 @@ export async function streamChat(
   });
   if (error) throw new Error(error);
   if (!done) throw new Error("ответ оборвался — попробуйте ещё раз");
-  return done;
+  const d: ChatDone = done;
+  return { ...d, proposals: (d.proposals ?? []).filter(isKnownProposal) };
 }

@@ -90,7 +90,13 @@ import {
 } from "./components/canvas-tools/CanvasTools";
 import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
 import { ChatPanel } from "./components/chat/ChatPanel";
-import { CHAT_OPEN_STEP, CHAT_SHOW_NODES } from "./components/chat/chatActions";
+import {
+  CHAT_CODES,
+  CHAT_MERGE,
+  CHAT_OPEN_CARD,
+  CHAT_RENAME,
+  CHAT_SHOW_NODES,
+} from "./components/chat/chatActions";
 import { CodesPickBar } from "./components/product-codes/CodesPickBar";
 import { ProductCodesModal, type CodesProduct } from "./components/product-codes/ProductCodesModal";
 import { nodeCodes } from "./utils/nodeCodes";
@@ -896,6 +902,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Чат с ИИ (PG-MIGRATION.md, этап 4) — панель справа от полотна.
   const [chatOpen, setChatOpen] = useState(false);
   const closeChat = useCallback(() => setChatOpen(false), []);
+  // Правки по предложениям чата — переименование и объединение. Им нужны
+  // функции, объявленные ниже (saveChanges, проверка дубля, объединение), а
+  // слушатель событий — один на всё время: ссылка на свежие версии.
+  const chatEditRef = useRef<{
+    rename: (nodeId: string, label: string) => void;
+    merge: (fromId: string, intoId: string) => void;
+  } | null>(null);
 
   // Всплывающая подсказка о сохранении
   const [isSavedToastVisible, setIsSavedToastVisible] = useState(false);
@@ -1434,9 +1447,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     return () => window.removeEventListener("highlight-node", handler);
   }, [focusOnNode, fitView]);
 
-  // Предложения чата (components/chat/chatActions.ts). «Построить шаг»:
-  // выбрать узел и открыть карточку — мастер шага открывает сама карточка,
-  // забрав просьбу. «Показать на графе»: камера к узлам, первый подсвечен.
+  // Предложения чата (components/chat/chatActions.ts). «Построить шаг»,
+  // баланс, техописание: выбрать узел и открыть карточку — мастер шага или
+  // вкладку открывает сама карточка, забрав просьбу. «Показать на графе»:
+  // камера к узлам, первый подсвечен. Коды — окно «Определить коды» с этими
+  // продуктами; переименование и объединение — chatEditRef.
   useEffect(() => {
     const toNode = (id: string) => {
       const fs = focusStateRef.current;
@@ -1463,12 +1478,33 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setHighlightedId(ids[0]);
       setTimeout(() => setHighlightedId(null), 3000);
     };
-    window.addEventListener(CHAT_OPEN_STEP, onStep);
-    window.addEventListener(CHAT_SHOW_NODES, onShow);
-    return () => {
-      window.removeEventListener(CHAT_OPEN_STEP, onStep);
-      window.removeEventListener(CHAT_SHOW_NODES, onShow);
+    const onCodes = (e: Event) => {
+      const ids = ((e as CustomEvent<{ ids?: string[] }>).detail?.ids ?? []).filter((id) =>
+        nodesRef.current.some((n) => n.id === id && n.type === "product" && n.data?.chainVariant !== "alt"),
+      );
+      if (!ids.length) return;
+      saveChangesRef.current();
+      setContextMenu(null);
+      setCodesPick(ids);
+      setCodesModal(true);
     };
+    const onRename = (e: Event) => {
+      const d = (e as CustomEvent<{ nodeId?: string; label?: string }>).detail;
+      if (d?.nodeId && d.label) chatEditRef.current?.rename(d.nodeId, d.label);
+    };
+    const onMerge = (e: Event) => {
+      const d = (e as CustomEvent<{ fromId?: string; intoId?: string }>).detail;
+      if (d?.fromId && d.intoId) chatEditRef.current?.merge(d.fromId, d.intoId);
+    };
+    const events: [string, (e: Event) => void][] = [
+      [CHAT_OPEN_CARD, onStep],
+      [CHAT_SHOW_NODES, onShow],
+      [CHAT_CODES, onCodes],
+      [CHAT_RENAME, onRename],
+      [CHAT_MERGE, onMerge],
+    ];
+    events.forEach(([name, fn]) => window.addEventListener(name, fn));
+    return () => events.forEach(([name, fn]) => window.removeEventListener(name, fn));
   }, [focusOnNode, fitView]);
 
   // Находим выбранный узел
@@ -2236,24 +2272,49 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
    * Закладка уходящего узла переезжает на оставшийся, карточка — тоже: она
    * была открыта на узле, которого больше нет.
    */
+  const mergeProducts = useCallback(
+    (fromId: string, intoId: string, intoLabel: string) => {
+      if (bookmarkedIds.has(fromId)) {
+        dispatch(removeBookmark(fromId));
+        if (!bookmarkedIds.has(intoId)) {
+          dispatch(addBookmark({ nodeId: intoId, label: intoLabel, kind: "product" }));
+        }
+      }
+      dispatch(mergeProductNodes({ fromId, intoId }));
+      handleFocusLinkedProduct(intoId);
+      showToast("success", `Узлы объединены — «${intoLabel}»`);
+    },
+    [bookmarkedIds, dispatch, handleFocusLinkedProduct],
+  );
+
   const handleMergeDuplicate = useCallback(() => {
     if (!duplicatePrompt) return;
     const { nodeId: fromId, dup } = duplicatePrompt;
     setDuplicatePrompt(null);
     if (!data.nodes.some((n) => n.id === fromId)) return;
+    mergeProducts(fromId, dup.nodeId, dup.label);
+  }, [duplicatePrompt, data.nodes, mergeProducts]);
 
-    if (bookmarkedIds.has(fromId)) {
-      dispatch(removeBookmark(fromId));
-      if (!bookmarkedIds.has(dup.nodeId)) {
-        dispatch(
-          addBookmark({ nodeId: dup.nodeId, label: dup.label, kind: "product" }),
-        );
-      }
-    }
-    dispatch(mergeProductNodes({ fromId, intoId: dup.nodeId }));
-    handleFocusLinkedProduct(dup.nodeId);
-    showToast("success", `Узлы объединены — «${dup.label}»`);
-  }, [duplicatePrompt, data.nodes, bookmarkedIds, dispatch, handleFocusLinkedProduct]);
+  // Переименование и объединение по предложению чата — те же действия, что у
+  // человека: правки в карточке сперва сохраняются, новое название продукта
+  // проверяется на дубль (окно «Такой продукт уже есть»).
+  chatEditRef.current = {
+    rename: (nodeId, label) => {
+      const node = nodesRef.current.find((n) => n.id === nodeId);
+      if (readOnly || !node) return;
+      saveChangesRef.current();
+      dispatch(updateNodeData({ nodeId, data: { label } }));
+      showToast("success", `Узел переименован — «${label}»`);
+      if (node.type === "product") checkDuplicateProduct(nodeId, label);
+    },
+    merge: (fromId, intoId) => {
+      const isProduct = (id: string) => nodesRef.current.find((n) => n.id === id && n.type === "product");
+      const into = isProduct(intoId);
+      if (readOnly || fromId === intoId || !isProduct(fromId) || !into) return;
+      saveChangesRef.current();
+      mergeProducts(fromId, intoId, String(into.data?.label ?? ""));
+    },
+  };
 
   // Обработчик изменения имени узла
   const handleNodeNameChange = useCallback(

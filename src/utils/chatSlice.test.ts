@@ -3,8 +3,8 @@ import type { Edge } from "@xyflow/react";
 
 import type { CustomNode } from "../types";
 import { buildChatSlice, CHAT_SLICE_LIMITS } from "./chatSlice";
-import { readNdjson, type ChatEvent } from "../store/api/chat-api";
-import { historyFor, type ChatMessage } from "../components/chat/chatStore";
+import { CHAT_PROPOSAL_KINDS, isKnownProposal, readNdjson, type ChatEvent } from "../store/api/chat-api";
+import { conversationKey, historyFor, type ChatMessage } from "../components/chat/chatStore";
 
 const node = (id: string, type: string, label: string, data: Record<string, unknown> = {}) =>
   ({ id, type, position: { x: 0, y: 0 }, data: { label, ...data } }) as unknown as CustomNode;
@@ -40,6 +40,12 @@ describe("срез графа для чата", () => {
     const lone = buildChatSlice([node("x", "product", "Бензол")], [], { selectedNodeId: "x" });
     expect(lone.selected).toBeNull();
     expect(lone.selectedLabel).toBe("Бензол");
+  });
+
+  it("альтернативы шага — не узлы графа: в срез не идут", () => {
+    const withAlt = [...nodes, node("a1", "transformation", "Бисфенол А", { chainVariant: "alt" })];
+    const s = buildChatSlice(withAlt, [...edges, edge("p2", "a1")]);
+    expect(s.transformations.map((t) => t.label)).toEqual(["Кумольный способ"]);
   });
 
   it("большой граф — не больше пределов сервера", () => {
@@ -85,5 +91,40 @@ describe("история разговора для модели", () => {
     expect(h).toHaveLength(12);
     expect(h[0]).toEqual({ role: "user", content: "реплика 2" });
     expect(h.some((m) => m.content.startsWith("Не получилось"))).toBe(false);
+  });
+});
+
+describe("предложения чата", () => {
+  it("знакомые виды с полями — да; незнакомые и неполные — нет", () => {
+    const ok = [
+      { kind: "step", nodeId: "n1", label: "Фенол", direction: "down" },
+      { kind: "show", nodes: [{ id: "n1", label: "Фенол" }] },
+      { kind: "codes", nodes: [{ id: "n1", label: "Фенол" }], why: "кодов нет" },
+      { kind: "balance", nodeId: "t1", label: "Кумольный способ" },
+      { kind: "tech", nodeId: "t1", label: "Кумольный способ", nodeKind: "transformation" },
+      { kind: "rename", nodeId: "n4", label: "Кумол", newLabel: "Изопропилбензол" },
+      { kind: "merge", fromId: "n4", fromLabel: "Кумол", intoId: "n2", intoLabel: "Изопропилбензол (кумол)" },
+    ];
+    expect(ok.map(isKnownProposal)).toEqual(ok.map(() => true));
+    // Каждый вид, который клиент объявляет серверу, он и показывает.
+    expect([...new Set(ok.map((p) => p.kind))].sort()).toEqual([...CHAT_PROPOSAL_KINDS].sort());
+    const bad = [
+      { kind: "delete_graph", nodeId: "n1" },
+      { kind: "step", nodeId: "n1", label: "Фенол", direction: "sideways" },
+      { kind: "show", nodes: [] },
+      { kind: "rename", nodeId: "n4", label: "Кумол", newLabel: "" },
+      { kind: "merge", fromId: "n4", fromLabel: "Кумол", intoId: "n2" },
+      null,
+    ];
+    expect(bad.map(isKnownProposal)).toEqual(bad.map(() => false));
+  });
+});
+
+describe("ключ разговора", () => {
+  it("сохранённый граф — по номеру, черновик — по первому узлу", () => {
+    expect(conversationKey("g-42", "n1")).toBe("g-42");
+    // Новый граф начинается с нового узла — чат прежнего черновика в нём не всплывает.
+    expect(conversationKey(null, "n1")).not.toBe(conversationKey(null, "n2"));
+    expect(conversationKey(null, null)).toBe(conversationKey(null, null));
   });
 });

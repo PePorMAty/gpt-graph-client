@@ -29,7 +29,7 @@ import {
 } from "../icons";
 import { sourceHref } from "../../store/api/local-sources-api";
 import { sourceLinkText } from "../../utils/sourceOrigin";
-import { CHAT_OPEN_STEP, takePendingStep } from "../chat/chatActions";
+import { CHAT_OPEN_CARD, takePendingCard } from "../chat/chatActions";
 import styles from "./NodeCard.module.css";
 
 /**
@@ -146,10 +146,13 @@ export const NodeCard: FC<NodeCardProps> = ({
   // Сброс при смене выбранного узла. Материальный баланс остаётся открытым
   // при переходе к другому преобразованию: так удобно пройти по цепочке.
   useEffect(() => {
-    setTab((cur) => (cur === "balance" && kind === "transformation" ? cur : "brief"));
-    // Чат предложил шаг от этого узла («Построить шаг» в карточке
-    // предложения) — сразу мастер шага, а не карточка.
-    setBuildOpen(!readOnly && !!nodeId && takePendingStep(nodeId) !== null);
+    // Чат предложил шаг от этого узла или его вкладку (карточка предложения
+    // в чате) — сразу мастер шага или эта вкладка.
+    const request = nodeId ? takePendingCard(nodeId) : null;
+    setTab((cur) =>
+      request?.kind === "tab" ? request.tab : cur === "balance" && kind === "transformation" ? cur : "brief",
+    );
+    setBuildOpen(!readOnly && request?.kind === "step");
     setDescEditing(false);
     setMenuOpen(false);
   }, [nodeId, kind, readOnly]);
@@ -159,10 +162,14 @@ export const NodeCard: FC<NodeCardProps> = ({
   useEffect(() => {
     const onRequest = (e: Event) => {
       if (!nodeId || (e as CustomEvent<{ nodeId?: string }>).detail?.nodeId !== nodeId) return;
-      if (!readOnly && takePendingStep(nodeId)) setBuildOpen(true);
+      const request = takePendingCard(nodeId);
+      if (request?.kind === "tab") {
+        setBuildOpen(false);
+        setTab(request.tab);
+      } else if (request?.kind === "step" && !readOnly) setBuildOpen(true);
     };
-    window.addEventListener(CHAT_OPEN_STEP, onRequest);
-    return () => window.removeEventListener(CHAT_OPEN_STEP, onRequest);
+    window.addEventListener(CHAT_OPEN_CARD, onRequest);
+    return () => window.removeEventListener(CHAT_OPEN_CARD, onRequest);
   }, [nodeId, readOnly]);
 
   // Esc закрывает окно построения.
@@ -358,6 +365,7 @@ export const NodeCard: FC<NodeCardProps> = ({
               type="button"
               className={`${styles.tab} ${activeTab === t.id ? styles.tabActive : ""}`}
               onClick={() => setTab(t.id)}
+              aria-pressed={activeTab === t.id}
             >
               {t.label}
             </button>

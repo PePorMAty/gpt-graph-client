@@ -1,6 +1,7 @@
 // Разговор чата — в браузере, у открытого графа (PG-MIGRATION.md, этап 4: на
-// этапе 5 переедет в базу, к пользователю). Ключ — номер сохранённого графа;
-// у несохранённого — общий черновик.
+// этапе 5 переедет в базу, к пользователю). Ключ — conversationKey: номер
+// сохранённого графа, у черновика — его первый узел. Черновик в браузере
+// один, и разговор держится только у него.
 //
 // localStorage может быть недоступен (приватный режим, переполнен) — тогда
 // разговор живёт до перезагрузки страницы, чат работает.
@@ -25,11 +26,27 @@ const KEEP = 60;
 /** Реплик разговора — в запрос модели (сервер берёт не больше 12). */
 export const HISTORY_TURNS = 12;
 
-const keyOf = (graphId: string | null) => `chat:v1:${graphId || "unsaved"}`;
+const PREFIX = "chat:v1:";
+/** Без двоеточия: так находится и общий черновик первой версии чата. */
+const UNSAVED = "unsaved";
 
-export function loadConversation(graphId: string | null): ChatMessage[] {
+/**
+ * Ключ разговора. Сохранённый граф — по номеру. Несохранённый — по первому
+ * узлу: черновик переживает перезагрузку страницы вместе с узлами, а новый
+ * граф начинается с нового узла, и чат прежнего черновика в нём не
+ * всплывает. Удалили первый узел — разговор начнётся заново.
+ */
+export function conversationKey(graphId: string | null, firstNodeId: string | null): string {
+  return graphId || `${UNSAVED}:${firstNodeId ?? ""}`;
+}
+
+export const isUnsavedKey = (key: string) => key.startsWith(UNSAVED);
+
+const keyOf = (key: string) => PREFIX + key;
+
+export function loadConversation(key: string): ChatMessage[] {
   try {
-    const raw = localStorage.getItem(keyOf(graphId));
+    const raw = localStorage.getItem(keyOf(key));
     const list = raw ? JSON.parse(raw) : [];
     return Array.isArray(list) ? list : [];
   } catch {
@@ -37,10 +54,20 @@ export function loadConversation(graphId: string | null): ChatMessage[] {
   }
 }
 
-export function saveConversation(graphId: string | null, messages: ChatMessage[]): void {
+export function saveConversation(key: string, messages: ChatMessage[]): void {
   try {
-    if (messages.length) localStorage.setItem(keyOf(graphId), JSON.stringify(messages.slice(-KEEP)));
-    else localStorage.removeItem(keyOf(graphId));
+    if (!messages.length) {
+      localStorage.removeItem(keyOf(key));
+      return;
+    }
+    localStorage.setItem(keyOf(key), JSON.stringify(messages.slice(-KEEP)));
+    // Разговоры прежних черновиков — уже ни к чему: их графы заменены.
+    if (isUnsavedKey(key)) {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k?.startsWith(PREFIX + UNSAVED) && k !== keyOf(key)) localStorage.removeItem(k);
+      }
+    }
   } catch {
     // нет места или запрещено — разговор останется до перезагрузки
   }
