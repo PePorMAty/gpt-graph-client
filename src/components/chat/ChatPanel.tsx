@@ -67,6 +67,8 @@ const EXAMPLES = [
 const MAX_AUTO_ROUNDS = 4;
 /** Шагов на одно сообщение в автопилоте: шаг — 5–10 запросов к модели. */
 const MAX_AUTO_STEPS = 6;
+/** Карточек узлов, которые автопилот заполняет одновременно. */
+const FILLCARD_AT_ONCE = 3;
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const DIR = { up: "вверх", down: "вниз" } as const;
@@ -231,6 +233,12 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<string[]>([]);
+  // Ответ, чьи действия автопилот сейчас выполняет: у его карточек вместо
+  // кнопок — «в работе» (20.11: «Построить шаг» висела, пока шаг строился).
+  const [autoMsgId, setAutoMsgId] = useState<string | null>(null);
+  // Сколько узлов выделено на полотне: ИИ видит их списком («для всех
+  // выделенных»). Число, а не узлы: панель не перерисовывается от перетаскивания.
+  const selectedCount = useAppSelector((s) => s.graph.data.nodes.reduce((k, n) => k + (n.selected ? 1 : 0), 0));
   const [today, setToday] = useState(requestsToday);
   const abortRef = useRef<AbortController | null>(null);
   // «Стоп» в автопилоте: не только запрос к модели, но и очередь действий.
@@ -372,22 +380,53 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
 
         // ── Автопилот: действия ответа — по очереди, итог — под карточкой ──
         const results: string[] = [];
-        for (const [i, p] of done.proposals.entries()) {
+        setAutoMsgId(reply.id);
+        const record = (i: number, outcome: { ok: boolean; text: string }) => {
+          results.push(outcome.text);
+          show(convo.map((m) => (m.id === reply.id ? { ...m, results: { ...m.results, [i]: outcome } } : m)));
+        };
+        const run = (p: ChatProposal) =>
+          executeProposal(p, "auto", store).catch((e: unknown) => ({
+            ok: false,
+            text: `не вышло: ${e instanceof Error ? e.message : String(e)}`,
+          }));
+        const list = done.proposals;
+        for (let i = 0; i < list.length; ) {
           if (stoppedRef.current || generation.current !== gen) break;
+          const p = list[i];
+          // Карточки многих узлов («для всех выделенных») — по FILLCARD_AT_ONCE
+          // сразу: каждая — запрос к модели на десятки секунд, по одной 25
+          // узлов заполнялись бы четверть часа.
+          if (p.kind === "fillcard") {
+            let j = i;
+            while (j < list.length && list[j].kind === "fillcard") j++;
+            const queue = list.slice(i, j).map((x, k) => [i + k, x] as const);
+            let done = 0;
+            const total = queue.length;
+            setLive([`Автопилот: карточки — 0 из ${total}…`]);
+            const worker = async () => {
+              for (let next = queue.shift(); next; next = queue.shift()) {
+                if (stoppedRef.current || generation.current !== gen) return;
+                record(next[0], await run(next[1]));
+                setLive([`Автопилот: карточки — ${++done} из ${total}…`]);
+              }
+            };
+            await Promise.all(Array.from({ length: Math.min(FILLCARD_AT_ONCE, total) }, worker));
+            i = j;
+            continue;
+          }
           let outcome: { ok: boolean; text: string };
           if (p.kind === "step" && steps >= MAX_AUTO_STEPS) {
             outcome = { ok: false, text: `шаг от ${q(p.label)} пропущен: на одно сообщение не больше ${MAX_AUTO_STEPS} шагов` };
           } else {
             if (p.kind === "step") steps++;
             setLive([`Автопилот: ${proposalView(p).title}…`]);
-            outcome = await executeProposal(p, "auto", store).catch((e: unknown) => ({
-              ok: false,
-              text: `не вышло: ${e instanceof Error ? e.message : String(e)}`,
-            }));
+            outcome = await run(p);
           }
-          results.push(outcome.text);
-          show(convo.map((m) => (m.id === reply.id ? { ...m, results: { ...m.results, [i]: outcome } } : m)));
+          record(i, outcome);
+          i++;
         }
+        setAutoMsgId(null);
         const changed = done.proposals.some((p) => GRAPH_CHANGES.includes(p.kind));
         if (!changed || !results.length || stoppedRef.current || generation.current !== gen) break;
         if (round + 1 >= MAX_AUTO_ROUNDS) {
@@ -407,6 +446,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
       }
       if (abortRef.current === ctrl) abortRef.current = null;
       setLive([]);
+      setAutoMsgId(null);
       setBusy(false);
     },
     [busy, graphName, mode, store, config.provider, chatModel],
@@ -541,6 +581,8 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
                         {result.ok ? "✓ " : "✗ "}
                         {result.text}
                       </div>
+                    ) : autoMsgId === m.id ? (
+                      <div className={styles.proposalWhy}>автопилот: в работе или в очереди…</div>
                     ) : (
                       <div className={styles.proposalActions}>
                         <button
@@ -589,7 +631,13 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
           void send(input);
         }}
       >
-        {selectedLabel && <div className={styles.context}>О выбранном узле: «{selectedLabel}»</div>}
+        {selectedCount > 1 ? (
+          <div className={styles.context}>
+            Выделено на графе: {selectedCount} {plural(selectedCount, "узел", "узла", "узлов")} — ИИ видит их списком
+          </div>
+        ) : (
+          selectedLabel && <div className={styles.context}>О выбранном узле: «{selectedLabel}»</div>
+        )}
         <div className={styles.inputRow}>
           <textarea
             className={styles.input}

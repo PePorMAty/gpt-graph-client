@@ -82,7 +82,29 @@ export function historyFor(messages: ChatMessage[]): { role: "user" | "assistant
   return messages
     .filter((m) => !m.error && m.content.trim())
     .slice(-HISTORY_TURNS)
-    .map((m) => ({ role: m.role, content: m.content }));
+    .map((m) => ({ role: m.role, content: m.content + actionsNote(m) }));
+}
+
+/**
+ * Какие действия были в ответе и чем кончились — модели в истории. Без
+ * этого она видела только свои слова «Альтернативы ищутся…» и повторяла
+ * их, не вызывая действия (20.11): по тексту не понять, был ли вызов.
+ * Сервер ловит эту пометку, если модель напишет её сама, без вызова.
+ */
+function actionsNote(m: ChatMessage): string {
+  if (m.role !== "assistant" || !m.proposals?.length) return "";
+  const list = m.proposals.map((p, i) => {
+    const what =
+      "label" in p && typeof p.label === "string"
+        ? ` «${p.label}»`
+        : "nodes" in p && Array.isArray(p.nodes)
+          ? ` ${p.nodes.map((n) => `«${n.label}»`).join(", ")}`
+          : "";
+    const r = m.results?.[i];
+    const state = r ? `${r.ok ? "выполнено" : "не вышло"}: ${r.text}` : m.closed?.includes(i) ? "закрыто" : "ждёт кнопки";
+    return `${p.kind}${what} — ${state}`;
+  });
+  return `\n\n(действия этого ответа: ${list.join("; ")})`;
 }
 
 // ---------- режим чата ----------

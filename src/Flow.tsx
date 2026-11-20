@@ -350,6 +350,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
    * и достроенных шагов узлы разъезжаются, и вернуть порядок было нечем.
    */
   const layoutBackupRef = useRef<{ nodes: CustomNode[]; edges: Edge[]; laid: string } | null>(null);
+  /** Места продуктов, только что добавленных из чата (см. chatEditRef.add). */
+  const chatPlacedRef = useRef<{ x: number; y: number }[]>([]);
   const handleRelayout = useCallback(async () => {
     if (!data.nodes.length) return;
     setIsApplyingLayout(true);
@@ -2394,9 +2396,19 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (readOnly) return null;
       saveChangesRef.current();
       const near = nearId ? nodesRef.current.find((n) => n.id === nearId) : undefined;
-      const position = near
+      const base = near
         ? { x: near.position.x + 280, y: near.position.y }
         : screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      // Свободное место: несколько продуктов одним ответом («добавь бензол,
+      // толуол и ксилол») вставали друг на друга (20.11). Узлы этого же
+      // ответа ещё не в nodesRef — полотно не успело перерисоваться, —
+      // поэтому помним и их места.
+      const taken = [...nodesRef.current.map((n) => n.position), ...chatPlacedRef.current];
+      const free = (p: { x: number; y: number }) =>
+        !taken.some((t) => Math.abs(t.x - p.x) < 240 && Math.abs(t.y - p.y) < 90);
+      let position = base;
+      for (let k = 1; !free(position) && k < 40; k++) position = { x: base.x, y: base.y + k * 100 };
+      chatPlacedRef.current = [...chatPlacedRef.current.slice(-20), position];
       const id = newId && !nodesRef.current.some((n) => n.id === newId) ? newId : crypto.randomUUID();
       dispatch(addNode({ type: "product", label, position, id }));
       showToast("success", `Добавлен продукт «${label}»`);

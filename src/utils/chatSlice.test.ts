@@ -92,6 +92,17 @@ describe("срез графа для чата", () => {
     expect(s.transformations[0].balance).toMatchObject({ status: "Частично рассчитан", basis: "Кумол" });
   });
 
+  it("выделенные на полотне узлы — списком, альтернативы — нет", () => {
+    const sel = (n: CustomNode) => ({ ...n, selected: true }) as CustomNode;
+    const s = buildChatSlice([sel(nodes[0]), nodes[1], sel(nodes[2]), sel(nodes[3]), sel(node("a1", "transformation", "Бисфенол А", { chainVariant: "alt" }))], edges);
+    expect(s.selection).toEqual([
+      { id: "p1", label: "Кумол", kind: "product" },
+      { id: "p3", label: "Ацетон", kind: "product" },
+      { id: "t1", label: "Кумольный способ", kind: "transformation" },
+    ]);
+    expect(buildChatSlice(nodes, edges).selection).toEqual([]);
+  });
+
   it("большой граф — не больше пределов сервера", () => {
     const many = Array.from({ length: 700 }, (_, i) => node(`p${i}`, "product", `Продукт ${i}`));
     expect(buildChatSlice(many, []).products).toHaveLength(CHAT_SLICE_LIMITS.products);
@@ -135,6 +146,29 @@ describe("история разговора для модели", () => {
     expect(h).toHaveLength(12);
     expect(h[0]).toEqual({ role: "user", content: "реплика 2" });
     expect(h.some((m) => m.content.startsWith("Не получилось"))).toBe(false);
+  });
+
+  it("у ответа с действиями — что вызвано и чем кончилось (20.11)", () => {
+    const h = historyFor([
+      { id: "u", role: "user", content: "найди альтернативы и разложи" },
+      {
+        id: "a",
+        role: "assistant",
+        content: "Ищу альтернативы.",
+        proposals: [
+          { kind: "alternatives", nodeId: "n1", label: "Тримеры пропилена", direction: "up" },
+          { kind: "bookmark", nodes: [{ id: "n1", label: "Тримеры пропилена" }] },
+          { kind: "layout" },
+        ],
+        results: { 0: { ok: false, text: "остановлено" } },
+        closed: [2],
+      },
+      { id: "b", role: "assistant", content: "Фенол получают из кумола." },
+    ]);
+    expect(h[1].content).toBe(
+      "Ищу альтернативы.\n\n(действия этого ответа: alternatives «Тримеры пропилена» — не вышло: остановлено; bookmark «Тримеры пропилена» — ждёт кнопки; layout — закрыто)",
+    );
+    expect(h[2].content).toBe("Фенол получают из кумола.");
   });
 });
 

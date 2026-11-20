@@ -17,7 +17,7 @@ import type { TechnologySource } from "../store/types";
 import { STATUS_TEXT, statusReason, type MaterialBalanceCalc } from "./materialBalance";
 import { productContext, type ProductContext } from "./productContext";
 
-export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, alternatives: 200, ends: 20, titles: 5, withSources: 80, note: 600 };
+export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, alternatives: 200, ends: 20, titles: 5, withSources: 80, note: 600, selection: 60 };
 
 /** Найденные источники продукта в одну сторону: сколько и первые названия. */
 type FoundSources = { count: number; titles: string[] };
@@ -48,6 +48,11 @@ export interface ChatGraphSlice {
    * сервер поле не читает.
    */
   alternatives: { id: string; label: string; of: string[]; direction: "up" | "down" }[];
+  /**
+   * Узлы, выделенные на полотне рамкой или с Shift: «заполни карточки для
+   * всех выделенных» (20.11). Старый сервер поле не читает.
+   */
+  selection: { id: string; label: string; kind: "product" | "transformation" }[];
   /**
    * Название выбранного продукта — всегда, даже без контекста: у одинокого
    * узла без описания контекст пуст, а модель должна знать, о чём «этот
@@ -160,6 +165,10 @@ export function buildChatSlice(
     products,
     transformations,
     alternatives,
+    selection: nodes
+      .filter((n) => n.selected && onGraph(n) && labelOf(n) && (n.type === "product" || n.type === "transformation"))
+      .slice(0, CHAT_SLICE_LIMITS.selection)
+      .map((n) => ({ id: n.id, label: labelOf(n), kind: n.type === "transformation" ? ("transformation" as const) : ("product" as const) })),
     selectedLabel: sel?.type === "product" ? labelOf(sel) || null : null,
     selected: sel?.type === "product" ? productContext(sel.id, nodes, edges) : null,
     recent: recent.slice(0, 10),
