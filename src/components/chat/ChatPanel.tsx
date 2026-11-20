@@ -54,7 +54,10 @@ import {
   saveConversation,
   type ChatMessage,
 } from "./chatStore";
-import { executeProposal, GRAPH_CHANGES, type AppStore, type ChatMode } from "./chatRunner";
+import { executeProposal, GRAPH_CHANGES, NOT_ACTIONS, UNDOABLE, type AppStore, type ChatMode } from "./chatRunner";
+import { canUndo, forgetUndo, getUndoVersion, rememberBefore, subscribeUndo, takeBefore } from "./chatUndo";
+import { setGraphData } from "../../store/slices/gptSlice";
+import { pushHistory } from "../../store/slices/historySlice";
 import styles from "./ChatPanel.module.css";
 
 const EXAMPLES = [
@@ -67,6 +70,8 @@ const EXAMPLES = [
 const MAX_AUTO_ROUNDS = 4;
 /** Шагов на одно сообщение в автопилоте: шаг — 5–10 запросов к модели. */
 const MAX_AUTO_STEPS = 6;
+/** Предел шагов и кругов одобренного плана. */
+const MAX_PLAN = 20;
 /** Карточек узлов, которые автопилот заполняет одновременно. */
 const FILLCARD_AT_ONCE = 3;
 
@@ -181,7 +186,53 @@ function proposalView(p: ChatProposal): {
         edits: false,
         keep: false,
       };
+    case "undo":
+      return {
+        title: "Отменить действия ИИ",
+        note: "Граф вернётся, каким был до действий прошлого ответа чата.",
+        action: "Отменить",
+        edits: true,
+        keep: false,
+      };
+    case "plan":
+      return {
+        title: `План: ${p.title}`,
+        note: [
+          ...p.steps.map((x, i) => `${i + 1}. ${x}`),
+          p.requests ? `Примерно ${p.requests} ${plural(p.requests, "запрос", "запроса", "запросов")} к модели.` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        action: "Выполнить план",
+        edits: true,
+        keep: false,
+      };
+    case "import":
+      return {
+        title: `Из графа ${q(p.graphName)}: ${p.direction === "up" ? "как получают" : "что делают из"} ${q(p.label)}`,
+        note: `Готовые шаги библиотеки (${p.depth} ${plural(p.depth, "уровень", "уровня", "уровней")}) встанут у продукта — без запросов к модели. Продукты, что уже есть на графе, не дублируются.`,
+        action: "Взять",
+        edits: true,
+        keep: false,
+      };
+    case "report":
+      return { title: `Отчёт: ${p.title}`, action: "Скачать .md", edits: false, keep: true };
   }
+}
+
+/** Ответ-отчёт — файлом .md: его отправляют и открывают где угодно. */
+function downloadReport(title: string, markdown: string) {
+  const name = `${title.replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80) || "Отчёт"}.md`;
+  const url = URL.createObjectURL(new Blob([`# ${title}\n\n${markdown}\n`], { type: "text/markdown;charset=utf-8" }));
+  // Ссылка — в документе: без этого браузер берёт не имя файла, а «download».
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 interface ChatPanelProps {
@@ -239,6 +290,8 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   // Сколько узлов выделено на полотне: ИИ видит их списком («для всех
   // выделенных»). Число, а не узлы: панель не перерисовывается от перетаскивания.
   const selectedCount = useAppSelector((s) => s.graph.data.nodes.reduce((k, n) => k + (n.selected ? 1 : 0), 0));
+  // Какие ответы можно отменить (снимки графа до их действий, chatUndo.ts).
+  useSyncExternalStore(subscribeUndo, getUndoVersion);
   const [today, setToday] = useState(requestsToday);
   const abortRef = useRef<AbortController | null>(null);
   // «Стоп» в автопилоте: не только запрос к модели, но и очередь действий.
@@ -269,6 +322,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
     stoppedRef.current = true;
     abortRef.current?.abort();
     cancelAutoStep();
+    forgetUndo();
     setMessages(stored);
   }, [key, firstNodeId]);
 
@@ -297,9 +351,13 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
    * только после перерисовки.
    */
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, opts: { planSteps?: number } = {}) => {
       const message = text.trim();
       if (!message || busy) return;
+      // Одобренный план — пределы автопилота по его пунктам: «построй
+      // цепочку до фенола» — это больше шести шагов и четырёх кругов.
+      const maxSteps = Math.min(MAX_PLAN, Math.max(MAX_AUTO_STEPS, (opts.planSteps ?? 0) + 2));
+      const maxRounds = Math.min(MAX_PLAN, Math.max(MAX_AUTO_ROUNDS, (opts.planSteps ?? 0) + 2));
       const gen = generation.current;
       const runMode = mode;
       const ctrl = new AbortController();
@@ -398,6 +456,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
           // сразу: каждая — запрос к модели на десятки секунд, по одной 25
           // узлов заполнялись бы четверть часа.
           if (p.kind === "fillcard") {
+            rememberBefore(reply.id, store.getState().graph.data);
             let j = i;
             while (j < list.length && list[j].kind === "fillcard") j++;
             const queue = list.slice(i, j).map((x, k) => [i + k, x] as const);
@@ -416,8 +475,14 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
             continue;
           }
           let outcome: { ok: boolean; text: string };
-          if (p.kind === "step" && steps >= MAX_AUTO_STEPS) {
-            outcome = { ok: false, text: `шаг от ${q(p.label)} пропущен: на одно сообщение не больше ${MAX_AUTO_STEPS} шагов` };
+          // План и отчёт — не действия: план ждёт кнопки человека.
+          if (NOT_ACTIONS.includes(p.kind)) {
+            i++;
+            continue;
+          }
+          if (UNDOABLE.includes(p.kind)) rememberBefore(reply.id, store.getState().graph.data);
+          if (p.kind === "step" && steps >= maxSteps) {
+            outcome = { ok: false, text: `шаг от ${q(p.label)} пропущен: на одно сообщение не больше ${maxSteps} шагов` };
           } else {
             if (p.kind === "step") steps++;
             setLive([`Автопилот: ${proposalView(p).title}…`]);
@@ -429,14 +494,14 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
         setAutoMsgId(null);
         const changed = done.proposals.some((p) => GRAPH_CHANGES.includes(p.kind));
         if (!changed || !results.length || stoppedRef.current || generation.current !== gen) break;
-        if (round + 1 >= MAX_AUTO_ROUNDS) {
+        if (round + 1 >= maxRounds) {
           show([
             ...convo,
             {
               id: newId(),
               role: "user",
               auto: true,
-              content: `Автопилот: ${results.join("; ")}. Остановился: не больше ${MAX_AUTO_ROUNDS} кругов на одно сообщение — напишите «дальше».`,
+              content: `Автопилот: ${results.join("; ")}. Остановился: не больше ${maxRounds} кругов на одно сообщение — напишите «дальше».`,
             },
           ]);
           break;
@@ -459,14 +524,38 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
 
   /** Кнопка карточки (режим с подтверждением): то же действие, что делает автопилот. */
   const runProposal = (msgId: string, index: number, p: ChatProposal) => {
+    if (p.kind === "plan") {
+      closeProposal(msgId, index);
+      void send(`Выполняй план «${p.title}»:\n${p.steps.map((x, i) => `${i + 1}. ${x}`).join("\n")}`, { planSteps: p.steps.length });
+      return;
+    }
+    if (p.kind === "report") {
+      downloadReport(p.title, messagesRef.current.find((m) => m.id === msgId)?.content ?? "");
+      return;
+    }
     if (!proposalView(p).keep) closeProposal(msgId, index);
+    if (UNDOABLE.includes(p.kind)) rememberBefore(msgId, store.getState().graph.data);
     void executeProposal(p, "confirm", store).then((r) => {
       if (!r.ok) showToast("error", r.text.charAt(0).toUpperCase() + r.text.slice(1));
     });
   };
 
+  /** Граф — как до действий ответа; модели — что человек их отменил. */
+  const undoReply = (msgId: string) => {
+    const before = takeBefore(msgId);
+    if (!before) return;
+    store.dispatch(setGraphData(before));
+    store.dispatch(pushHistory({ kind: "edit", title: "Отменены действия ИИ", details: "граф — как до ответа чата" }));
+    showToast("success", "Действия ИИ отменены");
+    setMessages((list) => [
+      ...list,
+      { id: newId(), role: "user", auto: true, content: "Человек отменил действия ответа чата: граф — каким был до них." },
+    ]);
+  };
+
   const clear = () => {
     stop();
+    forgetUndo();
     setMessages([]);
   };
 
@@ -581,7 +670,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
                         {result.ok ? "✓ " : "✗ "}
                         {result.text}
                       </div>
-                    ) : autoMsgId === m.id ? (
+                    ) : autoMsgId === m.id && !NOT_ACTIONS.includes(p.kind) ? (
                       <div className={styles.proposalWhy}>автопилот: в работе или в очереди…</div>
                     ) : (
                       <div className={styles.proposalActions}>
@@ -601,6 +690,11 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
                   </div>
                 );
               })}
+              {m.role === "assistant" && canUndo(m.id) && !(busy && autoMsgId === m.id) && (
+                <button type="button" className={styles.undo} onClick={() => undoReply(m.id)}>
+                  ↶ Отменить действия этого ответа
+                </button>
+              )}
               {!!m.requests && (
                 <div className={styles.meta}>
                   {m.requests} {plural(m.requests, "запрос", "запроса", "запросов")} к модели

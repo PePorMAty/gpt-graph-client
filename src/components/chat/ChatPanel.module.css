@@ -406,3 +406,20 @@
   border-radius: var(--r-xs);
   cursor: pointer;
 }
+
+/* «Отменить действия этого ответа» — тихая ссылка под ответом: нужна редко,
+   но должна быть под рукой, когда автопилот сделал не то. */
+.undo {
+  align-self: flex-start;
+  padding: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.undo:hover {
+  color: var(--c-text);
+  text-decoration: underline;
+}

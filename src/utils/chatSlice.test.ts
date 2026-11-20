@@ -22,10 +22,11 @@ describe("срез графа для чата", () => {
   it("продукты с id, преобразования — названиями сырья и продуктов", () => {
     const s = buildChatSlice(nodes, edges, { name: "Фенол" });
     expect(s.name).toBe("Фенол");
+    // empty — без описания: для проверки графа («что не заполнено»).
     expect(s.products).toEqual([
-      { id: "p1", label: "Кумол" },
+      { id: "p1", label: "Кумол", empty: true },
       { id: "p2", label: "Фенол" },
-      { id: "p3", label: "Ацетон" },
+      { id: "p3", label: "Ацетон", empty: true },
     ]);
     expect(s.transformations).toEqual([{ id: "t1", label: "Кумольный способ", inputs: ["Кумол"], outputs: ["Фенол", "Ацетон"] }]);
     expect(s.selected).toBeNull();
@@ -86,10 +87,47 @@ describe("срез графа для чата", () => {
     const s = buildChatSlice(withData, edges, {
       sourcesOf: (label, dir) => pool[`${label}::${dir}`] as never,
     });
-    expect(s.products[0]).toEqual({ id: "p1", label: "Кумол", sources: { up: { count: 1, titles: ["ИТС 18 · Производство кумола"] } } });
+    expect(s.products[0]).toEqual({ id: "p1", label: "Кумол", sources: { up: { count: 1, titles: ["ИТС 18 · Производство кумола"] } }, empty: true });
     expect(s.products[1]).toEqual({ id: "p2", label: "Фенол", sources: { down: { count: 2, titles: ["Бисфенол А — обзор", "https://b"] } } });
-    expect(s.products[2]).toEqual({ id: "p3", label: "Ацетон" });
+    expect(s.products[2]).toEqual({ id: "p3", label: "Ацетон", empty: true });
     expect(s.transformations[0].balance).toMatchObject({ status: "Частично рассчитан", basis: "Кумол" });
+  });
+
+  it("массы последнего расчёта — долями от массы сырья, названиями узлов графа (сквозной баланс)", () => {
+    const refs = [
+      { ref: "P1", name: "Пропилен", role: "basis" },
+      { ref: "P2", name: "Акрилонитрил", role: "target" },
+      { ref: "P3", name: "Аммиак", role: "input" },
+      { ref: "T1", name: "Аммоксидирование", role: "transformation" },
+    ];
+    const product = (ref: string, kg: number) => ({ ref, name: ref, massKg: { min: kg, max: kg, approx: false }, massText: "", label: "", basis: "" });
+    const record = {
+      id: 1, createdAt: "", model: null, kind: "transformation", transformation: "Аммоксидирование", basis: "Пропилен",
+      target: "Акрилонитрил", status: "calculated", statusLabel: "", refs, chain: null, basisText: null, nature: null,
+      products: [product("P1", 640), product("P2", 600), product("P3", 360)], coefficients: [], flows: [],
+      totals: { input: null, output: null, accumulation: null, residual: null, conclusion: null }, sources: [],
+      sections: { transitions: "", balance: "", notes: "" }, answer: "",
+    };
+    const g = [
+      node("pr", "product", "Пропилен"),
+      node("acn", "product", "Нитрил акриловой кислоты"),
+      node("nh3", "product", "Аммиак"),
+      node("t", "transformation", "Аммоксидирование", {
+        materialBalances: [{ record, nodeIds: { P1: "pr", P2: "acn", P3: "nh3", T1: "t" }, addedAt: "" }],
+      }),
+    ];
+    const s = buildChatSlice(g, [edge("pr", "t"), edge("nh3", "t"), edge("t", "acn")]);
+    expect(s.transformations[0].balance).toEqual({
+      status: "Рассчитан",
+      basis: "Пропилен",
+      inputs: { Пропилен: 0.64, Аммиак: 0.36 },
+      outputs: { "Нитрил акриловой кислоты": 0.6 },
+    });
+  });
+
+  it("описание альтернативы — для сравнения способов", () => {
+    const s = buildChatSlice([nodes[1], node("a1", "transformation", "Окисление толуола", { chainVariant: "alt", description: "Через **бензойную** кислоту." })], [edge("a1", "p2")]);
+    expect(s.alternatives[0]).toMatchObject({ label: "Окисление толуола", direction: "up", description: "Через **бензойную** кислоту." });
   });
 
   it("выделенные на полотне узлы — списком, альтернативы — нет", () => {
@@ -189,6 +227,19 @@ describe("предложения чата", () => {
       { kind: "delete", nodes: [{ id: "a1", label: "Бисфенол А" }] } as never,
       { kind: "layout" } as never,
       { kind: "unlayout" } as never,
+      { kind: "undo" } as never,
+      { kind: "plan", title: "Цепочка", steps: ["шаг вверх"] } as never,
+      { kind: "report", title: "Фенол" } as never,
+      {
+        kind: "import",
+        nodeId: "n1",
+        label: "Фенол",
+        direction: "up",
+        depth: 1,
+        graphId: "g1",
+        graphName: "Нефтехимия",
+        libraryNodeId: "x1",
+      } as never,
       { kind: "alternatives", nodeId: "n1", label: "Фенол", direction: "up" } as never,
       { kind: "describe", nodeId: "n1", label: "Фенол", description: "Ароматический спирт." } as never,
       { kind: "fillcard", nodeId: "n1", label: "Фенол" } as never,

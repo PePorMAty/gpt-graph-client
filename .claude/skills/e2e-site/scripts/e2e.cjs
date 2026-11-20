@@ -349,7 +349,10 @@ function serveStatic(route) {
 
   const { chromium } = require("playwright");
   const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
-  const browser = await chromium.launch(proxy ? { proxy } : {});
+  // Язык UTF-8: без него Chromium в контейнере (LANG не задан) скачивает
+  // файлы с русским именем как «download» (отчёт чата — «Фенол — отчёт.md»).
+  const env = { ...process.env, LANG: process.env.LANG || "C.UTF-8" };
+  const browser = await chromium.launch({ ...(proxy ? { proxy } : {}), env });
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
   const page = await context.newPage();
   if (opts.site === "local") {

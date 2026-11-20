@@ -40,6 +40,24 @@ export type ChatProposal =
   | { kind: "delete"; nodes: NodeRef[]; why?: string }
   | { kind: "layout"; why?: string }
   | { kind: "unlayout" }
+  /** Отменить действия прошлых ответов ИИ — граф, каким был до них. */
+  | { kind: "undo"; why?: string }
+  /** План большой задачи: человек одобряет кнопкой «Выполнить план». */
+  | { kind: "plan"; title: string; steps: string[]; requests?: number }
+  /** Кусок цепочки из графа библиотеки — к продукту открытого графа. */
+  | {
+      kind: "import";
+      nodeId: string;
+      label: string;
+      direction: "up" | "down";
+      depth: number;
+      graphId: string;
+      graphName: string;
+      libraryNodeId: string;
+      why?: string;
+    }
+  /** Ответ — отчёт: его можно скачать файлом. */
+  | { kind: "report"; title: string }
   | { kind: "alternatives"; nodeId: string; label: string; direction: "up" | "down"; why?: string }
   | { kind: "describe"; nodeId: string; label: string; description: string; industry?: string; mainPurpose?: string }
   | { kind: "fillcard"; nodeId: string; label: string; nodeKind?: string; why?: string }
@@ -63,6 +81,10 @@ export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = [
   "delete",
   "layout",
   "unlayout",
+  "undo",
+  "plan",
+  "import",
+  "report",
   "alternatives",
   "describe",
   "fillcard",
@@ -92,7 +114,21 @@ export function isKnownProposal(p: unknown): p is ChatProposal {
       return isRefs(x.nodes);
     case "layout":
     case "unlayout":
+    case "undo":
       return true;
+    case "plan":
+      return isStr(x.title) && Array.isArray(x.steps) && x.steps.length > 0 && x.steps.every(isStr);
+    case "report":
+      return isStr(x.title);
+    case "import":
+      return (
+        isStr(x.nodeId) &&
+        isStr(x.label) &&
+        isStr(x.graphId) &&
+        isStr(x.graphName) &&
+        isStr(x.libraryNodeId) &&
+        (x.direction === "up" || x.direction === "down")
+      );
     case "balance":
     case "tech":
       return isStr(x.nodeId) && isStr(x.label);

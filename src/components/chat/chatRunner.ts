@@ -25,7 +25,11 @@ import {
   setDraftBasis,
 } from "../../store/slices/materialBalanceSlice";
 import { STATUS_TEXT, statusReason, type MaterialBalanceCalc } from "../../utils/materialBalance";
-import { updateNodeData } from "../../store/slices/gptSlice";
+import { setGraphData, updateNodeData } from "../../store/slices/gptSlice";
+import { pushHistory } from "../../store/slices/historySlice";
+import { loadSavedGraph } from "../../store/api/saved-graph-api";
+import { importChain } from "../../utils/importChain";
+import { lastUndoable, takeBefore } from "./chatUndo";
 import { addBookmark, removeBookmark } from "../../store/slices/bookmarksSlice";
 import { fetchProductCard } from "../../store/api/product-card-api";
 import { startAutoStep, type AutoStepUntil } from "../flow-panel/stepAutopilot";
@@ -58,7 +62,31 @@ export interface ProposalOutcome {
  * другой, или найдено то, от чего зависит следующий ход (источники,
  * альтернативы).
  */
-export const GRAPH_CHANGES: ChatProposal["kind"][] = ["step", "add", "rename", "merge", "delete", "sources", "alternatives"];
+export const GRAPH_CHANGES: ChatProposal["kind"][] = ["step", "add", "rename", "merge", "delete", "sources", "alternatives", "import", "undo"];
+
+/**
+ * Действия, которые меняют граф, — перед первым из них чат запоминает граф
+ * (chatUndo.ts), чтобы их можно было отменить.
+ */
+export const UNDOABLE: ChatProposal["kind"][] = [
+  "step",
+  "add",
+  "rename",
+  "merge",
+  "delete",
+  "alternatives",
+  "layout",
+  "unlayout",
+  "describe",
+  "fillcard",
+  "import",
+];
+
+/**
+ * Не действия: план ждёт кнопки человека, отчёт — это сам ответ. Автопилот
+ * их не выполняет, у карточек остаются кнопки.
+ */
+export const NOT_ACTIONS: ChatProposal["kind"][] = ["plan", "report"];
 
 const DIR = { up: "вверх", down: "вниз" } as const;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -180,6 +208,24 @@ export async function executeProposal(p: ChatProposal, mode: ChatMode, store: Ap
       return { ok: true, text: `карточка ${q(p.label)} заполнена — вкладка «Технологическое описание»` };
     }
 
+    case "undo": {
+      const msgId = lastUndoable();
+      const before = msgId ? takeBefore(msgId) : null;
+      if (!before) return { ok: false, text: "отменять нечего: после открытия графа ИИ ничего на нём не менял" };
+      store.dispatch(setGraphData(before));
+      store.dispatch(pushHistory({ kind: "edit", title: "Отменены действия ИИ", details: "граф — как до ответа чата" }));
+      return { ok: true, text: "действия ИИ отменены — граф, каким был до них" };
+    }
+
+    case "import":
+      return runImport(p, store, exists);
+
+    case "plan":
+      return { ok: true, text: `план «${p.title}» — ждёт «Выполнить план»` };
+
+    case "report":
+      return { ok: true, text: `отчёт «${p.title}» — его можно скачать` };
+
     case "bookmark": {
       const present = p.nodes.filter((n) => exists(n.id));
       if (!present.length) return { ok: false, text: "этих узлов уже нет на графе" };
@@ -211,6 +257,44 @@ function startStepWizard(
   if (headless) requestAutoFocus(nodeId, label, direction);
   else requestStep(nodeId, label, direction);
   return result;
+}
+
+/**
+ * Кусок цепочки из графа библиотеки: граф загружается с сервера, нужные шаги
+ * встают у продукта (utils/importChain.ts). Без запросов к модели.
+ */
+async function runImport(
+  p: Extract<ChatProposal, { kind: "import" }>,
+  store: AppStore,
+  exists: (id: string) => boolean,
+): Promise<ProposalOutcome> {
+  if (!exists(p.nodeId)) return { ok: false, text: `узла ${q(p.label)} уже нет на графе` };
+  let library;
+  try {
+    library = await loadSavedGraph(p.graphId);
+  } catch (e) {
+    return { ok: false, text: `граф ${q(p.graphName)} не загрузился: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const graph = store.getState().graph.data;
+  const r = importChain(graph, library.graph ?? { nodes: [], edges: [] }, {
+    anchorId: p.nodeId,
+    libraryNodeId: p.libraryNodeId,
+    direction: p.direction,
+    depth: p.depth,
+    newId: () => `lib-${crypto.randomUUID()}`,
+  });
+  if (!r) return { ok: false, text: `в графе ${q(p.graphName)} нет ${q(p.label)}` };
+  if (!r.addedIds.length) return { ok: true, text: `из ${q(p.graphName)}: всё это уже есть на графе` };
+  store.dispatch(setGraphData({ nodes: r.nodes, edges: r.edges }));
+  const what = [
+    r.transformations.length ? `шаги ${r.transformations.map(q).join(", ")}` : "",
+    r.newProducts.length ? `новые продукты ${r.newProducts.map(q).join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  store.dispatch(pushHistory({ kind: "merge", title: `Взято из графа «${p.graphName}»`, details: what }));
+  showNodes(r.addedIds);
+  return { ok: true, text: `из ${q(p.graphName)} ${DIR[p.direction]} от ${q(p.label)}: ${what}` };
 }
 
 /**

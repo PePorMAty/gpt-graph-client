@@ -14,7 +14,7 @@ import type { Edge } from "@xyflow/react";
 
 import type { CustomNode } from "../types";
 import type { TechnologySource } from "../store/types";
-import { STATUS_TEXT, statusReason, type MaterialBalanceCalc } from "./materialBalance";
+import { percentBalance, STATUS_TEXT, statusReason, type MaterialBalanceCalc } from "./materialBalance";
 import { productContext, type ProductContext } from "./productContext";
 
 export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, alternatives: 200, ends: 20, titles: 5, withSources: 80, note: 600, selection: 60 };
@@ -29,7 +29,7 @@ export interface ChatGraphSlice {
    * это на графе и спрашивает «что за источники нашлись» (20.11), а база
    * сервера знает только ИТС. Старый сервер поле не читает.
    */
-  products: { id: string; label: string; sources?: { up?: FoundSources; down?: FoundSources } }[];
+  products: { id: string; label: string; sources?: { up?: FoundSources; down?: FoundSources }; empty?: true }[];
   /**
    * balance — последний расчёт материального баланса: статус, на что, почему
    * «частично» — чтобы досчитать его с данными. Старый сервер поле не читает.
@@ -39,7 +39,14 @@ export interface ChatGraphSlice {
     label: string;
     inputs: string[];
     outputs: string[];
-    balance?: { status: string; basis?: string; note?: string };
+    balance?: {
+      status: string;
+      basis?: string;
+      note?: string;
+      /** Массы расчёта в долях массы сырья: по ним сквозной баланс цепочки. */
+      inputs?: Record<string, number>;
+      outputs?: Record<string, number>;
+    };
   }[];
   /**
    * Альтернативы шага отдельно от преобразований: у какого продукта стоят
@@ -47,7 +54,7 @@ export interface ChatGraphSlice {
    * ещё его получают). О них спрашивают: «покажи альтернативы». Старый
    * сервер поле не читает.
    */
-  alternatives: { id: string; label: string; of: string[]; direction: "up" | "down" }[];
+  alternatives: { id: string; label: string; of: string[]; direction: "up" | "down"; description?: string }[];
   /**
    * Узлы, выделенные на полотне рамкой или с Shift: «заполни карточки для
    * всех выделенных» (20.11). Старый сервер поле не читает.
@@ -89,16 +96,44 @@ function foundSources(list: TechnologySource[] | undefined): FoundSources | unde
   return seen.size ? { count: seen.size, titles } : undefined;
 }
 
-/** Последний расчёт баланса преобразования — коротко. */
-function lastBalance(n: CustomNode): { status: string; basis?: string; note?: string } | undefined {
+/**
+ * Последний расчёт баланса преобразования — коротко, с долями сырья и
+ * продуктов от массы сырья (с правками человека): по ним сервер считает
+ * сквозной баланс цепочки («сколько бензола на тонну фенола»). Названия —
+ * узлов графа, а не расчёта: сервер сверяет их с преобразованиями среза.
+ */
+function lastBalance(
+  n: CustomNode,
+  labelOfId: (id: string) => string,
+): ChatGraphSlice["transformations"][number]["balance"] | undefined {
   const calc = (n.data?.materialBalances as MaterialBalanceCalc[] | undefined)?.[0];
   if (!calc?.record) return undefined;
   const r = calc.record;
   const note = statusReason(r)?.replace(/\s+/g, " ").trim().slice(0, CHAT_SLICE_LIMITS.note);
+  let inputs: Record<string, number> | undefined;
+  let outputs: Record<string, number> | undefined;
+  try {
+    const pb = percentBalance(r, undefined, calc.shares, calc.sharesBasis);
+    const shares = (rows: typeof pb.raw) => {
+      const out: Record<string, number> = {};
+      for (const row of rows) {
+        if (!row.share) continue;
+        const mid = (row.share.min + row.share.max) / 2;
+        const name = (row.ref && labelOfId(calc.nodeIds[row.ref] ?? "")) || row.name;
+        if (name && mid > 0) out[name] = Math.round(mid * 10000) / 10000;
+      }
+      return Object.keys(out).length ? out : undefined;
+    };
+    inputs = shares(pb.raw);
+    outputs = shares(pb.products);
+  } catch {
+    // Старый расчёт без таблиц — без масс; статус всё равно нужен.
+  }
   return {
     status: STATUS_TEXT[r.status] ?? r.statusLabel ?? r.status,
     ...(r.basis ? { basis: r.basis } : {}),
     ...(note ? { note } : {}),
+    ...(inputs && outputs ? { inputs, outputs } : {}),
   };
 }
 
@@ -131,15 +166,21 @@ export function buildChatSlice(
       };
       const up = withSources < CHAT_SLICE_LIMITS.withSources ? pick("up", "sourcesUp") : undefined;
       const down = withSources < CHAT_SLICE_LIMITS.withSources ? pick("down", "sourcesDown") : undefined;
-      if (!up && !down) return { id: n.id, label };
+      // Без описания — для проверки графа («что не заполнено»).
+      const empty = !String(n.data?.description ?? "").trim() ? ({ empty: true } as const) : {};
+      if (!up && !down) return { id: n.id, label, ...empty };
       withSources++;
-      return { id: n.id, label, sources: { ...(up ? { up } : {}), ...(down ? { down } : {}) } };
+      return { id: n.id, label, sources: { ...(up ? { up } : {}), ...(down ? { down } : {}) }, ...empty };
     });
   const productLabel = (id: string) => {
     const n = byId.get(id);
     return n?.type === "product" ? labelOf(n) : "";
   };
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].slice(0, CHAT_SLICE_LIMITS.ends);
+  const balanceOf = (n: CustomNode) => {
+    const balance = lastBalance(n, (id) => labelOf(byId.get(id)));
+    return balance ? { balance } : {};
+  };
   const transformations = nodes
     .filter((n) => n.type === "transformation" && onGraph(n) && labelOf(n))
     .slice(0, CHAT_SLICE_LIMITS.transformations)
@@ -148,7 +189,7 @@ export function buildChatSlice(
       label: labelOf(n),
       inputs: uniq(edges.filter((e) => e.target === n.id).map((e) => productLabel(e.source))),
       outputs: uniq(edges.filter((e) => e.source === n.id).map((e) => productLabel(e.target))),
-      ...(lastBalance(n) ? { balance: lastBalance(n) } : {}),
+      ...balanceOf(n),
     }));
   // Вариант вниз стоит после продукта (продукт → вариант), вверх — перед ним.
   const alternatives = nodes
@@ -157,7 +198,14 @@ export function buildChatSlice(
     .map((n) => {
       const from = uniq(edges.filter((e) => e.target === n.id).map((e) => productLabel(e.source)));
       const to = uniq(edges.filter((e) => e.source === n.id).map((e) => productLabel(e.target)));
-      return { id: n.id, label: labelOf(n), of: from.length ? from : to, direction: from.length ? ("down" as const) : ("up" as const) };
+      const description = String(n.data?.description ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
+      return {
+        id: n.id,
+        label: labelOf(n),
+        of: from.length ? from : to,
+        direction: from.length ? ("down" as const) : ("up" as const),
+        ...(description ? { description } : {}),
+      };
     });
   const sel = selectedNodeId ? byId.get(selectedNodeId) : undefined;
   return {
