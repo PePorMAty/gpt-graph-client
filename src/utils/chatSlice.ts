@@ -35,6 +35,11 @@ export interface ChatGraphSlice {
    */
   selectedLabel: string | null;
   selected: ProductContext | null;
+  /**
+   * Последние изменения графа из его истории (новые сверху): «построй
+   * дальше» — от последнего шага. Старый сервер поле не читает.
+   */
+  recent: { title: string; details?: string }[];
 }
 
 const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim();
@@ -48,7 +53,11 @@ const onGraph = (n: CustomNode) => n.data?.chainVariant !== "alt";
 export function buildChatSlice(
   nodes: CustomNode[],
   edges: Edge[],
-  { name = "", selectedNodeId = null }: { name?: string; selectedNodeId?: string | null } = {},
+  {
+    name = "",
+    selectedNodeId = null,
+    recent = [],
+  }: { name?: string; selectedNodeId?: string | null; recent?: { title: string; details?: string }[] } = {},
 ): ChatGraphSlice {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const products = nodes
@@ -86,5 +95,6 @@ export function buildChatSlice(
     alternatives,
     selectedLabel: sel?.type === "product" ? labelOf(sel) || null : null,
     selected: sel?.type === "product" ? productContext(sel.id, nodes, edges) : null,
+    recent: recent.slice(0, 10),
   };
 }

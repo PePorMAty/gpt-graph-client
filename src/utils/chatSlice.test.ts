@@ -56,6 +56,14 @@ describe("срез графа для чата", () => {
     ]);
   });
 
+  it("последние изменения графа — в срезе, не больше 10", () => {
+    const recent = Array.from({ length: 12 }, (_, i) => ({ title: `Шаг принят ${i}`, details: "«Синтез»: «Фенол» → «Смолы»" }));
+    const s = buildChatSlice(nodes, edges, { recent });
+    expect(s.recent).toHaveLength(10);
+    expect(s.recent[0]).toEqual({ title: "Шаг принят 0", details: "«Синтез»: «Фенол» → «Смолы»" });
+    expect(buildChatSlice(nodes, edges).recent).toEqual([]);
+  });
+
   it("большой граф — не больше пределов сервера", () => {
     const many = Array.from({ length: 700 }, (_, i) => node(`p${i}`, "product", `Продукт ${i}`));
     expect(buildChatSlice(many, []).products).toHaveLength(CHAT_SLICE_LIMITS.products);
@@ -118,6 +126,10 @@ describe("предложения чата", () => {
       { kind: "sources", nodeId: "n1", label: "Фенол", direction: "up", web: true } as never,
       { kind: "delete", nodes: [{ id: "a1", label: "Бисфенол А" }] } as never,
       { kind: "layout" } as never,
+      { kind: "alternatives", nodeId: "n1", label: "Фенол", direction: "up" } as never,
+      { kind: "describe", nodeId: "n1", label: "Фенол", description: "Ароматический спирт." } as never,
+      { kind: "fillcard", nodeId: "n1", label: "Фенол" } as never,
+      { kind: "bookmark", nodes: [{ id: "n1", label: "Фенол" }], remove: true } as never,
     );
     expect(ok.map(isKnownProposal)).toEqual(ok.map(() => true));
     // Каждый вид, который клиент объявляет серверу, он и показывает.

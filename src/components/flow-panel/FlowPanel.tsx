@@ -33,7 +33,14 @@ import {
   setLastBuildDirection,
   takeForcedBuildDirection,
 } from "./buildDirection";
-import { autoStepActive, cancelAutoStep, finishAutoStep, takeAutoWebSearch, type AutoStepUntil } from "./stepAutopilot";
+import {
+  autoStepActive,
+  cancelAutoStep,
+  finishAutoStep,
+  reportAutoStage,
+  takeAutoWebSearch,
+  type AutoStepUntil,
+} from "./stepAutopilot";
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { AiModelSelect } from "../ai-model-select";
@@ -955,6 +962,7 @@ const PanelBuildViewInner: FC<{
     }
     if (searching || baseChecking || (!offerBase && !introGoesForward && isSrcPromptEmpty)) return;
     autoStarted.current = true;
+    reportAutoStage(offerBase ? "источники из базы" : "поиск источников");
     // «Поищи в интернете» — моделью, даже если в базе есть разделы.
     if (!isSrcPromptEmpty && takeAutoWebSearch()) searchWithModel();
     else startSearch();
@@ -1177,7 +1185,7 @@ const PanelBuildViewInner: FC<{
  * Обёртка нужна ради настроек поиска: они общие у первого и второго экранов,
  * а оба лежат внутри. Провайдер поэтому стоит НАД мастером, а не в нём.
  */
-const PanelBuildView: FC<{
+export const PanelBuildView: FC<{
   productName: string;
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;

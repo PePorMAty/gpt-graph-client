@@ -1,5 +1,5 @@
 // components/Flow.tsx
-import { useCallback, useRef, useState, useEffect, useMemo } from "react";
+import { useCallback, useRef, useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   Background,
   ReactFlow,
@@ -47,6 +47,8 @@ import { checkIndustry, industryKey } from "./store/slices/industrySlice";
 import { checkLocalSources } from "./store/slices/localSourcesSlice";
 import { useAppSelector, useAppDispatch } from "./store/hooks";
 import { FlowPanel } from "./components/flow-panel";
+import { PanelBuildView } from "./components/flow-panel/FlowPanel";
+import { getAutoStepSnapshot, subscribeAutoStep } from "./components/flow-panel/stepAutopilot";
 import { Notification } from "./components/notification";
 import { ProductNode, TransformationNode } from "./components/nodes";
 
@@ -92,6 +94,7 @@ import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import {
   CHAT_ADD,
+  CHAT_AUTO_FOCUS,
   CHAT_CODES,
   CHAT_DELETE,
   CHAT_LAYOUT,
@@ -904,6 +907,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   // Чат с ИИ (PG-MIGRATION.md, этап 4) — панель справа от полотна.
   const [chatOpen, setChatOpen] = useState(false);
+  // Задание автопилота чата: скрытый мастер шага (ниже, у FlowPanel).
+  const autoRun = useSyncExternalStore(subscribeAutoStep, getAutoStepSnapshot);
   const closeChat = useCallback(() => setChatOpen(false), []);
   // Правки по предложениям чата — переименование, объединение, новый
   // продукт. Им нужны функции, объявленные ниже (saveChanges, проверка дубля,
@@ -912,12 +917,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const chatEditRef = useRef<{
     rename: (nodeId: string, label: string) => boolean;
     merge: (fromId: string, intoId: string) => boolean;
-    add: (label: string, nearId?: string) => string | null;
+    add: (label: string, nearId?: string, newId?: string) => string | null;
     remove: (ids: string[]) => boolean;
     layout: () => boolean;
   } | null>(null);
-  // Окно кодов, открытое автопилотом чата, само запускает подбор.
-  const [codesAutoStart, setCodesAutoStart] = useState(false);
+  // Окно кодов, открытое автопилотом чата: скрыто, подбор запускает само,
+  // итог — в чат (codesDoneRef).
+  const [codesHidden, setCodesHidden] = useState(false);
+  const codesDoneRef = useRef<((summary: string) => void) | null>(null);
 
   // Всплывающая подсказка о сохранении
   const [isSavedToastVisible, setIsSavedToastVisible] = useState(false);
@@ -1488,14 +1495,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setTimeout(() => setHighlightedId(null), 3000);
     };
     const onCodes = (e: Event) => {
-      const d = (e as CustomEvent<{ ids?: string[]; autoStart?: boolean }>).detail;
+      const d = (e as CustomEvent<{ ids?: string[]; hidden?: boolean; onDone?: (s: string) => void; started?: boolean }>)
+        .detail;
       const ids = (d?.ids ?? []).filter((id) =>
         nodesRef.current.some((n) => n.id === id && n.type === "product" && n.data?.chainVariant !== "alt"),
       );
       if (!ids.length) return;
       saveChangesRef.current();
       setContextMenu(null);
-      setCodesAutoStart(!!d?.autoStart);
+      setCodesHidden(!!d?.hidden);
+      codesDoneRef.current = d?.onDone ?? null;
+      if (d) d.started = true;
       setCodesPick(ids);
       setCodesModal(true);
     };
@@ -1508,8 +1518,18 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (d?.fromId && d.intoId) d.ok = chatEditRef.current?.merge(d.fromId, d.intoId) ?? false;
     };
     const onAdd = (e: Event) => {
-      const d = (e as CustomEvent<{ label?: string; nearId?: string; id?: string | null }>).detail;
-      if (d?.label) d.id = chatEditRef.current?.add(d.label, d.nearId) ?? null;
+      const d = (e as CustomEvent<{ label?: string; nearId?: string; newId?: string; id?: string | null }>).detail;
+      if (d?.label) d.id = chatEditRef.current?.add(d.label, d.nearId, d.newId) ?? null;
+    };
+    // Автопилот без окон: узел выбран (по нему строит скрытый мастер), камера
+    // к нему, карточка и мастер не открываются.
+    const onAutoFocus = (e: Event) => {
+      const id = (e as CustomEvent<{ nodeId?: string }>).detail?.nodeId;
+      if (!id || !nodesRef.current.some((n) => n.id === id)) return;
+      saveChangesRef.current();
+      setSelectedNodeId(id);
+      setContextMenu(null);
+      toNode(id);
     };
     const onDelete = (e: Event) => {
       const d = (e as CustomEvent<{ ids?: string[]; ok?: boolean }>).detail;
@@ -1526,6 +1546,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       [CHAT_RENAME, onRename],
       [CHAT_MERGE, onMerge],
       [CHAT_ADD, onAdd],
+      [CHAT_AUTO_FOCUS, onAutoFocus],
       [CHAT_DELETE, onDelete],
       [CHAT_LAYOUT, onLayout],
     ];
@@ -2344,14 +2365,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     // Новый продукт — рядом с названным соседом, иначе в середине экрана;
     // камера к нему, как «Показать на графе».
-    add: (label, nearId) => {
+    // id — от сервера, если ИИ в том же ответе строит шаг от нового узла.
+    add: (label, nearId, newId) => {
       if (readOnly) return null;
       saveChangesRef.current();
       const near = nearId ? nodesRef.current.find((n) => n.id === nearId) : undefined;
       const position = near
         ? { x: near.position.x + 280, y: near.position.y }
         : screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-      const id = crypto.randomUUID();
+      const id = newId && !nodesRef.current.some((n) => n.id === newId) ? newId : crypto.randomUUID();
       dispatch(addNode({ type: "product", label, position, id }));
       showToast("success", `Добавлен продукт «${label}»`);
       setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_SHOW_NODES, { detail: { ids: [id] } })), 300);
@@ -3876,6 +3898,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         />
       )}
       {codesPick !== null && codesModal && (
+        <div hidden={codesHidden} aria-hidden={codesHidden || undefined}>
         <ProductCodesModal
           products={codesPicked}
           onRemove={(id) => setCodesPick((prev) => prev?.filter((x) => x !== id) ?? prev)}
@@ -3883,10 +3906,22 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onClose={() => {
             setCodesModal(false);
             setCodesPick(null);
-            setCodesAutoStart(false);
+            setCodesHidden(false);
           }}
-          autoStart={codesAutoStart}
+          autoStart={codesHidden}
+          onDone={(summary) => {
+            const done = codesDoneRef.current;
+            codesDoneRef.current = null;
+            // Скрытое окно автопилота закрывается само: итог уже в чате.
+            if (codesHidden) {
+              setCodesModal(false);
+              setCodesPick(null);
+              setCodesHidden(false);
+            }
+            done?.(summary);
+          }}
         />
+        </div>
       )}
       <SaveGraphModal
         isOpen={showSaveGraphModal}
@@ -3982,6 +4017,20 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           })()}
           onClose={() => setContextMenu(null)}
         />
+      )}
+      {/* Автопилот чата: мастер шага без окна — скрытым, у выбранного узла;
+          ход виден в чате. Человек выбрал другой узел — мастер исчезает, и
+          задание снимается (PanelBuildView отменяет его при уходе). */}
+      {autoRun?.headless && selectedNode && autoRun.nodeId === selectedNodeId && (
+        <div hidden aria-hidden="true">
+          <PanelBuildView
+            key={`${autoRun.nodeId}:${autoRun.direction}`}
+            productName={String(selectedNode.data?.label ?? "")}
+            downTab={downTab}
+            upTab={upTab}
+            auto={{ direction: autoRun.direction, until: autoRun.until }}
+          />
+        </div>
       )}
       <FlowPanel
         onClose={closePanel}

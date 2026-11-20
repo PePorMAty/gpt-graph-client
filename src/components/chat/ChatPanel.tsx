@@ -17,7 +17,7 @@
 // Граф читается из хранилища только при отправке (store.getState): панель не
 // подписана на узлы, и граф на сотни узлов из-за неё не перерисовывается.
 
-import { memo, useCallback, useEffect, useRef, useState, type FC } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore, type FC } from "react";
 import { useStore } from "react-redux";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,7 +37,7 @@ import {
 import { plural } from "../../utils/plural";
 import { showToast } from "../toast/toastStore";
 import { ChatIcon, CloseIcon, SendIcon, TrashIcon } from "../icons";
-import { cancelAutoStep } from "../flow-panel/stepAutopilot";
+import { cancelAutoStep, getAutoStepSnapshot, subscribeAutoStep } from "../flow-panel/stepAutopilot";
 import {
   addRequestsToday,
   conversationKey,
@@ -131,6 +131,39 @@ function proposalView(p: ChatProposal): {
       };
     case "layout":
       return { title: "Разложить граф заново", action: "Разложить", edits: true, keep: false };
+    case "alternatives":
+      return {
+        title: `Альтернативы ${q(p.label)} — ${p.direction === "up" ? "способы получения" : "пути переработки"}`,
+        note: "Без построения шага: мастер найдёт источники и обобщит их, варианты встанут на граф фиолетовыми.",
+        action: "Найти альтернативы",
+        edits: true,
+        keep: false,
+      };
+    case "describe":
+      return {
+        title: `Описание ${q(p.label)}`,
+        note: [p.description, p.industry && `Отрасль: ${p.industry}`, p.mainPurpose && `Назначение: ${p.mainPurpose}`]
+          .filter(Boolean)
+          .join("\n"),
+        action: "Записать",
+        edits: true,
+        keep: false,
+      };
+    case "fillcard":
+      return {
+        title: `Заполнить карточку ${q(p.label)}`,
+        note: "«Технологическое описание» заполняет модель отдельным запросом.",
+        action: "Заполнить",
+        edits: true,
+        keep: false,
+      };
+    case "bookmark":
+      return {
+        title: `${p.remove ? "Убрать из закладок" : "В закладки"}: ${p.nodes.map((n) => q(n.label)).join(", ")}`,
+        action: p.remove ? "Убрать" : "Добавить",
+        edits: false,
+        keep: false,
+      };
   }
 }
 
@@ -163,6 +196,8 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
     saveChatMode(m);
   };
   const { config } = useAiConfig();
+  // Задание автопилота мастеру шага — этап виден строкой хода.
+  const autoRun = useSyncExternalStore(subscribeAutoStep, getAutoStepSnapshot);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadConversation(key));
   const messagesRef = useRef(messages);
@@ -251,7 +286,13 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
         show([...convo, ask]);
         setLive([]);
         const { nodes, edges } = store.getState().graph.data;
-        const graph = buildChatSlice(nodes, edges, { name: graphName, selectedNodeId: selectedRef.current });
+        // Последние изменения графа (его история, новые сверху): «построй
+        // дальше» модель продолжает от последнего шага.
+        const recent = store
+          .getState()
+          .history.entries.slice(0, 8)
+          .map((e) => ({ title: e.title, details: e.details }));
+        const graph = buildChatSlice(nodes, edges, { name: graphName, selectedNodeId: selectedRef.current, recent });
         let reply: ChatMessage;
         let done: ChatDone | null = null;
         try {
@@ -501,7 +542,9 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
                 {t}
               </div>
             ))}
-            <div className={styles.thinking}>Думаю…</div>
+            {/* Скрытый мастер шага автопилота — его этап. */}
+            {autoRun?.headless && <div className={styles.liveLine}>мастер шага: {autoRun.stage}</div>}
+            <div className={styles.thinking}>{autoRun?.headless ? "Работаю…" : "Думаю…"}</div>
           </div>
         )}
       </div>

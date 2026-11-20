@@ -23,10 +23,14 @@ export type ChatProposal =
   | { kind: "tech"; nodeId: string; label: string; nodeKind?: string; why?: string }
   | { kind: "rename"; nodeId: string; label: string; newLabel: string; nodeKind?: string; why?: string }
   | { kind: "merge"; fromId: string; fromLabel: string; intoId: string; intoLabel: string; why?: string }
-  | { kind: "add"; label: string; nearId?: string; nearLabel?: string; why?: string }
+  | { kind: "add"; id?: string; label: string; nearId?: string; nearLabel?: string; why?: string }
   | { kind: "sources"; nodeId: string; label: string; direction: "up" | "down"; web?: boolean; why?: string }
   | { kind: "delete"; nodes: NodeRef[]; why?: string }
-  | { kind: "layout"; why?: string };
+  | { kind: "layout"; why?: string }
+  | { kind: "alternatives"; nodeId: string; label: string; direction: "up" | "down"; why?: string }
+  | { kind: "describe"; nodeId: string; label: string; description: string; industry?: string; mainPurpose?: string }
+  | { kind: "fillcard"; nodeId: string; label: string; nodeKind?: string; why?: string }
+  | { kind: "bookmark"; nodes: NodeRef[]; remove?: boolean };
 
 /**
  * Какие карточки клиент умеет показывать — уходят в запрос (proposals):
@@ -45,6 +49,10 @@ export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = [
   "sources",
   "delete",
   "layout",
+  "alternatives",
+  "describe",
+  "fillcard",
+  "bookmark",
 ];
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v !== "";
@@ -56,7 +64,14 @@ export function isKnownProposal(p: unknown): p is ChatProposal {
   switch (x?.kind) {
     case "step":
     case "sources":
+    case "alternatives":
       return isStr(x.nodeId) && isStr(x.label) && (x.direction === "up" || x.direction === "down");
+    case "describe":
+      return isStr(x.nodeId) && isStr(x.label) && isStr(x.description);
+    case "fillcard":
+      return isStr(x.nodeId) && isStr(x.label);
+    case "bookmark":
+      return isRefs(x.nodes);
     case "show":
     case "codes":
     case "delete":

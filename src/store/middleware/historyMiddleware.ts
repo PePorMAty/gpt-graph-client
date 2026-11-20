@@ -43,6 +43,35 @@ function resetsHistory(type: string, before: RootState, after: RootState) {
 }
 
 /**
+ * Подробности принятого шага: какое преобразование, из чего — во что, и
+ * новые узлы. По ним в «Истории» видно, что за шаг, а чат с ИИ («построй
+ * дальше») продолжает от его новых продуктов.
+ */
+function acceptedStep(before: RootState, after: RootState, added: number, addedEdges: number) {
+  const prevIds = new Set(before.graph.data.nodes.map((n) => n.id));
+  const nodes = after.graph.data.nodes;
+  const fresh = nodes.filter((n) => !prevIds.has(n.id));
+  const name = (id: string) => `«${String(nodes.find((n) => n.id === id)?.data?.label ?? "")}»`;
+  const t = fresh.find((n) => n.type === "transformation" && n.data?.chainVariant !== "alt");
+  const count = added > 0 ? `новых узлов: ${added}, связей: ${Math.max(addedEdges, 0)}` : "";
+  if (!t) return { details: count || undefined, nodeIds: fresh.length ? fresh.map((n) => n.id) : undefined };
+  const edges = after.graph.data.edges;
+  const ins = edges.filter((e) => e.target === t.id).map((e) => name(e.source));
+  const outs = edges.filter((e) => e.source === t.id).map((e) => name(e.target));
+  const products = fresh.filter((n) => n.type === "product").map((n) => name(n.id));
+  return {
+    details: [
+      `${name(t.id)}: ${ins.join(" + ")} → ${outs.join(", ")}`,
+      products.length ? `новые продукты ${products.join(", ")}` : "",
+      count,
+    ]
+      .filter(Boolean)
+      .join("; "),
+    nodeIds: fresh.map((n) => n.id),
+  };
+}
+
+/**
  * Что записать в историю по этому действию. null — действие неинтересное.
  *
  * Состояние до и после нужно обоим концам: имена удаляемых узлов читаются
@@ -277,14 +306,7 @@ function describe(
           details: "граф не изменился: такой шаг уже есть или он замкнул бы петлю",
         };
       }
-      return {
-        kind: "step",
-        title: "Шаг принят",
-        details:
-          added > 0
-            ? `новых узлов: ${added}, связей: ${Math.max(addedEdges, 0)}`
-            : undefined,
-      };
+      return { kind: "step", title: "Шаг принят", ...acceptedStep(before, after, added, addedEdges) };
 
     case "graph/rejectPendingStep":
       return { kind: "step", title: "Шаг отклонён" };

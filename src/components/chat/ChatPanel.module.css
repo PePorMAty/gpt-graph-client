@@ -193,6 +193,7 @@
 
 .proposalWhy {
   color: var(--c-text-soft);
+  white-space: pre-line;
 }
 
 .proposalActions {

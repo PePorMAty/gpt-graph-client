@@ -53,6 +53,8 @@ interface Props {
   onClose: () => void;
   /** Окно открыл автопилот чата: подбор начинается сам, когда пришли промпты. */
   autoStart?: boolean;
+  /** Подбор закончен — итог строкой (автопилот чата, окно скрыто). */
+  onDone?: (summary: string) => void;
 }
 
 const KINDS: { kind: ProductCodeKind; name: string; desc: string }[] = [
@@ -95,7 +97,7 @@ const CodeRow: FC<{ kind: ProductCodeKind; r?: ProductCodeResult }> = ({ kind, r
     </div>
   ) : null;
 
-export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelection, onClose, autoStart = false }) => {
+export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelection, onClose, autoStart = false, onDone }) => {
   const dispatch = useAppDispatch();
   const store = useStore<RootState>();
   const [kinds, setKinds] = useState<Set<ProductCodeKind>>(() => new Set(["okpd2", "tnved"]));
@@ -214,6 +216,11 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, products.length) }, worker));
     if (controller.signal.aborted) return;
     setPhase("done");
+    onDone?.(
+      found
+        ? `коды определены для ${found} ${plural(found, "продукта", "продуктов", "продуктов")} из ${products.length} (запросов к модели — ${total}); они в «Промышленном знании» узлов`
+        : `коды не определены ни для одного из ${products.length} (запросов к модели — ${total})`,
+    );
     if (found) {
       showToast(
         "success",

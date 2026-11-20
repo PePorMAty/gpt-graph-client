@@ -37,7 +37,7 @@ import {
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { readableReason } from "../../store/middleware/failureText";
-import { autoStepActive, finishAutoStep, takeAutoWebSearch } from "./stepAutopilot";
+import { autoStepActive, finishAutoStep, reportAutoStage, takeAutoWebSearch } from "./stepAutopilot";
 import { isOwnBaseSource } from "../../utils/sourceOrigin";
 import { EndUseCheck } from "./EndUseCheck";
 import { plural } from "../../utils/plural";
@@ -456,12 +456,17 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   useEffect(() => {
     if (!autoUntil || !autoStepActive()) return;
     const fail = (error: string) => finishAutoStep({ status: "failed", error });
-    if (sourcesLoading || aggregateLoading || buildLoading) return;
+    if (sourcesLoading) return reportAutoStage("поиск источников");
+    if (aggregateLoading) return reportAutoStage("обобщение источников");
+    if (buildLoading) return reportAutoStage("построение шага");
     // «Найди источники»: шаг не строим. Источники уже были, а просили
     // интернет — добираем моделью, как «Добрать через модель».
     if (autoUntil === "sources") {
       if (stepSourcesError) return fail(`источники не найдены: ${readableReason(stepSourcesError)}`);
-      if (takeAutoWebSearch()) return handleFetchSources();
+      if (takeAutoWebSearch()) {
+        reportAutoStage("поиск источников в интернете");
+        return handleFetchSources();
+      }
       if (!stepSources.length) return fail("источников не нашлось");
       finishAutoStep({
         status: "sources",
@@ -474,6 +479,10 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     if (stepBuildError) return fail(`построение: ${readableReason(stepBuildError)}`);
     if (showPreview) {
       if (autoUntil === "preview") finishAutoStep({ status: "preview" });
+      // Мастер вернулся к уже построенному шагу: обобщение давно есть, и
+      // альтернативы по нему уже на графе.
+      else if (autoUntil === "aggregate") finishAutoStep({ status: "aggregate" });
+      else reportAutoStage("проверка и добавление шага");
       return;
     }
     if (buildNeedsSources) {
@@ -487,6 +496,12 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       return fail("источников не хватило для нового шага — доберите их в мастере");
     }
     if (stepNeedsSources) return fail("обобщению не хватило источников — доберите их в мастере");
+    // «Альтернативы»: обобщение есть — по нему на граф встали фиолетовые
+    // варианты (Flow, createStepAlternativeNodes), шаг не строим.
+    if (autoUntil === "aggregate" && hasValidAggregate && !showSourcesStage) {
+      finishAutoStep({ status: "aggregate" });
+      return;
+    }
     if (showAggregateStage) {
       if (aggregateFoundNothing) {
         return fail(direction === "down" ? "в источниках не нашлось, что делают из продукта" : "в источниках не нашлось, из чего его делают");

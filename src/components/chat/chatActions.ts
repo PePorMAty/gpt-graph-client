@@ -19,6 +19,7 @@ export const CHAT_RENAME = "chat-rename";
 export const CHAT_MERGE = "chat-merge";
 export const CHAT_ADD = "chat-add";
 export const CHAT_DELETE = "chat-delete";
+export const CHAT_AUTO_FOCUS = "chat-auto-focus";
 export const CHAT_LAYOUT = "chat-layout";
 
 /**
@@ -40,6 +41,15 @@ let pending: { nodeId: string; request: CardRequest } | null = null;
 function openCard(nodeId: string, request: CardRequest) {
   pending = { nodeId, request };
   window.dispatchEvent(new CustomEvent(CHAT_OPEN_CARD, { detail: { nodeId } }));
+}
+
+/**
+ * Автопилот без окон (4.6): выбрать узел и подвести к нему камеру — карточку
+ * и мастер не открывать. Мастер ведёт Flow, скрытым (stepAutopilot.ts).
+ */
+export function requestAutoFocus(nodeId: string, label: string, direction: "up" | "down"): void {
+  rememberBuildDirection(label, direction);
+  window.dispatchEvent(new CustomEvent(CHAT_AUTO_FOCUS, { detail: { nodeId } }));
 }
 
 /** Открыть мастер шага у узла nodeId (название — label) в направлении direction. */
@@ -67,9 +77,22 @@ export function showNodes(ids: string[]): void {
   if (ids.length) window.dispatchEvent(new CustomEvent(CHAT_SHOW_NODES, { detail: { ids } }));
 }
 
-/** Окно «Определить коды» с этими продуктами; autoStart — подбор сразу (автопилот). */
-export function requestCodes(ids: string[], autoStart = false): void {
-  if (ids.length) window.dispatchEvent(new CustomEvent(CHAT_CODES, { detail: { ids, autoStart } }));
+/** Окно «Определить коды» с этими продуктами — человеку (режим с подтверждением). */
+export function requestCodes(ids: string[]): void {
+  if (ids.length) window.dispatchEvent(new CustomEvent(CHAT_CODES, { detail: { ids } }));
+}
+
+/**
+ * Автопилот: подбор кодов без окна — окно работает скрытым и само начинает
+ * подбор. Итог строкой, когда закончит; null — подбор не начался.
+ */
+export function runCodesHidden(ids: string[]): Promise<string | null> {
+  if (!ids.length) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const detail = { ids, hidden: true, onDone: resolve, started: false };
+    window.dispatchEvent(new CustomEvent(CHAT_CODES, { detail }));
+    if (!detail.started) resolve(null);
+  });
 }
 
 /** Переименовать узел — как правка названия в карточке. true — переименован. */
@@ -93,6 +116,6 @@ export function requestLayout(): boolean {
 }
 
 /** Новый продукт на полотне — рядом с nearId или в середине экрана. id нового узла, null — не добавлен. */
-export function requestAdd(label: string, nearId?: string): string | null {
-  return ask(CHAT_ADD, { label, nearId, id: null as string | null }).id;
+export function requestAdd(label: string, nearId?: string, newId?: string): string | null {
+  return ask(CHAT_ADD, { label, nearId, newId, id: null as string | null }).id;
 }
