@@ -24,7 +24,7 @@ import remarkGfm from "remark-gfm";
 
 import type { RootState } from "../../store/store";
 import { useAppSelector } from "../../store/hooks";
-import { getAiRequestFields, useAiConfig } from "../../hooks/useAiConfig";
+import { AI_MODELS, useAiConfig } from "../../hooks/useAiConfig";
 import { buildChatSlice } from "../../utils/chatSlice";
 import {
   CHAT_PROPOSAL_KINDS,
@@ -39,14 +39,17 @@ import { showToast } from "../toast/toastStore";
 import { ChatIcon, CloseIcon, SendIcon, TrashIcon } from "../icons";
 import { cancelAutoStep, getAutoStepSnapshot, subscribeAutoStep } from "../flow-panel/stepAutopilot";
 import {
+  DEFAULT_CHAT_MODEL,
   addRequestsToday,
   conversationKey,
   historyFor,
   isUnsavedKey,
   loadChatMode,
+  loadChatModel,
   loadConversation,
   requestsToday,
   saveChatMode,
+  saveChatModel,
   saveConversation,
   type ChatMessage,
 } from "./chatStore";
@@ -196,6 +199,17 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
     saveChatMode(m);
   };
   const { config } = useAiConfig();
+  // Модель чата — своя (chatStore.DEFAULT_CHAT_MODEL): провайдер общий с
+  // построением шагов, модель выбирается здесь, под полем ввода.
+  const chatModels = AI_MODELS[config.provider] ?? [];
+  const [chosenModel, setChosenModel] = useState(loadChatModel);
+  const chatModel =
+    chatModels.find((m) => m.value === chosenModel)?.value ??
+    (chatModels.some((m) => m.value === DEFAULT_CHAT_MODEL) ? DEFAULT_CHAT_MODEL : config.model);
+  const chooseModel = (m: string) => {
+    setChosenModel(m);
+    saveChatModel(m);
+  };
   // Задание автопилота мастеру шага — этап виден строкой хода.
   const autoRun = useSyncExternalStore(subscribeAutoStep, getAutoStepSnapshot);
 
@@ -304,7 +318,8 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
               proposals: CHAT_PROPOSAL_KINDS,
               mode: runMode,
               ...(ask.auto ? { continuation: true } : {}),
-              ...getAiRequestFields(),
+              ...(config.provider ? { provider: config.provider } : {}),
+              ...(chatModel ? { model: chatModel } : {}),
             },
             (e) => {
               if (e.type === "tool") setLive((l) => [...l, e.summary]);
@@ -376,7 +391,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
       setLive([]);
       setBusy(false);
     },
-    [busy, graphName, mode, store],
+    [busy, graphName, mode, store, config.provider, chatModel],
   );
 
   const closeProposal = (msgId: string, index: number) =>
@@ -584,8 +599,26 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
           )}
         </div>
         <div className={styles.footnote}>
-          {config.model || config.provider} · {mode === "auto" ? "автопилот" : "с подтверждением"} · запросов к
-          модели: в разговоре {conversationRequests}, сегодня {today}
+          {chatModels.length > 0 ? (
+            <select
+              className={styles.modelSelect}
+              value={chatModel}
+              onChange={(e) => chooseModel(e.target.value)}
+              disabled={busy}
+              aria-label="Модель чата"
+              title="Модель чата — своя, шаги строит модель из настроек построения"
+            >
+              {chatModels.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            chatModel || config.provider
+          )}{" "}
+          · {mode === "auto" ? "автопилот" : "с подтверждением"} · запросов к модели: в разговоре {conversationRequests},
+          сегодня {today}
         </div>
       </form>
     </aside>

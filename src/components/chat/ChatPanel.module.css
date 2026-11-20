@@ -393,3 +393,16 @@
 .resultFail {
   color: var(--c-danger);
 }
+
+/* Модель чата — в строке под полем ввода, неброско: её меняют редко. */
+.modelSelect {
+  max-width: 50%;
+  padding: 0 var(--s-1);
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--c-text-soft);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}

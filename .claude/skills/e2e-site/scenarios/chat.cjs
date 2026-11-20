@@ -83,8 +83,10 @@ module.exports = {
       lastRequest?.graph?.products?.some((p) => p.label === "Фенол") &&
         lastRequest?.graph?.selectedLabel === "Фенол" &&
         lastRequest?.message === "Что делают из фенола?" &&
-        lastRequest?.mode === "confirm",
-      JSON.stringify({ products: lastRequest?.graph?.products?.length, selectedLabel: lastRequest?.graph?.selectedLabel }),
+        lastRequest?.mode === "confirm" &&
+        // Модель чата — своя, по умолчанию Plus (шаги — модель из настроек построения).
+        lastRequest?.model === "qwen3.7-plus",
+      JSON.stringify({ products: lastRequest?.graph?.products?.length, selectedLabel: lastRequest?.graph?.selectedLabel, model: lastRequest?.model }),
     );
 
     // «Показать на графе» — без ошибок, карточка предложения остаётся.

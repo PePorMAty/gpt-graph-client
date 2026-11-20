@@ -34,8 +34,8 @@ import {
   takeForcedBuildDirection,
 } from "./buildDirection";
 import {
+  attachAutoHost,
   autoStepActive,
-  cancelAutoStep,
   finishAutoStep,
   reportAutoStage,
   takeAutoWebSearch,
@@ -967,15 +967,10 @@ const PanelBuildViewInner: FC<{
     if (!isSrcPromptEmpty && takeAutoWebSearch()) searchWithModel();
     else startSearch();
   });
-  // Человек закрыл мастер посреди задания — решать за него нельзя.
-  const autoRef = useRef(auto);
-  autoRef.current = auto;
-  useEffect(
-    () => () => {
-      if (autoRef.current && autoStepActive()) cancelAutoStep();
-    },
-    [],
-  );
+  // Мастер ведёт задание — пока он на месте. Закрыли посреди задания —
+  // решать за человека нельзя: attachAutoHost снимет задание.
+  const hasAuto = !!auto;
+  useEffect(() => (hasAuto ? attachAutoHost() : undefined), [hasAuto]);
 
   return (
     <div className={wiz.pane}>

@@ -106,6 +106,34 @@ export function saveChatMode(mode: "confirm" | "auto"): void {
   }
 }
 
+// ---------- модель чата ----------
+
+const MODEL_KEY = "chat:model";
+
+/**
+ * Модель чата — своя, не та, что строит шаги: чату нужна модель, которая
+ * надёжно вызывает инструменты. qwen3.8-flash (20.11) на автопилоте чаще
+ * отвечала словами «Готово: добавил», ничего не вызвав; шаги же flash
+ * строит быстро и дёшево.
+ */
+export const DEFAULT_CHAT_MODEL = "qwen3.7-plus";
+
+export function loadChatModel(): string | null {
+  try {
+    return localStorage.getItem(MODEL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveChatModel(model: string): void {
+  try {
+    localStorage.setItem(MODEL_KEY, model);
+  } catch {
+    // выбор модели — удобство, а не данные
+  }
+}
+
 // ---------- запросы к модели за день ----------
 
 const dayKey = () => `chat:requests:${new Date().toISOString().slice(0, 10)}`;

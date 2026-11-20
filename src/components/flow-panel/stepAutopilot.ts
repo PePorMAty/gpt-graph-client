@@ -128,3 +128,25 @@ export function finishAutoStep(result: AutoStepResult): void {
 export function cancelAutoStep(): void {
   finishAutoStep({ status: "cancelled" });
 }
+
+/** Мастеров, которые сейчас ведут задание (скрытый у Flow или в карточке). */
+let hosts = 0;
+
+/**
+ * Мастер взялся за задание; вызов возвращает «мастер ушёл». Ушёл и не
+ * вернулся — задание снимается: человек закрыл мастер или выбрал другой
+ * узел, решать за него нельзя.
+ *
+ * Проверка — после паузы: StrictMode в режиме разработки (npm run dev)
+ * снимает компонент и тут же ставит обратно, и задание снималось сразу
+ * после старта («шаг остановлен», 20.11) — на собранном сайте этого нет.
+ */
+export function attachAutoHost(): () => void {
+  hosts++;
+  return () => {
+    hosts--;
+    setTimeout(() => {
+      if (hosts === 0 && run) cancelAutoStep();
+    }, 0);
+  };
+}
