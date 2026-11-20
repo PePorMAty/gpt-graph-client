@@ -23,14 +23,29 @@ export type ChatProposal =
   | { kind: "tech"; nodeId: string; label: string; nodeKind?: string; why?: string }
   | { kind: "rename"; nodeId: string; label: string; newLabel: string; nodeKind?: string; why?: string }
   | { kind: "merge"; fromId: string; fromLabel: string; intoId: string; intoLabel: string; why?: string }
-  | { kind: "add"; label: string; nearId?: string; nearLabel?: string; why?: string };
+  | { kind: "add"; label: string; nearId?: string; nearLabel?: string; why?: string }
+  | { kind: "sources"; nodeId: string; label: string; direction: "up" | "down"; web?: boolean; why?: string }
+  | { kind: "delete"; nodes: NodeRef[]; why?: string }
+  | { kind: "layout"; why?: string };
 
 /**
  * Какие карточки клиент умеет показывать — уходят в запрос (proposals):
  * модель видит только эти инструменты. Сервер первой версии поле не знает
  * и предлагает шаг и показ.
  */
-export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = ["step", "show", "codes", "balance", "tech", "rename", "merge", "add"];
+export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = [
+  "step",
+  "show",
+  "codes",
+  "balance",
+  "tech",
+  "rename",
+  "merge",
+  "add",
+  "sources",
+  "delete",
+  "layout",
+];
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v !== "";
 const isRefs = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every((n) => isStr(n?.id) && isStr(n?.label));
@@ -40,10 +55,14 @@ export function isKnownProposal(p: unknown): p is ChatProposal {
   const x = p as Record<string, unknown> | null;
   switch (x?.kind) {
     case "step":
+    case "sources":
       return isStr(x.nodeId) && isStr(x.label) && (x.direction === "up" || x.direction === "down");
     case "show":
     case "codes":
+    case "delete":
       return isRefs(x.nodes);
+    case "layout":
+      return true;
     case "balance":
     case "tech":
       return isStr(x.nodeId) && isStr(x.label);

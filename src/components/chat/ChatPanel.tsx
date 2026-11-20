@@ -113,6 +113,24 @@ function proposalView(p: ChatProposal): {
         edits: true,
         keep: false,
       };
+    case "sources":
+      return {
+        title: `Источники для ${q(p.label)} ${DIR[p.direction]}${p.web ? " — поиск в интернете" : ""}`,
+        note: p.web ? "Поиск моделью идёт минуты и стоит запросов." : "Сначала разделы базы, нет их — поиск в интернете.",
+        action: "Найти источники",
+        edits: true,
+        keep: true,
+      };
+    case "delete":
+      return {
+        title: `Удалить: ${p.nodes.map((n) => q(n.label)).join(", ")}`,
+        note: "Узлы исчезнут вместе со связями — назад не вернуть.",
+        action: "Удалить",
+        edits: true,
+        keep: false,
+      };
+    case "layout":
+      return { title: "Разложить граф заново", action: "Разложить", edits: true, keep: false };
   }
 }
 

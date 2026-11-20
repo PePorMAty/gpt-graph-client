@@ -33,7 +33,7 @@ import {
   setLastBuildDirection,
   takeForcedBuildDirection,
 } from "./buildDirection";
-import { autoStepActive, cancelAutoStep, finishAutoStep, type AutoStepUntil } from "./stepAutopilot";
+import { autoStepActive, cancelAutoStep, finishAutoStep, takeAutoWebSearch, type AutoStepUntil } from "./stepAutopilot";
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { AiModelSelect } from "../ai-model-select";
@@ -927,6 +927,11 @@ const PanelBuildViewInner: FC<{
       tab.onMergeBaseSources?.(base.sources);
       return;
     }
+    searchWithModel();
+  };
+
+  /** Поиск источников моделью в интернете — с настройками первого экрана. */
+  const searchWithModel = () => {
     const allowedDomains = parseDomainsInput(search.domainsText);
     tab.onFetchStepSources?.({
       maxItems: search.maxItems,
@@ -950,7 +955,9 @@ const PanelBuildViewInner: FC<{
     }
     if (searching || baseChecking || (!offerBase && !introGoesForward && isSrcPromptEmpty)) return;
     autoStarted.current = true;
-    startSearch();
+    // «Поищи в интернете» — моделью, даже если в базе есть разделы.
+    if (!isSrcPromptEmpty && takeAutoWebSearch()) searchWithModel();
+    else startSearch();
   });
   // Человек закрыл мастер посреди задания — решать за него нельзя.
   const autoRef = useRef(auto);

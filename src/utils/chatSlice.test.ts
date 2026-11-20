@@ -113,7 +113,12 @@ describe("предложения чата", () => {
       { kind: "rename", nodeId: "n4", label: "Кумол", newLabel: "Изопропилбензол" },
       { kind: "merge", fromId: "n4", fromLabel: "Кумол", intoId: "n2", intoLabel: "Изопропилбензол (кумол)" },
     ];
-    ok.push({ kind: "add", label: "Автомобиль", nearId: "n1", nearLabel: "Фенол" } as never);
+    ok.push(
+      { kind: "add", label: "Автомобиль", nearId: "n1", nearLabel: "Фенол" } as never,
+      { kind: "sources", nodeId: "n1", label: "Фенол", direction: "up", web: true } as never,
+      { kind: "delete", nodes: [{ id: "a1", label: "Бисфенол А" }] } as never,
+      { kind: "layout" } as never,
+    );
     expect(ok.map(isKnownProposal)).toEqual(ok.map(() => true));
     // Каждый вид, который клиент объявляет серверу, он и показывает.
     expect([...new Set(ok.map((p) => p.kind))].sort()).toEqual([...CHAT_PROPOSAL_KINDS].sort());

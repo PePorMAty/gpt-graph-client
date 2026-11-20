@@ -37,7 +37,7 @@ import {
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { readableReason } from "../../store/middleware/failureText";
-import { autoStepActive, finishAutoStep } from "./stepAutopilot";
+import { autoStepActive, finishAutoStep, takeAutoWebSearch } from "./stepAutopilot";
 import { isOwnBaseSource } from "../../utils/sourceOrigin";
 import { EndUseCheck } from "./EndUseCheck";
 import { plural } from "../../utils/plural";
@@ -457,6 +457,19 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
     if (!autoUntil || !autoStepActive()) return;
     const fail = (error: string) => finishAutoStep({ status: "failed", error });
     if (sourcesLoading || aggregateLoading || buildLoading) return;
+    // «Найди источники»: шаг не строим. Источники уже были, а просили
+    // интернет — добираем моделью, как «Добрать через модель».
+    if (autoUntil === "sources") {
+      if (stepSourcesError) return fail(`источники не найдены: ${readableReason(stepSourcesError)}`);
+      if (takeAutoWebSearch()) return handleFetchSources();
+      if (!stepSources.length) return fail("источников не нашлось");
+      finishAutoStep({
+        status: "sources",
+        sourcesCount: stepSources.length,
+        sources: stepSources.map((s) => String(s.title || s.url || "").trim()).filter(Boolean).slice(0, 8),
+      });
+      return;
+    }
     if (stepAggregateError) return fail(`обобщение: ${readableReason(stepAggregateError)}`);
     if (stepBuildError) return fail(`построение: ${readableReason(stepBuildError)}`);
     if (showPreview) {

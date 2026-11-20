@@ -61,7 +61,7 @@ interface NodeCardProps extends FlowPanelProps {
     upTab: DirectionTabProps;
     onBack?: () => void;
     /** Мастер на автопилоте — по просьбе чата (stepAutopilot.ts). */
-    auto?: { direction: "up" | "down"; until: "preview" | "add" } | null;
+    auto?: { direction: "up" | "down"; until: "preview" | "add" | "sources" } | null;
   }>;
 }
 

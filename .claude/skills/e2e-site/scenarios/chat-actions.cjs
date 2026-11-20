@@ -7,7 +7,9 @@
 // предложение пропускается; «Открыть описание» и «Открыть баланс» — карточка
 // узла на этой вкладке; «Открыть окно кодов» — окно с этими продуктами;
 // «Переименовать» в название продукта, который уже есть, — окно «Такой
-// продукт уже есть»; «Объединить» — узел уходит, его связи — к оставшемуся.
+// продукт уже есть»; «Объединить» — узел уходит, его связи — к оставшемуся;
+// «Найти источники» — мастер у продукта, на экране источников; «Удалить» —
+// альтернатива уходит; «Разложить» — без ошибки.
 // Модель не вызывается, запись на сервер не нужна.
 //
 // С --live-model и --api=сервер ветки шаг остаётся подставным, а чат идёт
@@ -23,14 +25,18 @@ function chatReply(req) {
   const phenol = product("Фенол");
   const form = product("Формальдегид");
   const synth = (g.transformations || []).find((t) => t.inputs.includes("Фенол"));
+  const bisphenol = (g.alternatives || []).find((a) => a.label === "Бисфенол А");
   const proposals =
-    phenol && form && synth
+    phenol && form && synth && bisphenol
       ? [
           { kind: "codes", nodes: [phenol, form], why: "кодов нет в базе" },
           { kind: "balance", nodeId: synth.id, label: synth.label },
           { kind: "tech", nodeId: phenol.id, label: phenol.label, nodeKind: "product" },
           { kind: "rename", nodeId: form.id, label: form.label, newLabel: "Фенол", nodeKind: "product", why: "проверка окна дубля" },
           { kind: "merge", fromId: form.id, fromLabel: form.label, intoId: phenol.id, intoLabel: phenol.label },
+          { kind: "sources", nodeId: phenol.id, label: phenol.label, direction: "down" },
+          { kind: "delete", nodes: [{ id: bisphenol.id, label: bisphenol.label }] },
+          { kind: "layout" },
           // Сервер новее клиента: такую карточку клиент не знает.
           { kind: "future_kind", nodeId: phenol.id },
         ]
@@ -100,14 +106,17 @@ module.exports = {
       "Технологическое описание: «Фенол»",
       "Переименовать «Формальдегид» → «Фенол»",
       "Объединить «Формальдегид» с «Фенол»",
+      "Источники для «Фенол» вниз",
+      "Удалить: «Бисфенол А»",
+      "Разложить граф заново",
     ];
     const seen = [];
     for (const t of titles) if (await panel.getByText(t, { exact: true }).count()) seen.push(t);
     const balanceCard = panel.getByText(/^Материальный баланс: «Синтез/);
     const cards = await panel.getByRole("button", { name: /^(Отклонить|Скрыть)$/ }).count();
     check(
-      "карточки предложений — пять, незнакомая пропущена",
-      seen.length === titles.length && (await balanceCard.count()) === 1 && cards === 5,
+      "карточки предложений — восемь, незнакомая пропущена",
+      seen.length === titles.length && (await balanceCard.count()) === 1 && cards === 8,
       `заголовков ${seen.length}/${titles.length}, карточек ${cards}`,
     );
 
@@ -161,6 +170,33 @@ module.exports = {
       `продуктов было ${before}, стало ${after}`,
     );
     check("объединение — с уведомлением", (await page.getByText("Узлы объединены — «Фенол»").count()) > 0);
+
+    // «Найти источники» — мастер у «Фенола» на экране источников, шаг не строится.
+    await panel.getByRole("button", { name: "Найти источники" }).click();
+    await page.getByText("Построение — «Фенол»").waitFor({ timeout: 10000 });
+    const atSources = await page
+      .getByRole("button", { name: /Обобщить/ })
+      .first()
+      .waitFor({ timeout: 60000 })
+      .then(() => true, () => false);
+    await shot("sources");
+    check("«Найти источники» — мастер у продукта на экране источников", atSources);
+    await page.keyboard.press("Escape");
+    await lib.sleep(500);
+
+    const alt = () => lib.nodeByLabel(page, "Бисфенол А", "transformation").count();
+    const altBefore = await alt();
+    await panel.getByRole("button", { name: "Удалить" }).click();
+    await lib.sleep(800);
+    check("«Удалить» — альтернатива ушла с графа", altBefore === 1 && (await alt()) === 0, `было ${altBefore}, стало ${await alt()}`);
+
+    await panel.getByRole("button", { name: "Разложить" }).click();
+    await lib.sleep(1500);
+    check(
+      "«Разложить» — граф разложен, карточка ушла",
+      (await panel.getByText("Разложить граф заново", { exact: true }).count()) === 0 &&
+        (await page.getByText(/граф не разложен/i).count()) === 0,
+    );
     log(`карточек: ${cards}; продуктов ${before} → ${after}`);
   },
 };

@@ -192,7 +192,7 @@ export interface DirectionTabProps {
    * пройти этапы до превью, «add» — и добавить шаг. Нет — мастер ведёт
    * человек.
    */
-  autoUntil?: "preview" | "add";
+  autoUntil?: "preview" | "add" | "sources";
 }
 
 export interface FlowPanelProps {

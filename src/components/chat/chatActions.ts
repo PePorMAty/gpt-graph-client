@@ -18,6 +18,8 @@ export const CHAT_CODES = "chat-codes";
 export const CHAT_RENAME = "chat-rename";
 export const CHAT_MERGE = "chat-merge";
 export const CHAT_ADD = "chat-add";
+export const CHAT_DELETE = "chat-delete";
+export const CHAT_LAYOUT = "chat-layout";
 
 /**
  * Событие с ответом: Flow слушает синхронно и пишет итог в detail —
@@ -78,6 +80,16 @@ export function requestRename(nodeId: string, label: string): boolean {
 /** Объединить узел fromId с intoId — как «Объединить» в окне «Такой продукт уже есть». */
 export function requestMerge(fromId: string, intoId: string): boolean {
   return ask(CHAT_MERGE, { fromId, intoId, ok: false }).ok;
+}
+
+/** Удалить узлы со связями — как подтверждённое удаление на полотне. true — удалены. */
+export function requestDelete(ids: string[]): boolean {
+  return ask(CHAT_DELETE, { ids, ok: false }).ok;
+}
+
+/** Разложить граф заново — как кнопка «Разложить». false — нельзя (фокус, пустой граф). */
+export function requestLayout(): boolean {
+  return ask(CHAT_LAYOUT, { ok: false }).ok;
 }
 
 /** Новый продукт на полотне — рядом с nearId или в середине экрана. id нового узла, null — не добавлен. */

@@ -93,6 +93,8 @@ import { ChatPanel } from "./components/chat/ChatPanel";
 import {
   CHAT_ADD,
   CHAT_CODES,
+  CHAT_DELETE,
+  CHAT_LAYOUT,
   CHAT_MERGE,
   CHAT_OPEN_CARD,
   CHAT_RENAME,
@@ -911,6 +913,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     rename: (nodeId: string, label: string) => boolean;
     merge: (fromId: string, intoId: string) => boolean;
     add: (label: string, nearId?: string) => string | null;
+    remove: (ids: string[]) => boolean;
+    layout: () => boolean;
   } | null>(null);
   // Окно кодов, открытое автопилотом чата, само запускает подбор.
   const [codesAutoStart, setCodesAutoStart] = useState(false);
@@ -1507,6 +1511,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       const d = (e as CustomEvent<{ label?: string; nearId?: string; id?: string | null }>).detail;
       if (d?.label) d.id = chatEditRef.current?.add(d.label, d.nearId) ?? null;
     };
+    const onDelete = (e: Event) => {
+      const d = (e as CustomEvent<{ ids?: string[]; ok?: boolean }>).detail;
+      if (d?.ids?.length) d.ok = chatEditRef.current?.remove(d.ids) ?? false;
+    };
+    const onLayout = (e: Event) => {
+      const d = (e as CustomEvent<{ ok?: boolean }>).detail;
+      if (d) d.ok = chatEditRef.current?.layout() ?? false;
+    };
     const events: [string, (e: Event) => void][] = [
       [CHAT_OPEN_CARD, onStep],
       [CHAT_SHOW_NODES, onShow],
@@ -1514,6 +1526,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       [CHAT_RENAME, onRename],
       [CHAT_MERGE, onMerge],
       [CHAT_ADD, onAdd],
+      [CHAT_DELETE, onDelete],
+      [CHAT_LAYOUT, onLayout],
     ];
     events.forEach(([name, fn]) => window.addEventListener(name, fn));
     return () => events.forEach(([name, fn]) => window.removeEventListener(name, fn));
@@ -2342,6 +2356,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       showToast("success", `Добавлен продукт «${label}»`);
       setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_SHOW_NODES, { detail: { ids: [id] } })), 300);
       return id;
+    },
+    // Удаление — как подтверждённое на полотне (handleConfirmDelete):
+    // карточка чата и есть подтверждение, в автопилоте — просьба человека.
+    remove: (ids) => {
+      const present = ids.filter((id) => nodesRef.current.some((n) => n.id === id));
+      if (readOnly || !present.length) return false;
+      saveChangesRef.current();
+      for (const id of present) {
+        for (const dir of ["down", "up"] as const) dispatch(clearStepState({ nodeId: id, direction: dir }));
+      }
+      dispatch(removeNodes(present));
+      if (selectedNodeId !== null && present.includes(selectedNodeId)) {
+        setIsPanelOpen(false);
+        resetSelectionAfterClose();
+      }
+      showToast("success", present.length === 1 ? "Узел удалён" : `Удалено узлов: ${present.length}`);
+      return true;
+    },
+    layout: () => {
+      if (readOnly || focusOn || !nodesRef.current.length) return false;
+      void handleRelayout();
+      return true;
     },
   };
 

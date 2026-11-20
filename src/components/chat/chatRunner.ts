@@ -20,6 +20,8 @@ import {
   requestAdd,
   requestCardTab,
   requestCodes,
+  requestDelete,
+  requestLayout,
   requestMerge,
   requestRename,
   requestStep,
@@ -35,8 +37,11 @@ export interface ProposalOutcome {
   text: string;
 }
 
-/** Действия, после которых граф другой — автопилот спрашивает модель, что дальше. */
-export const GRAPH_CHANGES: ChatProposal["kind"][] = ["step", "add", "rename", "merge"];
+/**
+ * Действия, после которых автопилот спрашивает модель, что дальше: граф
+ * другой, или найдено то, от чего зависит следующий ход (источники).
+ */
+export const GRAPH_CHANGES: ChatProposal["kind"][] = ["step", "add", "rename", "merge", "delete", "sources"];
 
 const DIR = { up: "вверх", down: "вниз" } as const;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -96,7 +101,44 @@ export async function executeProposal(p: ChatProposal, mode: ChatMode, store: Ap
 
     case "step":
       return runStep(p, mode, store, exists);
+
+    case "sources":
+      return runSources(p, exists);
+
+    case "delete": {
+      const present = p.nodes.filter((n) => exists(n.id));
+      if (!present.length) return { ok: false, text: "этих узлов уже нет на графе" };
+      const names = present.map((n) => q(n.label)).join(", ");
+      return requestDelete(present.map((n) => n.id))
+        ? { ok: true, text: `удалены со связями: ${names}` }
+        : { ok: false, text: `не удалены: ${names} (граф только для чтения?)` };
+    }
+
+    case "layout":
+      return requestLayout()
+        ? { ok: true, text: "граф разложен заново" }
+        : { ok: false, text: "граф не разложен: в «Фокусе» и на пустом графе раскладки нет" };
   }
+}
+
+/**
+ * Источники: мастер у продукта проходит только первый этап — база, а нет её
+ * (или просили интернет) — поиск моделью. Шаг не строится: найденное ждёт в
+ * мастере, «Построить шаг» его возьмёт.
+ */
+async function runSources(
+  p: Extract<ChatProposal, { kind: "sources" }>,
+  exists: (id: string) => boolean,
+): Promise<ProposalOutcome> {
+  if (!exists(p.nodeId)) return { ok: false, text: `узла ${q(p.label)} уже нет на графе` };
+  const what = `источники для ${q(p.label)} (${DIR[p.direction]}${p.web ? ", поиск в интернете" : ""})`;
+  const result = startAutoStep(p.nodeId, p.direction, "sources", { web: !!p.web });
+  requestStep(p.nodeId, p.label, p.direction);
+  const r = await result;
+  if (r.status === "cancelled") return { ok: false, text: `поиск: ${what} — остановлен` };
+  if (r.status !== "sources") return { ok: false, text: `${what}: ${r.error ?? "не нашлись"}` };
+  const list = (r.sources ?? []).map(q).join("; ");
+  return { ok: true, text: `${what}: ${r.sourcesCount ?? 0} — ${list} (в мастере шага; шаг из них — «Построить шаг»)` };
 }
 
 /**
