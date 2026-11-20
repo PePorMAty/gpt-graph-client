@@ -26,6 +26,7 @@ import type { RootState } from "../../store/store";
 import { useAppSelector } from "../../store/hooks";
 import { AI_MODELS, useAiConfig } from "../../hooks/useAiConfig";
 import { buildChatSlice } from "../../utils/chatSlice";
+import { sourcesPoolKey } from "../../store/slices/gptSlice";
 import {
   CHAT_PROPOSAL_KINDS,
   ChatUnavailableError,
@@ -96,7 +97,16 @@ function proposalView(p: ChatProposal): {
         keep: true,
       };
     case "balance":
-      return { title: `Материальный баланс: ${q(p.label)}`, action: "Рассчитать", edits: true, keep: true };
+      return {
+        title: `Материальный баланс: ${q(p.label)}${p.basisLabel ? ` на 1 т ${q(p.basisLabel)}` : ""}`,
+        note:
+          [p.knownData && `Известные данные: ${p.knownData}`, p.force && "Посчитать заново, не брать готовый расчёт из базы."]
+            .filter(Boolean)
+            .join("\n") || undefined,
+        action: "Рассчитать",
+        edits: true,
+        keep: true,
+      };
     case "tech":
       return { title: `Технологическое описание: ${q(p.label)}`, action: "Открыть описание", edits: false, keep: true };
     case "rename":
@@ -134,6 +144,8 @@ function proposalView(p: ChatProposal): {
       };
     case "layout":
       return { title: "Разложить граф заново", action: "Разложить", edits: true, keep: false };
+    case "unlayout":
+      return { title: "Вернуть прежнюю раскладку", action: "Вернуть", edits: true, keep: false };
     case "alternatives":
       return {
         title: `Альтернативы ${q(p.label)} — ${p.direction === "up" ? "способы получения" : "пути переработки"}`,
@@ -306,7 +318,13 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
           .getState()
           .history.entries.slice(0, 8)
           .map((e) => ({ title: e.title, details: e.details }));
-        const graph = buildChatSlice(nodes, edges, { name: graphName, selectedNodeId: selectedRef.current, recent });
+        const pool = store.getState().graph.sourcesPool;
+        const graph = buildChatSlice(nodes, edges, {
+          name: graphName,
+          selectedNodeId: selectedRef.current,
+          recent,
+          sourcesOf: (label, dir) => pool[sourcesPoolKey(label, dir)]?.sources,
+        });
         let reply: ChatMessage;
         let done: ChatDone | null = null;
         try {

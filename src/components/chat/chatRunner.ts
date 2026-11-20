@@ -18,7 +18,13 @@ import type { Store } from "@reduxjs/toolkit";
 
 import type { AppDispatch, RootState } from "../../store/store";
 import type { ChatProposal } from "../../store/api/chat-api";
-import { pickBalanceTransformation, runMaterialBalance } from "../../store/slices/materialBalanceSlice";
+import {
+  pickBalanceTransformation,
+  runMaterialBalance,
+  setBalanceKnownData,
+  setDraftBasis,
+} from "../../store/slices/materialBalanceSlice";
+import { STATUS_TEXT, statusReason, type MaterialBalanceCalc } from "../../utils/materialBalance";
 import { updateNodeData } from "../../store/slices/gptSlice";
 import { addBookmark, removeBookmark } from "../../store/slices/bookmarksSlice";
 import { fetchProductCard } from "../../store/api/product-card-api";
@@ -33,6 +39,7 @@ import {
   requestMerge,
   requestRename,
   requestStep,
+  requestUnlayout,
   runCodesHidden,
   showNodes,
 } from "./chatActions";
@@ -112,7 +119,7 @@ export async function executeProposal(p: ChatProposal, mode: ChatMode, store: Ap
       return { ok: true, text: `открыто технологическое описание ${q(p.label)}` };
 
     case "balance":
-      return runBalance(p.nodeId, p.label, mode, store, exists);
+      return runBalance(p, mode, store, exists);
 
     case "step":
       return runStep(p, mode, store, exists);
@@ -134,8 +141,17 @@ export async function executeProposal(p: ChatProposal, mode: ChatMode, store: Ap
 
     case "layout":
       return requestLayout()
-        ? { ok: true, text: "граф разложен заново" }
+        ? { ok: true, text: "граф разложен заново (вернуть прежнюю раскладку можно)" }
         : { ok: false, text: "граф не разложен: в «Фокусе» и на пустом графе раскладки нет" };
+
+    case "unlayout": {
+      const r = requestUnlayout();
+      if (r === "all") return { ok: true, text: "раскладка возвращена, как была до последней «Разложить»" };
+      if (r === "positions") {
+        return { ok: true, text: "узлы возвращены на прежние места; то, что добавили после раскладки, осталось где было" };
+      }
+      return { ok: false, text: "вернуть нечего: раскладку в этом графе ещё не меняли" };
+    }
 
     case "describe": {
       if (!exists(p.nodeId)) return gone(p.label);
@@ -199,34 +215,63 @@ function startStepWizard(
 
 /**
  * Баланс — как кнопка «Рассчитать» у выбранного для расчёта преобразования.
- * С подтверждением — во вкладке карточки, автопилот — без карточки. Готовый
- * расчёт из базы приходит за секунды — ждём его; новый идёт минуты — не
- * держим чат, итог придёт уведомлением.
+ * С подтверждением — во вкладке карточки, автопилот — без карточки. Данные
+ * от модели (на тонну какого сырья, «Известные данные») ложатся в черновик
+ * расчёта, как если бы их вписал человек. Готовый расчёт из базы приходит
+ * за секунды — ждём его; новый идёт минуты — не держим чат, итог придёт
+ * уведомлением.
+ *
+ * Итог — по самому расчёту, а не по числу расчётов: новый расчёт тех же
+ * продуктов заменяет прежний, и повтор из чата назывался «нет сырья или
+ * продуктов» (20.11), хотя расчёт пришёл.
  */
 async function runBalance(
-  nodeId: string,
-  label: string,
+  p: Extract<ChatProposal, { kind: "balance" }>,
   mode: ChatMode,
   store: AppStore,
   exists: (id: string) => boolean,
 ): Promise<ProposalOutcome> {
+  const { nodeId, label } = p;
   if (!exists(nodeId)) return { ok: false, text: `узла ${q(label)} уже нет на графе` };
+  const busy = () =>
+    Object.values(store.getState().materialBalance.jobs).some(
+      (j) => j.transformationId === nodeId && (j.status === "running" || j.status === "starting"),
+    );
+  if (busy()) return { ok: true, text: `расчёт баланса ${q(label)} уже идёт — итог придёт уведомлением` };
   if (mode === "auto") store.dispatch(pickBalanceTransformation(nodeId));
   else requestCardTab(nodeId, "balance");
   const picked = await waitFor(() => store.getState().materialBalance.selection?.transformationId === nodeId, 5000);
   if (!picked) return { ok: false, text: `баланс ${q(label)}: преобразование не выбралось для расчёта` };
-  const calcs = () =>
-    (store.getState().graph.data.nodes.find((n) => n.id === nodeId)?.data?.materialBalances as unknown[] | undefined)?.length ?? 0;
-  const before = calcs();
-  const jobs = () => Object.keys(store.getState().materialBalance.jobs).length;
-  const jobsBefore = jobs();
-  const running = store.dispatch(runMaterialBalance());
+  // Выбор преобразования начинает черновик заново — данные чата после него.
+  const isInput = (id: string) =>
+    store.getState().graph.data.edges.some((e) => e.source === id && e.target === nodeId);
+  if (p.basisId && isInput(p.basisId)) store.dispatch(setDraftBasis(p.basisId));
+  if (p.knownData) store.dispatch(setBalanceKnownData(p.knownData));
+  const latest = () =>
+    (store.getState().graph.data.nodes.find((n) => n.id === nodeId)?.data?.materialBalances as MaterialBalanceCalc[] | undefined)?.[0];
+  const before = latest();
+  const failedBefore = new Set(
+    Object.entries(store.getState().materialBalance.jobs)
+      .filter(([, j]) => j.transformationId === nodeId && j.status === "failed")
+      .map(([k]) => k),
+  );
+  const running = store.dispatch(runMaterialBalance(p.force ? { force: true } : {}));
   const finished = await Promise.race([running.then(() => true), sleep(20000).then(() => false)]);
-  if (finished && calcs() > before) return { ok: true, text: `баланс ${q(label)} рассчитан — во вкладке «Материальный баланс» преобразования` };
-  if (finished && jobs() === jobsBefore && calcs() === before) {
-    return { ok: false, text: `баланс ${q(label)} не запущен: у преобразования нет сырья или продуктов` };
+  const after = latest();
+  if (after && (!before || after.addedAt !== before.addedAt || after.record.id !== before.record.id)) {
+    const r = after.record;
+    const reason = r.status === "calculated" ? null : statusReason(r);
+    return {
+      ok: r.status === "calculated" || r.status === "partial",
+      text: `баланс ${q(label)}: ${STATUS_TEXT[r.status].toLowerCase()}${after.fromCache ? " (готовый расчёт из базы — заново: recalc)" : ""}${reason ? ` — ${reason.replace(/\s+/g, " ").slice(0, 400)}` : ""}`,
+    };
   }
-  return { ok: true, text: `расчёт баланса ${q(label)} идёт — займёт минуты, итог придёт уведомлением` };
+  if (busy() || !finished) return { ok: true, text: `расчёт баланса ${q(label)} идёт — займёт минуты, итог придёт уведомлением` };
+  const failed = Object.entries(store.getState().materialBalance.jobs).find(
+    ([k, j]) => j.transformationId === nodeId && j.status === "failed" && !failedBefore.has(k),
+  );
+  if (failed) return { ok: false, text: `баланс ${q(label)} не рассчитан: ${failed[1].error ?? "ошибка"}` };
+  return { ok: false, text: `баланс ${q(label)} не запущен: у преобразования нет сырья или продуктов` };
 }
 
 /**

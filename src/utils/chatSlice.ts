@@ -13,14 +13,34 @@
 import type { Edge } from "@xyflow/react";
 
 import type { CustomNode } from "../types";
+import type { TechnologySource } from "../store/types";
+import { STATUS_TEXT, statusReason, type MaterialBalanceCalc } from "./materialBalance";
 import { productContext, type ProductContext } from "./productContext";
 
-export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, alternatives: 200, ends: 20 };
+export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, alternatives: 200, ends: 20, titles: 5, withSources: 80, note: 600 };
+
+/** Найденные источники продукта в одну сторону: сколько и первые названия. */
+type FoundSources = { count: number; titles: string[] };
 
 export interface ChatGraphSlice {
   name: string;
-  products: { id: string; label: string }[];
-  transformations: { id: string; label: string; inputs: string[]; outputs: string[] }[];
+  /**
+   * sources — что мастер шага уже нашёл (база ИТС и интернет): человек видит
+   * это на графе и спрашивает «что за источники нашлись» (20.11), а база
+   * сервера знает только ИТС. Старый сервер поле не читает.
+   */
+  products: { id: string; label: string; sources?: { up?: FoundSources; down?: FoundSources } }[];
+  /**
+   * balance — последний расчёт материального баланса: статус, на что, почему
+   * «частично» — чтобы досчитать его с данными. Старый сервер поле не читает.
+   */
+  transformations: {
+    id: string;
+    label: string;
+    inputs: string[];
+    outputs: string[];
+    balance?: { status: string; basis?: string; note?: string };
+  }[];
   /**
    * Альтернативы шага отдельно от преобразований: у какого продукта стоят
    * и в какую сторону — вниз (что ещё делают из продукта) или вверх (как
@@ -50,6 +70,33 @@ const labelOf = (n: CustomNode | undefined) => String(n?.data?.label ?? "").trim
  */
 const onGraph = (n: CustomNode) => n.data?.chainVariant !== "alt";
 
+/** Источники продукта: пул мастера шага, а нет его — сохранённые в узле. */
+function foundSources(list: TechnologySource[] | undefined): FoundSources | undefined {
+  const seen = new Set<string>();
+  const titles: string[] = [];
+  for (const s of list ?? []) {
+    const key = String(s.url || s.title || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const title = String(s.title || s.url || "").trim();
+    if (title && titles.length < CHAT_SLICE_LIMITS.titles) titles.push(title);
+  }
+  return seen.size ? { count: seen.size, titles } : undefined;
+}
+
+/** Последний расчёт баланса преобразования — коротко. */
+function lastBalance(n: CustomNode): { status: string; basis?: string; note?: string } | undefined {
+  const calc = (n.data?.materialBalances as MaterialBalanceCalc[] | undefined)?.[0];
+  if (!calc?.record) return undefined;
+  const r = calc.record;
+  const note = statusReason(r)?.replace(/\s+/g, " ").trim().slice(0, CHAT_SLICE_LIMITS.note);
+  return {
+    status: STATUS_TEXT[r.status] ?? r.statusLabel ?? r.status,
+    ...(r.basis ? { basis: r.basis } : {}),
+    ...(note ? { note } : {}),
+  };
+}
+
 export function buildChatSlice(
   nodes: CustomNode[],
   edges: Edge[],
@@ -57,13 +104,32 @@ export function buildChatSlice(
     name = "",
     selectedNodeId = null,
     recent = [],
-  }: { name?: string; selectedNodeId?: string | null; recent?: { title: string; details?: string }[] } = {},
+    sourcesOf,
+  }: {
+    name?: string;
+    selectedNodeId?: string | null;
+    recent?: { title: string; details?: string }[];
+    /** Найденное мастером шага для продукта (пул источников). */
+    sourcesOf?: (label: string, direction: "up" | "down") => TechnologySource[] | undefined;
+  } = {},
 ): ChatGraphSlice {
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  let withSources = 0;
   const products = nodes
     .filter((n) => n.type === "product" && onGraph(n) && labelOf(n))
     .slice(0, CHAT_SLICE_LIMITS.products)
-    .map((n) => ({ id: n.id, label: labelOf(n) }));
+    .map((n) => {
+      const label = labelOf(n);
+      const pick = (dir: "up" | "down", field: "sourcesUp" | "sourcesDown") => {
+        const pool = sourcesOf?.(label, dir);
+        return foundSources(pool?.length ? pool : (n.data?.[field] as TechnologySource[] | undefined));
+      };
+      const up = withSources < CHAT_SLICE_LIMITS.withSources ? pick("up", "sourcesUp") : undefined;
+      const down = withSources < CHAT_SLICE_LIMITS.withSources ? pick("down", "sourcesDown") : undefined;
+      if (!up && !down) return { id: n.id, label };
+      withSources++;
+      return { id: n.id, label, sources: { ...(up ? { up } : {}), ...(down ? { down } : {}) } };
+    });
   const productLabel = (id: string) => {
     const n = byId.get(id);
     return n?.type === "product" ? labelOf(n) : "";
@@ -77,6 +143,7 @@ export function buildChatSlice(
       label: labelOf(n),
       inputs: uniq(edges.filter((e) => e.target === n.id).map((e) => productLabel(e.source))),
       outputs: uniq(edges.filter((e) => e.source === n.id).map((e) => productLabel(e.target))),
+      ...(lastBalance(n) ? { balance: lastBalance(n) } : {}),
     }));
   // Вариант вниз стоит после продукта (продукт → вариант), вверх — перед ним.
   const alternatives = nodes

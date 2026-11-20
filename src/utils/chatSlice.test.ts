@@ -64,6 +64,34 @@ describe("срез графа для чата", () => {
     expect(buildChatSlice(nodes, edges).recent).toEqual([]);
   });
 
+  it("найденные мастером источники продукта и последний расчёт баланса преобразования (20.11)", () => {
+    const calc = {
+      record: { id: 7, status: "partial", statusLabel: "partial", basis: "Кумол", sections: { notes: "" }, nature: null },
+      nodeIds: {},
+      addedAt: "2026-11-20T08:55:00Z",
+    };
+    const withData = [
+      node("p1", "product", "Кумол", { sourcesUp: [{ title: "ИТС 18 · Производство кумола", url: "local://1" }] }),
+      nodes[1],
+      nodes[2],
+      node("t1", "transformation", "Кумольный способ", { materialBalances: [calc] }),
+    ];
+    const pool: Record<string, { title: string; url: string }[]> = {
+      "Фенол::down": [
+        { title: "Бисфенол А — обзор", url: "https://a" },
+        { title: "Бисфенол А — обзор", url: "https://a" },
+        { title: "", url: "https://b" },
+      ],
+    };
+    const s = buildChatSlice(withData, edges, {
+      sourcesOf: (label, dir) => pool[`${label}::${dir}`] as never,
+    });
+    expect(s.products[0]).toEqual({ id: "p1", label: "Кумол", sources: { up: { count: 1, titles: ["ИТС 18 · Производство кумола"] } } });
+    expect(s.products[1]).toEqual({ id: "p2", label: "Фенол", sources: { down: { count: 2, titles: ["Бисфенол А — обзор", "https://b"] } } });
+    expect(s.products[2]).toEqual({ id: "p3", label: "Ацетон" });
+    expect(s.transformations[0].balance).toMatchObject({ status: "Частично рассчитан", basis: "Кумол" });
+  });
+
   it("большой граф — не больше пределов сервера", () => {
     const many = Array.from({ length: 700 }, (_, i) => node(`p${i}`, "product", `Продукт ${i}`));
     expect(buildChatSlice(many, []).products).toHaveLength(CHAT_SLICE_LIMITS.products);
@@ -126,6 +154,7 @@ describe("предложения чата", () => {
       { kind: "sources", nodeId: "n1", label: "Фенол", direction: "up", web: true } as never,
       { kind: "delete", nodes: [{ id: "a1", label: "Бисфенол А" }] } as never,
       { kind: "layout" } as never,
+      { kind: "unlayout" } as never,
       { kind: "alternatives", nodeId: "n1", label: "Фенол", direction: "up" } as never,
       { kind: "describe", nodeId: "n1", label: "Фенол", description: "Ароматический спирт." } as never,
       { kind: "fillcard", nodeId: "n1", label: "Фенол" } as never,

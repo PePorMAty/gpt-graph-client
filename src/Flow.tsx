@@ -95,6 +95,7 @@ import { ChatPanel } from "./components/chat/ChatPanel";
 import {
   CHAT_ADD,
   CHAT_AUTO_FOCUS,
+  CHAT_UNLAYOUT,
   CHAT_CODES,
   CHAT_DELETE,
   CHAT_LAYOUT,
@@ -222,6 +223,13 @@ interface FlowProps {
   sharedView?: boolean;
 }
 
+/** Состав графа для «верни раскладку»: какие узлы и связи, без мест. */
+function layoutShape(nodes: { id: string }[], edges: Edge[]): string {
+  const ids = nodes.map((n) => n.id).sort().join("|");
+  const links = edges.map((e) => `${e.source}>${e.target}`).sort().join("|");
+  return `${ids}#${links}`;
+}
+
 export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const dispatch = useAppDispatch();
   const {
@@ -341,10 +349,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
    * объединении графов. Нужна она и просто так: после ручных правок, удалений
    * и достроенных шагов узлы разъезжаются, и вернуть порядок было нечем.
    */
+  const layoutBackupRef = useRef<{ nodes: CustomNode[]; edges: Edge[]; laid: string } | null>(null);
   const handleRelayout = useCallback(async () => {
     if (!data.nodes.length) return;
     setIsApplyingLayout(true);
     try {
+      const before = { nodes: data.nodes, edges: data.edges };
       // Одинаковые преобразования — один узел (collapseDuplicateTransformations).
       // Шаги новые дублей не плодят, а графы, построенные раньше, приводятся
       // к этому здесь.
@@ -352,6 +362,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       const { layoutForMergeTab } = await import("./hooks/useMergeGraph");
       const laid = await layoutForMergeTab(same.nodes, same.edges);
       dispatch(setGraphData({ nodes: laid.nodes, edges: laid.edges }));
+      // «Верни как было» (чат, 20.11): граф до раскладки и подпись того, что
+      // она дала, — отличить «после раскладки ничего не меняли».
+      layoutBackupRef.current = { ...before, laid: layoutShape(laid.nodes, laid.edges) };
       if (same.collapsed.length) {
         const names = [...new Set(same.collapsed)];
         const details =
@@ -920,6 +933,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     add: (label: string, nearId?: string, newId?: string) => string | null;
     remove: (ids: string[]) => boolean;
     layout: () => boolean;
+    unlayout: () => "all" | "positions" | null;
   } | null>(null);
   // Окно кодов, открытое автопилотом чата: скрыто, подбор запускает само,
   // итог — в чат (codesDoneRef).
@@ -1539,6 +1553,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       const d = (e as CustomEvent<{ ok?: boolean }>).detail;
       if (d) d.ok = chatEditRef.current?.layout() ?? false;
     };
+    const onUnlayout = (e: Event) => {
+      const d = (e as CustomEvent<{ result?: "all" | "positions" | null }>).detail;
+      if (d) d.result = chatEditRef.current?.unlayout() ?? null;
+    };
     const events: [string, (e: Event) => void][] = [
       [CHAT_OPEN_CARD, onStep],
       [CHAT_SHOW_NODES, onShow],
@@ -1549,6 +1567,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       [CHAT_AUTO_FOCUS, onAutoFocus],
       [CHAT_DELETE, onDelete],
       [CHAT_LAYOUT, onLayout],
+      [CHAT_UNLAYOUT, onUnlayout],
     ];
     events.forEach(([name, fn]) => window.addEventListener(name, fn));
     return () => events.forEach(([name, fn]) => window.removeEventListener(name, fn));
@@ -1558,6 +1577,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const selectedNode = data.nodes?.find(
     (node: Node) => node.id === selectedNodeId,
   );
+  // Узел, у которого автопилот чата строит шаг без окна (stepAutopilot.ts).
+  const autoNode = autoRun?.headless
+    ? data.nodes?.find((node: Node) => node.id === autoRun.nodeId)
+    : undefined;
 
   // При открытии панели устанавливаем текущее значение
   useEffect(() => {
@@ -1783,6 +1806,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   useEffect(() => {
     if (loadSeqRef.current === loadSeq) return;
     loadSeqRef.current = loadSeq;
+    layoutBackupRef.current = null;
     setIsPanelOpen(false);
     setSelectedNodeId(null);
     setTempNodeLabel("");
@@ -2401,6 +2425,40 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       void handleRelayout();
       return true;
     },
+    // Прежняя раскладка: граф не меняли — целиком, как был; меняли — только
+    // места прежних узлов, новое остаётся где стоит. Отмена одна.
+    unlayout: () => {
+      const backup = layoutBackupRef.current;
+      if (readOnly || !backup) return null;
+      layoutBackupRef.current = null;
+      saveChangesRef.current();
+      const { nodes, edges } = data;
+      if (layoutShape(nodes, edges) === backup.laid) {
+        // Узлы — нынешние (правки описаний после раскладки не теряются),
+        // места и связи — до раскладки (схлопнутые дубли тоже вернутся).
+        const now = new Map(nodes.map((n) => [n.id, n]));
+        dispatch(
+          setGraphData({
+            nodes: backup.nodes.map((n) => {
+              const cur = now.get(n.id);
+              return cur ? { ...cur, position: n.position } : n;
+            }),
+            edges: backup.edges,
+          }),
+        );
+        requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
+        return "all";
+      }
+      const was = new Map(backup.nodes.map((n) => [n.id, n.position]));
+      dispatch(
+        setGraphData({
+          nodes: nodes.map((n) => (was.has(n.id) ? { ...n, position: was.get(n.id)! } : n)),
+          edges,
+        }),
+      );
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 500 }));
+      return "positions";
+    },
   };
 
   // Обработчик изменения имени узла
@@ -2600,19 +2658,19 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
   // ─── Per-direction handlers (factories) ───
   const handleFindSources = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) =>
       async (opts?: {
         customSystemPrompt?: string;
         maxItems?: number;
         allowedDomains?: string[];
       }) => {
-        if (!selectedNodeId || !selectedNode) return;
-        const productName = String(selectedNode.data?.label || "").trim();
+        if (!nodeId || !node) return;
+        const productName = String(node.data?.label || "").trim();
         if (!productName) return;
 
         await dispatch(
           fetchSources({
-            nodeId: selectedNodeId,
+            nodeId: nodeId,
             productName,
             maxItems: opts?.maxItems ?? 5,
             direction,
@@ -2621,28 +2679,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           }),
         ).unwrap();
       },
-    [dispatch, selectedNodeId, selectedNode],
+    [dispatch],
   );
 
   const handleAggregateSources = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) =>
       async (
         customSystemPrompt?: string,
         customUserPrompt?: string,
         selectedSources?: TechnologySource[],
       ) => {
-      if (!selectedNodeId || !selectedNode) return;
-      const productName = String(selectedNode.data?.label || "").trim();
+      if (!nodeId || !node) return;
+      const productName = String(node.data?.label || "").trim();
       if (!productName) return;
 
       // sources from node.data per-direction
       const dirSources =
         direction === "up"
-          ? (selectedNode.data?.sourcesUp as TechnologySource[])
-          : (selectedNode.data?.sourcesDown as TechnologySource[]);
+          ? (node.data?.sourcesUp as TechnologySource[])
+          : (node.data?.sourcesDown as TechnologySource[]);
 
       // fallback to sourcesSlice
-      const sliceKey = sourcesKey(selectedNodeId, direction);
+      const sliceKey = sourcesKey(nodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
       // Пользователь мог отметить чекбоксами подмножество источников (3.1) —
       // тогда обобщаем только по ним.
@@ -2655,7 +2713,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       await dispatch(
         aggregateSources({
-          nodeId: selectedNodeId,
+          nodeId: nodeId,
           productName,
           sources: payloadSources,
           direction,
@@ -2664,76 +2722,76 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         }),
       ).unwrap();
     },
-    [dispatch, selectedNodeId, selectedNode, sourcesByNodeId],
+    [dispatch, sourcesByNodeId],
   );
 
   // ─── Chain sessions (multi-session, per-direction) ───
   const chainSessions = useAppSelector((s) => s.graph.chainSessions);
 
   const handleInitChain = useCallback(
-    (direction: BuildDirection) => async (customSystemPrompt?: string) => {
-      if (!selectedNodeId || !selectedNode) return;
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) => async (customSystemPrompt?: string) => {
+      if (!nodeId || !node) return;
 
       const descField = direction === "up" ? "upDescription" : "downDescription";
       const techText = String(
-        selectedNode.data?.[descField] ||
-        selectedNode.data?.description ||
+        node.data?.[descField] ||
+        node.data?.description ||
         "",
       ).trim();
 
       await dispatch(
         buildChainLevel1({
-          nodeId: selectedNodeId,
-          productName: String(selectedNode.data?.label || "").trim(),
+          nodeId: nodeId,
+          productName: String(node.data?.label || "").trim(),
           techText,
           direction,
           customSystemPrompt,
         }),
       ).unwrap();
     },
-    [dispatch, selectedNodeId, selectedNode],
+    [dispatch],
   );
 
   const handleExpandNext = useCallback(
-    (direction: BuildDirection) => async () => {
-      if (!selectedNodeId) return;
-      const sKey = sourcesKey(selectedNodeId, direction);
+    (direction: BuildDirection, nodeId: string | null) => async () => {
+      if (!nodeId) return;
+      const sKey = sourcesKey(nodeId, direction);
       await dispatch(
-        expandNextInQueue({ sessionKey: sKey, realRootNodeId: selectedNodeId }),
+        expandNextInQueue({ sessionKey: sKey, realRootNodeId: nodeId }),
       ).unwrap();
     },
-    [dispatch, selectedNodeId],
+    [dispatch],
   );
 
   // ─── Step-by-step chain handlers (new /step/* flow) ───
 
   const ensureStepSession = useCallback(
-    (direction: BuildDirection) => {
-      if (!selectedNodeId) return null;
-      const sKey = stepSessionKey(selectedNodeId, direction);
+    (direction: BuildDirection, nodeId: string | null) => {
+      if (!nodeId) return null;
+      const sKey = stepSessionKey(nodeId, direction);
       if (!stepChainSessions[sKey]) {
         dispatch(
           initStepChainSession({
             sessionKey: sKey,
             direction,
-            rootNodeId: selectedNodeId,
-            currentProductNodeId: selectedNodeId,
+            rootNodeId: nodeId,
+            currentProductNodeId: nodeId,
           }),
         );
       }
       return sKey;
     },
-    [dispatch, selectedNodeId, stepChainSessions],
+    [dispatch, stepChainSessions],
   );
 
   const handleAcceptStep = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null) =>
       (
         selectedContinueProductNodeId?: string,
         filteredStep?: import("./store/types").StepChainApiStep,
       ) => {
-        if (!selectedNodeId) return;
-        const sKey = stepSessionKey(selectedNodeId, direction);
+        if (!nodeId) return;
+        const sKey = stepSessionKey(nodeId, direction);
         // Якорь шага мог исчезнуть с полотна (удалён, или граф сменился —
         // после объединения у узлов новые id). Шаг тогда класть некуда;
         // редьюсер закроет превью, а причину называем здесь.
@@ -2747,7 +2805,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Обобщённое описание шага продукта-якоря (markdown) — прокинем на
         // создаваемую transformation-ноду (см. stepToFlow / карточка преобразования).
         const anchorAggregatedText =
-          sourcesByNodeId[sourcesKey(selectedNodeId, direction)]
+          sourcesByNodeId[sourcesKey(nodeId, direction)]
             ?.stepAggregatedText ?? null;
         dispatch(
           acceptPendingStep({
@@ -2757,12 +2815,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             anchorAggregatedText,
           }),
         );
-        dispatch(resetStepBuild({ nodeId: selectedNodeId, direction }));
+        dispatch(resetStepBuild({ nodeId: nodeId, direction }));
         // stepAggregatedText НЕ чистим: после построения основного пути
         // альтернативы должны остаться видимыми, и useEffect пересоздаст
         // alt-ноды по сохранённому тексту с переиспользованием их позиций.
       },
-    [dispatch, selectedNodeId, sourcesByNodeId, stepChainSessions, data.nodes],
+    [dispatch, sourcesByNodeId, stepChainSessions, data.nodes],
   );
 
   // Активные запросы поиска источников — по ключу продукт+направление.
@@ -2773,19 +2831,19 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   >({});
 
   const handleCancelStepSources = useCallback(
-    (direction: BuildDirection) => () => {
-      if (!selectedNodeId) return;
-      const runKey = sourcesKey(selectedNodeId, direction);
+    (direction: BuildDirection, nodeId: string | null) => () => {
+      if (!nodeId) return;
+      const runKey = sourcesKey(nodeId, direction);
       const running = stepSourcesRequestsRef.current[runKey];
       if (!running) return;
       running.abort("cancelled-by-user");
       delete stepSourcesRequestsRef.current[runKey];
     },
-    [selectedNodeId],
+    [],
   );
 
   const handleFetchStepSourcesV2 = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) =>
       (opts?: {
         customSystemPrompt?: string;
         maxItems?: number;
@@ -2793,16 +2851,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         provider?: string;
         model?: string;
       }) => {
-      if (!selectedNodeId) return;
-      ensureStepSession(direction);
-      const sKey = stepSessionKey(selectedNodeId, direction);
-      const productName = String(selectedNode?.data?.label || "").trim();
+      if (!nodeId) return;
+      ensureStepSession(direction, nodeId);
+      const sKey = stepSessionKey(nodeId, direction);
+      const productName = String(node?.data?.label || "").trim();
       if (!productName) return;
 
       dispatch(
         setStepChainContinueProduct({
           sessionKey: sKey,
-          productNodeId: selectedNodeId,
+          productNodeId: nodeId,
         }),
       );
 
@@ -2811,7 +2869,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       const running = dispatch(
         fetchStepSourcesV2({
-          nodeId: selectedNodeId,
+          nodeId: nodeId,
           productName,
           direction,
           ...(existingSources.length ? { existingSources } : {}),
@@ -2827,7 +2885,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       // Держим ссылку на запрос, чтобы его можно было прервать кнопкой.
       // Ключ по продукту+направлению: параллельные поиски не мешают друг другу.
-      const runKey = sourcesKey(selectedNodeId, direction);
+      const runKey = sourcesKey(nodeId, direction);
       stepSourcesRequestsRef.current[runKey] = running;
       void running.finally(() => {
         if (stepSourcesRequestsRef.current[runKey] === running) {
@@ -2837,15 +2895,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [
       dispatch,
-      selectedNodeId,
-      selectedNode,
       ensureStepSession,
       sourcesPool,
     ],
   );
 
   const handleAggregateStepSources = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) =>
       (
         customSystemPrompt?: string,
         customUserPrompt?: string,
@@ -2853,15 +2909,15 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         provider?: string,
         model?: string,
       ) => {
-      if (!selectedNodeId) return;
-      const sKey = stepSessionKey(selectedNodeId, direction);
-      const productName = String(selectedNode?.data?.label || "").trim();
+      if (!nodeId) return;
+      const sKey = stepSessionKey(nodeId, direction);
+      const productName = String(node?.data?.label || "").trim();
       if (!productName) return;
 
       dispatch(
         setStepChainContinueProduct({
           sessionKey: sKey,
-          productNodeId: selectedNodeId,
+          productNodeId: nodeId,
         }),
       );
 
@@ -2879,7 +2935,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       // Цепочка вокруг продукта, а не его описание: описание модель
       // принимала за цепочку и называла им раскрываемый продукт.
       const existingChain = buildStepChainContext(
-        selectedNodeId,
+        nodeId,
         data.nodes,
         data.edges,
         direction,
@@ -2887,7 +2943,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       dispatch(
         aggregateStepSources({
-          nodeId: selectedNodeId,
+          nodeId: nodeId,
           productName,
           direction,
           sources: poolSources,
@@ -2901,8 +2957,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [
       dispatch,
-      selectedNodeId,
-      selectedNode,
       sourcesPool,
       data.nodes,
       data.edges,
@@ -2914,10 +2968,10 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // «своим»), и в node.data.sourcesUp/Down (отображение full-chain потока).
   // Возвращает текст ошибки или null при успехе.
   const handleAddManualSource = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) =>
       (src: { title: string; url: string; description?: string }): string | null => {
-        if (!selectedNodeId || !selectedNode) return "Узел не выбран";
-        const productName = String(selectedNode.data?.label || "").trim();
+        if (!nodeId || !node) return "Узел не выбран";
+        const productName = String(node.data?.label || "").trim();
         if (!productName) return "У узла нет названия";
 
         const parsed = normalizeSourceUrl(src.url);
@@ -2929,7 +2983,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
         const dirField = direction === "up" ? "sourcesUp" : "sourcesDown";
         const nodeSources =
-          (selectedNode.data?.[dirField] as TechnologySource[] | undefined) ?? [];
+          (node.data?.[dirField] as TechnologySource[] | undefined) ?? [];
         const poolSources =
           sourcesPool[poolKey(productName, direction)]?.sources ?? [];
         // Объединяем оба хранилища (могли разойтись), дедуп по адресу.
@@ -2955,7 +3009,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         if (seen.has(key)) {
           dispatch(
             updateNodeData({
-              nodeId: selectedNodeId,
+              nodeId: nodeId,
               data: { [dirField]: merged },
             }),
           );
@@ -2981,37 +3035,37 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         dispatch(addSourcesToPool({ productName, direction, sources: next }));
         dispatch(
           updateNodeData({
-            nodeId: selectedNodeId,
+            nodeId: nodeId,
             data: { [dirField]: next },
           }),
         );
         return null;
       },
-    [dispatch, selectedNodeId, selectedNode, sourcesPool],
+    [dispatch, sourcesPool],
   );
 
   const handleBuildStep = useCallback(
-    (direction: BuildDirection) =>
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) =>
     (
       customText?: string,
       customSystemPrompt?: string,
       provider?: string,
       model?: string,
     ) => {
-      if (!selectedNodeId) return;
-      ensureStepSession(direction);
-      const sKey = stepSessionKey(selectedNodeId, direction);
-      const productName = String(selectedNode?.data?.label || "").trim();
+      if (!nodeId) return;
+      ensureStepSession(direction, nodeId);
+      const sKey = stepSessionKey(nodeId, direction);
+      const productName = String(node?.data?.label || "").trim();
       if (!productName) return;
 
       dispatch(
         setStepChainContinueProduct({
           sessionKey: sKey,
-          productNodeId: selectedNodeId,
+          productNodeId: nodeId,
         }),
       );
 
-      const sliceKey = sourcesKey(selectedNodeId, direction);
+      const sliceKey = sourcesKey(nodeId, direction);
       const sliceState = sourcesByNodeId[sliceKey];
       const aggregated =
         customText ?? sliceState?.stepAggregatedText ?? "";
@@ -3023,7 +3077,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       dispatch(
         buildStep({
           sessionKey: sKey,
-          nodeId: selectedNodeId,
+          nodeId: nodeId,
           productName,
           direction,
           techText: aggregated,
@@ -3036,8 +3090,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
     },
     [
       dispatch,
-      selectedNodeId,
-      selectedNode,
       sourcesByNodeId,
       sourcesPool,
       ensureStepSession,
@@ -3051,19 +3103,19 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   const altTextSeen = useRef(new Map<string, string>());
 
   const handleClearStepState = useCallback(
-    (direction: BuildDirection) => () => {
-      if (!selectedNodeId) return;
-      dispatch(clearStepState({ nodeId: selectedNodeId, direction }));
-      dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
-      altTextSeen.current.delete(sourcesKey(selectedNodeId, direction));
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined) => () => {
+      if (!nodeId) return;
+      dispatch(clearStepState({ nodeId: nodeId, direction }));
+      dispatch(removeStepAlternativeNodes({ nodeId: nodeId, direction }));
+      altTextSeen.current.delete(sourcesKey(nodeId, direction));
       // «Начать заново» — значит и найденные источники шага забыть. Раньше они
       // оставались, мастер стоял на том же экране с тем же списком, и кнопка
       // выглядела неработающей. Найденное моделью сохранено в базе сервера:
       // вернуть его можно кнопкой «К источникам из базы».
-      const productName = String(selectedNode?.data?.label ?? "").trim();
+      const productName = String(node?.data?.label ?? "").trim();
       if (productName) dispatch(clearSourcesPool({ productName, direction }));
     },
-    [dispatch, selectedNodeId, selectedNode],
+    [dispatch],
   );
 
   // ─── Create / remove step alternative nodes when aggregate text changes ───
@@ -3072,10 +3124,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // обоих направлений заново: при построении «вверх» под продуктом вставали
   // альтернативы его давнего обобщения «вниз», и удалённые с полотна
   // альтернативы возвращались.
+  // Узлы — выбранный и узел автопилота чата: его скрытый мастер обобщает,
+  // пока человек смотрит другие узлы, и альтернативы должны встать у него.
+  const autoNodeId = autoNode?.id ?? null;
   useEffect(() => {
-    if (!selectedNodeId) return;
+    for (const nodeId of new Set([selectedNodeId, autoNodeId])) {
+    if (!nodeId) continue;
     for (const direction of ["up", "down"] as const) {
-      const sKey = sourcesKey(selectedNodeId, direction);
+      const sKey = sourcesKey(nodeId, direction);
       const sliceState = sourcesByNodeId[sKey];
       const text = sliceState?.stepAggregatedText;
       if (!text) {
@@ -3096,40 +3152,42 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       if (alts.length > 1) {
         dispatch(
           createStepAlternativeNodes({
-            nodeId: selectedNodeId,
+            nodeId: nodeId,
             direction,
             alternatives: alts.slice(1),
           }),
         );
       } else {
-        dispatch(removeStepAlternativeNodes({ nodeId: selectedNodeId, direction }));
+        dispatch(removeStepAlternativeNodes({ nodeId: nodeId, direction }));
       }
+    }
     }
   }, [
     selectedNodeId,
+    autoNodeId,
     sourcesByNodeId,
     dispatch,
   ]);
 
   // ─── Build DirectionTabProps for each direction ───
   const buildDirectionTab = useCallback(
-    (direction: BuildDirection): DirectionTabProps => {
-      if (!selectedNodeId || !selectedNode) {
+    (direction: BuildDirection, nodeId: string | null, node: Node | undefined): DirectionTabProps => {
+      if (!nodeId || !node) {
         return {
           direction,
           sources: [],
         };
       }
 
-      const sKey = sourcesKey(selectedNodeId, direction);
+      const sKey = sourcesKey(nodeId, direction);
       const sliceState = sourcesByNodeId[sKey];
       const session = chainSessions[sKey];
 
       // sources from node.data per-direction
       const nodeSources =
         direction === "up"
-          ? (selectedNode.data?.sourcesUp as TechnologySource[])
-          : (selectedNode.data?.sourcesDown as TechnologySource[]);
+          ? (node.data?.sourcesUp as TechnologySource[])
+          : (node.data?.sourcesDown as TechnologySource[]);
 
       const effectiveSources: TechnologySource[] =
         nodeSources ?? sliceState?.sources ?? [];
@@ -3139,13 +3197,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       const aggField = direction === "up" ? "sourcesAggregatedUp" : "sourcesAggregatedDown";
       const descField = direction === "up" ? "upDescription" : "downDescription";
       const hasAggregated =
-        Boolean(selectedNode.data?.[aggField]) ||
+        Boolean(node.data?.[aggField]) ||
         sliceState?.aggregateStatus === "succeeded";
 
       const chainReady = !!session?.rawChain;
       const chainUiEnabled = !!chainReady;
       const isActiveChainRoot =
-        chainUiEnabled && selectedNodeId === selectedNodeId; // root is always the selected node for this session
+        chainUiEnabled && nodeId === nodeId; // root is always the selected node for this session
 
       const queueLen = chainReady
         ? Math.max(
@@ -3162,13 +3220,13 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       const chainLoadingForNode =
         (chainBuild?.status === "loading" &&
-          chainBuild?.nodeId === selectedNodeId &&
+          chainBuild?.nodeId === nodeId &&
           chainBuild?.direction === direction) ||
         session?.chainStatus === "loading";
 
       const chainErrorForNode =
         (chainBuild?.status === "failed" &&
-          chainBuild?.nodeId === selectedNodeId &&
+          chainBuild?.nodeId === nodeId &&
           chainBuild?.direction === direction
           ? chainBuild?.error
           : null) ||
@@ -3180,7 +3238,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           : "Получить цепочку (chain)";
 
       // step-by-step chain
-      const sKeyStep = stepSessionKey(selectedNodeId, direction);
+      const sKeyStep = stepSessionKey(nodeId, direction);
       const stepSession = stepChainSessions[sKeyStep];
 
       const lastStep =
@@ -3207,41 +3265,41 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
 
       const baseResult: DirectionTabProps = {
         direction,
-        onFindSources: handleFindSources(direction),
+        onFindSources: handleFindSources(direction, nodeId, node),
         sourcesLoading: sliceState?.status === "loading",
         sourcesError: sliceState?.error ?? null,
         sources: effectiveSources,
 
-        onAggregateSources: handleAggregateSources(direction),
-        onAddManualSource: handleAddManualSource(direction),
+        onAggregateSources: handleAggregateSources(direction, nodeId, node),
+        onAddManualSource: handleAddManualSource(direction, nodeId, node),
         aggregateLoading: sliceState?.aggregateStatus === "loading",
         aggregateError: sliceState?.aggregateError ?? null,
         hasAggregated,
         aggregatedDescription:
-          (selectedNode.data?.[descField] as string) ??
+          (node.data?.[descField] as string) ??
           sliceState?.aggregatedDescription ??
           null,
         onChangeAggregatedDescription: (e) => {
-          if (!selectedNodeId) return;
+          if (!nodeId) return;
           dispatch(
             updateNodeData({
-              nodeId: selectedNodeId,
+              nodeId: nodeId,
               data: { [descField]: e.target.value },
             }),
           );
         },
         onChangeStepAggregatedText: (text) => {
-          if (!selectedNodeId) return;
+          if (!nodeId) return;
           dispatch(
             setStepAggregatedText({
-              nodeId: selectedNodeId,
+              nodeId: nodeId,
               direction,
               text,
             }),
           );
         },
 
-        productName: String(selectedNode.data?.label || "").trim(),
+        productName: String(node.data?.label || "").trim(),
 
         chainLoading: chainLoadingForNode,
         chainError: chainErrorForNode,
@@ -3250,11 +3308,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         isActiveChainRoot,
         canInitChainHere,
         initChainLabel,
-        onInitChain: handleInitChain(direction),
+        onInitChain: handleInitChain(direction, nodeId, node),
 
         queueLen,
         chainPid: queuePid,
-        onExpandNext: handleExpandNext(direction),
+        onExpandNext: handleExpandNext(direction, nodeId),
 
         // Признак «это окно построения, а не вкладка карточки». Раньше здесь
         // жил выбор режима — «вся цепочка» или «по шагам»; режим остался один,
@@ -3266,12 +3324,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         stepChainError: stepSession?.error ?? null,
         stepChainStepCount: stepSession?.steps.length ?? 0,
 
-        stepChainCurrentProductLabel: String(selectedNode.data?.label || ""),
-        stepChainCurrentProductNodeId: selectedNodeId,
+        stepChainCurrentProductLabel: String(node.data?.label || ""),
+        stepChainCurrentProductNodeId: nodeId,
         stepChainInsufficientProducts:
           stepSession?.insufficientProducts ?? [],
 
-        onAcceptStep: handleAcceptStep(direction),
+        onAcceptStep: handleAcceptStep(direction, nodeId),
         onRejectStep: () => dispatch(rejectPendingStep(sKeyStep)),
         onForceStepPreview: () => dispatch(forceStepPreview(sKeyStep)),
         onUndoStep: () => dispatch(undoLastStep(sKeyStep)),
@@ -3288,8 +3346,8 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Продукт и его предки по построению: обобщение, ведущее только к
         // ним, — шаг назад по цепочке (см. stepLoopsBack).
         stepLineage: [
-          String(selectedNode.data?.label || "").trim(),
-          ...getAncestorProductLabels(selectedNodeId, data.nodes, data.edges),
+          String(node.data?.label || "").trim(),
+          ...getAncestorProductLabels(nodeId, data.nodes, data.edges),
         ].filter(Boolean),
 
         stepChainBranchOptions: branchOptions,
@@ -3305,14 +3363,14 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         // Always read pool for the panel's own product — panel actions target
         // the selected node, not the chain tip.
         stepSources: (() => {
-          const lbl = String(selectedNode.data?.label ?? "");
+          const lbl = String(node.data?.label ?? "");
           const poolSrcs = sourcesPool[poolKey(lbl, direction)]?.sources;
           // Fallback на резервное хранилище по nodeId (sourcesSlice) — на
           // случай рассинхрона ключа пула.
           return poolSrcs?.length ? poolSrcs : (sliceState?.sources ?? []);
         })(),
         stepSourcesOrigin: (() => {
-          const lbl = String(selectedNode.data?.label ?? "");
+          const lbl = String(node.data?.label ?? "");
           const entry = sourcesPool[poolKey(lbl, direction)];
           return entry?.originProduct &&
             poolKey(entry.originProduct, direction) !== poolKey(lbl, direction)
@@ -3321,7 +3379,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         })(),
         stepNeedsFreshSources:
           needsFreshSources[
-            poolKey(String(selectedNode.data?.label ?? ""), direction)
+            poolKey(String(node.data?.label ?? ""), direction)
           ] ?? null,
         stepSourcesStatus: sliceState?.stepSourcesStatus ?? "idle",
         stepSourcesError: sliceState?.stepSourcesError ?? null,
@@ -3339,27 +3397,27 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
         stepBuildError: sliceState?.stepBuildError ?? null,
         stepBuiltFromAggregate: sliceState?.stepBuiltFromAggregate ?? false,
 
-        onFetchStepSources: handleFetchStepSourcesV2(direction),
-        onCancelStepSources: handleCancelStepSources(direction),
+        onFetchStepSources: handleFetchStepSourcesV2(direction, nodeId, node),
+        onCancelStepSources: handleCancelStepSources(direction, nodeId),
         onMergeBaseSources: (baseSources: TechnologySource[]) => {
-          const productName = String(selectedNode.data?.label ?? "").trim();
+          const productName = String(node.data?.label ?? "").trim();
           if (!productName) return;
           dispatch(
             mergeBaseSources({ productName, direction, sources: baseSources }),
           );
         },
-        onAggregateStepSources: handleAggregateStepSources(direction),
-        onBuildStep: handleBuildStep(direction),
-        onClearStepState: handleClearStepState(direction),
+        onAggregateStepSources: handleAggregateStepSources(direction, nodeId, node),
+        onBuildStep: handleBuildStep(direction, nodeId, node),
+        onClearStepState: handleClearStepState(direction, nodeId, node),
       };
 
       // ── Override for step alternative nodes ──
       const isStepAlt =
-        selectedNode.data?.chainVariant === "alt" &&
-        selectedNode.data?.stepAltDirection === direction;
+        node.data?.chainVariant === "alt" &&
+        node.data?.stepAltDirection === direction;
 
       if (isStepAlt) {
-        const rootNodeId = String(selectedNode.data?.chainRootNodeId || "");
+        const rootNodeId = String(node.data?.chainRootNodeId || "");
         const rootNode = data.nodes.find((n) => n.id === rootNodeId);
         if (rootNode) {
           const rootProductName = String(rootNode.data?.label || "").trim();
@@ -3367,11 +3425,11 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           const rootSliceState = sourcesByNodeId[rootSKey];
           const rootStepSKey = stepSessionKey(rootNodeId, direction);
           const rootStepSession = stepChainSessions[rootStepSKey];
-          const altDesc = String(selectedNode.data?.description || "");
+          const altDesc = String(node.data?.description || "");
           // У каждой альтернативы своё построение — статус и превью шага: их
           // строят несколько сразу. Источники и обобщение — продукта, общие;
           // принятый шаг уходит в историю продукта (отмена — там же).
-          const altNodeId = selectedNode.id;
+          const altNodeId = node.id;
           const altSliceState =
             sourcesByNodeId[sourcesKey(altNodeId, direction)];
           const altStepSKey = `alt::${altNodeId}::${direction}`;
@@ -3472,12 +3530,12 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
             // переживают пере-обобщение.
             const altAcceptKey = alternativeKey({
               fullDescription: altDesc,
-              title: String(selectedNode?.data?.label ?? ""),
+              title: String(node?.data?.label ?? ""),
             });
             // Описание альтернативы — во вкладку «Технологические маршруты»
             // нового преобразования, как обобщение у обычного шага.
             const routeText = alternativeRouteText(
-              String(selectedNode?.data?.label ?? ""),
+              String(node?.data?.label ?? ""),
               altBuiltText.current.get(altNodeId) ?? altDesc,
             );
             dispatch(
@@ -3506,8 +3564,6 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       return baseResult;
     },
     [
-      selectedNodeId,
-      selectedNode,
       sourcesByNodeId,
       chainSessions,
       chainBuild,
@@ -3532,13 +3588,24 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   );
 
   const downTab = useMemo(
-    () => buildDirectionTab("down"),
-    [buildDirectionTab],
+    () => buildDirectionTab("down", selectedNodeId, selectedNode),
+    [buildDirectionTab, selectedNodeId, selectedNode],
   );
   const upTab = useMemo(
-    () => buildDirectionTab("up"),
-    [buildDirectionTab],
+    () => buildDirectionTab("up", selectedNodeId, selectedNode),
+    [buildDirectionTab, selectedNodeId, selectedNode],
   );
+  // Скрытый мастер автопилота — у своего узла, а не у выбранного: пока шаг
+  // строится (минуты), человек смотрит граф и щёлкает по узлам, и щелчок
+  // снимал задание («шаг остановлен», 20.11). Узел тот же — вкладки общие.
+  const autoTabs = useMemo(() => {
+    if (!autoNode) return null;
+    if (autoNode.id === selectedNodeId) return { down: downTab, up: upTab };
+    return {
+      down: buildDirectionTab("down", autoNode.id, autoNode),
+      up: buildDirectionTab("up", autoNode.id, autoNode),
+    };
+  }, [autoNode, selectedNodeId, downTab, upTab, buildDirectionTab]);
 
   // Группы источников для таблицы: реальные из sourcesPool по всем продуктам.
   // Каждая группа = продукт×направление с пометкой наследования (inheritedFrom)
@@ -4018,16 +4085,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onClose={() => setContextMenu(null)}
         />
       )}
-      {/* Автопилот чата: мастер шага без окна — скрытым, у выбранного узла;
-          ход виден в чате. Человек выбрал другой узел — мастер исчезает, и
-          задание снимается (PanelBuildView отменяет его при уходе). */}
-      {autoRun?.headless && selectedNode && autoRun.nodeId === selectedNodeId && (
+      {/* Автопилот чата: мастер шага без окна — скрытым, у узла задания;
+          ход виден в чате. Щелчки по другим узлам его не трогают; узел
+          удалили или открыли другой граф — мастер исчезает, и задание
+          снимается (PanelBuildView отменяет его при уходе). */}
+      {autoRun?.headless && autoNode && autoTabs && (
         <div hidden aria-hidden="true">
           <PanelBuildView
             key={`${autoRun.nodeId}:${autoRun.direction}`}
-            productName={String(selectedNode.data?.label ?? "")}
-            downTab={downTab}
-            upTab={upTab}
+            productName={String(autoNode.data?.label ?? "")}
+            downTab={autoTabs.down}
+            upTab={autoTabs.up}
             auto={{ direction: autoRun.direction, until: autoRun.until }}
           />
         </div>

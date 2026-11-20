@@ -30,13 +30,22 @@ function chatReply(req) {
     phenol && form && synth && bisphenol
       ? [
           { kind: "codes", nodes: [phenol, form], why: "кодов нет в базе" },
-          { kind: "balance", nodeId: synth.id, label: synth.label },
+          {
+            kind: "balance",
+            nodeId: synth.id,
+            label: synth.label,
+            basisId: phenol.id,
+            basisLabel: phenol.label,
+            knownData: "Выход смолы 98 % (e2e)",
+            force: true,
+          },
           { kind: "tech", nodeId: phenol.id, label: phenol.label, nodeKind: "product" },
           { kind: "rename", nodeId: form.id, label: form.label, newLabel: "Фенол", nodeKind: "product", why: "проверка окна дубля" },
           { kind: "merge", fromId: form.id, fromLabel: form.label, intoId: phenol.id, intoLabel: phenol.label },
           { kind: "sources", nodeId: phenol.id, label: phenol.label, direction: "down" },
           { kind: "delete", nodes: [{ id: bisphenol.id, label: bisphenol.label }] },
           { kind: "layout" },
+          { kind: "unlayout" },
           // Сервер новее клиента: такую карточку клиент не знает.
           { kind: "future_kind", nodeId: phenol.id },
         ]
@@ -109,14 +118,15 @@ module.exports = {
       "Источники для «Фенол» вниз",
       "Удалить: «Бисфенол А»",
       "Разложить граф заново",
+      "Вернуть прежнюю раскладку",
     ];
     const seen = [];
     for (const t of titles) if (await panel.getByText(t, { exact: true }).count()) seen.push(t);
-    const balanceCard = panel.getByText(/^Материальный баланс: «Синтез/);
+    const balanceCard = panel.getByText(/^Материальный баланс: «Синтез[^»]*» на 1 т «Фенол»$/);
     const cards = await panel.getByRole("button", { name: /^(Отклонить|Скрыть)$/ }).count();
     check(
-      "карточки предложений — восемь, незнакомая пропущена",
-      seen.length === titles.length && (await balanceCard.count()) === 1 && cards === 8,
+      "карточки предложений — девять, незнакомая пропущена",
+      seen.length === titles.length && (await balanceCard.count()) === 1 && cards === 9,
       `заголовков ${seen.length}/${titles.length}, карточек ${cards}`,
     );
 
@@ -133,6 +143,9 @@ module.exports = {
     await lib.sleep(1200);
     await shot("balance");
     check("«Рассчитать» — карточка преобразования на вкладке баланса", await pressed("Материальный баланс"));
+    // Свои данные от ИИ — в поле «Свои данные» расчёта, как вписал бы человек.
+    const known = await page.getByRole("button", { name: /^Свои данные/ }).first().innerText().catch(() => "");
+    check("баланс — со своими данными от ИИ («Свои данные ✓»)", /✓/.test(known), known);
 
     await panel.getByRole("button", { name: "Открыть окно кодов" }).click();
     const dialog = page.getByRole("dialog", { name: "Определить коды для продуктов" });
@@ -190,13 +203,24 @@ module.exports = {
     await lib.sleep(800);
     check("«Удалить» — альтернатива ушла с графа", altBefore === 1 && (await alt()) === 0, `было ${altBefore}, стало ${await alt()}`);
 
+    // Места узлов — из стора, как их держит граф (на экране — после камеры).
+    const where = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll(".react-flow__node")].map((n) => `${n.getAttribute("data-id")}@${n.style.transform}`).sort().join("|"),
+      );
+    const beforeLayout = await where();
     await panel.getByRole("button", { name: "Разложить" }).click();
     await lib.sleep(1500);
+    const laidOut = await where();
     check(
       "«Разложить» — граф разложен, карточка ушла",
       (await panel.getByText("Разложить граф заново", { exact: true }).count()) === 0 &&
-        (await page.getByText(/граф не разложен/i).count()) === 0,
+        (await page.getByText(/граф не разложен/i).count()) === 0 &&
+        laidOut !== beforeLayout,
     );
+    await panel.getByRole("button", { name: "Вернуть" }).click();
+    await lib.sleep(1200);
+    check("«Вернуть прежнюю раскладку» — узлы на прежних местах", (await where()) === beforeLayout);
     log(`карточек: ${cards}; продуктов ${before} → ${after}`);
   },
 };

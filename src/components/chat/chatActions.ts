@@ -21,6 +21,7 @@ export const CHAT_ADD = "chat-add";
 export const CHAT_DELETE = "chat-delete";
 export const CHAT_AUTO_FOCUS = "chat-auto-focus";
 export const CHAT_LAYOUT = "chat-layout";
+export const CHAT_UNLAYOUT = "chat-unlayout";
 
 /**
  * Событие с ответом: Flow слушает синхронно и пишет итог в detail —
@@ -118,4 +119,13 @@ export function requestLayout(): boolean {
 /** Новый продукт на полотне — рядом с nearId или в середине экрана. id нового узла, null — не добавлен. */
 export function requestAdd(label: string, nearId?: string, newId?: string): string | null {
   return ask(CHAT_ADD, { label, nearId, newId, id: null as string | null }).id;
+}
+
+/**
+ * Вернуть раскладку, какая была до последней «Разложить»: «all» — граф как
+ * был, «positions» — после раскладки граф меняли, на прежние места встали
+ * только прежние узлы, null — возвращать нечего.
+ */
+export function requestUnlayout(): "all" | "positions" | null {
+  return ask<{ result?: "all" | "positions" | null }>(CHAT_UNLAYOUT, {}).result ?? null;
 }

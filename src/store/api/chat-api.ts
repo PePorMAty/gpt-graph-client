@@ -19,7 +19,19 @@ export type ChatProposal =
   | { kind: "step"; nodeId: string; label: string; direction: "up" | "down"; why?: string }
   | { kind: "show"; nodes: NodeRef[] }
   | { kind: "codes"; nodes: NodeRef[]; why?: string }
-  | { kind: "balance"; nodeId: string; label: string; why?: string }
+  | {
+      kind: "balance";
+      nodeId: string;
+      label: string;
+      why?: string;
+      /** На 1 т этого сырья (узел и название); нет — сырьё по умолчанию. */
+      basisId?: string;
+      basisLabel?: string;
+      /** «Известные данные» расчёта — нормы, выходы, соотношения от модели. */
+      knownData?: string;
+      /** Посчитать заново, не брать готовый расчёт из базы. */
+      force?: boolean;
+    }
   | { kind: "tech"; nodeId: string; label: string; nodeKind?: string; why?: string }
   | { kind: "rename"; nodeId: string; label: string; newLabel: string; nodeKind?: string; why?: string }
   | { kind: "merge"; fromId: string; fromLabel: string; intoId: string; intoLabel: string; why?: string }
@@ -27,6 +39,7 @@ export type ChatProposal =
   | { kind: "sources"; nodeId: string; label: string; direction: "up" | "down"; web?: boolean; why?: string }
   | { kind: "delete"; nodes: NodeRef[]; why?: string }
   | { kind: "layout"; why?: string }
+  | { kind: "unlayout" }
   | { kind: "alternatives"; nodeId: string; label: string; direction: "up" | "down"; why?: string }
   | { kind: "describe"; nodeId: string; label: string; description: string; industry?: string; mainPurpose?: string }
   | { kind: "fillcard"; nodeId: string; label: string; nodeKind?: string; why?: string }
@@ -49,6 +62,7 @@ export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = [
   "sources",
   "delete",
   "layout",
+  "unlayout",
   "alternatives",
   "describe",
   "fillcard",
@@ -77,6 +91,7 @@ export function isKnownProposal(p: unknown): p is ChatProposal {
     case "delete":
       return isRefs(x.nodes);
     case "layout":
+    case "unlayout":
       return true;
     case "balance":
     case "tech":
