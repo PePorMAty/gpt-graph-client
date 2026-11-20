@@ -4,12 +4,15 @@
   gap: var(--s-2);
   flex: 0 0 auto;
   min-height: var(--h-toolbar);
-  /* Справа резервируем место под рельс инструментов холста, слева — под
-     открытую боковую панель (её ширину каркас кладёт в --panel-offset). */
-  padding: var(--s-3) 60px var(--s-3)
+  /* Справа резервируем место под рельс инструментов холста (а с открытым
+     чатом — и под него: --toolbar-right во Flow), слева — под открытую
+     боковую панель (её ширину каркас кладёт в --panel-offset). */
+  padding: var(--s-3) var(--toolbar-right, 60px) var(--s-3)
     calc(var(--s-4) + var(--panel-offset, 0px));
   flex-wrap: wrap;
-  transition: padding-left var(--t-base) var(--ease);
+  transition:
+    padding-left var(--t-base) var(--ease),
+    padding-right var(--t-base) var(--ease);
   background: transparent;
   /* Полоса растянута на всю ширину холста, но событий не ловит: иначе в
      верхней части полотна не работали ни клик по узлу, ни выделение рамкой —

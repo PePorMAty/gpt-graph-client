@@ -3740,7 +3740,16 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       {/* Панель над холстом. Обёртка нужна для замера высоты при подгонке
           камеры в фокус-режиме (см. fitFocusCamera). В просмотре по ссылке
           на ней остаются переключатели представления: они граф не меняют. */}
-      <div ref={toolbarWrapRef} className={styles.toolbarWrap}>
+      <div
+        ref={toolbarWrapRef}
+        className={styles.toolbarWrap}
+        // Чат открыт — чипы фильтров не заходят под его панель.
+        style={
+          chatOpen && !sharedView
+            ? ({ "--toolbar-right": "calc(var(--chat-right) + var(--w-panel) + var(--s-3))" } as React.CSSProperties)
+            : undefined
+        }
+      >
         <GraphToolbar
           graphName={graphDisplayName}
           productsOnly={productsOnly}

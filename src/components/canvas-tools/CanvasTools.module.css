@@ -2,7 +2,10 @@
   position: absolute;
   top: var(--s-3);
   right: var(--s-4);
-  z-index: var(--z-canvas-ui);
+  /* Над панелями полотна (карточка, чат с ИИ — --z-panel): подсказки кнопок
+     живут в слое колонки и иначе прятались под открытым чатом слева от неё.
+     Колонка с панелями не перекрывается; меню и окна — выше обеих. */
+  z-index: calc(var(--z-panel) + 1);
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
