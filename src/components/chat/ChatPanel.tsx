@@ -2,10 +2,17 @@
 // полотна, рядом с карточкой узла (та открывается слева).
 //
 // Что делает модель: смотрит базу (карточка продукта, поиск по ИТС, расчёты
-// баланса) и открытый граф, отвечает со ссылками и предлагает действия
-// карточками. Ничего не меняется без человека: кнопка карточки ведёт в то,
-// что на сайте уже есть — мастер шага у узла, окно кодов, вкладку карточки
-// узла; переименование и объединение — те же правки, что у человека.
+// баланса) и открытый граф, отвечает со ссылками и называет действия: шаг,
+// показ, коды, баланс, описание, переименование, объединение, новый продукт.
+// Каждое действие ведёт в то, что на сайте уже есть (chatRunner.ts).
+//
+// Два режима (4.4), переключаются в панели:
+// - с подтверждением — действие карточкой с кнопкой; шаг мастер проходит сам
+//   до превью, «Добавить шаг» жмёт человек;
+// - автопилот — действия ответа выполняются сразу, по очереди; итог уходит
+//   модели («Автопилот: …»), и она продолжает задачу, пока не выполнит её
+//   или не упрётся в пределы (MAX_AUTO_ROUNDS, MAX_AUTO_STEPS). «Стоп»
+//   останавливает всё, вместе с мастером шага.
 //
 // Граф читается из хранилища только при отправке (store.getState): панель не
 // подписана на узлы, и граф на сотни узлов из-за неё не перерисовывается.
@@ -24,22 +31,26 @@ import {
   ChatUnavailableError,
   isKnownProposal,
   streamChat,
+  type ChatDone,
   type ChatProposal,
 } from "../../store/api/chat-api";
 import { plural } from "../../utils/plural";
 import { showToast } from "../toast/toastStore";
 import { ChatIcon, CloseIcon, SendIcon, TrashIcon } from "../icons";
+import { cancelAutoStep } from "../flow-panel/stepAutopilot";
 import {
   addRequestsToday,
   conversationKey,
   historyFor,
   isUnsavedKey,
+  loadChatMode,
   loadConversation,
   requestsToday,
+  saveChatMode,
   saveConversation,
   type ChatMessage,
 } from "./chatStore";
-import { requestCardTab, requestCodes, requestMerge, requestRename, requestStep, showNodes } from "./chatActions";
+import { executeProposal, GRAPH_CHANGES, type AppStore, type ChatMode } from "./chatRunner";
 import styles from "./ChatPanel.module.css";
 
 const EXAMPLES = [
@@ -47,6 +58,11 @@ const EXAMPLES = [
   "Из чего ещё можно получить этот продукт?",
   "Что делают из этого продукта дальше?",
 ];
+
+/** Кругов «модель → действия → итог модели» на одно сообщение человека в автопилоте. */
+const MAX_AUTO_ROUNDS = 4;
+/** Шагов на одно сообщение в автопилоте: шаг — 5–10 запросов к модели. */
+const MAX_AUTO_STEPS = 6;
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const DIR = { up: "вверх", down: "вниз" } as const;
@@ -77,7 +93,7 @@ function proposalView(p: ChatProposal): {
         keep: true,
       };
     case "balance":
-      return { title: `Материальный баланс: ${q(p.label)}`, action: "Открыть баланс", edits: false, keep: true };
+      return { title: `Материальный баланс: ${q(p.label)}`, action: "Рассчитать", edits: true, keep: true };
     case "tech":
       return { title: `Технологическое описание: ${q(p.label)}`, action: "Открыть описание", edits: false, keep: true };
     case "rename":
@@ -87,6 +103,13 @@ function proposalView(p: ChatProposal): {
         title: `Объединить ${q(p.fromLabel)} с ${q(p.intoLabel)}`,
         note: `Связи ${q(p.fromLabel)} перейдут к ${q(p.intoLabel)}, узел ${q(p.fromLabel)} исчезнет.`,
         action: "Объединить",
+        edits: true,
+        keep: false,
+      };
+    case "add":
+      return {
+        title: `Добавить продукт ${q(p.label)}${p.nearLabel ? ` рядом с ${q(p.nearLabel)}` : ""}`,
+        action: "Добавить",
         edits: true,
         keep: false,
       };
@@ -100,7 +123,7 @@ interface ChatPanelProps {
 }
 
 export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, readOnly = false }) => {
-  const store = useStore<RootState>();
+  const store = useStore<RootState>() as AppStore;
   const graphId = useAppSelector((s) => s.savedGraphs.openedGraphId);
   const graphName = useAppSelector((s) => s.savedGraphs.openedGraphName) ?? "";
   // Первый узел — имя черновика (chatStore.conversationKey); строка, а не
@@ -114,6 +137,13 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
     const n = s.graph.data.nodes.find((x) => x.id === selectedNodeId);
     return n?.type === "product" ? String(n.data?.label ?? "") || null : null;
   });
+  // Автопилот всё делает сам — на графе только для чтения его нет.
+  const [chosenMode, setChosenMode] = useState<ChatMode>(loadChatMode);
+  const mode: ChatMode = readOnly ? "confirm" : chosenMode;
+  const chooseMode = (m: ChatMode) => {
+    setChosenMode(m);
+    saveChatMode(m);
+  };
   const { config } = useAiConfig();
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadConversation(key));
@@ -124,7 +154,12 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   const [live, setLive] = useState<string[]>([]);
   const [today, setToday] = useState(requestsToday);
   const abortRef = useRef<AbortController | null>(null);
+  // «Стоп» в автопилоте: не только запрос к модели, но и очередь действий.
+  const stoppedRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
+  // Выбранный узел — на момент каждого запроса: автопилот сам выбирает узлы.
+  const selectedRef = useRef(selectedNodeId);
+  selectedRef.current = selectedNodeId;
 
   // Другой граф — свой разговор.
   const loadedFor = useRef(key);
@@ -144,7 +179,9 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
       return;
     }
     generation.current++;
+    stoppedRef.current = true;
     abortRef.current?.abort();
+    cancelAutoStep();
     setMessages(stored);
   }, [key, firstNodeId]);
 
@@ -160,58 +197,127 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
   // Панель закрыли посреди ответа — запрос к модели больше не нужен.
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  const stop = () => {
+    stoppedRef.current = true;
+    abortRef.current?.abort();
+    cancelAutoStep();
+  };
+
+  /**
+   * Сообщение человека — и, в автопилоте, круги «действия → итог модели»,
+   * пока модель называет действия, меняющие граф. Разговор копится в convo:
+   * следующему кругу нужна история с итогами, а setMessages применится
+   * только после перерисовки.
+   */
   const send = useCallback(
     async (text: string) => {
       const message = text.trim();
       if (!message || busy) return;
-      const { nodes, edges } = store.getState().graph.data;
-      const graph = buildChatSlice(nodes, edges, { name: graphName, selectedNodeId });
-      const before = messages;
       const gen = generation.current;
-      setMessages([...before, { id: newId(), role: "user", content: message }]);
-      setInput("");
-      setBusy(true);
-      setLive([]);
+      const runMode = mode;
       const ctrl = new AbortController();
       abortRef.current = ctrl;
-      let reply: ChatMessage;
-      try {
-        const done = await streamChat(
-          { message, history: historyFor(before), graph, proposals: CHAT_PROPOSAL_KINDS, ...getAiRequestFields() },
-          (e) => {
-            if (e.type === "tool") setLive((l) => [...l, e.summary]);
-          },
-          ctrl.signal,
-        );
-        addRequestsToday(done.usage.requests);
-        reply = {
-          id: newId(),
-          role: "assistant",
-          content: done.reply || "Модель ничего не ответила — спросите иначе.",
-          tools: done.tools.map((t) => t.summary),
-          proposals: done.proposals,
-          requests: done.usage.requests,
-        };
-      } catch (e) {
-        const stopped = ctrl.signal.aborted;
-        reply = {
-          id: newId(),
-          role: "assistant",
-          content: stopped
-            ? "Остановлено."
-            : e instanceof ChatUnavailableError
-              ? e.message
-              : `Не получилось: ${e instanceof Error ? e.message : String(e)}`,
-          error: true,
-        };
+      stoppedRef.current = false;
+      setInput("");
+      setBusy(true);
+      let convo = messagesRef.current;
+      let ask: ChatMessage = { id: newId(), role: "user", content: message };
+      let steps = 0;
+      const show = (next: ChatMessage[]) => {
+        convo = next;
+        if (generation.current === gen) setMessages(next);
+      };
+
+      for (let round = 0; ; round++) {
+        const history = historyFor(convo);
+        show([...convo, ask]);
+        setLive([]);
+        const { nodes, edges } = store.getState().graph.data;
+        const graph = buildChatSlice(nodes, edges, { name: graphName, selectedNodeId: selectedRef.current });
+        let reply: ChatMessage;
+        let done: ChatDone | null = null;
+        try {
+          done = await streamChat(
+            {
+              message: ask.content,
+              history,
+              graph,
+              proposals: CHAT_PROPOSAL_KINDS,
+              mode: runMode,
+              ...(ask.auto ? { continuation: true } : {}),
+              ...getAiRequestFields(),
+            },
+            (e) => {
+              if (e.type === "tool") setLive((l) => [...l, e.summary]);
+            },
+            ctrl.signal,
+          );
+          addRequestsToday(done.usage.requests);
+          reply = {
+            id: newId(),
+            role: "assistant",
+            content: done.reply || "Модель ничего не ответила — спросите иначе.",
+            tools: done.tools.map((t) => t.summary),
+            proposals: done.proposals,
+            requests: done.usage.requests,
+          };
+        } catch (e) {
+          reply = {
+            id: newId(),
+            role: "assistant",
+            content: ctrl.signal.aborted
+              ? "Остановлено."
+              : e instanceof ChatUnavailableError
+                ? e.message
+                : `Не получилось: ${e instanceof Error ? e.message : String(e)}`,
+            error: true,
+          };
+        }
+        if (generation.current !== gen) break;
+        show([...convo, reply]);
+        setToday(requestsToday());
+        if (!done?.proposals.length || runMode !== "auto" || stoppedRef.current) break;
+
+        // ── Автопилот: действия ответа — по очереди, итог — под карточкой ──
+        const results: string[] = [];
+        for (const [i, p] of done.proposals.entries()) {
+          if (stoppedRef.current || generation.current !== gen) break;
+          let outcome: { ok: boolean; text: string };
+          if (p.kind === "step" && steps >= MAX_AUTO_STEPS) {
+            outcome = { ok: false, text: `шаг от ${q(p.label)} пропущен: на одно сообщение не больше ${MAX_AUTO_STEPS} шагов` };
+          } else {
+            if (p.kind === "step") steps++;
+            setLive([`Автопилот: ${proposalView(p).title}…`]);
+            outcome = await executeProposal(p, "auto", store).catch((e: unknown) => ({
+              ok: false,
+              text: `не вышло: ${e instanceof Error ? e.message : String(e)}`,
+            }));
+          }
+          results.push(outcome.text);
+          show(convo.map((m) => (m.id === reply.id ? { ...m, results: { ...m.results, [i]: outcome } } : m)));
+        }
+        const changed = done.proposals.some((p) => GRAPH_CHANGES.includes(p.kind));
+        if (!changed || !results.length || stoppedRef.current || generation.current !== gen) break;
+        if (round + 1 >= MAX_AUTO_ROUNDS) {
+          show([
+            ...convo,
+            {
+              id: newId(),
+              role: "user",
+              auto: true,
+              content: `Автопилот: ${results.join("; ")}. Остановился: не больше ${MAX_AUTO_ROUNDS} кругов на одно сообщение — напишите «дальше».`,
+            },
+          ]);
+          break;
+        }
+        // Итог — модели: следующий шаг она строит от того, что получилось.
+        ask = { id: newId(), role: "user", auto: true, content: `Автопилот: ${results.join("; ")}.` };
       }
       if (abortRef.current === ctrl) abortRef.current = null;
-      if (generation.current === gen) setMessages((m) => [...m, reply]);
       setLive([]);
       setBusy(false);
-      setToday(requestsToday());
     },
-    [busy, graphName, messages, selectedNodeId, store],
+    [busy, graphName, mode, store],
   );
 
   const closeProposal = (msgId: string, index: number) =>
@@ -219,45 +325,16 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
       list.map((m) => (m.id === msgId ? { ...m, closed: [...(m.closed ?? []), index] } : m)),
     );
 
-  const nodeExists = (id: string) => store.getState().graph.data.nodes.some((n) => n.id === id);
-
+  /** Кнопка карточки (режим с подтверждением): то же действие, что делает автопилот. */
   const runProposal = (msgId: string, index: number, p: ChatProposal) => {
-    // Предложение могло устареть: узел удалили или объединили после ответа.
-    const gone = (label: string) => showToast("error", `Узла «${label}» уже нет на графе`);
-    const present = (nodes: { id: string }[]) => nodes.map((n) => n.id).filter(nodeExists);
-    switch (p.kind) {
-      case "step":
-        if (!nodeExists(p.nodeId)) return gone(p.label);
-        requestStep(p.nodeId, p.label, p.direction);
-        break;
-      case "show":
-      case "codes": {
-        const ids = present(p.nodes);
-        if (!ids.length) return showToast("error", "Этих узлов уже нет на графе");
-        if (p.kind === "show") showNodes(ids);
-        else requestCodes(ids);
-        break;
-      }
-      case "balance":
-      case "tech":
-        if (!nodeExists(p.nodeId)) return gone(p.label);
-        requestCardTab(p.nodeId, p.kind);
-        break;
-      case "rename":
-        if (!nodeExists(p.nodeId)) return gone(p.label);
-        requestRename(p.nodeId, p.newLabel);
-        break;
-      case "merge":
-        if (!nodeExists(p.fromId)) return gone(p.fromLabel);
-        if (!nodeExists(p.intoId)) return gone(p.intoLabel);
-        requestMerge(p.fromId, p.intoId);
-        break;
-    }
     if (!proposalView(p).keep) closeProposal(msgId, index);
+    void executeProposal(p, "confirm", store).then((r) => {
+      if (!r.ok) showToast("error", r.text.charAt(0).toUpperCase() + r.text.slice(1));
+    });
   };
 
   const clear = () => {
-    abortRef.current?.abort();
+    stop();
     setMessages([]);
   };
 
@@ -288,13 +365,41 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
         </button>
       </header>
 
+      <div className={styles.modes} role="group" aria-label="Режим чата">
+        <button
+          type="button"
+          className={`${styles.mode} ${mode === "confirm" ? styles.modeOn : ""}`}
+          aria-pressed={mode === "confirm"}
+          onClick={() => chooseMode("confirm")}
+          disabled={busy}
+          data-tooltip="ИИ называет действие карточкой, вы подтверждаете кнопкой"
+        >
+          С подтверждением
+        </button>
+        <button
+          type="button"
+          className={`${styles.mode} ${mode === "auto" ? styles.modeOn : ""}`}
+          aria-pressed={mode === "auto"}
+          onClick={() => chooseMode("auto")}
+          disabled={busy || readOnly}
+          data-tooltip={readOnly ? "Граф только для чтения" : "ИИ сам строит шаги и правит граф, пока не выполнит задачу"}
+        >
+          Автопилот
+        </button>
+      </div>
+
       <div className={styles.list} ref={listRef}>
         {!messages.length && !busy && (
           <div className={styles.empty}>
             <p>
               Спросите о продуктах и технологиях — ИИ посмотрит базу справочников ИТС, графы библиотеки
-              и этот граф, ответит со ссылками и предложит действия: шаг, коды, баланс, переименование.
-              Граф меняете вы: у каждого предложения своя кнопка.
+              и этот граф и ответит со ссылками. Попросите действие — «построй 2 шага вниз от фенола»,
+              «покажи альтернативы», «рассчитай баланс», «добавь продукт».
+            </p>
+            <p className={styles.hint}>
+              {mode === "auto"
+                ? `Автопилот: ИИ делает всё сам — строит шаги (мастер проходит этапы и добавляет шаг), правит граф и продолжает, пока не выполнит задачу. На одно сообщение — до ${MAX_AUTO_STEPS} шагов; «Стоп» останавливает.`
+                : "С подтверждением: каждое действие — карточка с кнопкой. Шаг мастер проходит сам до превью, «Добавить шаг» нажимаете вы."}
             </p>
             {selectedLabel &&
               EXAMPLES.map((q) => (
@@ -308,7 +413,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
 
         {messages.map((m) =>
           m.role === "user" ? (
-            <div key={m.id} className={styles.user}>
+            <div key={m.id} className={m.auto ? styles.autoNote : styles.user}>
               {m.content}
             </div>
           ) : (
@@ -332,24 +437,33 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
                 if (m.closed?.includes(i) || !isKnownProposal(p)) return null;
                 const v = proposalView(p);
                 const why = "why" in p ? p.why : undefined;
+                const result = m.results?.[i];
                 return (
                   <div key={i} className={styles.proposal}>
                     <div className={styles.proposalTitle}>{v.title}</div>
-                    {v.note && <div className={styles.proposalWhy}>{v.note}</div>}
+                    {v.note && !result && <div className={styles.proposalWhy}>{v.note}</div>}
                     {why && <div className={styles.proposalWhy}>{why}</div>}
-                    <div className={styles.proposalActions}>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => runProposal(m.id, i, p)}
-                        disabled={readOnly && v.edits}
-                      >
-                        {v.action}
-                      </button>
-                      <button type="button" className={styles.secondary} onClick={() => closeProposal(m.id, i)}>
-                        {v.keep ? "Скрыть" : "Отклонить"}
-                      </button>
-                    </div>
+                    {/* Автопилот уже выполнил — вместо кнопок итог. */}
+                    {result ? (
+                      <div className={result.ok ? styles.resultOk : styles.resultFail}>
+                        {result.ok ? "✓ " : "✗ "}
+                        {result.text}
+                      </div>
+                    ) : (
+                      <div className={styles.proposalActions}>
+                        <button
+                          type="button"
+                          className={styles.primary}
+                          onClick={() => runProposal(m.id, i, p)}
+                          disabled={readOnly && v.edits}
+                        >
+                          {v.action}
+                        </button>
+                        <button type="button" className={styles.secondary} onClick={() => closeProposal(m.id, i)}>
+                          {v.keep ? "Скрыть" : "Отклонить"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -399,7 +513,7 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
             aria-label="Сообщение для ИИ"
           />
           {busy ? (
-            <button type="button" className={styles.stop} onClick={() => abortRef.current?.abort()}>
+            <button type="button" className={styles.stop} onClick={stop}>
               Стоп
             </button>
           ) : (
@@ -409,7 +523,8 @@ export const ChatPanel: FC<ChatPanelProps> = memo(({ onClose, selectedNodeId, re
           )}
         </div>
         <div className={styles.footnote}>
-          {config.model || config.provider} · запросов к модели: в разговоре {conversationRequests}, сегодня {today}
+          {config.model || config.provider} · {mode === "auto" ? "автопилот" : "с подтверждением"} · запросов к
+          модели: в разговоре {conversationRequests}, сегодня {today}
         </div>
       </form>
     </aside>

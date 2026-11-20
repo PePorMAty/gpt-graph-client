@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { DirectionTabProps } from "./types";
 import { StepPreviewModal } from "./StepPreviewModal";
 import { MarkdownEditor } from "../markdown-editor";
@@ -37,6 +37,7 @@ import {
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { readableReason } from "../../store/middleware/failureText";
+import { autoStepActive, finishAutoStep } from "./stepAutopilot";
 import { isOwnBaseSource } from "../../utils/sourceOrigin";
 import { EndUseCheck } from "./EndUseCheck";
 import { plural } from "../../utils/plural";
@@ -89,6 +90,7 @@ type StepByStepContentProps = Pick<
   | "isAlternativeNode"
   | "altDescription"
   | "stageOverride"
+  | "autoUntil"
 >;
 
 export const StepByStepContent: FC<StepByStepContentProps> = ({
@@ -133,6 +135,7 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
   onChangeStepAggregatedText,
 
   isAlternativeNode = false,
+  autoUntil,
   altDescription,
   stageOverride,
 }) => {
@@ -443,6 +446,49 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
       aiModel,
     );
   };
+
+  // ── Автопилот (просьба чата, stepAutopilot.ts): экраны — сами ──
+  // На каждом экране один ход, как кнопкой: обобщить источники, построить
+  // шаг. На превью — остановиться (решает человек) или, в автопилоте,
+  // добавить шаг (StepPreviewModal). Ошибка этапа или тупик — итог «не
+  // вышло» с причиной: чат скажет её человеку, а не будет крутиться.
+  const autoDid = useRef({ aggregate: false, build: false, force: false });
+  useEffect(() => {
+    if (!autoUntil || !autoStepActive()) return;
+    const fail = (error: string) => finishAutoStep({ status: "failed", error });
+    if (sourcesLoading || aggregateLoading || buildLoading) return;
+    if (stepAggregateError) return fail(`обобщение: ${readableReason(stepAggregateError)}`);
+    if (stepBuildError) return fail(`построение: ${readableReason(stepBuildError)}`);
+    if (showPreview) {
+      if (autoUntil === "preview") finishAutoStep({ status: "preview" });
+      return;
+    }
+    if (buildNeedsSources) {
+      // Источников не хватило на следующий шаг от новых продуктов, но этот
+      // построен — как «Построить шаг всё равно».
+      if (pendingStep && !autoDid.current.force) {
+        autoDid.current.force = true;
+        onForceStepPreview?.();
+        return;
+      }
+      return fail("источников не хватило для нового шага — доберите их в мастере");
+    }
+    if (stepNeedsSources) return fail("обобщению не хватило источников — доберите их в мастере");
+    if (showAggregateStage) {
+      if (aggregateFoundNothing) {
+        return fail(direction === "down" ? "в источниках не нашлось, что делают из продукта" : "в источниках не нашлось, из чего его делают");
+      }
+      if (!autoDid.current.build && !stepBuiltFromAggregate) {
+        autoDid.current.build = true;
+        handleBuild();
+      }
+      return;
+    }
+    if (showSourcesStage && !autoDid.current.aggregate && selectedStepSources.length) {
+      autoDid.current.aggregate = true;
+      handleAggregate();
+    }
+  });
 
   // ── Alternative node: simplified flow ──
   if (isAlternativeNode) {
@@ -1165,7 +1211,11 @@ export const StepByStepContent: FC<StepByStepContentProps> = ({
           inline
           outcome={pendingStepOutcome}
           sufficiency={aggregateSufficiency}
-          onAccept={(filteredStep) => onAcceptStep?.(undefined, filteredStep)}
+          autoAccept={autoUntil === "add"}
+          onAccept={(filteredStep) => {
+            onAcceptStep?.(undefined, filteredStep);
+            if (autoUntil && autoStepActive()) finishAutoStep({ status: "added" });
+          }}
           // Перестроение тем же путём, что и «Построить шаг»: с текущим
           // промптом и выбранными провайдером/моделью.
           onRetry={() => handleBuild()}

@@ -22,14 +22,15 @@ export type ChatProposal =
   | { kind: "balance"; nodeId: string; label: string; why?: string }
   | { kind: "tech"; nodeId: string; label: string; nodeKind?: string; why?: string }
   | { kind: "rename"; nodeId: string; label: string; newLabel: string; nodeKind?: string; why?: string }
-  | { kind: "merge"; fromId: string; fromLabel: string; intoId: string; intoLabel: string; why?: string };
+  | { kind: "merge"; fromId: string; fromLabel: string; intoId: string; intoLabel: string; why?: string }
+  | { kind: "add"; label: string; nearId?: string; nearLabel?: string; why?: string };
 
 /**
  * Какие карточки клиент умеет показывать — уходят в запрос (proposals):
  * модель видит только эти инструменты. Сервер первой версии поле не знает
  * и предлагает шаг и показ.
  */
-export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = ["step", "show", "codes", "balance", "tech", "rename", "merge"];
+export const CHAT_PROPOSAL_KINDS: ChatProposal["kind"][] = ["step", "show", "codes", "balance", "tech", "rename", "merge", "add"];
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v !== "";
 const isRefs = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every((n) => isStr(n?.id) && isStr(n?.label));
@@ -50,6 +51,8 @@ export function isKnownProposal(p: unknown): p is ChatProposal {
       return isStr(x.nodeId) && isStr(x.label) && isStr(x.newLabel);
     case "merge":
       return isStr(x.fromId) && isStr(x.fromLabel) && isStr(x.intoId) && isStr(x.intoLabel);
+    case "add":
+      return isStr(x.label);
     default:
       return false;
   }
@@ -83,6 +86,13 @@ export interface ChatRequest {
   provider?: string;
   model?: string;
   proposals?: ChatProposal["kind"][];
+  /**
+   * С подтверждением (по умолчанию) или автопилот: действия выполняет сайт
+   * сам и присылает итог сообщением с continuation. Старый сервер поля не
+   * знает — отвечает как с подтверждением.
+   */
+  mode?: "confirm" | "auto";
+  continuation?: boolean;
 }
 
 /** Сервер старее клиента: чата у него ещё нет (404). */

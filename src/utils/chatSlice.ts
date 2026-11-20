@@ -15,12 +15,19 @@ import type { Edge } from "@xyflow/react";
 import type { CustomNode } from "../types";
 import { productContext, type ProductContext } from "./productContext";
 
-export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, ends: 20 };
+export const CHAT_SLICE_LIMITS = { products: 600, transformations: 400, alternatives: 200, ends: 20 };
 
 export interface ChatGraphSlice {
   name: string;
   products: { id: string; label: string }[];
   transformations: { id: string; label: string; inputs: string[]; outputs: string[] }[];
+  /**
+   * Альтернативы шага отдельно от преобразований: у какого продукта стоят
+   * и в какую сторону — вниз (что ещё делают из продукта) или вверх (как
+   * ещё его получают). О них спрашивают: «покажи альтернативы». Старый
+   * сервер поле не читает.
+   */
+  alternatives: { id: string; label: string; of: string[]; direction: "up" | "down" }[];
   /**
    * Название выбранного продукта — всегда, даже без контекста: у одинокого
    * узла без описания контекст пуст, а модель должна знать, о чём «этот
@@ -62,11 +69,21 @@ export function buildChatSlice(
       inputs: uniq(edges.filter((e) => e.target === n.id).map((e) => productLabel(e.source))),
       outputs: uniq(edges.filter((e) => e.source === n.id).map((e) => productLabel(e.target))),
     }));
+  // Вариант вниз стоит после продукта (продукт → вариант), вверх — перед ним.
+  const alternatives = nodes
+    .filter((n) => n.type === "transformation" && !onGraph(n) && labelOf(n))
+    .slice(0, CHAT_SLICE_LIMITS.alternatives)
+    .map((n) => {
+      const from = uniq(edges.filter((e) => e.target === n.id).map((e) => productLabel(e.source)));
+      const to = uniq(edges.filter((e) => e.source === n.id).map((e) => productLabel(e.target)));
+      return { id: n.id, label: labelOf(n), of: from.length ? from : to, direction: from.length ? ("down" as const) : ("up" as const) };
+    });
   const sel = selectedNodeId ? byId.get(selectedNodeId) : undefined;
   return {
     name,
     products,
     transformations,
+    alternatives,
     selectedLabel: sel?.type === "product" ? labelOf(sel) || null : null,
     selected: sel?.type === "product" ? productContext(sel.id, nodes, edges) : null,
   };

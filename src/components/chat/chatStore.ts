@@ -17,6 +17,10 @@ export interface ChatMessage {
   proposals?: ChatProposal[];
   /** Номера отклонённых или выполненных предложений. */
   closed?: number[];
+  /** Итоги выполненных предложений по номеру — вместо кнопок карточки. */
+  results?: Record<number, { ok: boolean; text: string }>;
+  /** Сообщение «Автопилот: …» — итог действий для модели, а не слова человека. */
+  auto?: boolean;
   requests?: number;
   error?: boolean;
 }
@@ -79,6 +83,27 @@ export function historyFor(messages: ChatMessage[]): { role: "user" | "assistant
     .filter((m) => !m.error && m.content.trim())
     .slice(-HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: m.content }));
+}
+
+// ---------- режим чата ----------
+
+const MODE_KEY = "chat:mode";
+
+/** Режим, выбранный последним: с подтверждением, пока автопилот не включали. */
+export function loadChatMode(): "confirm" | "auto" {
+  try {
+    return localStorage.getItem(MODE_KEY) === "auto" ? "auto" : "confirm";
+  } catch {
+    return "confirm";
+  }
+}
+
+export function saveChatMode(mode: "confirm" | "auto"): void {
+  try {
+    localStorage.setItem(MODE_KEY, mode);
+  } catch {
+    // режим — удобство, а не данные
+  }
 }
 
 // ---------- запросы к модели за день ----------

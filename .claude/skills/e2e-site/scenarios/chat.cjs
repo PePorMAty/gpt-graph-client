@@ -2,11 +2,12 @@
 // модели. Ответ строится по запросу: id узла в предложении — тот, что
 // прислал срез графа, как у настоящего сервера (routes/chat/).
 //
-// Проверяется: панель открывается кнопкой справа; в запрос уходят продукты
-// графа и контекст выбранного узла; ход («карточка «Фенол»…») и ответ;
-// «Построить шаг» открывает мастер шага у узла в предложенном направлении;
-// разговор переживает перезагрузку страницы. Модель не вызывается, запись на
-// сервер не нужна.
+// Проверяется: панель открывается кнопкой справа; режим «С подтверждением»;
+// в запрос уходят продукты графа и контекст выбранного узла; ход («карточка
+// «Фенол»…») и ответ; «Построить шаг» — мастер у узла сам проходит этапы до
+// превью (шаг — сохранёнными ответами, как в step-down), а «Добавить шаг» —
+// за человеком; разговор переживает перезагрузку страницы. Модель не
+// вызывается, запись на сервер не нужна.
 //
 // С --live-model и --api=сервер ветки ответ даёт настоящий маршрут чата
 // (routes/chat/) — с живой моделью или подставным шлюзом модели на сервере.
@@ -44,7 +45,12 @@ function chatReply(req) {
 
 module.exports = {
   description: "Чат с ИИ: панель, ход и ответ, «Построить шаг» → мастер у узла, разговор после перезагрузки",
-  canned: { "/api/graphs/gpt/chat": [chatReply, chatReply] },
+  canned: {
+    "/api/graphs/gpt/chat": [chatReply, chatReply],
+    "/api/graphs/gpt/step/aggregate": "fixtures/phenol-down-aggregate.json",
+    "/api/graphs/gpt/step/build": "fixtures/phenol-down-build.json",
+    "/api/graphs/gpt/step/check": "fixtures/step-check-ok.json",
+  },
   async run({ page, origin, lib, check, shot, log }) {
     // Запрос чата — из браузера: так он виден и с подставным ответом, и с
     // настоящим сервером.
@@ -62,6 +68,8 @@ module.exports = {
     await panel.waitFor({ timeout: 10000 });
     check("панель чата открылась", await panel.isVisible());
     check("контекст — выбранный узел", await panel.getByText("О выбранном узле: «Фенол»").isVisible());
+    // Режим запоминается в браузере — после другого сценария мог остаться автопилот.
+    await panel.getByRole("button", { name: "С подтверждением" }).click();
 
     await panel.getByRole("textbox", { name: "Сообщение для ИИ" }).fill("Что делают из фенола?");
     await panel.getByRole("textbox", { name: "Сообщение для ИИ" }).press("Enter");
@@ -74,7 +82,8 @@ module.exports = {
       "в запрос ушли продукты графа и выбранный узел",
       lastRequest?.graph?.products?.some((p) => p.label === "Фенол") &&
         lastRequest?.graph?.selectedLabel === "Фенол" &&
-        lastRequest?.message === "Что делают из фенола?",
+        lastRequest?.message === "Что делают из фенола?" &&
+        lastRequest?.mode === "confirm",
       JSON.stringify({ products: lastRequest?.graph?.products?.length, selectedLabel: lastRequest?.graph?.selectedLabel }),
     );
 
@@ -82,18 +91,21 @@ module.exports = {
     await panel.getByRole("button", { name: "Показать" }).click();
     await lib.sleep(800);
 
-    // «Построить шаг» — мастер шага у «Фенола», сразу вниз.
+    // «Построить шаг» — мастер у «Фенола» сам проходит этапы до превью.
+    const productsBefore = await page.locator(".react-flow__node-product").count();
     await panel.getByRole("button", { name: "Построить шаг" }).click();
     await page.getByText("Построение — «Фенол»").waitFor({ timeout: 10000 });
+    const reached = await page
+      .getByRole("button", { name: /Добавить шаг/ })
+      .waitFor({ timeout: 120000 })
+      .then(() => true, () => false);
     await lib.sleep(500);
     const wiz = await lib.wizardText(page);
     await shot("wizard");
-    check("«Построить шаг» открыл мастер шага у узла", wiz.startsWith("Построение — «Фенол»"));
-    const pressed = async (name) =>
-      (await page.getByRole("button", { name }).first().getAttribute("aria-pressed")) === "true";
+    check("«Построить шаг» — мастер у узла сам дошёл до превью", reached && wiz.startsWith("Построение — «Фенол»"), wiz.slice(0, 120).replace(/\s+/g, " "));
     check(
-      "мастер — в предложенном направлении: «Построить вниз» выбрано",
-      (await pressed(/^Построить вниз/)) && !(await pressed(/^Построить вверх/)),
+      "с подтверждением шаг не добавлен — «Добавить шаг» за человеком",
+      (await page.locator(".react-flow__node-product").count()) === productsBefore,
     );
     // Точно заголовок карточки: «предложен шаг вниз от «Фенол»» есть ещё и в
     // свёрнутом списке «Что смотрел ИИ».

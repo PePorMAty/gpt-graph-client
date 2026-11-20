@@ -51,6 +51,8 @@ interface Props {
   /** Назад к выбору на полотне. */
   onChangeSelection: () => void;
   onClose: () => void;
+  /** Окно открыл автопилот чата: подбор начинается сам, когда пришли промпты. */
+  autoStart?: boolean;
 }
 
 const KINDS: { kind: ProductCodeKind; name: string; desc: string }[] = [
@@ -93,7 +95,7 @@ const CodeRow: FC<{ kind: ProductCodeKind; r?: ProductCodeResult }> = ({ kind, r
     </div>
   ) : null;
 
-export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelection, onClose }) => {
+export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelection, onClose, autoStart = false }) => {
   const dispatch = useAppDispatch();
   const store = useStore<RootState>();
   const [kinds, setKinds] = useState<Set<ProductCodeKind>>(() => new Set(["okpd2", "tnved"]));
@@ -225,6 +227,15 @@ export const ProductCodesModal: FC<Props> = ({ products, onRemove, onChangeSelec
     abortRef.current?.abort();
     setPhase("done");
   };
+
+  // Автопилот чата: подбор — сам, как «Получить коды», когда пришли промпты
+  // по умолчанию (без них сервер подставит свои — но правку видно не было бы).
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStarted.current || defaults === undefined || phase !== "idle" || !products.length) return;
+    autoStarted.current = true;
+    void run();
+  });
 
   const running = phase === "running";
 

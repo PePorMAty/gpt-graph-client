@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { BuildDirection, TechnologySource } from "../../store/types";
 import type { DirectionTabProps, FlowPanelProps } from "./types";
 import { StepByStepContent } from "./StepByStepContent";
@@ -33,6 +33,7 @@ import {
   setLastBuildDirection,
   takeForcedBuildDirection,
 } from "./buildDirection";
+import { autoStepActive, cancelAutoStep, finishAutoStep, type AutoStepUntil } from "./stepAutopilot";
 import styles from "./FlowPanel.module.css";
 import wiz from "./StepWizard.module.css";
 import { AiModelSelect } from "../ai-model-select";
@@ -76,6 +77,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
 
   isBuildContext,
   stageOverride,
+  autoUntil,
   stepChainStatus,
   stepChainError,
   stepChainStepCount,
@@ -253,6 +255,7 @@ const DirectionContent: FC<DirectionTabProps> = ({
           onChangeStepAggregatedText={onChangeStepAggregatedText}
           isAlternativeNode={isAlternativeNode}
           altDescription={altDescription}
+          autoUntil={autoUntil}
         />
       )}
 
@@ -789,12 +792,16 @@ function resumeDirection(
 // PanelBuildView — мастер построения шага.
 // Экран 1 — направление, дальше существующий DirectionContent.
 // ─────────────────────────────────────────────────
+/** Задание автопилота для мастера (stepAutopilot.ts). */
+type AutoStep = { direction: "up" | "down"; until: AutoStepUntil } | null;
+
 const PanelBuildViewInner: FC<{
   productName: string;
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
   onBack?: () => void;
-}> = ({ productName, downTab, upTab, onBack }) => {
+  auto?: AutoStep;
+}> = ({ productName, downTab, upTab, onBack, auto = null }) => {
   // Направление выбирается один раз, при открытии окна: дальше его меняет
   // только человек.
   const [dir, setDir] = useState<BuildDirection | null>(() =>
@@ -928,6 +935,32 @@ const PanelBuildViewInner: FC<{
       ...getAiRequestFields({ stage: "search" }),
     });
   };
+
+  // ── Автопилот (просьба чата): первый экран проходим сами ──
+  // Направление задано заданием; дальше — то же, что кнопка «К источникам
+  // из базы» / «Найти источники», когда база проверена и промпт поиска
+  // пришёл. Остальные экраны ведёт StepByStepContent.
+  const autoOn = !!auto && auto.direction === dir;
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!autoOn || !showIntro || autoStarted.current || !autoStepActive()) return;
+    if (tab.stepSourcesError && !searching) {
+      finishAutoStep({ status: "failed", error: `источники не найдены: ${readableReason(tab.stepSourcesError)}` });
+      return;
+    }
+    if (searching || baseChecking || (!offerBase && !introGoesForward && isSrcPromptEmpty)) return;
+    autoStarted.current = true;
+    startSearch();
+  });
+  // Человек закрыл мастер посреди задания — решать за него нельзя.
+  const autoRef = useRef(auto);
+  autoRef.current = auto;
+  useEffect(
+    () => () => {
+      if (autoRef.current && autoStepActive()) cancelAutoStep();
+    },
+    [],
+  );
 
   return (
     <div className={wiz.pane}>
@@ -1116,6 +1149,7 @@ const PanelBuildViewInner: FC<{
             key={dir ?? "down"}
             {...tab}
             stageOverride={shown === 2 ? 2 : undefined}
+            autoUntil={autoOn ? auto?.until : undefined}
             // Шаг принят — окно закрывается. Держать его открытым незачем:
             // построенное уже на полотне, а мастер показывал бы первый экран
             // так, будто ничего не произошло.
@@ -1141,6 +1175,7 @@ const PanelBuildView: FC<{
   downTab: DirectionTabProps;
   upTab: DirectionTabProps;
   onBack?: () => void;
+  auto?: AutoStep;
 }> = (props) => (
   <StepSearchSettingsProvider>
     <PanelBuildViewInner {...props} />

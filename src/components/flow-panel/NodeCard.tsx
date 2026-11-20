@@ -30,6 +30,7 @@ import {
 import { sourceHref } from "../../store/api/local-sources-api";
 import { sourceLinkText } from "../../utils/sourceOrigin";
 import { CHAT_OPEN_CARD, takePendingCard } from "../chat/chatActions";
+import { autoStepFor } from "./stepAutopilot";
 import styles from "./NodeCard.module.css";
 
 /**
@@ -59,6 +60,8 @@ interface NodeCardProps extends FlowPanelProps {
     downTab: DirectionTabProps;
     upTab: DirectionTabProps;
     onBack?: () => void;
+    /** Мастер на автопилоте — по просьбе чата (stepAutopilot.ts). */
+    auto?: { direction: "up" | "down"; until: "preview" | "add" } | null;
   }>;
 }
 
@@ -656,6 +659,7 @@ export const NodeCard: FC<NodeCardProps> = ({
                   downTab={downTab}
                   upTab={upTab}
                   onBack={() => setBuildOpen(false)}
+                  auto={autoStepFor(nodeId)}
                 />
               )}
             </div>

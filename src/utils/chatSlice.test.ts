@@ -42,10 +42,18 @@ describe("срез графа для чата", () => {
     expect(lone.selectedLabel).toBe("Бензол");
   });
 
-  it("альтернативы шага — не узлы графа: в срез не идут", () => {
-    const withAlt = [...nodes, node("a1", "transformation", "Бисфенол А", { chainVariant: "alt" })];
-    const s = buildChatSlice(withAlt, [...edges, edge("p2", "a1")]);
+  it("альтернативы шага — не преобразования графа, а свой список: у какого продукта и куда", () => {
+    const withAlt = [
+      ...nodes,
+      node("a1", "transformation", "Бисфенол А", { chainVariant: "alt" }),
+      node("a2", "transformation", "Окисление толуола", { chainVariant: "alt" }),
+    ];
+    const s = buildChatSlice(withAlt, [...edges, edge("p2", "a1"), edge("a2", "p2")]);
     expect(s.transformations.map((t) => t.label)).toEqual(["Кумольный способ"]);
+    expect(s.alternatives).toEqual([
+      { id: "a1", label: "Бисфенол А", of: ["Фенол"], direction: "down" },
+      { id: "a2", label: "Окисление толуола", of: ["Фенол"], direction: "up" },
+    ]);
   });
 
   it("большой граф — не больше пределов сервера", () => {
@@ -105,6 +113,7 @@ describe("предложения чата", () => {
       { kind: "rename", nodeId: "n4", label: "Кумол", newLabel: "Изопропилбензол" },
       { kind: "merge", fromId: "n4", fromLabel: "Кумол", intoId: "n2", intoLabel: "Изопропилбензол (кумол)" },
     ];
+    ok.push({ kind: "add", label: "Автомобиль", nearId: "n1", nearLabel: "Фенол" } as never);
     expect(ok.map(isKnownProposal)).toEqual(ok.map(() => true));
     // Каждый вид, который клиент объявляет серверу, он и показывает.
     expect([...new Set(ok.map((p) => p.kind))].sort()).toEqual([...CHAT_PROPOSAL_KINDS].sort());

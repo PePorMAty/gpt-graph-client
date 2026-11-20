@@ -187,6 +187,12 @@ export interface DirectionTabProps {
   // --- alternative node (step-by-step flow) ---
   isAlternativeNode?: boolean;
   altDescription?: string;
+  /**
+   * Мастер на автопилоте по просьбе чата (stepAutopilot.ts): «preview» —
+   * пройти этапы до превью, «add» — и добавить шаг. Нет — мастер ведёт
+   * человек.
+   */
+  autoUntil?: "preview" | "add";
 }
 
 export interface FlowPanelProps {

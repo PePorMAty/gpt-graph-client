@@ -17,6 +17,16 @@ export const CHAT_SHOW_NODES = "chat-show-nodes";
 export const CHAT_CODES = "chat-codes";
 export const CHAT_RENAME = "chat-rename";
 export const CHAT_MERGE = "chat-merge";
+export const CHAT_ADD = "chat-add";
+
+/**
+ * Событие с ответом: Flow слушает синхронно и пишет итог в detail —
+ * dispatchEvent возвращается уже после обработчика.
+ */
+function ask<T extends object>(name: string, detail: T): T {
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+  return detail;
+}
 
 /** Что открыть в карточке узла: мастер шага или вкладку. */
 export type CardRequest =
@@ -55,17 +65,22 @@ export function showNodes(ids: string[]): void {
   if (ids.length) window.dispatchEvent(new CustomEvent(CHAT_SHOW_NODES, { detail: { ids } }));
 }
 
-/** Окно «Определить коды» с этими продуктами. */
-export function requestCodes(ids: string[]): void {
-  if (ids.length) window.dispatchEvent(new CustomEvent(CHAT_CODES, { detail: { ids } }));
+/** Окно «Определить коды» с этими продуктами; autoStart — подбор сразу (автопилот). */
+export function requestCodes(ids: string[], autoStart = false): void {
+  if (ids.length) window.dispatchEvent(new CustomEvent(CHAT_CODES, { detail: { ids, autoStart } }));
 }
 
-/** Переименовать узел — как правка названия в карточке. */
-export function requestRename(nodeId: string, label: string): void {
-  window.dispatchEvent(new CustomEvent(CHAT_RENAME, { detail: { nodeId, label } }));
+/** Переименовать узел — как правка названия в карточке. true — переименован. */
+export function requestRename(nodeId: string, label: string): boolean {
+  return ask(CHAT_RENAME, { nodeId, label, ok: false }).ok;
 }
 
 /** Объединить узел fromId с intoId — как «Объединить» в окне «Такой продукт уже есть». */
-export function requestMerge(fromId: string, intoId: string): void {
-  window.dispatchEvent(new CustomEvent(CHAT_MERGE, { detail: { fromId, intoId } }));
+export function requestMerge(fromId: string, intoId: string): boolean {
+  return ask(CHAT_MERGE, { fromId, intoId, ok: false }).ok;
+}
+
+/** Новый продукт на полотне — рядом с nearId или в середине экрана. id нового узла, null — не добавлен. */
+export function requestAdd(label: string, nearId?: string): string | null {
+  return ask(CHAT_ADD, { label, nearId, id: null as string | null }).id;
 }

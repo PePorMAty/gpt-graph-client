@@ -91,6 +91,7 @@ import {
 import { CanvasMinimap } from "./components/canvas-minimap/CanvasMinimap";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import {
+  CHAT_ADD,
   CHAT_CODES,
   CHAT_MERGE,
   CHAT_OPEN_CARD,
@@ -902,13 +903,17 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   // Чат с ИИ (PG-MIGRATION.md, этап 4) — панель справа от полотна.
   const [chatOpen, setChatOpen] = useState(false);
   const closeChat = useCallback(() => setChatOpen(false), []);
-  // Правки по предложениям чата — переименование и объединение. Им нужны
-  // функции, объявленные ниже (saveChanges, проверка дубля, объединение), а
-  // слушатель событий — один на всё время: ссылка на свежие версии.
+  // Правки по предложениям чата — переименование, объединение, новый
+  // продукт. Им нужны функции, объявленные ниже (saveChanges, проверка дубля,
+  // объединение), а слушатель событий — один на всё время: ссылка на свежие
+  // версии. Итог (сделано ли, id нового узла) уходит обратно в detail события.
   const chatEditRef = useRef<{
-    rename: (nodeId: string, label: string) => void;
-    merge: (fromId: string, intoId: string) => void;
+    rename: (nodeId: string, label: string) => boolean;
+    merge: (fromId: string, intoId: string) => boolean;
+    add: (label: string, nearId?: string) => string | null;
   } | null>(null);
+  // Окно кодов, открытое автопилотом чата, само запускает подбор.
+  const [codesAutoStart, setCodesAutoStart] = useState(false);
 
   // Всплывающая подсказка о сохранении
   const [isSavedToastVisible, setIsSavedToastVisible] = useState(false);
@@ -1479,22 +1484,28 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       setTimeout(() => setHighlightedId(null), 3000);
     };
     const onCodes = (e: Event) => {
-      const ids = ((e as CustomEvent<{ ids?: string[] }>).detail?.ids ?? []).filter((id) =>
+      const d = (e as CustomEvent<{ ids?: string[]; autoStart?: boolean }>).detail;
+      const ids = (d?.ids ?? []).filter((id) =>
         nodesRef.current.some((n) => n.id === id && n.type === "product" && n.data?.chainVariant !== "alt"),
       );
       if (!ids.length) return;
       saveChangesRef.current();
       setContextMenu(null);
+      setCodesAutoStart(!!d?.autoStart);
       setCodesPick(ids);
       setCodesModal(true);
     };
     const onRename = (e: Event) => {
-      const d = (e as CustomEvent<{ nodeId?: string; label?: string }>).detail;
-      if (d?.nodeId && d.label) chatEditRef.current?.rename(d.nodeId, d.label);
+      const d = (e as CustomEvent<{ nodeId?: string; label?: string; ok?: boolean }>).detail;
+      if (d?.nodeId && d.label) d.ok = chatEditRef.current?.rename(d.nodeId, d.label) ?? false;
     };
     const onMerge = (e: Event) => {
-      const d = (e as CustomEvent<{ fromId?: string; intoId?: string }>).detail;
-      if (d?.fromId && d.intoId) chatEditRef.current?.merge(d.fromId, d.intoId);
+      const d = (e as CustomEvent<{ fromId?: string; intoId?: string; ok?: boolean }>).detail;
+      if (d?.fromId && d.intoId) d.ok = chatEditRef.current?.merge(d.fromId, d.intoId) ?? false;
+    };
+    const onAdd = (e: Event) => {
+      const d = (e as CustomEvent<{ label?: string; nearId?: string; id?: string | null }>).detail;
+      if (d?.label) d.id = chatEditRef.current?.add(d.label, d.nearId) ?? null;
     };
     const events: [string, (e: Event) => void][] = [
       [CHAT_OPEN_CARD, onStep],
@@ -1502,6 +1513,7 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
       [CHAT_CODES, onCodes],
       [CHAT_RENAME, onRename],
       [CHAT_MERGE, onMerge],
+      [CHAT_ADD, onAdd],
     ];
     events.forEach(([name, fn]) => window.addEventListener(name, fn));
     return () => events.forEach(([name, fn]) => window.removeEventListener(name, fn));
@@ -2301,18 +2313,35 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
   chatEditRef.current = {
     rename: (nodeId, label) => {
       const node = nodesRef.current.find((n) => n.id === nodeId);
-      if (readOnly || !node) return;
+      if (readOnly || !node) return false;
       saveChangesRef.current();
       dispatch(updateNodeData({ nodeId, data: { label } }));
       showToast("success", `Узел переименован — «${label}»`);
       if (node.type === "product") checkDuplicateProduct(nodeId, label);
+      return true;
     },
     merge: (fromId, intoId) => {
       const isProduct = (id: string) => nodesRef.current.find((n) => n.id === id && n.type === "product");
       const into = isProduct(intoId);
-      if (readOnly || fromId === intoId || !isProduct(fromId) || !into) return;
+      if (readOnly || fromId === intoId || !isProduct(fromId) || !into) return false;
       saveChangesRef.current();
       mergeProducts(fromId, intoId, String(into.data?.label ?? ""));
+      return true;
+    },
+    // Новый продукт — рядом с названным соседом, иначе в середине экрана;
+    // камера к нему, как «Показать на графе».
+    add: (label, nearId) => {
+      if (readOnly) return null;
+      saveChangesRef.current();
+      const near = nearId ? nodesRef.current.find((n) => n.id === nearId) : undefined;
+      const position = near
+        ? { x: near.position.x + 280, y: near.position.y }
+        : screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const id = crypto.randomUUID();
+      dispatch(addNode({ type: "product", label, position, id }));
+      showToast("success", `Добавлен продукт «${label}»`);
+      setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_SHOW_NODES, { detail: { ids: [id] } })), 300);
+      return id;
     },
   };
 
@@ -3809,7 +3838,9 @@ export const Flow = ({ sharedView = false }: FlowProps = {}) => {
           onClose={() => {
             setCodesModal(false);
             setCodesPick(null);
+            setCodesAutoStart(false);
           }}
+          autoStart={codesAutoStart}
         />
       )}
       <SaveGraphModal

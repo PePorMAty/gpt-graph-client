@@ -76,6 +76,8 @@ module.exports = {
     await page.getByRole("button", { name: "Чат с ИИ" }).click();
     const panel = page.getByRole("complementary", { name: "Чат с ИИ" });
     await panel.waitFor({ timeout: 10000 });
+    // Режим запоминается в браузере — после другого сценария мог остаться автопилот.
+    await panel.getByRole("button", { name: "С подтверждением" }).click();
     await panel.getByRole("textbox", { name: "Сообщение для ИИ" }).fill("Что ещё сделать с этим участком?");
     await panel.getByRole("textbox", { name: "Сообщение для ИИ" }).press("Enter");
     await panel.getByText("Вот что можно сделать").waitFor({ timeout: 15000 });
@@ -116,10 +118,12 @@ module.exports = {
     await lib.sleep(1200);
     check("«Открыть описание» — карточка «Фенола» на вкладке техописания", await pressed("Технологическое описание"));
 
-    await panel.getByRole("button", { name: "Открыть баланс" }).click();
+    // «Рассчитать» — вкладка баланса и запуск расчёта (запрос к модели e2e
+    // не пропускает — важна вкладка).
+    await panel.getByRole("button", { name: "Рассчитать" }).click();
     await lib.sleep(1200);
     await shot("balance");
-    check("«Открыть баланс» — карточка преобразования на вкладке баланса", await pressed("Материальный баланс"));
+    check("«Рассчитать» — карточка преобразования на вкладке баланса", await pressed("Материальный баланс"));
 
     await panel.getByRole("button", { name: "Открыть окно кодов" }).click();
     const dialog = page.getByRole("dialog", { name: "Определить коды для продуктов" });

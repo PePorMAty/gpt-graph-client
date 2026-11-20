@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { StepChainApiStep, StepProduct } from "../../store/types";
 import { normalizeProductName } from "../../utils/normalizeProductName";
 import type { StepSufficiency } from "../../utils/parseAlternatives";
@@ -80,6 +80,11 @@ interface StepPreviewModalProps {
    */
   sufficiency?: StepSufficiency | null;
   onAccept: (filteredStep: StepChainApiStep) => void;
+  /**
+   * Автопилот чата (stepAutopilot.ts): добавить шаг самим — как «Добавить
+   * шаг» со всем отмеченным, когда проверка шага моделью закончилась.
+   */
+  autoAccept?: boolean;
   onRetry: () => void;
   onReject: () => void;
 }
@@ -93,6 +98,7 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
   outcome = null,
   sufficiency = null,
   onAccept,
+  autoAccept = false,
   onRetry,
   onReject,
 }) => {
@@ -262,6 +268,13 @@ export const StepPreviewModal: FC<StepPreviewModalProps> = ({
     };
     onAccept(filteredStep);
   };
+
+  const autoAccepted = useRef(false);
+  useEffect(() => {
+    if (!autoAccept || autoAccepted.current || check.state?.status === "loading") return;
+    autoAccepted.current = true;
+    handleAccept();
+  });
 
   /** Список продуктов одной стороны — вид у входов и выходов один. */
   const productList = (
